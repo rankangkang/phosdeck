@@ -49,6 +49,8 @@ Phosdeck 是 macOS 上的照片管理与非破坏性编辑工具，使用 SwiftU
 
 需要 macOS 26 或更新版本、Xcode 26 或更新版本（含 Metal Toolchain）。目前主要在 Apple Silicon 上验证。
 
+仓库中 `site/` 以外的位图资源使用 [Git LFS](https://git-lfs.com/)。克隆前请安装 Git LFS 并运行 `git lfs install`；已有检出可安装后运行 `git lfs install` 和 `git lfs pull`。
+
 1. 获取源码：
 
    ```sh

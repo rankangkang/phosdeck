@@ -49,6 +49,8 @@ Lightroom XMP preset import supports an approximate conversion of selected globa
 
 Requires macOS 26 or later and Xcode 26 or later, including the Metal Toolchain. Most validation has been done on Apple Silicon.
 
+The repository uses [Git LFS](https://git-lfs.com/) for raster images outside `site/`. Install it and run `git lfs install` before cloning; in an existing checkout, run `git lfs install` and `git lfs pull`.
+
 1. Clone the repository:
 
    ```sh

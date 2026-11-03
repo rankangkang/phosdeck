@@ -27,6 +27,8 @@ Try to reproduce the issue with images you generate yourself. For other samples,
 
 Application code is in `Sources/`; regression tests are in `Tests/`. Follow the [development rules (Chinese)](AGENTS.md), especially the requirements for protecting photos and catalogs, registering Swift files, writing files, and handling performance-sensitive code. Use synthetic data or public samples explicitly allowed by the repository and covered by the required permissions. Do not write tests that search for private catalogs or originals. `Samples/` is ignored by Git; this does not make its contents suitable for committing.
 
+JPG, JPEG, PNG, WebP, GIF and TIFF assets outside `site/` are tracked with Git LFS regardless of size; see the [README](README.md#build-from-source) for setup. Website assets remain in regular Git for GitHub Pages. LFS does not override the ignore rules for samples or catalogs.
+
 Run the full checks from the repository root:
 
 ```sh
