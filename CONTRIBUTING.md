@@ -2,7 +2,7 @@
 
 [English](CONTRIBUTING.md) · [简体中文](CONTRIBUTING.zh.md)
 
-You can contribute by reporting bugs, improving documentation, or submitting code. The project maintains the native macOS app only. See the [README](README.md#build-from-source) for build instructions and the [getting started guide (Chinese)](docs/getting-started.md) for usage. For larger features or changes in direction, open an issue describing the problem and expected behavior before starting.
+You can contribute by reporting bugs, improving documentation, or submitting code. The application targets native macOS; its static product website lives in `site/`. See the [README](README.md#build-from-source) for app build instructions and the [getting started guide (Chinese)](docs/getting-started.md) for usage. For larger features or changes in direction, open an issue describing the problem and expected behavior before starting.
 
 ## Report a bug
 
@@ -53,6 +53,29 @@ Test preparation uses the `python3` standard library, with no extra Python packa
 Ordinary development does not require smart-mask weights. The research preparation script downloads a complete set of experimental resources, including face weights. See the [model guide (Chinese)](docs/smart-mask-models.md) for restrictions, model versions, and behavior when models are missing.
 
 Register new Swift files in both `Phosdeck.xcodeproj/project.pbxproj` and `project.yml`. Check licenses and bundled notices before adding dependencies; the repository does not accept GPL dependencies. See the [README license section](README.md#license) for the project's license and third-party notices.
+
+## Website development
+
+The bilingual Astro website reuses the app's design tokens and approved brand assets. Website development requires Node.js 22.23.4 or later and npm 9.6.5 or later; native app builds do not require either tool. Run from the repository root:
+
+```sh
+npm --prefix site ci
+npm --prefix site run dev
+```
+
+Preview English at `http://127.0.0.1:4321/phosdeck/` and Chinese at `http://127.0.0.1:4321/phosdeck/zh/`. Both start in graphite unless an explicit website theme choice has been saved. The `/phosdeck/` prefix matches the intended GitHub Pages project path. To stop the local server, run `npm --prefix site run stop`.
+
+Before submitting website changes, run:
+
+```sh
+npm --prefix site run check
+npm --prefix site run build
+npm --prefix site test
+python3 scripts/check-docs.py
+git diff --check
+```
+
+Check both languages and themes in desktop and mobile layouts. The website is currently a local preview; deployment is not configured. The site build uses Astro and `@astrojs/check` (MIT), TypeScript (Apache-2.0), and Astro's optional image tooling: sharp (Apache-2.0) with libvips (LGPL-3.0-or-later). The static output does not ship these build tools or native libraries; their installed packages retain their license notices.
 
 ## Submit changes
 

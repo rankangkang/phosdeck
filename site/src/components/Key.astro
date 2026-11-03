@@ -1,0 +1,7 @@
+---
+import type { HTMLAttributes } from 'astro/types';
+type Props = HTMLAttributes<'button'> & HTMLAttributes<'a'> & { primary?: boolean };
+const { href, primary = false, class: className, ...attributes } = Astro.props;
+const Tag = href ? 'a' : 'button';
+---
+<Tag class:list={['key', { 'key--primary': primary }, className]} href={href} type={href ? undefined : 'button'} {...attributes}><slot /></Tag>

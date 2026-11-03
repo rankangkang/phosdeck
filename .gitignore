@@ -8,6 +8,9 @@ Config/LocalSigning.xcconfig
 TestResults/
 Samples/
 __pycache__/
+site/node_modules/
+site/.astro/
+site/dist/
 
 # Catalogs, their SQLite recovery files, and backups can contain private data.
 *.[Pp][Hh][Oo][Ss][Cc][Aa][Tt]

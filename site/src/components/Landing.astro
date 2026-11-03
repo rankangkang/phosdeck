@@ -1,0 +1,110 @@
+---
+import { Image } from 'astro:assets';
+import Page from '../layouts/Page.astro';
+import Brand from './Brand.astro';
+import Key from './Key.astro';
+import Icon from './Icon.astro';
+import { copy, repository, buildCommands, type Locale } from '../content';
+import graphite from '../assets/workspace-graphite.jpg';
+import ivory from '../assets/workspace-ivory.jpg';
+import appIcon from '../../../design/logo/logo-icon-graphite.svg?url';
+
+interface Props { locale: Locale; }
+const { locale } = Astro.props;
+const t = copy[locale];
+const base = import.meta.env.BASE_URL;
+const readme = locale === 'zh' ? 'README.zh.md' : 'README.md';
+const guide = `${repository}/blob/master/${readme}#${locale === 'zh' ? '快速上手' : 'build-from-source'}`;
+const workspaceSizes = '(max-width: 480px) calc(100vw - 58px), (max-width: 800px) calc(100vw - 94px), (max-width: 1100px) calc(100vw - 114px), (max-width: 1240px) calc(100vw - 154px), 1086px';
+---
+<Page locale={locale}>
+  <header class="site-header">
+    <Brand />
+    <div class="header-controls">
+      <div class="key-group locale-keys" role="group" aria-label={t.languages}>
+        <Key href={base} lang="en" hreflang="en" aria-current={locale === 'en' ? 'page' : undefined}><span class="lamp" aria-hidden="true"></span>EN</Key>
+        <Key href={`${base}zh/`} lang="zh-CN" hreflang="zh-CN" aria-current={locale === 'zh' ? 'page' : undefined}><span class="lamp" aria-hidden="true"></span>中文</Key>
+      </div>
+      <button class="theme-switch" type="button" role="switch" aria-checked="false" data-toggle-theme data-enhance hidden data-label-graphite={t.switchGraphite} data-label-ivory={t.switchIvory} aria-label={t.ivoryTheme} title={t.switchIvory}>
+        <span class="switch-mechanism" aria-hidden="true"><span class="switch-track"><span class="switch-cap"></span></span></span>
+        <span data-current-theme data-graphite={t.graphite} data-ivory={t.ivory}>{t.graphite}</span>
+      </button>
+    </div>
+    <Key class="github-link" href={repository} target="_blank" rel="noopener noreferrer">GitHub</Key>
+  </header>
+
+  <main id="main">
+    <section class="hero section-pad" aria-labelledby="hero-heading">
+      <div class="hero-topline silk"><span><i class="registration" aria-hidden="true"></i>{t.eyebrow}</span><span class="hero-edition">PHOSDECK / macOS</span></div>
+      <div class="hero-content">
+        <h1 id="hero-heading">{t.headline[0]}<br /><span>{t.headline[1]}</span></h1>
+        <div class="hero-copy">
+          <p class="hero-intro">{t.intro}</p>
+          <div class="hero-actions">
+            <Key href={guide} primary target="_blank" rel="noopener noreferrer">{t.build}<Icon name="arrow" /></Key>
+          </div>
+          <p class="preview-status"><span class="lamp lamp--on" aria-hidden="true"></span><span>{t.preview}<span class="status-divider" aria-hidden="true"> / </span><span class="preview-detail">{t.sourceAvailable}</span></span></p>
+        </div>
+      </div>
+      <div class="hero-footline silk">
+        <span class="native-mark"><span class="crosshair" aria-hidden="true"></span>{locale === 'zh' ? '在本机，完成创作。' : 'MADE FOR YOUR MAC. MADE FOR YOUR PHOTOGRAPHS.'}</span>
+        <ul aria-label={locale === 'zh' ? '技术与许可' : 'Platform and license'}>{t.specifications.map((spec) => <li>{spec}</li>)}</ul>
+      </div>
+    </section>
+
+    <section id="workspace" class="workspace section-pad ruled" aria-labelledby="workspace-heading">
+      <div class="section-caption"><span class="silk"><span class="section-number">01</span>{t.workspaceLabel}</span><span class="silk desktop-label">SWIFTUI / CORE IMAGE / METAL</span></div>
+      <div class="workspace-heading"><h2 id="workspace-heading">{t.workspaceTitle}</h2><p>{t.workspaceDetail}</p></div>
+      <figure class="workspace-figure">
+        <div class="screen-viewport">
+          <Image class="workspace-image theme-graphite" src={graphite} widths={[640, 1000, 1600, 2400]} sizes={workspaceSizes} format="webp" quality={85} alt={t.screenshotAlt} loading="eager" fetchpriority="high" />
+          <Image class="workspace-image theme-ivory" src={ivory} widths={[640, 1000, 1600, 2400]} sizes={workspaceSizes} format="webp" quality={85} alt={t.screenshotAlt} loading="lazy" />
+        </div>
+        <figcaption>
+          <span class="finish-note">{t.themeHint}</span>
+          <span class="image-note">{t.screenshotCaption}</span>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="workflow" class="workflow section-pad ruled" aria-labelledby="workflow-heading">
+      <div class="section-caption"><span class="silk"><span class="section-number">02</span>{t.workflowLabel}</span></div>
+      <div class="section-heading"><h2 id="workflow-heading">{t.workflowTitle}</h2><p>{t.workflowIntro}</p></div>
+      <div class="key-group workflow-tabs" role="tablist" aria-label={t.workflowTabs} data-workflow-tabs hidden>
+        {t.workflows.map((workflow, i) => <Key id={`tab-${i}`} role="tab" aria-controls={`workflow-${i}`} aria-selected={i === 0 ? 'true' : 'false'} tabindex={i === 0 ? 0 : -1} data-workflow-tab={i}><span class="tab-number">0{i + 1}</span>{workflow.name}<span class="lamp" aria-hidden="true"></span></Key>)}
+      </div>
+      <div class="workflow-panels">
+        {t.workflows.map((workflow, i) => <article id={`workflow-${i}`} class="workflow-panel" aria-labelledby={`workflow-title-${i}`} data-workflow-panel>
+          <div class="workflow-copy"><span class="silk workflow-name">0{i + 1} / {workflow.name}</span><h3 id={`workflow-title-${i}`}>{workflow.title}</h3><p>{workflow.description}</p><p class="workflow-note"><span class="small-tick" aria-hidden="true"></span>{workflow.note}</p></div>
+          <dl class="capability-list">{workflow.rows.map(([title, detail], index) => <div><dt><span class="capability-number" aria-hidden="true">0{index + 1}</span>{title}<Icon name="check" /></dt><dd>{detail}</dd></div>)}</dl>
+        </article>)}
+      </div>
+    </section>
+
+    <section class="philosophy section-pad ruled" aria-labelledby="design-heading">
+      <div class="section-caption"><span class="silk"><span class="section-number">03</span>{t.designLabel}</span><span class="silk desktop-label">DARKROOM INSTRUMENT</span></div>
+      <div class="philosophy-intro"><h2 id="design-heading">{t.designTitle[0]}<br />{t.designTitle[1]}</h2><p>{t.designDescription}</p></div>
+      <div class="principles">{t.principles.map(([title, detail], i) => <article><span class="principle-mark" aria-hidden="true">{i === 0 ? <span class="crosshair"></span> : i === 1 ? <span class="preserve-mark"></span> : <span class="open-mark"></span>}</span><h3>{title}</h3><p>{detail}</p></article>)}</div>
+    </section>
+
+    <section id="get-started" class="get-started section-pad ruled" aria-labelledby="build-heading">
+      <div class="section-caption"><span class="silk"><span class="section-number">04</span>{t.buildLabel}</span><span class="silk preview-caption"><span class="lamp lamp--on" aria-hidden="true"></span>{t.preview}</span></div>
+      <div class="build-topline"><img src={appIcon} class="app-icon" width="72" height="72" loading="lazy" alt="" /><h2 id="build-heading">{t.buildTitle[0]}<br />{t.buildTitle[1]}</h2></div>
+      <p class="build-intro">{t.buildIntro}</p>
+      <div class="build-layout">
+        <div class="build-requirements"><h3 class="silk">{t.requirements}</h3><dl>{t.requirementRows.map(([label, value]) => <div><dt>{label}</dt><dd>{value}</dd></div>)}</dl></div>
+        <div class="build-instructions"><div class="terminal"><div class="terminal-bar"><span class="silk"><span class="terminal-prompt" aria-hidden="true">&gt;_</span>{t.terminalLabel}</span><button class="copy-command" data-copy-commands data-copied={t.copied} data-failed={t.copyFailed} data-enhance hidden type="button"><Icon name="copy" /><span>{t.copy}</span></button></div><pre tabindex="0" aria-label={t.terminalLabel}><code data-build-commands>{buildCommands}</code></pre><p class="copy-feedback" data-copy-feedback role="status" aria-live="polite"></p></div><p class="build-note">{t.buildNote}</p></div>
+      </div>
+    </section>
+
+    <section class="faq section-pad ruled" aria-labelledby="faq-heading">
+      <div><div class="section-caption"><span class="silk"><span class="section-number">05</span>{t.faqLabel}</span></div><h2 id="faq-heading">{t.faqTitle}</h2></div>
+      <div class="questions">{t.questions.map(([question, answer]) => <details><summary>{question}<Icon name="plus" /></summary><p>{answer}</p></details>)}</div>
+    </section>
+  </main>
+
+  <footer class="site-footer section-pad ruled">
+    <div class="footer-main"><div><Brand /><p>{t.footerTagline}</p></div><nav aria-label={locale === 'zh' ? '项目链接' : 'Project links'}><a href={repository}>{t.footerSource}</a><a href={`${repository}/issues`}>{t.footerIssues}</a><a href={`${repository}/blob/master/LICENSE`}>{t.footerLicense}</a><a href={`${repository}/blob/master/${readme}#${locale === 'zh' ? '致谢' : 'acknowledgments'}`}>{t.footerAcknowledgments}</a></nav></div>
+    <div class="footer-bottom silk"><span>{t.footerNote}</span><span>PHOSDECK / AGPL-3.0-ONLY</span></div>
+  </footer>
+</Page>
