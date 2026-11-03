@@ -1,5 +1,7 @@
 # 设计
 
-现行原生界面采用 [暗房仪表 v3.1 · 实体操作件](darkroom_instrument_design_system_v3.md) 与 [Token v3.1](darkroom_instrument_tokens_v3.json)，代码取值见 `Sources/UI/DarkroomTheme.swift`。[Logo](logo/README.md) 沿用已选定方案。
+界面规范见 [暗房仪表 v3.1](darkroom_instrument_design_system_v3.md)，取值见 [Token v3.1](darkroom_instrument_tokens_v3.json) 和 [DarkroomTheme.swift](../Sources/UI/DarkroomTheme.swift)。[Logo 说明](logo/README.md)列出字标、图标资源及生成命令。
 
-当前编辑工作区：[米白](darkroom_workspace_ivory.jpg) · [石墨](darkroom_workspace_graphite.jpg)。截图使用合成测试图，不作为照片观感验收。
+工作区截图：[米白](darkroom_workspace_ivory.jpg) · [石墨](darkroom_workspace_graphite.jpg)，摄于 2026-11-03，使用合成测试图。
+
+README 封面：[米白](../docs/assets/readme/hero-ivory.svg) · [石墨](../docs/assets/readme/hero-graphite.svg)。两张 SVG 复用现有字标、应用图标几何与设计 Token，通过 `<picture>` 按页面主题显示。

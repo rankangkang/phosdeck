@@ -43,7 +43,7 @@ python3 scripts/make-language-pack.py /path/to/Russian.xcstrings \
   --output /path/to/Russian.bundle
 ```
 
-输出路径必须不存在。脚本只编译完整、标为已翻译的目标语言条目，避免把编译器生成的未译键名占位误算成译文。没有提供的条目由 App 使用英文。脚本使用同卷临时目录、刷盘和 Darwin 无覆盖发布；已有包不会被覆盖。
+输出路径必须不存在。脚本只编译完整且标为已翻译的目标语言条目，未提供的词条使用英文。打包通过同卷暂存、刷盘和无覆盖发布完成，保留已有文件。
 
 ```text
 Russian.bundle/
@@ -87,4 +87,4 @@ xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -derivedDataPath build \
 ./scripts/check.sh
 ```
 
-既有界面与错误断言测试固定使用简体中文，`LocalizationTests` 显式检查中英和合成俄语资源，避免测试读取用户安装的语言包。实际窗口另行检查中英、米白／石墨主题，以及导入、重启启用、缺词回退和移除闭环。工程检查与用户体验验收分别记录。
+界面与错误断言测试固定使用简体中文；`LocalizationTests` 检查中英和合成俄语资源，不读取用户安装的语言包。实窗检查需覆盖中英、米白／石墨主题，以及语言包导入、重启启用、缺词回退和移除。

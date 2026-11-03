@@ -8,7 +8,7 @@
 2. 读 [当前状态](docs/STATUS.md) 和 [已定决策](docs/decisions.md)；需要找文档时看 [文档索引](docs/README.md)，查以往做法与验证用 `git log --grep=<scope>` 或 `git log -- <path>`。
 3. UI 与交互工作读 [设计规范 v3](design/darkroom_instrument_design_system_v3.md) 和 [设计 Token v3](design/darkroom_instrument_tokens_v3.json)；第三方来源与许可见 [第三方声明](docs/references/)。
 
-说明：本仓库仅维护原生 macOS（SwiftUI + Metal）版。早期 Electron 前端、Rust 实验引擎及对应跨平台 CI 已移除，原生构建与检查不需要 Node.js 或 Rust 工具链。
+原生构建与检查不需要 Node.js 或 Rust 工具链。
 
 ## 工作边界
 

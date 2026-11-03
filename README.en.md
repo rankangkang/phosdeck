@@ -49,7 +49,7 @@ Lightroom XMP preset import supports an approximate conversion of selected globa
 
 Requires macOS 26 or later and Xcode 26 or later, including the Metal Toolchain. Most validation has been done on Apple Silicon.
 
-1. Clone the repository (read access is required while it is private):
+1. Clone the repository:
 
    ```sh
    git clone https://github.com/rankangkang/phosdeck.git phosdeck
@@ -122,7 +122,6 @@ The checks use the `python3` standard library to prepare optional public RAW tes
 | [Contributing](CONTRIBUTING.en.md) · [简体中文](CONTRIBUTING.md) | Bug reports, development checks, and submitting changes |
 | [Development rules (Chinese)](AGENTS.md) | Code layout, data protection, commit conventions, and local app review |
 | [Documentation index (Chinese)](docs/README.md) | Current status, decisions, and topic guides |
-| [Release preparation (Chinese)](TODO.md) | Open questions before public release and distribution |
 | [Design specification v3 (Chinese)](design/darkroom_instrument_design_system_v3.md) | Native darkroom interface and interaction conventions |
 | [Design tokens v3](design/darkroom_instrument_tokens_v3.json) | Ivory and graphite colors, dimensions, and state tokens |
 | [Issues](https://github.com/rankangkang/phosdeck/issues) | Bug reports and feature requests |
@@ -133,7 +132,7 @@ Phosdeck draws on Lightroom Classic's workflow and uses algorithms and implement
 
 | Source | Use in Phosdeck |
 |---|---|
-| [Adobe Lightroom Classic](https://www.adobe.com/products/photoshop-lightroom-classic.html) | Workflow reference for photo organization, culling, developing, local adjustments, and batch export. The exposure response tables for raster images use Lightroom output from synthetic images as reference; the basis for public use still needs review. See [release preparation (Chinese)](TODO.md). |
+| [Adobe Lightroom Classic](https://www.adobe.com/products/photoshop-lightroom-classic.html) | Workflow reference for photo organization, culling, developing, local adjustments, and batch export. The exposure response tables for raster images use Lightroom output from synthetic images as reference; the basis for public use still needs review. See [known issues (Chinese)](docs/STATUS.md#已知问题). |
 | [Lightcraft](https://github.com/storytold/lightcraft) | Feature and interaction reference. Selected algorithms and implementations, including preset strength, masks, vignette, grain, point color, and stacks, were ported or adapted to Swift/Metal under MIT. |
 | [PhotoCraft](https://github.com/storytold/photocraft) | Source of the test-only PatchMatch prototype through Lightcraft, adapted under MIT. The prototype is not part of the app's current repair pipeline. |
 | [Oklab — Björn Ottosson](https://bottosson.github.io/posts/oklab/) | Conversion matrices and reference implementation for perceptual color processing, with MIT attribution retained. |

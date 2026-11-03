@@ -49,7 +49,7 @@ Phosdeck 是 macOS 上的照片管理与非破坏性编辑工具，使用 SwiftU
 
 需要 macOS 26 或更新版本、Xcode 26 或更新版本（含 Metal Toolchain）。目前主要在 Apple Silicon 上验证。
 
-1. 获取源码（仓库未公开时需要读取权限）：
+1. 获取源码：
 
    ```sh
    git clone https://github.com/rankangkang/phosdeck.git phosdeck
@@ -122,7 +122,6 @@ xcodebuild -downloadComponent MetalToolchain
 | [贡献与反馈](CONTRIBUTING.md) · [English](CONTRIBUTING.en.md) | 问题反馈、开发检查和提交说明 |
 | [开发约定](AGENTS.md) | 代码导航、数据保护、提交规范与本机体验流程 |
 | [文档索引](docs/README.md) | 当前状态、已定决策与主题文档 |
-| [开源准备待办](TODO.md) | 公开与分发前尚需确认的事项 |
 | [设计规范 v3](design/darkroom_instrument_design_system_v3.md) | 原生暗房仪表外观与交互约定 |
 | [设计 Token v3](design/darkroom_instrument_tokens_v3.json) | 米白／石墨配色、尺寸与状态 Token |
 | [问题与建议](https://github.com/rankangkang/phosdeck/issues) | 提交复现步骤、运行环境或功能建议 |
@@ -133,7 +132,7 @@ Phosdeck 参考了 Lightroom Classic 的工作流，也使用了以下开源项�
 
 | 来源 | 借鉴与使用范围 |
 |---|---|
-| [Adobe Lightroom Classic](https://www.adobe.com/products/photoshop-lightroom-classic.html) | 照片管理、选片、显影、局部调整与批量输出的工作流参考。普通图像曝光响应表使用了合成图的 Lightroom 输出作为对照，公开使用依据仍待核对，见[开源准备待办](TODO.md)。 |
+| [Adobe Lightroom Classic](https://www.adobe.com/products/photoshop-lightroom-classic.html) | 照片管理、选片、显影、局部调整与批量输出的工作流参考。普通图像曝光响应表使用了合成图的 Lightroom 输出作为对照，公开使用依据仍待核对，见[已知问题](docs/STATUS.md#已知问题)。 |
 | [Lightcraft](https://github.com/storytold/lightcraft) | 功能组织与交互参考；部分算法和实现按 MIT 许可移植、适配为 Swift／Metal，包括预设强度、蒙版、暗角、颗粒、点颜色和堆叠等。 |
 | [PhotoCraft](https://github.com/storytold/photocraft) | 经 Lightcraft 引入的测试用 PatchMatch 原型来源，按 MIT 许可适配；该原型不属于当前 App 的修复管线。 |
 | [Oklab — Björn Ottosson](https://bottosson.github.io/posts/oklab/) | 感知色彩处理使用其转换矩阵与参考实现，保留 MIT 许可及归属。 |
