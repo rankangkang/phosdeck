@@ -7,7 +7,7 @@
 <h1 align="center">Phosdeck</h1>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README.zh.md">简体中文</a>
+  <a href="README.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="https://rankangkang.github.io/phosdeck/">Website</a>
 </p>
 
 <p align="center">

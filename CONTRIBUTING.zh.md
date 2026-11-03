@@ -77,7 +77,9 @@ python3 scripts/check-docs.py
 git diff --check
 ```
 
-实窗核对桌面与手机布局，覆盖中英双语和两种主题。官网目前仅供本地预览，尚未配置部署。网站构建使用 Astro、`@astrojs/check`（MIT）、TypeScript（Apache-2.0），以及 Astro 的可选图像工具 sharp（Apache-2.0）与 libvips（LGPL-3.0-or-later）；静态产物不包含这些构建工具或原生库，安装包保留各自的许可声明。
+实窗核对桌面与手机布局，覆盖中英双语和两种主题。推送至 `master` 或在 Actions 页面手动运行时，GitHub Actions 会构建并发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/zh/)。
+
+网站构建使用 Astro、`@astrojs/check`（MIT）、TypeScript（Apache-2.0），以及 Astro 的可选图像工具 sharp（Apache-2.0）与 libvips（LGPL-3.0-or-later）；静态产物不包含这些构建工具或原生库，安装包保留各自的许可声明。
 
 ## 提交变更
 

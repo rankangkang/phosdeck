@@ -77,7 +77,9 @@ python3 scripts/check-docs.py
 git diff --check
 ```
 
-Check both languages and themes in desktop and mobile layouts. The website is currently a local preview; deployment is not configured. The site build uses Astro and `@astrojs/check` (MIT), TypeScript (Apache-2.0), and Astro's optional image tooling: sharp (Apache-2.0) with libvips (LGPL-3.0-or-later). The static output does not ship these build tools or native libraries; their installed packages retain their license notices.
+Check both languages and themes in desktop and mobile layouts. GitHub Actions builds and deploys the site to [GitHub Pages](https://rankangkang.github.io/phosdeck/) on pushes to `master` or when run manually from the Actions tab.
+
+The site build uses Astro and `@astrojs/check` (MIT), TypeScript (Apache-2.0), and Astro's optional image tooling: sharp (Apache-2.0) with libvips (LGPL-3.0-or-later). The static output does not ship these build tools or native libraries; their installed packages retain their license notices.
 
 ## Submit changes
 
