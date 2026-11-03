@@ -119,7 +119,7 @@ The checks use the `python3` standard library to prepare optional public RAW tes
 | Guide | Contents |
 |---|---|
 | [Getting started (Chinese)](docs/getting-started.md) | Catalog creation, import, editing, export, backup, and restore |
-| [Contributing](CONTRIBUTING.en.md) · [简体中文](CONTRIBUTING.md) | Bug reports, development checks, and submitting changes |
+| [Contributing](CONTRIBUTING.md) · [简体中文](CONTRIBUTING.zh.md) | Bug reports, development checks, and submitting changes |
 | [Development rules (Chinese)](AGENTS.md) | Code layout, data protection, commit conventions, and local app review |
 | [Documentation index (Chinese)](docs/README.md) | Current status, decisions, and topic guides |
 | [Design specification v3 (Chinese)](design/darkroom_instrument_design_system_v3.md) | Native darkroom interface and interaction conventions |

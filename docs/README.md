@@ -5,7 +5,7 @@
 | 文档 | 内容 |
 |---|---|
 | [项目介绍：English](../README.md) · [中文](../README.zh.md) | 功能、截图、源码构建与支持范围 |
-| [贡献与反馈：中文](../CONTRIBUTING.md) · [English](../CONTRIBUTING.en.md) | 问题反馈、测试、提交与隐私边界 |
+| [贡献与反馈：English](../CONTRIBUTING.md) · [中文](../CONTRIBUTING.zh.md) | 问题反馈、测试、提交与隐私边界 |
 | [STATUS.md](STATUS.md) | 当前状态、待用户验收、已知问题与候选下一步（唯一交接） |
 | [已定决策](decisions.md) | 不做／暂缓事项及原因、数据与图库约定 |
 | [上手指南](getting-started.md) | 创建图库、导入、编辑、导出及备份恢复 |

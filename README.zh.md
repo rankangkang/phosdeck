@@ -119,7 +119,7 @@ xcodebuild -downloadComponent MetalToolchain
 | 入口 | 内容 |
 |---|---|
 | [上手指南](docs/getting-started.md) | 创建图库、导入、编辑、导出及备份恢复 |
-| [贡献与反馈](CONTRIBUTING.md) · [English](CONTRIBUTING.en.md) | 问题反馈、开发检查和提交说明 |
+| [贡献与反馈](CONTRIBUTING.zh.md) · [English](CONTRIBUTING.md) | 问题反馈、开发检查和提交说明 |
 | [开发约定](AGENTS.md) | 代码导航、数据保护、提交规范与本机体验流程 |
 | [文档索引](docs/README.md) | 当前状态、已定决策与主题文档 |
 | [设计规范 v3](design/darkroom_instrument_design_system_v3.md) | 原生暗房仪表外观与交互约定 |
