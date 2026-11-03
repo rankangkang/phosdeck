@@ -1,6 +1,6 @@
 # 当前状态
 
-唯一的交接文件：只记录会变的状态，原地改写（规则见 [AGENTS.md](../AGENTS.md#文档约定)）。长期决定见 [decisions](decisions.md)，lightcraft 范围内的功能边界与待验收项只在 [借鉴清单](lightcraft_reference_checklist.md) 维护，开源准备见 [TODO](../TODO.md)。
+唯一的交接文件：只记录会变的状态，原地改写（规则见 [AGENTS.md](../AGENTS.md#文档约定)）。长期决定见 [decisions](decisions.md)，开源准备见 [TODO](../TODO.md)。
 
 ## 现状
 
@@ -11,7 +11,7 @@
 
 ## 待用户验收
 
-已实现并完成工程检查，用户尚未体验确认。lightcraft 对应项见借鉴清单 P0，这里只列其余部分：
+以下内容已实现并完成工程检查，用户尚未体验确认：
 
 - **模块命名**：中文“编辑”、英文 Develop，保留 D 快捷键；待用户体验。
 - **品牌外观**：用户新设计的圆角字标已按原图矢量化并加粗 e 横笔，接入石墨和米白主题；待用户在固定体验 App 中验收。
