@@ -1,0 +1,156 @@
+{
+  "purpose": "Public-domain (CC0) RAW samples from raw.pixls.us for optional XCTest coverage. Not committed; download each url into Samples/public-cc0/; scripts/prepare-public-raw-test-resources.py verifies sha256 and stages them.",
+  "source": "https://raw.pixls.us/",
+  "samples": [
+    {
+      "file": "a7iii_12bit_compressed.ARW",
+      "camera": "Sony ILCE-7M3",
+      "mode": "12bit 12bit compressed (3:2)",
+      "megapixels": 24.34,
+      "remark": "",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/2415/nice/Sony%20-%20ILCE-7M3%20-%2012bit%2012bit%20compressed%20(3:2).ARW",
+      "sha256": "3ae2ff75cfa7240d0b4458f662afd28665c5fd1e83d230ac73f5ad69d3df8592"
+    },
+    {
+      "file": "a7iii_14bit_compressed.ARW",
+      "camera": "Sony ILCE-7M3",
+      "mode": "14bit 14bit compressed (3:2)",
+      "megapixels": 24.34,
+      "remark": "",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/2414/nice/Sony%20-%20ILCE-7M3%20-%2014bit%2014bit%20compressed%20(3:2).ARW",
+      "sha256": "250784580ea527442c09004417bb0eead484f2bf3ee8f9121a776ac65bb50d0f"
+    },
+    {
+      "file": "a7iii_14bit_uncompressed.ARW",
+      "camera": "Sony ILCE-7M3",
+      "mode": "14bit 14bit uncompressed (3:2)",
+      "megapixels": 24.34,
+      "remark": "there does not seem to be uncompressed 12 bit",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/2418/nice/Sony%20-%20ILCE-7M3%20-%2014bit%2014bit%20uncompressed%20(3:2).ARW",
+      "sha256": "ece80551abf64949dbe826985a80f1d9b265401ee4ea6b989e1829549616fdcd"
+    },
+    {
+      "file": "a7rv_61mp_compressed.ARW",
+      "camera": "Sony ILCE-7RM5",
+      "mode": "14bit 14bit compressed (3:2)",
+      "megapixels": 61.21,
+      "remark": "taken in daylight",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/6235/nice/Sony%20-%20ILCE-7RM5%20-%2014bit%2014bit%20compressed%20(3:2).ARW",
+      "sha256": "92d962578abe59f686ae57016e87d5f81e03f17404bd1959aa9628bd5a52ca91"
+    },
+    {
+      "file": "a7rv_61mp_uncompressed.ARW",
+      "camera": "Sony ILCE-7RM5",
+      "mode": "14bit 14bit uncompressed (3:2)",
+      "megapixels": 61.21,
+      "remark": "taken in daylight",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/6231/nice/Sony%20-%20ILCE-7RM5%20-%2014bit%2014bit%20uncompressed%20(3:2).ARW",
+      "sha256": "8918ba274f0919be4f9902f9eebcab4663445ebe441d22fb48f3f328198ac2ee"
+    },
+    {
+      "file": "a7rv_lossless_large.ARW",
+      "camera": "Sony ILCE-7RM5",
+      "mode": "14bit (4:3)",
+      "megapixels": 64.75,
+      "remark": "taken in daylight",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/6232/nice/Sony%20-%20ILCE-7RM5%20-%2014bit%20(4:3).ARW",
+      "sha256": "c294c388ad9bccbee169f87b9ceb661001515fb039d63f587dcabba76df5636d"
+    },
+    {
+      "file": "a7rv_lossless_medium_ljpeg2x2.ARW",
+      "camera": "Sony ILCE-7RM5",
+      "mode": "14bit (4:3)",
+      "megapixels": 30.67,
+      "remark": "LJpeg w/ 2x2 MCU",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/6237/nice/Sony%20-%20ILCE-7RM5%20-%2014bit%20(4:3).ARW",
+      "sha256": "234edf6b021d6d8c522256e004fffd2612859622eeca8dca9110393426983406"
+    },
+    {
+      "file": "fuji_xt20_14bit_uncompressed.RAF",
+      "camera": "Fujifilm X-T20",
+      "mode": "14bit 14bit uncompressed (3:2)",
+      "megapixels": 24.84,
+      "remark": "",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/1177/nice/Fujifilm%20-%20X-T20%20-%2014bit%2014bit%20uncompressed%20(3:2).RAF",
+      "sha256": "afe552f4a2794c7aa2376dd826165354b243dcf6f2296b01505dded8c8e4be76"
+    },
+    {
+      "file": "fuji_xt20_14bit_lossless.RAF",
+      "camera": "Fujifilm X-T20",
+      "mode": "14bit 14bit compressed (3:2)",
+      "megapixels": 24.42,
+      "remark": "",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/1178/nice/Fujifilm%20-%20X-T20%20-%2014bit%2014bit%20compressed%20(3:2).RAF",
+      "sha256": "a23045101b2912e64f154100d646c228c0d16585d21e95e0d1a006e537f7784c"
+    },
+    {
+      "file": "nikon_d700_14bit_lossless.NEF",
+      "camera": "Nikon D700",
+      "mode": "14bit 14bit compressed (Lossless) (3:2)",
+      "megapixels": 12.2,
+      "remark": "",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/2249/nice/Nikon%20-%20D700%20-%2014bit%2014bit%20compressed%20(Lossless)%20(3:2).NEF",
+      "sha256": "00c3314f2ccf92aff17644943e6149e8793b517c24bb2c38a15ec41f3af109cb"
+    },
+    {
+      "file": "nikon_d700_12bit_uncompressed.NEF",
+      "camera": "Nikon D700",
+      "mode": "12bit 12bit uncompressed (3:2)",
+      "megapixels": 12.2,
+      "remark": "",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/2256/nice/Nikon%20-%20D700%20-%2012bit%2012bit%20uncompressed%20(3:2).NEF",
+      "sha256": "0831d8103a2f2275e479095a75a1217b49e1d415ced439f43c331eb3927f2675"
+    },
+    {
+      "file": "leica_m8_8bit_uncompressed.DNG",
+      "camera": "Leica M8",
+      "mode": "8bit 8bit uncompressed (3:2)",
+      "megapixels": 10.34,
+      "remark": "",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/2988/nice/Leica%20-%20M8%20-%208bit%208bit%20uncompressed%20(3:2).DNG",
+      "sha256": "7fdcca2371bb07fbf9483fcb08e3b5ab093eca1ca3924cbc86d6863736c31153"
+    },
+    {
+      "file": "iphone12pro_8bit_ljpeg.DNG",
+      "camera": "Apple iPhone 12 Pro",
+      "mode": "8bit (4:3)",
+      "megapixels": 12.19,
+      "remark": "ljpeg predictor = 7",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/4264/nice/Apple%20-%20iPhone%2012%20Pro%20-%208bit%20(4:3).DNG",
+      "sha256": "e91e77a4533ed7cce551d83330676ea5c47dd5e55fb38adda7819366afdbdfc2"
+    },
+    {
+      "file": "canon_m50_craw.CR3",
+      "camera": "Canon EOS M50",
+      "mode": "3:2",
+      "megapixels": 24,
+      "remark": "CRAW",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/4656/nice/Canon%20-%20EOS%20M50%20-%203:2.CR3",
+      "sha256": "27a88fdae82516ba136e12c2cc9b934f25dbaaac24d64ab4e5517f8524463594"
+    },
+    {
+      "file": "canon_m50_raw.CR3",
+      "camera": "Canon EOS M50",
+      "mode": "3:2",
+      "megapixels": 24,
+      "remark": "RAW",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/4657/nice/Canon%20-%20EOS%20M50%20-%203:2.CR3",
+      "sha256": "1ba9ad6b51b315b88820eb0fe5fd7f52bc136ba37b1a5ca76825ebfe25b18058"
+    }
+  ]
+}

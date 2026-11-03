@@ -1,0 +1,28 @@
+{
+  "description": "Sparse checks manually placed on the pinned public smart-mask fixtures. Coordinates are source-image pixels from the top left. They cover observed failure points and controls, not dense ground truth or an overall accuracy score.",
+  "scenarios": {
+    "000ccf1d00f7f1cd": "Fur silhouette and whiskers against a soft background",
+    "003c2b6816ba9d22": "Thin bicycle frame, open front wheel and rider overlap",
+    "00777bbaa18dbb08": "Helmet cage and glasses; automatic face detection was unresolved in the baseline",
+    "00cd932265611688": "Waterline, spray and an overlapping ball",
+    "0c3228734c66d31b": "Foreground boxing gloves occluding the face and another overlapping person",
+    "012fe322a5fd004c": "Hair ornament, hat, hands and clothing edges",
+    "02177c7b318e1d5c": "Two people with overlapping hands, uniform edges and unobstructed face controls"
+  },
+  "regions": [
+    {"sample": "0c3228734c66d31b", "selection": "faceSkin", "rect": [615, 290, 28, 30], "selected": false, "label": "red glove interior, not visible facial skin"}
+  ],
+  "checks": [
+    {"sample": "000ccf1d00f7f1cd", "selection": "object", "pixel": [540, 390], "selected": true, "label": "dog interior"},
+    {"sample": "000ccf1d00f7f1cd", "selection": "object", "pixel": [950, 200], "selected": false, "label": "background beside fur"},
+    {"sample": "003c2b6816ba9d22", "selection": "object", "pixel": [747, 476], "selected": true, "label": "rear wheel disk"},
+    {"sample": "003c2b6816ba9d22", "selection": "object", "pixel": [352, 491], "selected": false, "label": "open front wheel"},
+    {"sample": "003c2b6816ba9d22", "selection": "object", "pixel": [523, 222], "selected": false, "label": "rider excluded from bicycle"},
+    {"sample": "00cd932265611688", "selection": "object", "pixel": [780, 420], "selected": true, "label": "visible torso"},
+    {"sample": "00cd932265611688", "selection": "object", "pixel": [220, 430], "selected": false, "label": "water away from torso"},
+    {"sample": "0c3228734c66d31b", "selection": "faceSkin", "pixel": [630, 305], "selected": false, "label": "foreground red glove misidentified as cheek"},
+    {"sample": "0c3228734c66d31b", "selection": "faceSkin", "pixel": [635, 255], "selected": true, "label": "visible temple above glove"},
+    {"sample": "02177c7b318e1d5c", "selection": "faceSkin", "pixel": [286, 235], "selected": true, "label": "unobstructed face control"},
+    {"sample": "02177c7b318e1d5c", "selection": "faceSkin-other", "pixel": [686, 180], "selected": true, "label": "second unobstructed face with darker skin"}
+  ]
+}

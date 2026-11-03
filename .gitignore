@@ -1,0 +1,32 @@
+.DS_Store
+.build/
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+Config/LocalSigning.xcconfig
+TestResults/
+Samples/
+__pycache__/
+
+# Catalogs, their SQLite recovery files, and backups can contain private data.
+*.[Pp][Hh][Oo][Ss][Cc][Aa][Tt]
+*.[Pp][Hh][Oo][Ss][Cc][Aa][Tt]-*
+*.[Pp][Hh][Oo][Ss][Cc][Aa][Tt].lock
+*.[Oo][Mm][Ll][Cc][Aa][Tt]
+*.[Oo][Mm][Ll][Cc][Aa][Tt]-*
+*.[Oo][Mm][Ll][Cc][Aa][Tt].lock
+*.[Oo][Mm][Ll][Rr][Cc][Aa][Tt]
+*.[Oo][Mm][Ll][Rr][Cc][Aa][Tt]-*
+*.[Oo][Mm][Ll][Rr][Cc][Aa][Tt].lock
+*.[Ss][Qq][Ll][Ii][Tt][Ee]
+*.[Ss][Qq][Ll][Ii][Tt][Ee]-*
+*.[Ss][Qq][Ll][Ii][Tt][Ee].lock
+Catalog.lock
+
+# RAW samples belong outside the repository.
+*.[Aa][Rr][Ww]
+*.[Cc][Rr]3
+*.[Dd][Nn][Gg]
+*.[Nn][Ee][Ff]
+*.[Rr][Aa][Ff]

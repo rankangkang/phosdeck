@@ -1,0 +1,111 @@
+name: Phosdeck
+options:
+  deploymentTarget:
+    macOS: '26.0'
+  xcodeVersion: '26.6'
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    MACOSX_DEPLOYMENT_TARGET: '26.0'
+    CODE_SIGN_STYLE: Manual
+    ENABLE_HARDENED_RUNTIME: YES
+  configs:
+    Release:
+      CODE_SIGN_IDENTITY: '-'
+configFiles:
+  Debug: Config/Debug.xcconfig
+packages:
+  SmartMaskRuntime:
+    path: Packages/SmartMaskRuntime
+  GRDB:
+    url: https://github.com/groue/GRDB.swift.git
+    exactVersion: 7.11.1
+targets:
+  Phosdeck:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        excludes: [Imaging/raster-exposure-colour-v4.bin]
+      - path: design/logo/wordmark-approved-ivory.svg
+        buildPhase: resources
+      - path: design/logo/wordmark-approved-graphite.svg
+        buildPhase: resources
+      - path: Sources/Imaging/raster-exposure-colour-v4.bin
+        buildPhase: resources
+      - path: LICENSE
+        buildPhase: resources
+      - path: docs/references/grdb-LICENSE.txt
+        buildPhase: resources
+      - path: docs/references/litert-NOTICES.txt
+        buildPhase: resources
+      - path: docs/references/oklab-LICENSE.txt
+        buildPhase: resources
+      - path: docs/references/lightcraft-LICENSE.txt
+        buildPhase: resources
+    info:
+      path: Sources/App/Info.plist
+      properties:
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Phosdeck Catalog
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
+            LSItemContentTypes: [dev.cmkk.oh-my-lrc.catalog]
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: dev.cmkk.oh-my-lrc.catalog
+            UTTypeDescription: Phosdeck Catalog
+            UTTypeConformsTo: [public.data, public.database]
+            UTTypeTagSpecification:
+              public.filename-extension: [phoscat, omlcat, omlrcat]
+    dependencies:
+      - package: GRDB
+      - package: SmartMaskRuntime
+        product: SmartMaskRuntime
+    postBuildScripts:
+      - name: Copy prepared smart mask research models
+        path: scripts/copy-smart-mask-models.sh
+        basedOnDependencyAnalysis: false
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SmartMaskModels
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SmartMaskRuntime-LICENSE.txt
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.cmkk.oh-my-lrc
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_NAME: Phosdeck
+        PRODUCT_MODULE_NAME: Phosdeck
+        EXECUTABLE_NAME: Phosdeck
+        INFOPLIST_KEY_CFBundleDisplayName: Phosdeck
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
+        INFOPLIST_KEY_NSHighResolutionCapable: YES
+        CODE_SIGN_ENTITLEMENTS: Sources/App/Phosdeck.entitlements
+        ENABLE_APP_SANDBOX: YES
+        ENABLE_USER_SELECTED_FILES: readwrite
+        SWIFT_EMIT_LOC_STRINGS: YES
+        MTL_COMPILER_FLAGS: '-fcikernel'
+        MTLLINKER_FLAGS: '-cikernel'
+  PhosdeckTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+        excludes: [test_calibration_paths.py]
+    dependencies:
+      - target: Phosdeck
+    postBuildScripts:
+      - name: Prepare optional CC0 RAW fixtures
+        script: python3 "$SRCROOT/scripts/prepare-public-raw-test-resources.py"
+        basedOnDependencyAnalysis: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.cmkk.phosdeck.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Phosdeck:
+    build:
+      targets:
+        Phosdeck: all
+    test:
+      language: zh-Hans
+      targets: [PhosdeckTests]

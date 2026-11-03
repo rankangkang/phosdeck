@@ -1,0 +1,4601 @@
+{
+  "upstream": "4f0b110bcbd2e350c6d97b47f1d824c2222295c4",
+  "upstreamEquations": "PointK::new/weight/apply; crates/gpu/src/wgsl/finish.wgsl::point_color",
+  "workingSpace": "native extended linear sRGB / 2021 OkLab",
+  "rawLCh": [
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.7155849933176751
+      ],
+      "weight": 0.16153711154375483,
+      "output": [
+        0.6080768555771877,
+        0.09192314442281227,
+        0.7617906432123217
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ],
+      "weight": 0.0,
+      "output": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ],
+      "weight": 0.0,
+      "output": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.001,
+        0.0
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.001,
+        0.0
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.7155849933176751
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        1.0016223593017204
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ],
+      "weight": 1.0,
+      "output": [
+        0.666,
+        0.054000000000000006,
+        7.2778263494733295
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ],
+      "weight": 1,
+      "output": [
+        0.654,
+        0.052000000000000005,
+        -5.281562947877866
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.001,
+        0.0
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.001,
+        0.0
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ],
+      "weight": 0.04296874999999978,
+      "output": [
+        0.6021484374999999,
+        0.026985626220703118,
+        0.7110223257977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.7155849933176751
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        1.0016223593017204
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ],
+      "weight": 1,
+      "output": [
+        0.666,
+        0.054000000000000006,
+        7.2778263494733295
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ],
+      "weight": 1,
+      "output": [
+        0.654,
+        0.052000000000000005,
+        -5.281562947877866
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.001,
+        0.0
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.001,
+        0.0
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ],
+      "weight": 0.4943847656249998,
+      "output": [
+        0.62471923828125,
+        0.036600124239921566,
+        0.8464471304852317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.04250000000000001,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.7155849933176751
+      ],
+      "weight": 0.16153711154375483,
+      "output": [
+        0.6080768555771877,
+        0.09192314442281227,
+        0.7640461267808015
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ],
+      "weight": 0.0,
+      "output": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ],
+      "weight": 0.0,
+      "output": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.001,
+        0.0
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.001,
+        0.0
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.7155849933176751
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        1.015584993317675
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ],
+      "weight": 1.0,
+      "output": [
+        0.7300000000000001,
+        0.07,
+        7.263863715457375
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ],
+      "weight": 1,
+      "output": [
+        0.67,
+        0.06,
+        -5.267600313861911
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.001,
+        0.0
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.001,
+        0.0
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ],
+      "weight": 0.04296874999999978,
+      "output": [
+        0.6021484374999999,
+        0.024462890625000004,
+        0.7110223257977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.7155849933176751
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        1.015584993317675
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ],
+      "weight": 1,
+      "output": [
+        0.7300000000000001,
+        0.07,
+        7.263863715457375
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ],
+      "weight": 1,
+      "output": [
+        0.67,
+        0.06,
+        -5.267600313861911
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.001,
+        0.0
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.001,
+        0.0
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ],
+      "weight": 0.4943847656249998,
+      "output": [
+        0.62471923828125,
+        0.011292114257812501,
+        0.8464471304852317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.0125,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 0.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.7155849933176751
+      ],
+      "weight": 0.16153711154375483,
+      "output": [
+        0.6080768555771877,
+        0.09192314442281227,
+        0.7663016103492815
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ],
+      "weight": 0.0,
+      "output": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ],
+      "weight": 0.0,
+      "output": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.001,
+        0.0
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.001,
+        0.0
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 0.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.7155849933176751
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        1.0295476273336297
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ],
+      "weight": 1.0,
+      "output": [
+        0.7940000000000002,
+        0.08600000000000001,
+        7.24990108144142
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ],
+      "weight": 1,
+      "output": [
+        0.686,
+        0.06799999999999999,
+        -5.253637679845957
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.001,
+        0.0
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.001,
+        0.0
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ],
+      "weight": 0.04296874999999978,
+      "output": [
+        0.6021484374999999,
+        0.02194015502929689,
+        0.7110223257977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.7155849933176751
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0.05,
+        1.0295476273336297
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.68,
+        0.14,
+        6.963863715457375
+      ],
+      "weight": 1,
+      "output": [
+        0.7940000000000002,
+        0.08600000000000001,
+        7.24990108144142
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.62,
+        0.12,
+        -5.567600313861911
+      ],
+      "weight": 1,
+      "output": [
+        0.686,
+        0.06799999999999999,
+        -5.253637679845957
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.1,
+        3.839724354387525
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.001,
+        0.0
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.001,
+        0.0
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.005,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.015,
+        0.6981317007977318
+      ],
+      "weight": 0.4943847656249998,
+      "output": [
+        0.62471923828125,
+        0,
+        0.8464471304852317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.025,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.65,
+        0,
+        0.9981317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": 60.0,
+        "saturationShift": -50.0,
+        "luminanceShift": 25.0,
+        "variance": 100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.1,
+        0.3,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.0,
+        "hue": 359.0,
+        "hueShift": 100.0,
+        "saturationShift": 0.0,
+        "luminanceShift": 0.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.61,
+        0.01,
+        3.141592653589793
+      ],
+      "weight": 1,
+      "output": [
+        0.602,
+        0.002,
+        6.140904142445674
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.001,
+        "hue": 359.0,
+        "hueShift": 100.0,
+        "saturationShift": 0.0,
+        "luminanceShift": 0.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.61,
+        0.01,
+        3.141592653589793
+      ],
+      "weight": 1,
+      "output": [
+        0.602,
+        0.0027999999999999987,
+        6.140904142445674
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.019999,
+        "hue": 359.0,
+        "hueShift": 100.0,
+        "saturationShift": 0.0,
+        "luminanceShift": 0.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.61,
+        0.01,
+        3.141592653589793
+      ],
+      "weight": 1,
+      "output": [
+        0.602,
+        0.0179992,
+        6.140904142445674
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.02,
+        "hue": 359.0,
+        "hueShift": 100.0,
+        "saturationShift": 0.0,
+        "luminanceShift": 0.0,
+        "variance": -100.0,
+        "range": 100.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.61,
+        0.01,
+        3.141592653589793
+      ],
+      "weight": 0.0,
+      "output": [
+        0.61,
+        0.01,
+        3.141592653589793
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 0.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.39999999999999997,
+        0.2,
+        0.1981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 0.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.7731317007977319
+      ],
+      "weight": 0.4999999999999982,
+      "output": [
+        0.5000000000000003,
+        0.14999999999999983,
+        0.5531317007977327
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 0.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.7981317007977318
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.1,
+        0.7981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 100.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.39999999999999997,
+        0.2,
+        0.1981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 100.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        1.2231317007977318
+      ],
+      "weight": 0.4999999999999999,
+      "output": [
+        0.5,
+        0.15,
+        1.1831317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 100.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        1.3981317007977316
+      ],
+      "weight": 0.0,
+      "output": [
+        0.6,
+        0.1,
+        1.3981317007977316
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 0.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.39999999999999997,
+        0.2,
+        0.1981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 0.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.115,
+        0.6981317007977318
+      ],
+      "weight": 0.5000000000000002,
+      "output": [
+        0.49999999999999994,
+        0.18150000000000005,
+        0.4481317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 0.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.12000000000000001,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.12000000000000001,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 100.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.39999999999999997,
+        0.2,
+        0.1981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 100.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.205,
+        0.6981317007977318
+      ],
+      "weight": 0.5000000000000002,
+      "output": [
+        0.49999999999999994,
+        0.37050000000000005,
+        0.4481317007977317
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 100.0,
+        "luminanceRange": 50.0
+      },
+      "input": [
+        0.6,
+        0.24,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.6,
+        0.24,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 0.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.39999999999999997,
+        0.2,
+        0.1981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 0.0
+      },
+      "input": [
+        0.6375,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 0.5000000000000014,
+      "output": [
+        0.5524999999999997,
+        0.15000000000000013,
+        0.44813170079773107
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 0.0
+      },
+      "input": [
+        0.65,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        0.65,
+        0.1,
+        0.6981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 100.0
+      },
+      "input": [
+        0.6,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 1,
+      "output": [
+        0.39999999999999997,
+        0.2,
+        0.1981317007977318
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 100.0
+      },
+      "input": [
+        0.9375,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 0.4999999999999999,
+      "output": [
+        0.9725,
+        0.15,
+        0.44813170079773185
+      ]
+    },
+    {
+      "sample": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "lightness": 0.6,
+        "chroma": 0.1,
+        "hue": 40.0,
+        "hueShift": -100.0,
+        "saturationShift": 100.0,
+        "luminanceShift": -100.0,
+        "variance": 100.0,
+        "range": 50.0,
+        "hueRange": 50.0,
+        "saturationRange": 50.0,
+        "luminanceRange": 100.0
+      },
+      "input": [
+        1.05,
+        0.1,
+        0.6981317007977318
+      ],
+      "weight": 0,
+      "output": [
+        1.05,
+        0.1,
+        0.6981317007977318
+      ]
+    }
+  ],
+  "linearSRGB": [
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.42,
+        0.18,
+        0.09
+      ],
+      "linear": [
+        0.4177532829763319,
+        0.28380559274186934,
+        0.16827729530060992
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.1,
+        0.3,
+        0.6
+      ],
+      "linear": [
+        0.10000001859790834,
+        0.29999999910667396,
+        0.5999998973248237
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.6,
+        0.3,
+        0.1
+      ],
+      "linear": [
+        0.5022990468531109,
+        0.36639337771437985,
+        0.2003608276877345
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "linear": [
+        0.2000000139066241,
+        0.19999999605746105,
+        0.19999994774308066
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "linear": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "linear": [
+        1,
+        0.9999999802873053,
+        0.9999997387154016
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        -0.04,
+        0.2,
+        0.4
+      ],
+      "linear": [
+        2.611600866168906e-06,
+        0.19298472726771326,
+        0.334502964299984
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        1.1,
+        0.8,
+        0.3
+      ],
+      "linear": [
+        0.97955763052854,
+        0.7450710354170842,
+        0.32154612278499173
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.42,
+        0.18,
+        0.09
+      ],
+      "linear": [
+        0.4411163238337602,
+        0.35012969709900826,
+        0.23440800646477616
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.1,
+        0.3,
+        0.6
+      ],
+      "linear": [
+        0.10000001859790834,
+        0.29999999910667396,
+        0.5999998973248237
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.6,
+        0.3,
+        0.1
+      ],
+      "linear": [
+        0.4952848856057419,
+        0.40343159061067235,
+        0.25737787408002766
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "linear": [
+        0.2000000139066241,
+        0.19999999605746105,
+        0.19999994774308066
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "linear": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "linear": [
+        1,
+        0.9999999802873053,
+        0.9999997387154016
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        -0.04,
+        0.2,
+        0.4
+      ],
+      "linear": [
+        2.611600866168906e-06,
+        0.19298472726771326,
+        0.334502964299984
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        1.1,
+        0.8,
+        0.3
+      ],
+      "linear": [
+        0.9088857931686984,
+        0.715284997012294,
+        0.343478023921831
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 41.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -35.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000004",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 29.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -25.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 17.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 5.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000007",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -7.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000008",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -19.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.42,
+        0.18,
+        0.09
+      ],
+      "linear": [
+        0.7638273061258694,
+        0.7306175512666928,
+        0.6705488097138519
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 41.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -35.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000004",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 29.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -25.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 17.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 5.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000007",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -7.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000008",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -19.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.1,
+        0.3,
+        0.6
+      ],
+      "linear": [
+        0.10000001859790834,
+        0.29999999910667396,
+        0.5999998973248237
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 41.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -35.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000004",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 29.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -25.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 17.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 5.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000007",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -7.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000008",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -19.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.6,
+        0.3,
+        0.1
+      ],
+      "linear": [
+        0.7438469319720815,
+        0.7020693668868725,
+        0.6189070887266603
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 41.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -35.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000004",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 29.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -25.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 17.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 5.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000007",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -7.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000008",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -19.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.2,
+        0.2,
+        0.2
+      ],
+      "linear": [
+        0.2000000139066241,
+        0.19999999605746105,
+        0.19999994774308066
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 41.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -35.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000004",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 29.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -25.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 17.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 5.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000007",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -7.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000008",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -19.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "linear": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 41.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -35.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000004",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 29.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -25.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 17.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 5.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000007",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -7.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000008",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -19.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "linear": [
+        1,
+        0.9999999802873053,
+        0.9999997387154016
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 41.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -35.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000004",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 29.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -25.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 17.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 5.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000007",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -7.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000008",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -19.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        -0.04,
+        0.2,
+        0.4
+      ],
+      "linear": [
+        2.611600866168906e-06,
+        0.19298472726771326,
+        0.334502964299984
+      ]
+    },
+    {
+      "samples": [
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 65.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -55.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 53.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -45.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 41.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -35.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000004",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 29.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -25.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 17.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": 5.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": -5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000007",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -7.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 5.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000008",
+          "lightness": 0.614560092598443,
+          "chroma": 0.08449218154934089,
+          "hue": 51.23052625373356,
+          "hueShift": -19.0,
+          "saturationShift": -35.0,
+          "luminanceShift": 30.0,
+          "variance": 15.0,
+          "range": 100.0,
+          "hueRange": 50.0,
+          "saturationRange": 50.0,
+          "luminanceRange": 50.0
+        }
+      ],
+      "rgb": [
+        1.1,
+        0.8,
+        0.3
+      ],
+      "linear": [
+        0.9766547779107144,
+        0.8600557132401669,
+        0.6021945925238676
+      ]
+    }
+  ]
+}

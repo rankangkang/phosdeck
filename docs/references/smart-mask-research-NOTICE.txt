@@ -1,0 +1,59 @@
+Smart masking — local non-commercial research build
+
+SAM 2.1 Tiny: Meta FAIR, Apple Core ML conversion and Hugging Face SAM2 Studio.
+https://huggingface.co/apple/coreml-sam2.1-tiny
+Revision: 39ae0a8a83e5e6cd196e804bf7cccc5f8171f306
+License: Apache-2.0. The complete license is included as Apache-2.0.txt.
+
+SelfieMulticlass 256: Google MediaPipe.
+https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Multiclass%20Segmentation.pdf
+SHA256: c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0
+License stated in the model card: Apache-2.0.
+
+LiteRT 2.3.0: Copyright Google LLC. Apache-2.0.
+https://github.com/google-ai-edge/LiteRT/tree/4352e261d3f1b3cda00345db5dbd75859d3bf0d3
+This build uses the official macOS C runtime. It does not include training tools.
+
+FaceParsing: mickeyvanolst Core ML conversion, attributed to yakhyo/face-parsing.
+https://huggingface.co/mickeyvanolst/face-parsing-coreml
+Revision: 289c64b0db3acb100e22a650becb5e300be8b7f4
+The conversion card explicitly offers the converted weights under MIT. The
+original author's model attribution follows the source project's MIT terms:
+https://yakhyo.github.io/uniface/license-attribution/
+The training dataset, CelebAMask-HQ, restricts its images and derived data to
+non-commercial research. Its terms do not explicitly state whether trained
+weights are derived data. The MIT grant for the weights and the dataset terms
+are distinct; neither alone settles their interaction. As a project precaution,
+these weights are included only in local non-commercial research builds and
+are removed from Release builds. No weights are included in the source repository.
+https://github.com/switchablenorms/CelebAMask-HQ#dataset-agreement
+
+Reviewed 2026-10-31. Current availability, license evidence and packaging gaps:
+https://github.com/rankangkang/phosdeck/blob/master/docs/smart-mask-models.md
+
+The saved masks are fixed results. Generation does not identify people across
+photographs. Fine boundaries and occluded features need human review.
+
+Upstream face-parsing code notice (yakhyo/face-parsing, 4f0632b):
+
+MIT License
+
+Copyright (c) 2024 Yakhyokhuja Valikhujaev
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

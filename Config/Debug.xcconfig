@@ -1,0 +1,5 @@
+// A local Debug build does not require an Apple Development certificate.
+CODE_SIGN_IDENTITY = -
+
+// Optional, ignored by Git: use a stable local development identity when needed.
+#include? "LocalSigning.xcconfig"

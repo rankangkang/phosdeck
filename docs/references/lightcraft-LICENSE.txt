@@ -1,0 +1,126 @@
+Lightcraft is licensed under MIT or Apache-2.0. This project uses the MIT option.
+
+The sparse CRS preset field mapping and unmapped-field reports in
+Sources/Imaging/XMPPresetSettings.swift and Sources/Import/XMPPresetReader.swift
+adapt crates/engine/src/crs.rs and preset_import.rs at
+56b5c8b076d143f7f931524e0a9e36271dcac2e7, checked 2026-10-28.
+Native range conversion, URI-aware XML parsing, the reviewed import sheet,
+catalog transactions, source protection and batch Undo/Redo are native work.
+No Adobe code, third-party presets, profiles or models are included. MIT option.
+
+The native stack operations in Sources/Catalog/PhotoStacks.swift translate
+crates/catalog/src/stacks.rs at 4f0b110bcbd2e350c6d97b47f1d824c2222295c4:
+deterministic grouping/merge/deduplication, moving, splitting, setting the cover,
+removal and singleton dissolution. SQL arrangement follows arrange_stacks;
+commands, selection repair and badges adapt organize.rs and panels/grid.rs.
+The stricter timestamp parser and source-based RAW/JPEG records are native.
+
+The test-only PatchMatch candidate in Tests/PatchMatchPrototype.swift follows
+crates/inpaint/src/patchmatch.rs and membrane.rs at commit
+f34c7a8a89e0d1bade0a6889185f40acecc84a9f. These LightCraft files port
+PhotoCraft (https://github.com/storytold/photocraft, crates/algo/src/inpaint.rs
+and poisson.rs), Copyright the PhotoCraft contributors, MIT OR Apache-2.0;
+modified by the LightCraft contributors (2026), then translated to Swift for
+this experimental evaluation. The MIT option is used for both. No model or
+model weights are included. The following permission notice also applies to
+that port and the PhotoCraft contributors' portions.
+
+The auto-mask tolerances and similarity in Sources/Imaging/Masking.swift (AutoMaskBrush)
+follow crates/pipeline/src/masks.rs at commit 543695129932c92338186911405ef26444c5a1c6
+(auto_similarity, AUTO_TOL_EV, AUTO_TOL_CHROMA, auto_refine). The guided-filter window
+is our existing box filter; the radius and epsilon are theirs. The color-range widths
+in ColorRange follow color_range_tolerance in the same file.
+
+The post-crop creative vignette in Sources/Imaging/CreativeVignette.swift and
+Sources/Imaging/DevelopKernels.metal (creativeVignette) follows crates/pipeline/src/finish.rs
+at the same commit (Vig, vignette(), and the display-linear per-pixel loop).
+
+The post-crop film grain in Sources/Imaging/FilmGrain.swift and
+Sources/Imaging/DevelopKernels.metal (filmGrain) follows crates/pipeline/src/finish.rs
+at the same commit (GRAIN_HASH, grain_noise, and the encoded-domain mix).
+
+The general decoded-image sharpening in Sources/Imaging/GeneralDetail.swift and
+DevelopKernels.metal adapts log-luminance detail and masking from
+crates/pipeline/src/local.rs / finish.rs at f34c7a8a89e0d1bade0a6889185f40acecc84a9f
+(unchanged in main 4f0b110bcbd2e350c6d97b47f1d824c2222295c4, checked 2026-10-18).
+The source-pixel radius, alpha weighting, Gaussian, edge-span guard and EV soft
+limit are native adaptations. The independent Double reference shares the
+specified equations, not Core Image's implementation.
+
+The general decoded-image noise reduction in GeneralDetail.swift and
+DevelopKernels.metal follows the log-luminance self-guided filtering,
+noise-variance/source-pixel scale mapping and chromaticity separation in
+crates/pipeline/src/local.rs (guided, nr_params, apply_nr) at f34c7a8a89e0d1bade0a6889185f40acecc84a9f,
+unchanged in 4f0b110bcbd2e350c6d97b47f1d824c2222295c4 (2026-10-18).
+The weighted RGBA Gaussian, conservative variance calibration and local
+luminance/chroma bilateral range terms are native adaptations; no AI runtime
+or model weights are included.
+
+MIT License
+
+The post-HSL B&W mixer in Sources/Imaging/PerceptualColor.swift and
+DevelopKernels.metal adapts ColorOps::apply, band_hues and band_weights from
+crates/pipeline/src/colorops.rs and MIXER_HUES/BwMix in
+crates/develop/src/settings.rs at 4f0b110bcbd2e350c6d97b47f1d824c2222295c4,
+checked against main on 2026-10-18. Linear sRGB / 2021 Oklab conversion,
+native HSL and grading, and the numerical achromatic guard are native adaptations.
+The manual perspective in PhotoGeometry.swift translates transform.rs::manual,
+rotation_homography and recentre at the same commit, with native bottom-left
+coordinates, fixed canvas, constrained crop and retained alpha.
+The held-library source constraint in CatalogQueries.swift follows
+Session::visible's `within` rule in crates/engine/src/lib.rs at that commit;
+the native snapshot continues to freeze all members and their order.
+scripts/lightcraft-reference-vectors.py independently transcribes the formulas
+in colorops.rs, transform.rs, color/src/spline.rs, perceptual.rs and color/src/lib.rs
+for test vectors. No upstream application, model, weights or new dependency is bundled.
+PhotoFileType.swift::reachesJPEGEnd translates codecs/src/jpeg.rs::reaches_eoi
+at the same commit; source dimension checks in PhotoFileType.swift and
+PNGValidation.swift follow codecs/src/convert.rs::check_size / png_codec.rs's
+pre-decode boundary, with the native pipeline's existing size budget.
+CatalogStore.swift::photo_filename_key adapts catalog/src/query.rs::cmp_name's
+per-Unicode-scalar lowercase comparison, preserving native SQL tie breakers.
+
+Copyright (c) 2026 ArtCraft Team and the LightCraft contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Virtual-copy behavior in CatalogStore.swift and AppModel.swift adapts
+crates/engine/src/cmd/organize.rs at 4f0b110bcbd2e350c6d97b47f1d824c2222295c4
+(checked 2026-10-18). Independent history origin, copy-of-copy source grouping,
+metadata and ordinary-album inheritance follow LightCraft. The normalized source
+registry, SQLite projection triggers, strict catalog refusal and catalog-only
+version deletion are native implementations. MIT option; no new dependencies.
+
+Smart-collection field/operator validation, all/any evaluation, view-to-rules and
+manual-member rejection in SmartCollections.swift and SmartCollectionSheet.swift
+adapt crates/catalog/src/rules.rs, query.rs, crates/engine/src/cmd/library.rs
+and crates/ui-egui/src/panels/rules_editor.rs at 4f0b110bcbd2e350c6d97b47f1d824c2222295c4
+(checked 2026-10-18). SQLite compilation/bindings, strict day/integer ranges,
+source restriction and fully frozen result semantics are native adaptations.
+
+PointColor.swift and DevelopKernels.metal (pointWeight/pointApply/pointColorMix)
+translate PointK::new/weight/apply from crates/pipeline/src/colorops.rs and
+crates/gpu/src/wgsl/finish.wgsl at 4f0b110bcbd2e350c6d97b47f1d824c2222295c4,
+checked 2026-10-18. PointColorEditing.swift and PointColorPanel.swift adapt
+crates/engine/src/cmd/color.rs, crates/develop/src/settings.rs / controls.rs,
+crates/ui-egui/src/panels/edit.rs / detail.rs. The empty-list fades, stable UUID
+matching, linear-sRGB colour stage, float premultiplied sampling and coverage
+visualization are native adaptations. Unrelated nonempty preset lists use the
+whole-array switch from crates/develop/src/presets.rs. Independent scalar
+reference equations are in scripts/point_color_reference.py. MIT option.

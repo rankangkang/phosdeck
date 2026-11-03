@@ -1,0 +1,1767 @@
+{
+  "meta": {
+    "name": "Darkroom Instrument",
+    "chineseName": "暗房仪表",
+    "version": "3.1",
+    "date": "2026-10-19",
+    "status": "Native V3.1 material and user-approved controls are implemented; visual acceptance remains pending. Additional detent-knob interactions remain deferred.",
+    "target": "SwiftUI/macOS native app UI",
+    "format": "Project-specific JSON token schema; not a DTCG/Figma import contract",
+    "colorSpace": "sRGB",
+    "dimensionUnit": "logical point (pt), except explicitly labeled physical pixels",
+    "notes": [
+      "Native SwiftUI material and interaction conventions do not change image processing.",
+      "One continuous moulded enclosure; no panel cards and no repeated section-header gradients.",
+      "Keys have a full-width face and a thin bottom sidewall, with no surrounding mounting well or cap inset.",
+      "Neutral selected surfaces; selection uses key travel, bold label and a socketed orange indicator.",
+      "All continuous numerical adjustments, including exposure and contrast, use horizontal faders. Only discrete modes retain concentric detent knobs.",
+      "Viewing mats, image pixels and photo overlays remain independent of the enclosure.",
+      "Opaque contrast pairs do not certify gradients, alpha compositing or rendered accessibility.",
+      "Typography scaling options below are inherited design targets, not an implemented app-level type-size setting."
+    ]
+  },
+  "themes": {
+    "ivory": {
+      "colors": {
+        "surface.base": "#DDDEDC",
+        "surface.panel": "#F0F0EE",
+        "surface.raised": "#FCFCFA",
+        "surface.inset": "#D8DAD7",
+        "surface.selected": "#DFE0DD",
+        "text.primary": "#2A2B29",
+        "text.secondary": "#5A5B56",
+        "text.disabled": "#76776F",
+        "border.separator": "#CDCECB",
+        "border.seamLight": "#FFFFFF",
+        "border.control": "#77756E",
+        "accent.text": "#974208",
+        "accent.signal": "#B85F14",
+        "focus.ring": "#974208",
+        "status.error": "#A3322C",
+        "status.success": "#376244",
+        "status.warning": "#855507",
+        "lamp.on": "#FF920E",
+        "lamp.socket": "#3C3C38",
+        "key.primary": "#FF7C10",
+        "key.primaryText": "#24170D",
+        "key.primaryEdge": "#9A4A10",
+        "plate.top": "#F7F7F5",
+        "plate.bottom": "#EAEBE8",
+        "material.edge": "#BABDB7",
+        "lamp.off": "#8E918B",
+        "cap.top": "#FFFFFF",
+        "cap.bottom": "#E8E9E5",
+        "knob.rimTop": "#C0C3BD",
+        "knob.rimBottom": "#FFFFFF",
+        "key.lip": "#C0C3BC",
+        "key.lipSelected": "#C7C9C3",
+        "key.held": "#DBDDDA",
+        "key.top": "#FFFFFF",
+        "key.bottom": "#F1F2EE",
+        "key.primaryTop": "#FF9A26",
+        "key.primaryBottom": "#F26C06",
+        "key.primaryLip": "#B44B05"
+      }
+    },
+    "graphite": {
+      "colors": {
+        "surface.base": "#1C1D1C",
+        "surface.panel": "#292A2A",
+        "surface.raised": "#3B3D3D",
+        "surface.inset": "#161815",
+        "surface.selected": "#252727",
+        "text.primary": "#E8E6E0",
+        "text.secondary": "#B3B2AC",
+        "text.disabled": "#86878A",
+        "border.separator": "#181A1A",
+        "border.seamLight": "#3B3D3D",
+        "border.control": "#85888B",
+        "accent.text": "#F0A04A",
+        "accent.signal": "#F0A04A",
+        "focus.ring": "#F0A04A",
+        "status.error": "#FFB0A7",
+        "status.success": "#A7D4AE",
+        "status.warning": "#F2C979",
+        "lamp.on": "#FF9B24",
+        "lamp.socket": "#0E0F0F",
+        "key.primary": "#FF7C10",
+        "key.primaryText": "#24170D",
+        "key.primaryEdge": "#9A4A10",
+        "plate.top": "#313333",
+        "plate.bottom": "#262828",
+        "material.edge": "#191C1C",
+        "lamp.off": "#4B4D4D",
+        "cap.top": "#656868",
+        "cap.bottom": "#3C3F3F",
+        "knob.rimTop": "#171B1B",
+        "knob.rimBottom": "#565A5A",
+        "key.lip": "#1A1E1E",
+        "key.lipSelected": "#181C1C",
+        "key.held": "#272D2D",
+        "key.top": "#525656",
+        "key.bottom": "#3B4040",
+        "key.primaryTop": "#FF9A26",
+        "key.primaryBottom": "#F26C06",
+        "key.primaryLip": "#B44B05"
+      }
+    }
+  },
+  "sharedColors": {
+    "photoLabel.red": "#C24D4A",
+    "photoLabel.yellow": "#BFA33B",
+    "photoLabel.green": "#599E61",
+    "photoLabel.blue": "#5285C2",
+    "photoLabel.purple": "#9666B5",
+    "photoMat.default": "#303030",
+    "photoMat.medium": "#777777",
+    "photoMat.light": "#D6D6D6",
+    "photoMat.black": "#000000",
+    "photoMat.white": "#FFFFFF",
+    "scope.background": "#121413",
+    "scope.grid": "#2B302E",
+    "scope.axis": "#8F9995",
+    "scope.text": "#C8D0C9",
+    "scope.trace.neutral": "#D8DEDA",
+    "scope.trace.active": "#F2A03D",
+    "scope.trace.red": "#F08A87",
+    "scope.trace.green": "#9FCC9D",
+    "scope.trace.blue": "#92B5F0",
+    "photoOverlay.light": "#FFFFFF",
+    "photoOverlay.dark": "#000000",
+    "photoOverlay.clipHighlight": "#C2187F",
+    "photoOverlay.clipShadow": "#3FA9FF",
+    "scope.bezel": "#0A0B0B",
+    "scope.lamp.off": "#2F3432"
+  },
+  "matStates": {
+    "policy": "Use on library grid, comparison, filmstrip cells and crop/brush chrome drawn over the viewing mat. Select by the active mat, never by the chrome theme.",
+    "photoMat.default": {
+      "text": "#E7E5DF",
+      "textSecondary": "#B2B3AF",
+      "selection": "#E7E5DF",
+      "focus": "#F0A34B"
+    },
+    "photoMat.medium": {
+      "text": "#000000",
+      "textSecondary": "#000000",
+      "selection": "#000000",
+      "focus": "#FFFFFF"
+    },
+    "photoMat.light": {
+      "text": "#2E302E",
+      "textSecondary": "#3A3A3A",
+      "selection": "#2E302E",
+      "focus": "#9C4509"
+    },
+    "photoMat.black": {
+      "text": "#E7E5DF",
+      "textSecondary": "#B2B3AF",
+      "selection": "#E7E5DF",
+      "focus": "#F0A34B"
+    },
+    "photoMat.white": {
+      "text": "#2E302E",
+      "textSecondary": "#5E605A",
+      "selection": "#2E302E",
+      "focus": "#9C4509"
+    }
+  },
+  "spacing": {
+    "micro": 2,
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "xxl": 32
+  },
+  "radius": {
+    "structuralPanel": 0,
+    "photo": 0,
+    "thumbnailPhoto": 0,
+    "thumbnailCell": 1,
+    "sliderThumb": 2,
+    "key": 3,
+    "input": 2,
+    "toggleTrack": 4,
+    "scope": 3,
+    "customOverlayMaximum": 4,
+    "rotaryControl": "circle",
+    "statusLamp": "circle",
+    "scopeBevel": 6
+  },
+  "stroke": {
+    "separatorPhysicalPixels": 1,
+    "controlBoundaryPt": 1,
+    "iconPt": 1.5,
+    "focusRingPt": 2,
+    "tracePt": 1.5,
+    "seamDarkPhysicalPixels": 1,
+    "seamLightPhysicalPixels": 1,
+    "bracketPt": 1,
+    "materialContourPt": 0.5
+  },
+  "type": {
+    "ui": {
+      "font": "system",
+      "sizePt": 13,
+      "weight": "regular"
+    },
+    "section": {
+      "font": "system",
+      "sizePt": 12,
+      "weight": "semibold"
+    },
+    "value": {
+      "font": "system-monospaced",
+      "sizePt": 12,
+      "weight": "medium",
+      "tabularDigits": true
+    },
+    "caption": {
+      "font": "system",
+      "sizePt": 11,
+      "weight": "regular"
+    },
+    "windowTitle": {
+      "font": "system",
+      "sizePt": 13,
+      "weight": "medium"
+    },
+    "scaleOptions": [
+      1.0,
+      1.25,
+      1.5,
+      2.0
+    ],
+    "scalePolicy": "Reflow and resize hit areas/panels. Never clip critical labels or values to preserve a fixed row height.",
+    "silk": {
+      "font": "system",
+      "sizePt": 11,
+      "weight": "semibold",
+      "latinCase": "uppercase",
+      "latinTrackingEm": 0.08,
+      "cjkTrackingEm": 0
+    }
+  },
+  "layout": {
+    "referenceWindow": {
+      "width": 1440,
+      "height": 900
+    },
+    "validationWindow": {
+      "width": 1280,
+      "height": 800
+    },
+    "topBarHeight": 32,
+    "topBarKeyHeight": 24,
+    "topBarKeyCenterFromTop": 16,
+    "centerToolbarHeight": 30,
+    "centerToolbarKeyHeight": 22,
+    "contextBarHeight": 32,
+    "compactMaskWindowHeightExclusive": 800,
+    "histogramPlotHeight": {
+      "regular": 104,
+      "compactMask": 36
+    },
+    "leftSidebar": {
+      "default": 232,
+      "min": 200,
+      "max": 280
+    },
+    "inspector": {
+      "default": 336,
+      "min": 304,
+      "max": 400
+    },
+    "photoViewportMinWidth": 480,
+    "filmstrip": {
+      "defaultHeight": 122,
+      "minHeight": 80,
+      "maxHeight": 160
+    },
+    "statusBarHeight": 24,
+    "panelPadding": 16,
+    "sectionHeaderHeight": 32,
+    "parameterRowHeight": {
+      "default": 32,
+      "compact": 28,
+      "comfortable": 40
+    },
+    "parameterColumnsAtDefaultInspector": {
+      "label": 80,
+      "gap1": 8,
+      "slider": 144,
+      "gap2": 8,
+      "value": 64
+    },
+    "overflowPolicy": "Remember user panel sizes; when photo viewport would fall below its minimum, collapse optional left sidebar before clipping values or shrinking labels.",
+    "chassisRim": 8
+  },
+  "components": {
+    "slider": {
+      "trackHeight": 3,
+      "thumbWidth": 9,
+      "thumbHeight": 16,
+      "hitHeight": 28,
+      "hitWidthMin": 28,
+      "fineAdjustmentModifier": "Shift",
+      "defaultScrollMutation": false,
+      "ticks": 5,
+      "minorTickPt": 3,
+      "neutralTickPt": 5,
+      "capIndexLine": true,
+      "focusRing": false,
+      "activeFeedback": "cap index line only; preserve keyboard and accessibility operations"
+    },
+    "key": {
+      "defaultHeight": 28,
+      "primaryHeight": 32,
+      "iconWidth": 28,
+      "sidewallRaisedPt": 1.25,
+      "sidewallLatchedPt": 0.3125,
+      "sidewallHeldPt": 0,
+      "smallSidewallRaisedPt": 0.75,
+      "disabledPressTravelFraction": 0.4,
+      "disabledPressRemainingSidewallFraction": 0.6,
+      "capInsetPt": 0,
+      "labelOffsetRule": "minus half the remaining sidewall, including disabled keys; reduced-motion labels stay stationary"
+    },
+    "scope": {
+      "histogramHeight": 128,
+      "curveEditorMinHeight": 208,
+      "majorGridDivisions": 4,
+      "decorativeScanlines": false,
+      "decorativeGlow": false,
+      "bezelPt": 1,
+      "readoutHeight": 22,
+      "clipLamps": true,
+      "histogramPlotHeight": 104,
+      "externalBevelPt": 3
+    },
+    "lamp": {
+      "diameter": 6,
+      "socketRingPt": 0.6,
+      "semanticLabelRequired": true,
+      "blink": false,
+      "coreInsetPt": 1
+    },
+    "maskTree": {
+      "indentPerLevel": 16,
+      "rowHeight": 32,
+      "selectionEnabledOverlayStatesIndependent": true
+    },
+    "thumbnail": {
+      "selectedOutlineWidth": 2,
+      "outlineMustStayOutsidePhoto": true,
+      "preservePhotoAspectRatio": true
+    },
+    "lampSwitch": {
+      "size": 16,
+      "radius": 2,
+      "purpose": "panel enable/bypass, separate from disclosure"
+    },
+    "keyRow": {
+      "joined": true,
+      "innerSeamPt": 1,
+      "outerRadius": 3,
+      "maxKeys": 6,
+      "lampPlacement": "below",
+      "compactBars": [
+        "topBar",
+        "centerToolbar"
+      ],
+      "compactBarTextKeyLampPlacement": "faceBeforeLabel",
+      "compactBarIconKeyLamp": false,
+      "capCornerRule": "Only the outer corners of a joined row are rounded; face and sidewall share the same outline."
+    },
+    "detentSelector": {
+      "diameter": 44,
+      "typicalPositionsPerSide": 4,
+      "leaderLine": true,
+      "leaderLineStyle": "radial segment, rounded elbow, axis-aligned tail",
+      "leaderWidthPt": 1,
+      "selectedLeaderWidthPt": 1.5,
+      "leaderGapPt": 3,
+      "minimumFanRadiusPt": 38,
+      "leaderTailPt": 14,
+      "labelGapPt": 4,
+      "labelRowMinPt": 18,
+      "horizontalLabelGapPt": 12,
+      "defaultLabelLayout": "right",
+      "labelLayouts": ["top", "right", "bottom", "left"],
+      "combinedLabelLayouts": true,
+      "labelOrder": "clockwise sectors; contiguous balanced groups, remainder assigned to earlier sectors",
+      "sizing": "grows with label count and measured semibold text; caller reserves the required space",
+      "labelsClickable": true,
+      "faceDiameter": 34,
+      "faceInsetPt": 5,
+      "faceOffsetX": 0,
+      "faceOffsetY": 0,
+      "pointerWidthPt": 2.5,
+      "pointerLengthPt": 8,
+      "systemFocusEffect": false
+    },
+    "toggle": {
+      "width": 58,
+      "height": 26,
+      "radius": 4,
+      "capWidth": 25,
+      "capHeight": 20,
+      "capTravel": 27,
+      "indexWidth": 3,
+      "indexHeight": 10,
+      "offDirection": "left",
+      "onDirection": "right",
+      "stateText": true,
+      "orangeOnlyWhenOn": true,
+      "purpose": "view, import and export behavior options",
+      "stateTextPlacement": "afterTrack",
+      "endpointLabels": false,
+      "capHighlightInset": 1,
+      "capHighlightsClippedToShape": true
+    },
+    "bracket": {
+      "legPt": 6,
+      "notchPt": 5,
+      "use": "ties one key group to the panel or display it controls; at most one per panel"
+    },
+    "segmentMeter": {
+      "segmentWidth": 4,
+      "segmentGap": 2,
+      "height": 8,
+      "realProgressOnly": true
+    },
+    "primaryKey": {
+      "height": 28,
+      "maxPerView": 1
+    },
+    "leverSwitch": {
+      "width": 26,
+      "height": 50,
+      "capWidth": 20,
+      "capHeight": 20,
+      "capTravel": 24,
+      "slotWidth": 8,
+      "slotHeight": 38,
+      "offDirection": "down",
+      "onDirection": "up",
+      "stateText": true,
+      "orangeOnlyWhenOn": true,
+      "purpose": "retained alternate mechanism and historical previews; no current production form usage",
+      "capShape": "sphere",
+      "capHighlightInset": 1,
+      "capHighlightsClippedToShape": true,
+      "indexCenteredOnCap": true,
+      "slotShape": "capsule",
+      "stemShape": "capsule",
+      "stemContactShadow": false
+    },
+    "latchingKey": {
+      "minimumHeight": 28,
+      "namingComponentMinimumHeight": 72,
+      "independentBoolean": true,
+      "multilineLabel": true,
+      "lampPlacement": "trailing for form rows; below for naming components"
+    },
+    "detentSlider": {
+      "quotaGiB": [
+        1,
+        5,
+        10
+      ],
+      "tickCount": 3,
+      "resetGiB": 5,
+      "thumbWidth": 9,
+      "thumbHeight": 16,
+      "nativeKeyboardAndAccessibility": true,
+      "defaultScrollMutation": false
+    },
+    "integerStepper": {
+      "fieldWidth": 42,
+      "keyHeight": 28,
+      "directEntry": true,
+      "invalidInputKeepsLastCommittedValue": true,
+      "invalidInputBlocksExportAndPresetSaving": true,
+      "exportNamingDigitsRange": [
+        1,
+        9
+      ]
+    }
+  },
+  "materials": {
+    "plate": {
+      "gradient": [
+        "plate.top",
+        "surface.panel",
+        "plate.bottom"
+      ],
+      "dropShadow": false,
+      "texture": "none",
+      "divider": "engraved seam: separator line then seamLight line below/right",
+      "gutter": 0
+    },
+    "raisedKey": {
+      "ivory": {
+        "top": "#FFFFFF",
+        "bottom": "#F1F2EE",
+        "sidewall": "#C0C3BC",
+        "topHighlightOpacity": 0.95,
+        "contactShadow": {
+          "x": 0,
+          "y": 0.8,
+          "swiftUIRadius": 0.6,
+          "opacity": 0.23
+        },
+        "ambientShadow": {
+          "x": 0,
+          "y": 2,
+          "swiftUIRadius": 2.5,
+          "opacity": 0.15
+        }
+      },
+      "graphite": {
+        "top": "#525656",
+        "bottom": "#3B4040",
+        "sidewall": "#1A1E1E",
+        "topHighlightOpacity": 0.23,
+        "contactShadow": {
+          "x": 0,
+          "y": 0.8,
+          "swiftUIRadius": 0.6,
+          "opacity": 0.65
+        },
+        "ambientShadow": {
+          "x": 0,
+          "y": 2,
+          "swiftUIRadius": 2.5,
+          "opacity": 0.32
+        }
+      },
+      "faceHighlight": "Top edge only, 0.5 pt; no surrounding bright frame."
+    },
+    "disabledKey": {
+      "preserveSidewallAndTravel": true,
+      "faceOverlayColor": "surface.panel",
+      "faceOverlayOpacity": 0.45,
+      "shadowOpacityMultiplier": 0.45,
+      "contour": "material.edge; border.control in increased contrast",
+      "foreground": "text.disabled",
+      "hoverFeedback": false,
+      "pressFeedback": "limited travel followed by a mechanical stop; release, drag-out and window deactivation cancel pressure",
+      "activation": false,
+      "primaryKeyFallback": "neutral disabled key at the original control height"
+    },
+    "insetWell": {
+      "topInnerShadowHeight": 1,
+      "bottomEdgeHighlight": true,
+      "glare": false
+    },
+    "maxShadowLayersPerRepeatedControl": 2,
+    "textureDefaultEnabled": false,
+    "primaryKey": {
+      "top": "#FF9A26",
+      "bottom": "#F26C06",
+      "sidewall": "#B44B05",
+      "topHighlightOpacity": 0.55,
+      "topHighlightPt": 0.5
+    },
+    "fader": {
+      "faceGradient": [
+        "cap.top",
+        "cap.bottom"
+      ],
+      "contactShadow": {
+        "visualY": 1.5,
+        "appKitBlur": 1
+      },
+      "ambientShadow": {
+        "visualY": 4,
+        "appKitBlur": 4
+      }
+    },
+    "detentSelector": {
+      "baseGradient": [
+        "knob.rimTop",
+        "knob.rimBottom"
+      ],
+      "faceGradient": [
+        "cap.top",
+        "cap.bottom"
+      ],
+      "faceOffsetY": 0,
+      "contactShadow": {
+        "visualY": 2,
+        "swiftUIRadius": 1.5
+      },
+      "ambientShadow": {
+        "visualY": 6,
+        "swiftUIRadius": 6
+      }
+    }
+  },
+  "motion": {
+    "pressMs": 80,
+    "hoverMs": 100,
+    "selectionMs": 120,
+    "disclosureMs": 180,
+    "parameterTrackingMs": 0,
+    "springBounce": false,
+    "reduceMotion": {
+      "positionAnimation": false,
+      "opacityTransitionMaxMs": 80,
+      "decorativeAnimation": false
+    }
+  },
+  "contrastAudit": {
+    "method": "WCAG relative luminance; recomputed from v3 opaque sRGB values, thresholds retained from v2.",
+    "checkedPairCount": 135,
+    "allListedPairsPass": true,
+    "excludedRoles": [
+      "border.separator",
+      "border.seamLight",
+      "scope.grid",
+      "material.edge"
+    ],
+    "excludedRolePolicy": "Decorative seams, bevels, grids and material contours do not carry focus or selection by themselves; labelled controls use border.control when increased contrast is enabled.",
+    "scopeLimit": "No full-app accessibility claim. Alpha, gradients, compositing, image overlays and actual rendering need separate testing.",
+    "pairs": [
+      {
+        "theme": "ivory",
+        "foreground": "text.primary",
+        "background": "surface.base",
+        "ratio": 10.5394,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.primary",
+        "background": "surface.panel",
+        "ratio": 12.4685,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.primary",
+        "background": "surface.raised",
+        "ratio": 13.8506,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.primary",
+        "background": "surface.inset",
+        "ratio": 10.1148,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.primary",
+        "background": "surface.selected",
+        "ratio": 10.7343,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.secondary",
+        "background": "surface.base",
+        "ratio": 5.0746,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.secondary",
+        "background": "surface.panel",
+        "ratio": 6.0034,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.secondary",
+        "background": "surface.raised",
+        "ratio": 6.6689,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.secondary",
+        "background": "surface.inset",
+        "ratio": 4.8701,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.secondary",
+        "background": "surface.selected",
+        "ratio": 5.1684,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "accent.text",
+        "background": "surface.base",
+        "ratio": 5.0204,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "accent.text",
+        "background": "surface.panel",
+        "ratio": 5.9393,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "accent.text",
+        "background": "surface.raised",
+        "ratio": 6.5976,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "accent.text",
+        "background": "surface.inset",
+        "ratio": 4.8181,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "accent.text",
+        "background": "surface.selected",
+        "ratio": 5.1132,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.error",
+        "background": "surface.base",
+        "ratio": 5.1006,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.error",
+        "background": "surface.panel",
+        "ratio": 6.0342,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.error",
+        "background": "surface.raised",
+        "ratio": 6.703,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.error",
+        "background": "surface.inset",
+        "ratio": 4.8951,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.error",
+        "background": "surface.selected",
+        "ratio": 5.1949,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.success",
+        "background": "surface.base",
+        "ratio": 5.1976,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.success",
+        "background": "surface.panel",
+        "ratio": 6.1489,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.success",
+        "background": "surface.raised",
+        "ratio": 6.8305,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.success",
+        "background": "surface.inset",
+        "ratio": 4.9882,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.success",
+        "background": "surface.selected",
+        "ratio": 5.2937,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.warning",
+        "background": "surface.base",
+        "ratio": 4.7144,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.warning",
+        "background": "surface.panel",
+        "ratio": 5.5773,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.warning",
+        "background": "surface.raised",
+        "ratio": 6.1955,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.warning",
+        "background": "surface.inset",
+        "ratio": 4.5244,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "status.warning",
+        "background": "surface.selected",
+        "ratio": 4.8015,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "border.control",
+        "background": "surface.base",
+        "ratio": 3.4159,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "border.control",
+        "background": "surface.panel",
+        "ratio": 4.0412,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "border.control",
+        "background": "surface.raised",
+        "ratio": 4.4891,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "border.control",
+        "background": "surface.inset",
+        "ratio": 3.2783,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "border.control",
+        "background": "surface.selected",
+        "ratio": 3.4791,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "accent.signal",
+        "background": "surface.base",
+        "ratio": 3.3204,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "accent.signal",
+        "background": "surface.panel",
+        "ratio": 3.9282,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "accent.signal",
+        "background": "surface.raised",
+        "ratio": 4.3636,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "accent.signal",
+        "background": "surface.inset",
+        "ratio": 3.1866,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "accent.signal",
+        "background": "surface.selected",
+        "ratio": 3.3818,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "focus.ring",
+        "background": "surface.base",
+        "ratio": 5.0204,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "focus.ring",
+        "background": "surface.panel",
+        "ratio": 5.9393,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "focus.ring",
+        "background": "surface.raised",
+        "ratio": 6.5976,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "focus.ring",
+        "background": "surface.inset",
+        "ratio": 4.8181,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "focus.ring",
+        "background": "surface.selected",
+        "ratio": 5.1132,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.disabled",
+        "background": "surface.base",
+        "ratio": 3.3537,
+        "threshold": 3.0,
+        "passes": true,
+        "target": "project legibility target; WCAG exempts disabled controls"
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.disabled",
+        "background": "surface.panel",
+        "ratio": 3.9675,
+        "threshold": 3.0,
+        "passes": true,
+        "target": "project legibility target; WCAG exempts disabled controls"
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.disabled",
+        "background": "surface.raised",
+        "ratio": 4.4073,
+        "threshold": 3.0,
+        "passes": true,
+        "target": "project legibility target; WCAG exempts disabled controls"
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.disabled",
+        "background": "surface.inset",
+        "ratio": 3.2186,
+        "threshold": 3.0,
+        "passes": true,
+        "target": "project legibility target; WCAG exempts disabled controls"
+      },
+      {
+        "theme": "ivory",
+        "foreground": "text.disabled",
+        "background": "surface.selected",
+        "ratio": 3.4157,
+        "threshold": 3.0,
+        "passes": true,
+        "target": "project legibility target; WCAG exempts disabled controls"
+      },
+      {
+        "theme": "ivory",
+        "foreground": "key.primaryText",
+        "background": "key.primary",
+        "ratio": 6.7664,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "lamp.on",
+        "background": "lamp.socket",
+        "ratio": 4.943,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "key.primaryEdge",
+        "background": "surface.panel",
+        "ratio": 5.4757,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "ivory",
+        "foreground": "key.primaryEdge",
+        "background": "surface.base",
+        "ratio": 4.6285,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.primary",
+        "background": "surface.base",
+        "ratio": 13.5489,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.primary",
+        "background": "surface.panel",
+        "ratio": 11.5335,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.primary",
+        "background": "surface.raised",
+        "ratio": 8.7598,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.primary",
+        "background": "surface.inset",
+        "ratio": 14.3129,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.primary",
+        "background": "surface.selected",
+        "ratio": 12.0345,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.secondary",
+        "background": "surface.base",
+        "ratio": 7.9561,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.secondary",
+        "background": "surface.panel",
+        "ratio": 6.7726,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.secondary",
+        "background": "surface.raised",
+        "ratio": 5.1439,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.secondary",
+        "background": "surface.inset",
+        "ratio": 8.4048,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.secondary",
+        "background": "surface.selected",
+        "ratio": 7.0668,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "accent.text",
+        "background": "surface.base",
+        "ratio": 7.9172,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "accent.text",
+        "background": "surface.panel",
+        "ratio": 6.7395,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "accent.text",
+        "background": "surface.raised",
+        "ratio": 5.1187,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "accent.text",
+        "background": "surface.inset",
+        "ratio": 8.3636,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "accent.text",
+        "background": "surface.selected",
+        "ratio": 7.0322,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.error",
+        "background": "surface.base",
+        "ratio": 9.6789,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.error",
+        "background": "surface.panel",
+        "ratio": 8.2392,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.error",
+        "background": "surface.raised",
+        "ratio": 6.2577,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.error",
+        "background": "surface.inset",
+        "ratio": 10.2247,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.error",
+        "background": "surface.selected",
+        "ratio": 8.5971,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.success",
+        "background": "surface.base",
+        "ratio": 10.2036,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.success",
+        "background": "surface.panel",
+        "ratio": 8.6858,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.success",
+        "background": "surface.raised",
+        "ratio": 6.5969,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.success",
+        "background": "surface.inset",
+        "ratio": 10.7789,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.success",
+        "background": "surface.selected",
+        "ratio": 9.0631,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.warning",
+        "background": "surface.base",
+        "ratio": 10.795,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.warning",
+        "background": "surface.panel",
+        "ratio": 9.1892,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.warning",
+        "background": "surface.raised",
+        "ratio": 6.9793,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.warning",
+        "background": "surface.inset",
+        "ratio": 11.4037,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "status.warning",
+        "background": "surface.selected",
+        "ratio": 9.5884,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "border.control",
+        "background": "surface.base",
+        "ratio": 4.7442,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "border.control",
+        "background": "surface.panel",
+        "ratio": 4.0385,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "border.control",
+        "background": "surface.raised",
+        "ratio": 3.0673,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "border.control",
+        "background": "surface.inset",
+        "ratio": 5.0117,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "border.control",
+        "background": "surface.selected",
+        "ratio": 4.2139,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "accent.signal",
+        "background": "surface.base",
+        "ratio": 7.9172,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "accent.signal",
+        "background": "surface.panel",
+        "ratio": 6.7395,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "accent.signal",
+        "background": "surface.raised",
+        "ratio": 5.1187,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "accent.signal",
+        "background": "surface.inset",
+        "ratio": 8.3636,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "accent.signal",
+        "background": "surface.selected",
+        "ratio": 7.0322,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "focus.ring",
+        "background": "surface.base",
+        "ratio": 7.9172,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "focus.ring",
+        "background": "surface.panel",
+        "ratio": 6.7395,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "focus.ring",
+        "background": "surface.raised",
+        "ratio": 5.1187,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "focus.ring",
+        "background": "surface.inset",
+        "ratio": 8.3636,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "focus.ring",
+        "background": "surface.selected",
+        "ratio": 7.0322,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.disabled",
+        "background": "surface.base",
+        "ratio": 4.7075,
+        "threshold": 3.0,
+        "passes": true,
+        "target": "project legibility target; WCAG exempts disabled controls"
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.disabled",
+        "background": "surface.panel",
+        "ratio": 4.0073,
+        "threshold": 3.0,
+        "passes": true,
+        "target": "project legibility target; WCAG exempts disabled controls"
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.disabled",
+        "background": "surface.raised",
+        "ratio": 3.0436,
+        "threshold": 3.0,
+        "passes": true,
+        "target": "project legibility target; WCAG exempts disabled controls"
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.disabled",
+        "background": "surface.inset",
+        "ratio": 4.973,
+        "threshold": 3.0,
+        "passes": true,
+        "target": "project legibility target; WCAG exempts disabled controls"
+      },
+      {
+        "theme": "graphite",
+        "foreground": "text.disabled",
+        "background": "surface.selected",
+        "ratio": 4.1814,
+        "threshold": 3.0,
+        "passes": true,
+        "target": "project legibility target; WCAG exempts disabled controls"
+      },
+      {
+        "theme": "graphite",
+        "foreground": "key.primaryText",
+        "background": "key.primary",
+        "ratio": 6.7664,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "lamp.on",
+        "background": "lamp.socket",
+        "ratio": 9.1105,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "key.primary",
+        "background": "surface.panel",
+        "ratio": 5.5813,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "graphite",
+        "foreground": "key.primary",
+        "background": "surface.base",
+        "ratio": 6.5566,
+        "threshold": 3.0,
+        "passes": true
+      },
+      {
+        "theme": "shared",
+        "foreground": "scope.axis",
+        "background": "scope.background",
+        "ratio": 6.3059,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "shared",
+        "foreground": "scope.text",
+        "background": "scope.background",
+        "ratio": 11.7352,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "shared",
+        "foreground": "scope.trace.neutral",
+        "background": "scope.background",
+        "ratio": 13.5491,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "shared",
+        "foreground": "scope.trace.active",
+        "background": "scope.background",
+        "ratio": 8.6956,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "shared",
+        "foreground": "scope.trace.red",
+        "background": "scope.background",
+        "ratio": 7.6554,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "shared",
+        "foreground": "scope.trace.green",
+        "background": "scope.background",
+        "ratio": 10.217,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "shared",
+        "foreground": "scope.trace.blue",
+        "background": "scope.background",
+        "ratio": 8.8884,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.default.text",
+        "background": "photoMat.default",
+        "ratio": 10.4774,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.default.textSecondary",
+        "background": "photoMat.default",
+        "ratio": 6.2597,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.default.selection",
+        "background": "photoMat.default",
+        "ratio": 10.4774,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.default.focus",
+        "background": "photoMat.default",
+        "ratio": 6.3134,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.medium.text",
+        "background": "photoMat.medium",
+        "ratio": 4.6895,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.medium.textSecondary",
+        "background": "photoMat.medium",
+        "ratio": 4.6895,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.medium.selection",
+        "background": "photoMat.medium",
+        "ratio": 4.6895,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.medium.focus",
+        "background": "photoMat.medium",
+        "ratio": 4.4781,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.light.text",
+        "background": "photoMat.light",
+        "ratio": 9.1541,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.light.textSecondary",
+        "background": "photoMat.light",
+        "ratio": 7.8262,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.light.selection",
+        "background": "photoMat.light",
+        "ratio": 9.1541,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.light.focus",
+        "background": "photoMat.light",
+        "ratio": 4.4203,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.black.text",
+        "background": "photoMat.black",
+        "ratio": 16.6711,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.black.textSecondary",
+        "background": "photoMat.black",
+        "ratio": 9.9601,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.black.selection",
+        "background": "photoMat.black",
+        "ratio": 16.6711,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.black.focus",
+        "background": "photoMat.black",
+        "ratio": 10.0455,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.white.text",
+        "background": "photoMat.white",
+        "ratio": 13.3046,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.white.textSecondary",
+        "background": "photoMat.white",
+        "ratio": 6.37,
+        "threshold": 4.5,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.white.selection",
+        "background": "photoMat.white",
+        "ratio": 13.3046,
+        "threshold": 3,
+        "passes": true
+      },
+      {
+        "theme": "mat",
+        "foreground": "matStates.photoMat.white.focus",
+        "background": "photoMat.white",
+        "ratio": 6.4244,
+        "threshold": 3,
+        "passes": true
+      }
+    ],
+    "extraPairInputs": {
+      "ivory": [
+        [
+          "key.primaryText",
+          "key.primary",
+          4.5
+        ],
+        [
+          "lamp.on",
+          "lamp.socket",
+          3.0
+        ],
+        [
+          "key.primaryEdge",
+          "surface.panel",
+          3.0
+        ],
+        [
+          "key.primaryEdge",
+          "surface.base",
+          3.0
+        ]
+      ],
+      "graphite": [
+        [
+          "key.primaryText",
+          "key.primary",
+          4.5
+        ],
+        [
+          "lamp.on",
+          "lamp.socket",
+          3.0
+        ],
+        [
+          "key.primary",
+          "surface.panel",
+          3.0
+        ],
+        [
+          "key.primary",
+          "surface.base",
+          3.0
+        ]
+      ]
+    }
+  }
+}

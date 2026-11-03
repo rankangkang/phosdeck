@@ -1,0 +1,713 @@
+{
+  "purpose": "Stage A research only; no photographs, weights, runtime binaries, or compiled models committed",
+  "annotationSource": "https://storage.googleapis.com/openimages/v5/test-annotations-bbox.csv",
+  "annotationLicense": "CC BY 4.0",
+  "modelFiles": [
+    {
+      "id": "apple/coreml-sam2.1-tiny",
+      "revision": "39ae0a8a83e5e6cd196e804bf7cccc5f8171f306",
+      "files": [
+        {
+          "path": "README.md",
+          "bytes": 1508,
+          "sha256": "4c08ea911cf81e7f14f0017d18530b7b2c3360604618754849ee985473575c17"
+        },
+        {
+          "path": "SAM2_1TinyImageEncoderFLOAT16.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+          "bytes": 154372,
+          "sha256": "6cbc50301ee3ff4a9366083f9647e1f06762759542d8dd0fac394ebc3682cce7"
+        },
+        {
+          "path": "SAM2_1TinyImageEncoderFLOAT16.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+          "bytes": 67069504,
+          "sha256": "eab96eb8ff35720c79eedc0cac2a4ef32d685f9c994c39736027078528c48a97"
+        },
+        {
+          "path": "SAM2_1TinyImageEncoderFLOAT16.mlpackage/Manifest.json",
+          "bytes": 617,
+          "sha256": "dd72aa75e3f2f92d0653696bf4d8350d87690d92b116b34912fe640f2b116e08"
+        },
+        {
+          "path": "SAM2_1TinyMaskDecoderFLOAT16.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+          "bytes": 75167,
+          "sha256": "4601f302d4c6936e15de3a22089c2afe1fa009ef703f82147ff829b4be677577"
+        },
+        {
+          "path": "SAM2_1TinyMaskDecoderFLOAT16.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+          "bytes": 10222400,
+          "sha256": "f5a8635981199fa1199007ed6798c61a326288548b74553b3c2ddb932fcdc8de"
+        },
+        {
+          "path": "SAM2_1TinyMaskDecoderFLOAT16.mlpackage/Manifest.json",
+          "bytes": 617,
+          "sha256": "dc6121b61ac560498080d55f9d5fb293cdb305f942a85adb5b71dc8e9d14a8aa"
+        },
+        {
+          "path": "SAM2_1TinyPromptEncoderFLOAT16.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+          "bytes": 20618,
+          "sha256": "3a83c167d8bd63e80f86349a78c2ab0527ce97eca1f848a4ce57fe5351241fa3"
+        },
+        {
+          "path": "SAM2_1TinyPromptEncoderFLOAT16.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+          "bytes": 2101056,
+          "sha256": "af466cf28ef8838f409c2bfd8cc0049b9efbf9db335d60a57dbfc5160af883f2"
+        },
+        {
+          "path": "SAM2_1TinyPromptEncoderFLOAT16.mlpackage/Manifest.json",
+          "bytes": 617,
+          "sha256": "0c0f9b80f0445017dac52f81e93aeb50b9c2c9918708c882df4a65671fda2bd4"
+        }
+      ]
+    },
+    {
+      "id": "mickeyvanolst/face-parsing-coreml",
+      "revision": "289c64b0db3acb100e22a650becb5e300be8b7f4",
+      "files": [
+        {
+          "path": "FaceParsing.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+          "bytes": 53182491,
+          "sha256": "2ca211f835ae6a42372304ca21257df7aab884bee6a548a7f9d28896887bd8e3"
+        },
+        {
+          "path": "FaceParsing.mlpackage/Manifest.json",
+          "bytes": 385,
+          "sha256": "210c51b66c50e9f02ab9305715b4be4d2b0275a6c18945c9a0112152f18b91e5"
+        }
+      ]
+    },
+    {
+      "id": "Google SelfieMulticlass 256",
+      "url": "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
+      "path": "selfie_multiclass_256x256.tflite",
+      "bytes": 16371837,
+      "sha256": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0"
+    }
+  ],
+  "runtime": {
+    "repo": "google-ai-edge/LiteRT",
+    "revision": "c54e491a1ea07abdb931233eadf2f432db656997",
+    "sourceVersion": "2.3.2",
+    "version": "2.3.0",
+    "archiveURL": "https://github.com/google-ai-edge/LiteRT/releases/download/v2.3.0/CLiteRT_mac.xcframework.zip",
+    "archiveSHA256": "071b9f4bebb483709ac3d7faf98123da5453a2ebf60ce8f819aa1e30b9535a98",
+    "archiveBytes": 12599949,
+    "sourceFiles": [
+      {
+        "path": "LICENSE",
+        "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+        "bytes": 11357
+      },
+      {
+        "path": "litert/swift/Sources/LiteRT/CompiledModel.swift",
+        "sha256": "88fdc930d063b710fac3253b2b7a185da0e17246b64d27298af312cf6a3feb4d",
+        "bytes": 34010
+      },
+      {
+        "path": "litert/swift/Sources/LiteRT/ConcreteOptions.swift",
+        "sha256": "f34010bd9f3fe61f68e5f2d544a87817102b108b705961f39c5340947e4b894f",
+        "bytes": 1119
+      },
+      {
+        "path": "litert/swift/Sources/LiteRT/CpuOptions.swift",
+        "sha256": "d38d7498620e42325215828025fb41dd65aa67687789e88fac61f0649f188491",
+        "bytes": 8810
+      },
+      {
+        "path": "litert/swift/Sources/LiteRT/Environment.swift",
+        "sha256": "4cbd5fbf5912a2369ae1663cb9aa6a0c9b0e96f6897b4811b1531f02c2e958c8",
+        "bytes": 7076
+      },
+      {
+        "path": "litert/swift/Sources/LiteRT/LiteRtError.swift",
+        "sha256": "820cea207a7356a31aafe25fd9bfc7651b02185af7fcd03c4b4c0b3fb199086a",
+        "bytes": 5589
+      },
+      {
+        "path": "litert/swift/Sources/LiteRT/OpaqueOptions.swift",
+        "sha256": "d4518948f009d9ddae5f4afd0b7a475e6b0b63bc53d74b8670c5a893b2eec0cd",
+        "bytes": 3512
+      },
+      {
+        "path": "litert/swift/Sources/LiteRT/Options.swift",
+        "sha256": "79f3b1a1c8a9538bbdef2e0ac7392043e230868f5095671a7b369667015acd31",
+        "bytes": 4567
+      },
+      {
+        "path": "litert/swift/Sources/LiteRT/Quantization.swift",
+        "sha256": "26c155bf2f52b0d4cd9275db5993de63b69f2ac88147f8627a5e328a9483a810",
+        "bytes": 7401
+      },
+      {
+        "path": "litert/swift/Sources/LiteRT/TensorBuffer.swift",
+        "sha256": "e0b895f8ce2d2ed2ffb07d2f1a993fb461cd891b84e888e3ab0104fd2efbf455",
+        "bytes": 14931
+      },
+      {
+        "path": "litert/swift/Sources/LiteRT/TensorType.swift",
+        "sha256": "24731375d5858853532d48bac21d77e8ab40cc9ddef8a32e8b8512e560d3f385",
+        "bytes": 4524
+      }
+    ]
+  },
+  "samples": [
+    {
+      "id": "0000c64e1253d68f",
+      "group": "Car",
+      "category": "Car",
+      "box": [
+        0.0,
+        0.32079646,
+        0.5132743,
+        0.6902655
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/0000c64e1253d68f.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/ladydragonflyherworld/6010263871",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "LadyDragonflyCC - &gt;;&lt;",
+        "Title": "Redneck Figure 8's",
+        "OriginalURL": "https://c8.staticflickr.com/7/6007/6010263871_9d6dbce6ce_o.jpg"
+      },
+      "file": "0000c64e1253d68f.jpg",
+      "sha256": "257c8d969c625f1f6727ffc8a5d5e70ad8f00f679c1deedabe0830edd2c24d01",
+      "bytes": 215382
+    },
+    {
+      "id": "000a546e910f0a6b",
+      "group": "Flower",
+      "category": "Flower",
+      "box": [
+        0.2125,
+        0.3703125,
+        1.0,
+        0.6796875
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/000a546e910f0a6b.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/deadling/155642663",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Eric",
+        "Title": "Flowers from Balconey",
+        "OriginalURL": "https://c4.staticflickr.com/1/55/155642663_7e28e8b2ff_o.jpg"
+      },
+      "file": "000a546e910f0a6b.jpg",
+      "sha256": "54216f6f5d1d26e200eb95ee55e99f63d432b3a1291454ba99aa0fcd1b566a77",
+      "bytes": 233524
+    },
+    {
+      "id": "000ccf1d00f7f1cd",
+      "group": "Dog",
+      "category": "Dog",
+      "box": [
+        0.0,
+        0.13495575,
+        0.82300884,
+        1.0
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/000ccf1d00f7f1cd.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/hotash/3291298501",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Hotash",
+        "Title": "Lick",
+        "OriginalURL": "https://c6.staticflickr.com/4/3661/3291298501_e958aea912_o.jpg"
+      },
+      "file": "000ccf1d00f7f1cd.jpg",
+      "sha256": "f09b77dcf291da78c64422183d49a7a0e41475a2974e533d81d7ad19b5550ecb",
+      "bytes": 281801
+    },
+    {
+      "id": "001547e7ef44a7d8",
+      "group": "Car",
+      "category": "Car",
+      "box": [
+        0.22238587,
+        0.27716187,
+        0.73932254,
+        0.7804878
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/001547e7ef44a7d8.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/draco2008/15196353300",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Draco2008",
+        "Title": "Whitley Bay Classic Car Show 2014",
+        "OriginalURL": "https://c1.staticflickr.com/3/2946/15196353300_eded85df55_o.jpg"
+      },
+      "file": "001547e7ef44a7d8.jpg",
+      "sha256": "45af8a57f68d84c94a185b8390e69d9e96c53a88dec5343a688c7b25bafbc9ad",
+      "bytes": 684600
+    },
+    {
+      "id": "0036f0f759621064",
+      "group": "Flower",
+      "category": "Flower",
+      "box": [
+        0.35,
+        0.4375,
+        0.6770833,
+        0.7671875
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/0036f0f759621064.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/7282451@N02/3798500655",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Field Outdoor Spaces",
+        "Title": "Bulbs",
+        "OriginalURL": "https://farm5.staticflickr.com/2444/3798500655_2ec47ea2b7_o.jpg"
+      },
+      "file": "0036f0f759621064.jpg",
+      "sha256": "40f877cb87ceab32ced67f26784cdb76ae52e490d0a98b8e0f3fda07fc01eca1",
+      "bytes": 218293
+    },
+    {
+      "id": "003c2b6816ba9d22",
+      "group": "Bicycle",
+      "category": "Bicycle",
+      "box": [
+        0.24667652,
+        0.34878588,
+        0.8567208,
+        0.87637967
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/003c2b6816ba9d22.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/puliarfanita/3296897458",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Anita Ritenour",
+        "Title": "George Hincapie",
+        "OriginalURL": "https://farm3.staticflickr.com/3365/3296897458_b3a8432a6e_o.jpg"
+      },
+      "file": "003c2b6816ba9d22.jpg",
+      "sha256": "f355aa38c885cf6d2818531d5d2e64e08e2d9fa05e61163a2793b7a0ef5adc20",
+      "positive": [
+        0.66,
+        0.63
+      ],
+      "negative": [
+        0.56,
+        0.3
+      ],
+      "correctionReason": "Correct bicycle/rider ambiguity: positive on rear wheel, negative on jersey",
+      "bytes": 570863
+    },
+    {
+      "id": "004130acea29204f",
+      "group": "Dog",
+      "category": "Dog",
+      "box": [
+        0.22135007,
+        0.0,
+        0.9372057,
+        0.92723495
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/004130acea29204f.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/lorifromva/2277306387",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "lori from va",
+        "Title": "Rebel and his soccer ball",
+        "OriginalURL": "https://c8.staticflickr.com/3/2272/2277306387_8f1dcae86d_o.jpg"
+      },
+      "file": "004130acea29204f.jpg",
+      "sha256": "754d157d2e38e7a3a3f42e4b179ed9ea64b786801de85eba217ff4cf89f02903",
+      "bytes": 100171
+    },
+    {
+      "id": "00567dcce4a5f7d9",
+      "group": "Cat",
+      "category": "Cat",
+      "box": [
+        0.0703125,
+        0.05,
+        1.0,
+        0.7395833
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/00567dcce4a5f7d9.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/table4five/138805025",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Elizabeth",
+        "Title": "Cat Seeks Forbidden Knowledge",
+        "OriginalURL": "https://c2.staticflickr.com/1/55/138805025_80da2e3a82_o.jpg"
+      },
+      "file": "00567dcce4a5f7d9.jpg",
+      "sha256": "390b2dd3d2154438e88072960ba77d29d074da0db229d20c3a538f2222fe40b7",
+      "bytes": 820502
+    },
+    {
+      "id": "00faa3c80e7aa721",
+      "group": "Houseplant",
+      "category": "Houseplant",
+      "box": [
+        0.0,
+        0.0,
+        0.9984375,
+        0.99791664
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/00faa3c80e7aa721.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/nhoulihan/17382864321",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "InAweofGod&#x27;sCreation",
+        "Title": "image",
+        "OriginalURL": "https://farm2.staticflickr.com/7699/17382864321_b94d6c499e_o.jpg"
+      },
+      "file": "00faa3c80e7aa721.jpg",
+      "sha256": "24d508a4564e91f139b3e171258c0ee365e76ec064cd403c6defd9c40ec64e72",
+      "bytes": 233083
+    },
+    {
+      "id": "00fc6fca3c76f9a4",
+      "group": "Houseplant",
+      "category": "Houseplant",
+      "box": [
+        0.016793894,
+        0.20299146,
+        0.98778623,
+        1.0
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/00fc6fca3c76f9a4.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/kainkalju/5455701868",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Kain Kalju",
+        "Title": "Primula 7724",
+        "OriginalURL": "https://farm5.staticflickr.com/5179/5455701868_3bff9a8626_o.jpg"
+      },
+      "file": "00fc6fca3c76f9a4.jpg",
+      "sha256": "78281cfd96b3da7199e405ba126999b2a82cf6f5fb19cabc11449988b0361781",
+      "bytes": 267073
+    },
+    {
+      "id": "012b40f0d9ccba39",
+      "group": "Cat",
+      "category": "Cat",
+      "box": [
+        0.14159292,
+        0.0,
+        1.0,
+        0.95132744
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/012b40f0d9ccba39.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/emersonpardo/14711690133",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Emerson Pardo",
+        "Title": "Séria",
+        "OriginalURL": "https://c2.staticflickr.com/4/3858/14711690133_f555efc617_o.jpg"
+      },
+      "file": "012b40f0d9ccba39.jpg",
+      "sha256": "9019bab21eb703f28321090d496f134e9422d673e078b3fbbd0519b8801c59f2",
+      "bytes": 340768
+    },
+    {
+      "id": "02211e9fd1fd1a0b",
+      "group": "Bicycle",
+      "category": "Bicycle",
+      "box": [
+        0.0927835,
+        0.35254988,
+        0.62886596,
+        0.8736142
+      ],
+      "faces": [],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/02211e9fd1fd1a0b.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/carrottelectric/3446761063",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "carrott",
+        "Title": "Graham's Electric Bike",
+        "OriginalURL": "https://c4.staticflickr.com/4/3643/3446761063_58083b9f1a_o.jpg"
+      },
+      "file": "02211e9fd1fd1a0b.jpg",
+      "sha256": "79437d1866fdcf37858b9f519892f2410bc65e86a7fef2121e1542d7fe5bed1b",
+      "positive": [
+        0.46,
+        0.67
+      ],
+      "negative": [
+        0.31,
+        0.32
+      ],
+      "correctionReason": "Correct bicycle/rider ambiguity: positive on wheel hub, negative on shirt",
+      "bytes": 230594
+    },
+    {
+      "id": "00777bbaa18dbb08",
+      "group": "people",
+      "category": "Person",
+      "box": [
+        0.1491228,
+        0.07280832,
+        0.9736842,
+        0.9806835
+      ],
+      "faces": [
+        {
+          "box": [
+            0.22807017,
+            0.28083208,
+            0.5964912,
+            0.5482912
+          ]
+        }
+      ],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/00777bbaa18dbb08.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/torinobulls/16050812954",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Hockey Club Torino Bulls ASDPS",
+        "Title": "150207_Winter Classic 2015_19",
+        "OriginalURL": "https://c1.staticflickr.com/9/8632/16050812954_921141758b_o.jpg"
+      },
+      "file": "00777bbaa18dbb08.jpg",
+      "sha256": "10633803675e3cdf342e26547ef151b0fe805e9dfd416d370da5c3543de3243f",
+      "bytes": 135693
+    },
+    {
+      "id": "00cd932265611688",
+      "group": "people",
+      "category": "Person",
+      "box": [
+        0.0,
+        0.20971303,
+        0.9053255,
+        0.99558496
+      ],
+      "faces": [
+        {
+          "box": [
+            0.66568047,
+            0.2737307,
+            0.8002958,
+            0.4834437
+          ]
+        }
+      ],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/00cd932265611688.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/victorsmaria/8211838216",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Víctor Santa María",
+        "Title": "Waterpolo Suterh Campeón Metropolitano - Víctor Santa María",
+        "OriginalURL": "https://c1.staticflickr.com/9/8490/8211838216_39ace10196_o.jpg"
+      },
+      "file": "00cd932265611688.jpg",
+      "sha256": "93ac3bebdb28b5ec5d36ec4113b2259bd6687cb9bb4c355cea8446c7c8909c80",
+      "positive": [
+        0.77,
+        0.63
+      ],
+      "negative": [
+        0.35,
+        0.65
+      ],
+      "correctionReason": "Correct water/person ambiguity: positive on visible torso, negative on water",
+      "bytes": 180621
+    },
+    {
+      "id": "012fe322a5fd004c",
+      "group": "people",
+      "category": "Person",
+      "box": [
+        0.0,
+        0.0,
+        0.9977925,
+        0.9985229
+      ],
+      "faces": [
+        {
+          "box": [
+            0.3576159,
+            0.032496307,
+            0.6821192,
+            0.31757754
+          ]
+        }
+      ],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/012fe322a5fd004c.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/yosakoigraffiti/4807485813",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "工房 やまもも",
+        "Title": "高知よさこい祭り2003",
+        "OriginalURL": "https://c5.staticflickr.com/5/4077/4807485813_b176c1c842_o.jpg"
+      },
+      "file": "012fe322a5fd004c.jpg",
+      "sha256": "5e6bf3843ea1f0f9a83709b0a5c71f0a914a354a096e191fc0b0dfc2023948c9",
+      "bytes": 259505
+    },
+    {
+      "id": "02177c7b318e1d5c",
+      "group": "people",
+      "category": "Person",
+      "box": [
+        0.0,
+        0.08768657,
+        0.58566433,
+        1.0
+      ],
+      "faces": [
+        {
+          "box": [
+            0.21153846,
+            0.13992538,
+            0.34615386,
+            0.3302239
+          ]
+        }
+      ],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/02177c7b318e1d5c.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/usarmyeurope_images/4030862073",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "U.S. Army Europe Images",
+        "Title": "CC_of_the_Year_small",
+        "OriginalURL": "https://c5.staticflickr.com/3/2488/4030862073_8f892ed712_o.jpg"
+      },
+      "file": "02177c7b318e1d5c.jpg",
+      "sha256": "ca0597d5d51a88a5fd53f13edc674ce4fa8897661c8a2f83cf909452efebe3e2",
+      "bytes": 1125612
+    },
+    {
+      "id": "0c3228734c66d31b",
+      "group": "people",
+      "category": "Person",
+      "box": [
+        0.3720588,
+        0.0864745,
+        0.8867647,
+        1.0
+      ],
+      "faces": [
+        {
+          "box": [
+            0.47058824,
+            0.2616408,
+            0.6691176,
+            0.57427937
+          ]
+        }
+      ],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/0c3228734c66d31b.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/superwebdeveloper/5632105568",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "MartialArtsNomad.com",
+        "Title": "Chelsea Bronaugh vs Alison Clarkson",
+        "OriginalURL": "https://c4.staticflickr.com/6/5268/5632105568_de2a5df23b_o.jpg"
+      },
+      "file": "0c3228734c66d31b.jpg",
+      "sha256": "23f77a155c741bc38d64d2feee67bf549215a2c37c60d4e355c4e345bffeb078",
+      "bytes": 343722
+    },
+    {
+      "id": "0fe0d54f4849c36c",
+      "group": "people",
+      "category": "Person",
+      "box": [
+        0.296875,
+        0.014583333,
+        0.8140625,
+        1.0
+      ],
+      "faces": [
+        {
+          "box": [
+            0.5171875,
+            0.09583333,
+            0.6390625,
+            0.31875
+          ]
+        }
+      ],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/0fe0d54f4849c36c.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/bensutherland/2549151362",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Ben Sutherland",
+        "Title": "DSCF9804",
+        "OriginalURL": "https://c5.staticflickr.com/4/3130/2549151362_82996f7887_o.jpg"
+      },
+      "file": "0fe0d54f4849c36c.jpg",
+      "sha256": "bf3ed9fab7ee9b04d68183fcc10f74296922b253b6a87b6e288f32d95aeeaf4c",
+      "bytes": 436022
+    },
+    {
+      "id": "104d071056b77660",
+      "group": "people",
+      "category": "Person",
+      "box": [
+        0.0,
+        0.0,
+        0.45427728,
+        0.9446903
+      ],
+      "faces": [
+        {
+          "box": [
+            0.22566372,
+            0.028761063,
+            0.36430678,
+            0.30752212
+          ]
+        }
+      ],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/104d071056b77660.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/bmiphone/15492760053",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "bm.iphone",
+        "Title": "etruschi",
+        "OriginalURL": "https://farm1.staticflickr.com/7572/15492760053_fa250b9139_o.jpg"
+      },
+      "file": "104d071056b77660.jpg",
+      "sha256": "3f9893eb3ef4c6216a96ec448e452bb3050b7541304c00700a723f3d33a127a0",
+      "bytes": 228501
+    },
+    {
+      "id": "118ee17fc4268593",
+      "group": "people",
+      "category": "Person",
+      "box": [
+        0.37291667,
+        0.10954616,
+        1.0,
+        1.0
+      ],
+      "faces": [
+        {
+          "box": [
+            0.44375,
+            0.1799687,
+            0.65,
+            0.4773083
+          ]
+        }
+      ],
+      "url": "https://open-images-dataset.s3.amazonaws.com/test/118ee17fc4268593.jpg",
+      "source": {
+        "OriginalLandingURL": "https://www.flickr.com/photos/synaes/7119860011",
+        "License": "https://creativecommons.org/licenses/by/2.0/",
+        "Author": "Victor Soto",
+        "Title": "Walter Van Beirendonck & Wild and Lethal Trash!: Believe",
+        "OriginalURL": "https://farm4.staticflickr.com/7232/7119860011_b4e3d5ef5b_o.jpg"
+      },
+      "file": "118ee17fc4268593.jpg",
+      "sha256": "09ca42b2688ca5727c3f88f9d809d82d5770df81e9a625308b705e20bbbb46d4",
+      "bytes": 774648
+    }
+  ]
+}
