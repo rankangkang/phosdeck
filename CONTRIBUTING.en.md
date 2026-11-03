@@ -2,7 +2,7 @@
 
 [简体中文](CONTRIBUTING.md) · [English](CONTRIBUTING.en.md)
 
-You can contribute by reporting bugs, improving documentation, or submitting code. The project maintains the native macOS app only. See the [README](README.en.md#build-from-source) for build instructions and the [getting started guide (Chinese)](docs/getting-started.md) for usage. For larger features or changes in direction, open an issue describing the problem and expected behavior before starting.
+You can contribute by reporting bugs, improving documentation, or submitting code. The project maintains the native macOS app only. See the [README](README.md#build-from-source) for build instructions and the [getting started guide (Chinese)](docs/getting-started.md) for usage. For larger features or changes in direction, open an issue describing the problem and expected behavior before starting.
 
 ## Report a bug
 
@@ -52,7 +52,7 @@ Test preparation uses the `python3` standard library, with no extra Python packa
 
 Ordinary development does not require smart-mask weights. The research preparation script downloads a complete set of experimental resources, including face weights. See the [model guide (Chinese)](docs/smart-mask-models.md) for restrictions, model versions, and behavior when models are missing.
 
-Register new Swift files in both `Phosdeck.xcodeproj/project.pbxproj` and `project.yml`. Check licenses and bundled notices before adding dependencies; the repository does not accept GPL dependencies. See the [README license section](README.en.md#license) for the project's license and third-party notices.
+Register new Swift files in both `Phosdeck.xcodeproj/project.pbxproj` and `project.yml`. Check licenses and bundled notices before adding dependencies; the repository does not accept GPL dependencies. See the [README license section](README.md#license) for the project's license and third-party notices.
 
 ## Submit changes
 

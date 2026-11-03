@@ -2,7 +2,7 @@
 
 [简体中文](CONTRIBUTING.md) · [English](CONTRIBUTING.en.md)
 
-可以通过报告问题、修改文档或提交代码参与项目。目前只维护原生 macOS App，源码构建见 [README](README.md#快速上手)，使用流程见[上手指南](docs/getting-started.md)。较大的功能或方向变更，建议先在 Issue 中说明问题和预期行为，讨论后再动手。
+可以通过报告问题、修改文档或提交代码参与项目。目前只维护原生 macOS App，源码构建见 [README](README.zh.md#快速上手)，使用流程见[上手指南](docs/getting-started.md)。较大的功能或方向变更，建议先在 Issue 中说明问题和预期行为，讨论后再动手。
 
 ## 反馈问题
 
@@ -52,7 +52,7 @@ xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -derivedDataPath build -
 
 普通开发无需下载智能蒙版权重。研究准备脚本会获取含人脸权重在内的整套实验资源，其授权限制、模型版本和缺失时的行为见[智能蒙版说明](docs/smart-mask-models.md)。
 
-新增 Swift 文件时，要同步登记到 `Phosdeck.xcodeproj/project.pbxproj` 和 `project.yml`。新增依赖前核对许可和随包声明；仓库不引入 GPL 依赖。项目自身的许可及第三方声明见 [README 许可说明](README.md#许可)。
+新增 Swift 文件时，要同步登记到 `Phosdeck.xcodeproj/project.pbxproj` 和 `project.yml`。新增依赖前核对许可和随包声明；仓库不引入 GPL 依赖。项目自身的许可及第三方声明见 [README 许可说明](README.zh.md#许可)。
 
 ## 提交变更
 
