@@ -15,7 +15,7 @@
 
 - **模块命名**：中文“编辑”、英文 Develop，保留 D 快捷键。
 - **品牌外观**：圆角字标已接入石墨和米白主题，待固定体验 App 实窗确认。
-- **产品官网**：`site/` 中的 Astro 中英双语站点仅在 `master` 推送包含 `site/` 变更时通过 GitHub Actions 发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/)；默认石墨并支持米白，保留合成截图。首屏说明、工作流排版和下载区域的设计调整待本地预览验收，尚未发布；开发命令见[贡献指南](../CONTRIBUTING.zh.md#官网开发)。
+- **产品官网**：`site/` 中的 Astro 中英双语站点仅在 `master` 推送包含 `site/` 变更时通过 GitHub Actions 发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/)；首屏链接 GitHub Releases，默认石墨并支持米白，线上效果待用户验收；开发命令见[贡献指南](../CONTRIBUTING.zh.md#官网开发)。
 - **预览性能**：中央布局定尺寸、Observation 细粒度观察、质量预览调度与局部刷新、画布显示等待移出主线程。遗留见下节。
 - **中英界面与社区语言包**：英文问题见下节。
 - **工作流**：最近一次导入跨重启（导航状态存本机偏好，不随备份或换机携带）、普通集合删除撤销（仅当前会话）。
