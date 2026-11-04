@@ -79,6 +79,8 @@ jobs:
               -only-testing:PhosdeckTests/XMPPresetImportTests
               -only-testing:PhosdeckTests/SpotRepairTests/testCoverageWeightedBilinearSamplingIgnoresTransparentColors
               -only-testing:PhosdeckTests/ImagingTests/testWorkspaceFitsPlannedWindowSizesAndBothOrientations
+              -only-testing:PhosdeckTests/RasterEditingTests/testICCOrientationAndNeutralRecipe
+              -only-testing:PhosdeckTests/PointColorTests/testCopiesSmartRulesPointEditsSnapshotsUndoAndFrozenExportTogether
               -only-testing:PhosdeckTests/ExportTests/testFrozenExportRetryAndCollision
               -only-testing:PhosdeckTests/ExportTests/testExportInterruptionsRecoverAndNeverOverwrite
               -only-testing:PhosdeckTests/ExportTests/testLosslessFormatsPreserveDepthOrientationColorAndPrivacy

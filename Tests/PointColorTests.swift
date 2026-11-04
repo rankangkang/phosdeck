@@ -168,7 +168,14 @@ extension PointColorTests {
         model.choose([copies[0].id],active:copies[0].id); try await wait { model.canEdit && model.previewCurrent }
         model.togglePointColorSampling(); try await wait { model.pointReferenceReady }
         let reference = try XCTUnwrap(model.pointReference)
-        let point = try XCTUnwrap((0..<reference.height).lazy.flatMap { y in (0..<reference.width).map { x in CGPoint(x:(Double(x)+0.5)/Double(reference.width),y:(Double(y)+0.5)/Double(reference.height)) } }.first { reference.sample(at:$0) != nil })
+        let positions = (0..<reference.height).lazy.flatMap { y -> [CGPoint] in
+            (0..<reference.width).map { x -> CGPoint in
+                let px = (Double(x) + 0.5) / Double(reference.width)
+                let py = (Double(y) + 0.5) / Double(reference.height)
+                return CGPoint(x: px, y: py)
+            }
+        }
+        let point = try XCTUnwrap(positions.first { reference.sample(at: $0) != nil })
         model.undo.groupsByEvent = false; model.undo.beginUndoGrouping()
         model.samplePointColor(at:point); model.undo.endUndoGrouping()
         let id = try XCTUnwrap(model.recipe?.develop.pointColors.first?.id)

@@ -91,8 +91,10 @@ final class RasterEditingTests: XCTestCase {
         let data = image.dataProvider!.data! as Data
         return data.withUnsafeBytes { raw in
             let values = raw.bindMemory(to: UInt16.self)
-            return (0..<image.height).flatMap { row in
-                Array(values[(row * image.bytesPerRow / 2)..<(row * image.bytesPerRow / 2 + image.width * 4)])
+            return (0..<image.height).flatMap { row -> [UInt16] in
+                let start: Int = row * image.bytesPerRow / 2
+                let end: Int = start + image.width * 4
+                return Array(values[start..<end])
             }
         }
     }

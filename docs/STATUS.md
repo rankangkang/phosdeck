@@ -26,7 +26,7 @@
 
 - **预览**：原一秒卡顿根因未证实（drawable 默认一秒超时只是候选，相关等待已移出主线程）；质量图计算完到发布仍有约 0.1 秒主线程等待。严格同条件前后对照、物理屏幕呈现、长时间拖动帧率、大 RAW 与 Release 实窗都未测。继续时先在无 AX 遍历干扰的交互区间做 CPU 与主线程等待采样。
 - **英文界面**：窄侧栏下 `Adjustments`、`White Balance`、色轮选项、复制／粘贴调整等被截断；色调分组显示 `TINT`、纹理分组显示 `PREFERENCES`，语义待复核；辅助功能文案有 `CollapseLeft Panel`、`1 stars` 一类拼接与单复数问题。
-- **原生 CI**：Xcode 26.6 在 `WorkspaceView.swift` 的 `editMode` 观察回调处发生类型推断超时，干净构建尚未完成，XCTest 未启动；按用户决定继续使用 Xcode 26.6 修复，保留失败检查。
+- **原生 CI**：Xcode 26.6 已可构建 App；测试目标在 `RasterEditingTests.swift` 与 `PointColorTests.swift` 的长表达式上发生类型推断超时，XCTest 尚未启动，继续修复。
 - **偶发测试失败**：`ComparisonTests.testAdjustmentReturnEndsEditingAndDoesNotReapplyAnUndoneValue` 多次在首次全量中失败、单跑通过，根因未定位；测试期间切换窗口可能影响焦点。
 - **模型资源复制测试**：`SmartMaskTests.testOptionalModelCapabilitiesAndPartialBundleCopies` 在全量和单跑中均因测试宿主沙箱拒绝 `ditto` 的 `.BC.T_*` 临时文件而失败，具体触发机制未定位；对应脚本与测试未改动，不能以跳过断言替代修复。
 - **临时签名**：hardened runtime 关闭；强制开启会因动态库 Team ID 不一致导致 XCTest 宿主无法启动。外置卷检出时测试宿主曾长时间停在 dyld `open`，原因未明。
