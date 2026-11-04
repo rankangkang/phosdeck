@@ -25,6 +25,19 @@ final class FoundationTests: XCTestCase {
         XCTAssertTrue(message.contains("Developer ID Application"), message)
     }
 
+    func testReleaseVerificationRejectsMismatchedVersion() throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [repository.appendingPathComponent("scripts/verify-release.sh").path,
+                             Bundle(for: AppDelegate.self).bundleURL.path, "999.0.0-alpha.1"]
+        let output = Pipe(); process.standardOutput = output; process.standardError = output
+        try process.run(); process.waitUntilExit()
+        let message = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertNotEqual(process.terminationStatus, 0)
+        XCTAssertTrue(message.contains("Release version does not match"), message)
+    }
+
     var folder: URL!
     override func setUpWithError() throws {
         folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

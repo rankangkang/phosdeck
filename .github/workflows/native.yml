@@ -1,0 +1,111 @@
+name: Check native app
+
+on:
+  pull_request:
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Packages/**'
+      - 'Config/**'
+      - 'Phosdeck.xcodeproj/**'
+      - 'project.yml'
+      - 'scripts/**'
+      - 'design/**'
+      - 'docs/references/**'
+      - 'LICENSE'
+      - '.github/workflows/native.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Packages/**'
+      - 'Config/**'
+      - 'Phosdeck.xcodeproj/**'
+      - 'project.yml'
+      - 'scripts/**'
+      - 'design/**'
+      - 'docs/references/**'
+      - 'LICENSE'
+      - '.github/workflows/native.yml'
+  workflow_dispatch:
+    inputs:
+      full_suite:
+        description: Run the full XCTest suite, including known failures and optional-resource tests
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          lfs: true
+      - name: Check toolchain and shell syntax
+        run: |
+          xcodebuild -version
+          sw_vers
+          zsh -n scripts/check.sh
+      - name: Build and run regression tests
+        env:
+          FULL_SUITE: ${{ inputs.full_suite || false }}
+        run: |
+          mkdir -p build
+          tests=()
+          if [[ "$FULL_SUITE" != true ]]; then
+            tests=(
+              -only-testing:PhosdeckTests/FoundationTests
+              -only-testing:PhosdeckTests/CatalogFileTests
+              -only-testing:PhosdeckTests/CatalogQueryTests
+              -only-testing:PhosdeckTests/ImportTests
+              -only-testing:PhosdeckTests/ExportNamingTests
+              -only-testing:PhosdeckTests/RecoveryTests
+              -only-testing:PhosdeckTests/LocalizationTests
+              -only-testing:PhosdeckTests/XMPPresetImportTests
+              -only-testing:PhosdeckTests/ExportTests/testFrozenExportRetryAndCollision
+              -only-testing:PhosdeckTests/ExportTests/testExportInterruptionsRecoverAndNeverOverwrite
+              -only-testing:PhosdeckTests/ExportTests/testLosslessFormatsPreserveDepthOrientationColorAndPrivacy
+              -only-testing:PhosdeckTests/ExportTests/testManifestIsReadableAndDoesNotContainBookmarks
+            )
+          fi
+          # Ad hoc XCTest hosts cannot load the bundled runtime with library validation enabled.
+          xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -configuration Debug \
+            -derivedDataPath build -destination 'platform=macOS,arch=arm64' \
+            -parallel-testing-enabled NO -resultBundlePath build/Tests.xcresult \
+            CODE_SIGN_IDENTITY=- ENABLE_HARDENED_RUNTIME=NO \
+            "${tests[@]}" test 2>&1 | tee build/xcodebuild-test.log
+      - name: Check calibration script paths with synthetic data
+        if: ${{ !cancelled() }}
+        run: python3 Tests/test_calibration_paths.py
+      - name: Summarize XCTest results
+        if: ${{ !cancelled() && hashFiles('build/Tests.xcresult/Info.plist') != '' }}
+        run: |
+          xcrun xcresulttool get test-results summary --path build/Tests.xcresult > build/test-summary.json
+          printf '```json\n' >> "$GITHUB_STEP_SUMMARY"
+          cat build/test-summary.json >> "$GITHUB_STEP_SUMMARY"
+          printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload test evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-test-results
+          path: |
+            build/Tests.xcresult
+            build/test-summary.json
+            build/xcodebuild-test.log
+          retention-days: 7

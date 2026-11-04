@@ -1,0 +1,51 @@
+name: Verify release package
+run-name: Verify release ${{ github.event.release.tag_name || inputs.tag }}
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to verify (for example v0.1.0-alpha.1)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out current verification rules
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: master
+      - name: Download the existing release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[a-z0-9]+(\.[a-z0-9]+)*$ ]]
+          version="${RELEASE_TAG#v}"
+          gh release download "$RELEASE_TAG" --dir build/release-check \
+            --pattern "Phosdeck-$version.zip" --pattern "Phosdeck-$version.sha256"
+      - name: Verify checksum, signature, notarization, architectures and contents
+        run: |
+          version="${RELEASE_TAG#v}"
+          cd build/release-check
+          shasum -a 256 --check "Phosdeck-$version.sha256"
+          ditto -x -k "Phosdeck-$version.zip" extracted
+          "$GITHUB_WORKSPACE/scripts/verify-release.sh" "$PWD/extracted/Phosdeck.app" "$version"
+          printf 'Verified `%s`: checksum, version, universal binary, Developer ID, notarization and bundle contents.\n' "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"

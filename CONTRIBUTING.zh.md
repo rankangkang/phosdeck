@@ -56,6 +56,17 @@ xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -derivedDataPath build -
 
 新增 Swift 文件时，要同步登记到 `Phosdeck.xcodeproj/project.pbxproj` 和 `project.yml`。新增依赖前核对许可和随包声明；仓库不引入 GPL 依赖。项目自身的许可及第三方声明见 [README 许可说明](README.zh.md#许可)。
 
+## 持续集成
+
+GitHub Actions 使用只读仓库权限执行以下检查；Pages 部署单独授予发布权限：
+
+- `Check repository`：PR、`master` 推送及手动运行时检查文档、差异空白、Python／Shell 语法和工作流语法。
+- `Check native app`：原生源码、测试、工程及相关资源变更时，用 macOS 26 和 Xcode 26.6 构建全部测试代码并运行选定的核心回归；Actions 手动运行时可勾选 `full_suite` 执行完整 XCTest。CI 的临时签名测试关闭 hardened runtime；正式发行签名不受此设置影响。
+- `Check website and deploy GitHub Pages`：相关 PR 和手动运行执行官网检查、构建及静态测试；自动部署条件见[官网开发](#官网开发)。
+- `Verify release package`：Release 发布后自动复核，也可手动输入已有标签（如 `v0.1.0-alpha.1`）。下载 ZIP 与 SHA-256 文件，检查版本、双架构、签名、公证票据、Gatekeeper 和随包内容；使用当前 `master` 上的验证规则。
+
+原生 CI 不下载 RAW 样片或研究模型；核心套件不等于完整覆盖，完整套件的已知失败与缺少资源造成的跳过须分别查看。XCTest 结果包、日志及统计保留 7 天。[已知问题](docs/STATUS.md#已知问题)中的焦点与沙箱复制失败仍需修复。`Tests/test_calibration_paths.py` 使用合成数据，单独在 macOS CI 执行。签名、公证、打包及 GitHub Release 发布继续在本地执行，CI 不持有 Apple 凭据，也不创建或修改 Release。
+
 ## 本地预发布准备（维护者）
 
 当前预发布标识为 `0.1.0-alpha.1`。macOS 的 `CFBundleShortVersionString` 使用纯数字 `0.1.0`，`CFBundleVersion` 为构建号 `1`；完整标识另存于 `PhosdeckReleaseVersion`，用于发行包名称。系统“关于”窗口显示数字版本和构建号。准备下一次分发时，在 `project.yml` 和 `Phosdeck.xcodeproj/project.pbxproj` 同步更新版本与递增的构建号；改变预发布阶段时，同时更新 `project.yml`、`Sources/App/Info.plist` 和版本回归测试中的标识。
@@ -101,7 +112,7 @@ xcrun stapler validate "$RELEASE_DIR/export/Phosdeck.app"
 ./scripts/package-release.sh "$RELEASE_DIR/export/Phosdeck.app"
 ```
 
-脚本要求带时间戳、启用 hardened runtime 的 Developer ID 签名及已附加的公证票据，检查 Gatekeeper、嵌套代码、沙箱权限、研究模型和随包声明，并在独立的 `build/releases/` 目录生成 ZIP、解包回读和 SHA-256。失败时保留中间文件，不覆盖既有包，也不会上传。实际分发前，还需在允许使用的素材和独立测试环境中验证从下载、安装、启动到导入／编辑／导出的流程，并核对公开分发所需的许可；本地检查或公证结果不等于用户验收。
+脚本要求带时间戳、启用 hardened runtime 的 Developer ID 签名及已附加的公证票据，通过 `scripts/verify-release.sh` 检查 Gatekeeper、嵌套代码、双架构、沙箱权限、研究模型和随包声明，并在独立的 `build/releases/` 目录生成 ZIP、解包回读和 SHA-256。失败时保留中间文件，不覆盖既有包，也不会上传。实际分发前，还需在允许使用的素材和独立测试环境中验证从下载、安装、启动到导入／编辑／导出的流程，并核对公开分发所需的许可；本地检查或公证结果不等于用户验收。
 
 ## 官网开发
 
@@ -124,7 +135,7 @@ python3 scripts/check-docs.py
 git diff --check
 ```
 
-实窗核对桌面与手机布局，覆盖中英双语和两种主题。推送至 `master` 或在 Actions 页面手动运行时，GitHub Actions 会构建并发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/zh/)。
+实窗核对桌面与手机布局，覆盖中英双语和两种主题。仅当推送到 `master` 且本次变更包含 `site/**` 时，GitHub Actions 才重新部署到 [GitHub Pages](https://rankangkang.github.io/phosdeck/zh/)。PR 和手动运行只做检查。官网引用 `design/` 的 Token 与字标；单独修改这些共享资源不会触发部署，会随下一次 `site/` 变更上线。
 
 网站构建使用 Astro、`@astrojs/check`（MIT）、TypeScript（Apache-2.0），以及 Astro 的可选图像工具 sharp（Apache-2.0）与 libvips（LGPL-3.0-or-later）；静态产物不包含这些构建工具或原生库，安装包保留各自的许可声明。
 

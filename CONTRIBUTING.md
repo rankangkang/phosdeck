@@ -56,6 +56,17 @@ Ordinary development does not require smart-mask weights. The research preparati
 
 Register new Swift files in both `Phosdeck.xcodeproj/project.pbxproj` and `project.yml`. Check licenses and bundled notices before adding dependencies; the repository does not accept GPL dependencies. See the [README license section](README.md#license) for the project's license and third-party notices.
 
+## Continuous integration
+
+GitHub Actions uses read-only repository permissions for checks, with separate deployment permissions for Pages:
+
+- `Check repository`: validates documentation, changed whitespace, Python/shell syntax, and workflow syntax on PRs, pushes to `master`, and manual runs.
+- `Check native app`: builds all test code and runs selected core regressions on macOS 26 with Xcode 26.6 when native code, tests, project files, or related resources change. Select `full_suite` in a manual run for the complete XCTest suite. Ad hoc CI tests disable hardened runtime; distribution signing retains it.
+- `Check website and deploy GitHub Pages`: checks, builds, and tests the website for relevant PRs and manual runs. See [website development](#website-development) for automatic deployment conditions.
+- `Verify release package`: runs after a Release is published, or manually with an existing tag such as `v0.1.0-alpha.1`. It downloads the ZIP and SHA-256 file and checks the version, universal binary, signature, notarization ticket, Gatekeeper, and bundle contents using the current verification rules on `master`.
+
+Native CI downloads no RAW samples or research models. Core tests are not full coverage; inspect known failures and skips caused by missing resources separately in full-suite results. XCTest result bundles, logs, and summaries are retained for seven days. The focus and sandbox-copy failures in [known issues (Chinese)](docs/STATUS.md#已知问题) still need fixes. `Tests/test_calibration_paths.py` runs separately on macOS using synthetic data. Signing, notarization, packaging, and GitHub Release publication remain local. CI holds no Apple credentials and creates or modifies no Releases.
+
 ## Local prerelease preparation (maintainers)
 
 The current prerelease identifier is `0.1.0-alpha.1`. macOS uses the numeric `CFBundleShortVersionString` `0.1.0` and build number `CFBundleVersion` `1`; the full identifier is stored separately as `PhosdeckReleaseVersion` and used in the package name. The system About window shows the numeric version and build. For the next distributed build, update the version and incrementing build number in both `project.yml` and `Phosdeck.xcodeproj/project.pbxproj`. When changing prerelease stage, also update the identifier in `project.yml`, `Sources/App/Info.plist`, and the version regression test.
@@ -101,7 +112,7 @@ Run this against the exported app:
 ./scripts/package-release.sh "$RELEASE_DIR/export/Phosdeck.app"
 ```
 
-The script requires a timestamped Developer ID signature, hardened runtime, and a stapled notarization ticket. It checks Gatekeeper, nested code, sandbox entitlements, research models, and bundled notices, then creates a ZIP in a separate `build/releases/` directory and verifies the extracted app and SHA-256. It retains intermediate files on failure, does not overwrite an existing package, and does not upload. Before distribution, also check downloading, installation, launch, import, editing, and export using permitted assets in a separate test environment, and review the licenses required for public distribution. Local checks or notarization do not constitute user acceptance.
+The script requires a timestamped Developer ID signature, hardened runtime, and a stapled notarization ticket. It uses `scripts/verify-release.sh` to check Gatekeeper, nested code, universal architectures, sandbox entitlements, research models, and bundled notices, then creates a ZIP in a separate `build/releases/` directory and verifies the extracted app and SHA-256. It retains intermediate files on failure, does not overwrite an existing package, and does not upload. Before distribution, also check downloading, installation, launch, import, editing, and export using permitted assets in a separate test environment, and review the licenses required for public distribution. Local checks or notarization do not constitute user acceptance.
 
 ## Website development
 
@@ -124,7 +135,7 @@ python3 scripts/check-docs.py
 git diff --check
 ```
 
-Check both languages and themes in desktop and mobile layouts. GitHub Actions builds and deploys the site to [GitHub Pages](https://rankangkang.github.io/phosdeck/) on pushes to `master` or when run manually from the Actions tab.
+Check both languages and themes in desktop and mobile layouts. GitHub Actions redeploys to [GitHub Pages](https://rankangkang.github.io/phosdeck/) only when a push to `master` includes changes under `site/**`. PRs and manual runs perform checks only. The site imports shared tokens and wordmarks from `design/`; changes confined to those resources go live with the next `site/` change.
 
 The site build uses Astro and `@astrojs/check` (MIT), TypeScript (Apache-2.0), and Astro's optional image tooling: sharp (Apache-2.0) with libvips (LGPL-3.0-or-later). The static output does not ship these build tools or native libraries; their installed packages retain their license notices.
 
