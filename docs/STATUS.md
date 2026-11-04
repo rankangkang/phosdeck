@@ -15,7 +15,7 @@
 
 - **模块命名**：中文“编辑”、英文 Develop，保留 D 快捷键。
 - **品牌外观**：圆角字标已接入石墨和米白主题，待固定体验 App 实窗确认。
-- **产品官网**：`site/` 中的 Astro 中英双语站点通过 `master` 的 GitHub Actions 工作流发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/)；默认石墨，支持米白，复用设计 Token 与合成图实机截图，线上效果待用户验收；开发命令见[贡献指南](../CONTRIBUTING.zh.md#官网开发)。
+- **产品官网**：`site/` 中的 Astro 中英双语站点通过 `master` 的 GitHub Actions 工作流发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/)；首屏链接 GitHub Releases，默认石墨并支持米白，线上效果待用户验收；开发命令见[贡献指南](../CONTRIBUTING.zh.md#官网开发)。
 - **预览性能**：中央布局定尺寸、Observation 细粒度观察、质量预览调度与局部刷新、画布显示等待移出主线程。遗留见下节。
 - **中英界面与社区语言包**：英文问题见下节。
 - **工作流**：最近一次导入跨重启（导航状态存本机偏好，不随备份或换机携带）、普通集合删除撤销（仅当前会话）。
@@ -29,7 +29,7 @@
 - **偶发测试失败**：`ComparisonTests.testAdjustmentReturnEndsEditingAndDoesNotReapplyAnUndoneValue` 多次在首次全量中失败、单跑通过，根因未定位；测试期间切换窗口可能影响焦点。
 - **模型资源复制测试**：`SmartMaskTests.testOptionalModelCapabilitiesAndPartialBundleCopies` 在全量和单跑中均因测试宿主沙箱拒绝 `ditto` 的 `.BC.T_*` 临时文件而失败，具体触发机制未定位；对应脚本与测试未改动，不能以跳过断言替代修复。
 - **临时签名**：hardened runtime 关闭；强制开启会因动态库 Team ID 不一致导致 XCTest 宿主无法启动。外置卷检出时测试宿主曾长时间停在 dyld `open`，原因未明。
-- **应用分发**：本机已配置 Developer ID Application 证书；`0.1.0-alpha.1` 已通过 Apple 公证并附票，本地 ZIP 的签名、票据和 `spctl` 评估已核验。独立环境中的下载、安装、启动与使用体验尚未验证。
+- **应用分发**：本机已配置 Developer ID Application 证书；[`0.1.0-alpha.1`](https://github.com/rankangkang/phosdeck/releases/tag/v0.1.0-alpha.1) 已作为预发布公开，签名、公证、票据、`spctl` 评估及下载 ZIP 已核验。独立环境中的安装、启动与使用体验尚未验证。
 - **智能蒙版模型**：FaceParsing 权重标注 MIT，训练数据条款对权重分发的适用性尚不明确；LiteRT 预编译包的完整依赖清单与正式模型安装／分发方案仍待核对，见 [模型说明](smart-mask-models.md)。
 - **普通图像曝光响应表**：按用户决定保留现有表、显影行为与对照资料。[Adobe 通用条款第 17 节](https://www.adobe.com/legal/terms.html)限制为重建软件而跟踪输入与输出；当前表由 Lightroom 输出拟合，具体合同与法律适用尚未判定。数值对照见[现行 TIFF 比较](references/lightroom-exposure-v4-comparisons.json)与[JPEG 分区表](references/lightroom-exposure-v4-jpeg-regions.csv)，来源资料和公开使用依据仍须核对。
 - **固定合成图库**：macOS 27 这台的合成图仅剩 `Workflow-3.jpg` 源文件，另 5 个源文件缺失，原因未确认；图库记录、配方及历史保留。恢复前不以其他图像替代或改写来源身份；7 张固定公开样片仍可体验智能蒙版。

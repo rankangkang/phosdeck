@@ -14,7 +14,6 @@ const { locale } = Astro.props;
 const t = copy[locale];
 const base = import.meta.env.BASE_URL;
 const readme = locale === 'zh' ? 'README.zh.md' : 'README.md';
-const guide = `${repository}/blob/master/${readme}#${locale === 'zh' ? '快速上手' : 'build-from-source'}`;
 const workspaceSizes = '(max-width: 480px) calc(100vw - 58px), (max-width: 800px) calc(100vw - 94px), (max-width: 1100px) calc(100vw - 114px), (max-width: 1240px) calc(100vw - 154px), 1086px';
 ---
 <Page locale={locale}>
@@ -41,9 +40,9 @@ const workspaceSizes = '(max-width: 480px) calc(100vw - 58px), (max-width: 800px
         <div class="hero-copy">
           <p class="hero-intro">{t.intro}</p>
           <div class="hero-actions">
-            <Key href={guide} primary target="_blank" rel="noopener noreferrer">{t.build}<Icon name="arrow" /></Key>
+            <Key href={`${repository}/releases`} primary target="_blank" rel="noopener noreferrer">{t.download}<Icon name="arrow" /></Key>
           </div>
-          <p class="preview-status"><span class="lamp lamp--on" aria-hidden="true"></span><span>{t.preview}<span class="status-divider" aria-hidden="true"> / </span><span class="preview-detail">{t.sourceAvailable}</span></span></p>
+          <p class="preview-status"><span class="lamp lamp--on" aria-hidden="true"></span><span>{t.preview}<span class="status-divider" aria-hidden="true"> / </span><span class="preview-detail">{t.downloadAvailable}</span></span></p>
         </div>
       </div>
       <div class="hero-footline silk">

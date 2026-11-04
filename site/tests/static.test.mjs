@@ -6,8 +6,8 @@ import { resolve } from 'node:path';
 const output = new URL('../dist/', import.meta.url);
 const tokens = JSON.parse(readFileSync(new URL('../../design/darkroom_instrument_tokens_v3.json', import.meta.url), 'utf8'));
 const pages = [
-  { file: 'index.html', language: 'en', title: 'A darkroom. Of your own.', canonical: 'https://rankangkang.github.io/phosdeck/' },
-  { file: 'zh/index.html', language: 'zh-CN', title: '你的照片， 你的暗房。', canonical: 'https://rankangkang.github.io/phosdeck/zh/' },
+  { file: 'index.html', language: 'en', title: 'A darkroom. Of your own.', canonical: 'https://rankangkang.github.io/phosdeck/', download: 'Download preview' },
+  { file: 'zh/index.html', language: 'zh-CN', title: '你的照片， 你的暗房。', canonical: 'https://rankangkang.github.io/phosdeck/zh/', download: '下载预览版' },
 ];
 
 for (const page of pages) {
@@ -24,7 +24,9 @@ for (const page of pages) {
     assert.match(html, /hreflang="x-default"/);
     assert.equal((html.match(/<article\b[^>]*\bdata-workflow-panel/g) ?? []).length, 3);
     assert.equal((html.match(/<details>/g) ?? []).length, 4);
-    assert.ok(html.includes('no installer yet') || html.includes('暂无安装包'));
+    const primary = html.match(/<a\b[^>]*class="[^"]*\bkey--primary\b[^"]*"[^>]*>[^<]*/)?.[0];
+    assert.ok(primary?.includes('href="https://github.com/rankangkang/phosdeck/releases"'));
+    assert.ok(primary?.endsWith(page.download));
     assert.ok(html.includes('synthetic test image') || html.includes('合成测试图'));
   });
 
