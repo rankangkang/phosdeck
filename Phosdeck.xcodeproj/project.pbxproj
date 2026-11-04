@@ -1082,6 +1082,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/App/Phosdeck.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				EXECUTABLE_NAME = Phosdeck;
@@ -1094,6 +1095,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MARKETING_VERSION = 0.1.0;
 				MTLLINKER_FLAGS = "-cikernel";
 				MTL_COMPILER_FLAGS = "-fcikernel";
 				PRODUCT_BUNDLE_IDENTIFIER = "dev.cmkk.oh-my-lrc";
@@ -1110,6 +1112,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/App/Phosdeck.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				EXECUTABLE_NAME = Phosdeck;
@@ -1122,6 +1125,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MARKETING_VERSION = 0.1.0;
 				MTLLINKER_FLAGS = "-cikernel";
 				MTL_COMPILER_FLAGS = "-fcikernel";
 				PRODUCT_BUNDLE_IDENTIFIER = "dev.cmkk.oh-my-lrc";

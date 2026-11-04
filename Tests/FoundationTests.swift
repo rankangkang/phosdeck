@@ -3,6 +3,28 @@ import GRDB
 @testable import Phosdeck
 
 final class FoundationTests: XCTestCase {
+    func testBuiltAppContainsReleaseVersion() throws {
+        let info = try XCTUnwrap(Bundle(for: AppDelegate.self).infoDictionary)
+        let version = try XCTUnwrap(info["CFBundleShortVersionString"] as? String)
+        let build = try XCTUnwrap(info["CFBundleVersion"] as? String)
+        XCTAssertNotNil(version.range(of: #"^\d+\.\d+\.\d+$"#, options: .regularExpression))
+        XCTAssertNotNil(build.range(of: #"^[1-9]\d*$"#, options: .regularExpression))
+        XCTAssertEqual(info["PhosdeckReleaseVersion"] as? String, "\(version)-alpha.\(build)")
+    }
+
+    func testReleasePackagingRejectsDevelopmentApp() throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [repository.appendingPathComponent("scripts/package-release.sh").path,
+                             Bundle(for: AppDelegate.self).bundleURL.path]
+        let output = Pipe(); process.standardOutput = output; process.standardError = output
+        try process.run(); process.waitUntilExit()
+        let message = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertNotEqual(process.terminationStatus, 0)
+        XCTAssertTrue(message.contains("Developer ID Application"), message)
+    }
+
     var folder: URL!
     override func setUpWithError() throws {
         folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

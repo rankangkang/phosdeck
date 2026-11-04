@@ -56,6 +56,33 @@ Ordinary development does not require smart-mask weights. The research preparati
 
 Register new Swift files in both `Phosdeck.xcodeproj/project.pbxproj` and `project.yml`. Check licenses and bundled notices before adding dependencies; the repository does not accept GPL dependencies. See the [README license section](README.md#license) for the project's license and third-party notices.
 
+## Local prerelease preparation (maintainers)
+
+The current prerelease identifier is `0.1.0-alpha.1`. macOS uses the numeric `CFBundleShortVersionString` `0.1.0` and build number `CFBundleVersion` `1`; the full identifier is stored separately as `PhosdeckReleaseVersion` and used in the package name. The system About window shows the numeric version and build. For the next distributed build, update the version and incrementing build number in both `project.yml` and `Phosdeck.xcodeproj/project.pbxproj`. When changing prerelease stage, also update the identifier in `project.yml`, `Sources/App/Info.plist`, and the version regression test.
+
+Run the applicable checks first and record failures and skips. Review the release notes, supported macOS versions and chips, catalog compatibility limits, [model contents and licensing (Chinese)](docs/smart-mask-models.md), and [known distribution issues (Chinese)](docs/STATUS.md). Release builds contain no research models. Signing and packaging do not replace installation and experience checks on a real Mac.
+
+With the Apple developer team that owns the Developer ID, prepare the `Developer ID Application` certificate and private key in Keychain or Xcode, and sign in to the corresponding Xcode account. Keep certificates, private keys, and credentials out of the repository. Run these commands from the repository root in the same terminal; the archive goes into a new local directory:
+
+```sh
+mkdir -p build
+RELEASE_DIR="$(mktemp -d "$PWD/build/release.XXXXXXXX")"
+xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -configuration Release \
+  -derivedDataPath build -destination 'generic/platform=macOS' \
+  -archivePath "$RELEASE_DIR/Phosdeck.xcarchive" archive
+open "$RELEASE_DIR/Phosdeck.xcarchive"
+```
+
+In Xcode Organizer, select the archive and choose **Distribute App → Developer ID / Direct Distribution → Upload**. Sign with the appropriate team and submit to Apple for notarization; this sends the app to Apple and does not create a public download. After notarization succeeds, export the app with its ticket to `$RELEASE_DIR/export/Phosdeck.app`. The project's default archive is ad hoc signed and has no team; exporting it with a real Developer ID has not yet been verified. If Xcode cannot select the team or sign the archive, resolve the archive signing configuration first. Do not distribute the ad hoc archive.
+
+Run this against the exported app:
+
+```sh
+./scripts/package-release.sh "$RELEASE_DIR/export/Phosdeck.app"
+```
+
+The script requires a timestamped Developer ID signature, hardened runtime, and a stapled notarization ticket. It checks Gatekeeper, nested code, sandbox entitlements, research models, and bundled notices, then creates a ZIP in a separate `build/releases/` directory and verifies the extracted app and SHA-256. It retains intermediate files on failure, does not overwrite an existing package, and does not upload. Before distribution, also check downloading, installation, launch, import, editing, and export using permitted assets in a separate test environment, and review the licenses required for public distribution. Local checks or notarization do not constitute user acceptance.
+
 ## Website development
 
 The bilingual Astro website reuses the app's design tokens and approved brand assets. Website development requires Node.js 22.23.4 or later and npm 9.6.5 or later; native app builds do not require either tool. Run from the repository root:

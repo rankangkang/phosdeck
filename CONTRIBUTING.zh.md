@@ -56,6 +56,33 @@ xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -derivedDataPath build -
 
 新增 Swift 文件时，要同步登记到 `Phosdeck.xcodeproj/project.pbxproj` 和 `project.yml`。新增依赖前核对许可和随包声明；仓库不引入 GPL 依赖。项目自身的许可及第三方声明见 [README 许可说明](README.zh.md#许可)。
 
+## 本地预发布准备（维护者）
+
+当前预发布标识为 `0.1.0-alpha.1`。macOS 的 `CFBundleShortVersionString` 使用纯数字 `0.1.0`，`CFBundleVersion` 为构建号 `1`；完整标识另存于 `PhosdeckReleaseVersion`，用于发行包名称。系统“关于”窗口显示数字版本和构建号。准备下一次分发时，在 `project.yml` 和 `Phosdeck.xcodeproj/project.pbxproj` 同步更新版本与递增的构建号；改变预发布阶段时，同时更新 `project.yml`、`Sources/App/Info.plist` 和版本回归测试中的标识。
+
+先运行适用的检查，记录失败和跳过；核对发布说明、支持的 macOS 与芯片、图库兼容限制、[模型内容及许可](docs/smart-mask-models.md)和[已知分发问题](docs/STATUS.md)。Release 不包含研究模型。打包和签名不会代替真实机器上的体验与安装验证。
+
+使用与 Developer ID 对应的 Apple 开发者团队，在钥匙串或 Xcode 中准备好 `Developer ID Application` 证书及私钥，并在 Xcode 登录对应账号。不要把证书、私钥或凭据放入仓库。以下命令在仓库根目录和同一个终端中运行，归档放入新的本地目录：
+
+```sh
+mkdir -p build
+RELEASE_DIR="$(mktemp -d "$PWD/build/release.XXXXXXXX")"
+xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -configuration Release \
+  -derivedDataPath build -destination 'generic/platform=macOS' \
+  -archivePath "$RELEASE_DIR/Phosdeck.xcarchive" archive
+open "$RELEASE_DIR/Phosdeck.xcarchive"
+```
+
+在 Xcode Organizer 选择归档，选择 **Distribute App → Developer ID / Direct Distribution → Upload**，使用对应团队签名并提交 Apple 公证；这是发送给 Apple 检查，不会创建公开下载。公证成功后再次导出带票据的 App，放在 `$RELEASE_DIR/export/Phosdeck.app`。项目默认归档为临时签名且不含团队信息；用真实 Developer ID 从该归档导出的路径尚未验证，若 Xcode 无法选择团队或签名，须先解决归档签名配置。不要把临时签名归档当作发行包。
+
+对导出的 App 运行：
+
+```sh
+./scripts/package-release.sh "$RELEASE_DIR/export/Phosdeck.app"
+```
+
+脚本要求带时间戳、启用 hardened runtime 的 Developer ID 签名及已附加的公证票据，检查 Gatekeeper、嵌套代码、沙箱权限、研究模型和随包声明，并在独立的 `build/releases/` 目录生成 ZIP、解包回读和 SHA-256。失败时保留中间文件，不覆盖既有包，也不会上传。实际分发前，还需在允许使用的素材和独立测试环境中验证从下载、安装、启动到导入／编辑／导出的流程，并核对公开分发所需的许可；本地检查或公证结果不等于用户验收。
+
 ## 官网开发
 
 中英双语的 Astro 官网复用 App 的设计 Token 和已确认的品牌资源。仅网站开发需要 Node.js 22.23.4 或更新版本、npm 9.6.5 或更新版本，原生 App 构建不依赖它们。在仓库根目录运行：

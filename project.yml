@@ -47,6 +47,9 @@ targets:
     info:
       path: Sources/App/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        PhosdeckReleaseVersion: $(MARKETING_VERSION)-alpha.$(CURRENT_PROJECT_VERSION)
         CFBundleDocumentTypes:
           - CFBundleTypeName: Phosdeck Catalog
             CFBundleTypeRole: Editor
@@ -72,6 +75,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.cmkk.oh-my-lrc
+        MARKETING_VERSION: '0.1.0'
+        CURRENT_PROJECT_VERSION: '1'
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_NAME: Phosdeck
         PRODUCT_MODULE_NAME: Phosdeck
