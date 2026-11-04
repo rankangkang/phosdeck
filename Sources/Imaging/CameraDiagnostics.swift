@@ -30,6 +30,13 @@ struct CameraDiagnosticReport: Codable {
         var compression: String = "unknown"
         var sensorBits: Int? = nil
         var checks: [CameraDiagnosticCheck] = []
+        /// A completed inspection is file-specific evidence; skipped measurements stay unverified.
+        var outcome: CameraDiagnosticCheck.Verdict {
+            if checks.contains(where: { $0.verdict == .failed }) { return .failed }
+            if checks.contains(where: { $0.verdict == .warning }) { return .warning }
+            if checks.contains(where: { $0.verdict == .passed }) { return .passed }
+            return .skipped
+        }
     }
     static func empty() -> Self {
         let bundle = Bundle.main
