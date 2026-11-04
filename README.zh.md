@@ -19,7 +19,7 @@
 
 Phosdeck 是 macOS 上的照片管理与非破坏性编辑工具，使用 SwiftUI、Core Image、Metal 和 GRDB。照片保存在本地，整理信息和编辑参数存入图库，编辑不会覆盖原片。
 
-项目目前处于开发预览阶段，通过源码构建使用。
+项目目前处于开发预览阶段，可下载[预发布版本](https://github.com/rankangkang/phosdeck/releases)或从源码构建。
 
 ## 界面
 
