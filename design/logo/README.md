@@ -10,7 +10,8 @@
 
 ## 文件与生成
 
-- `wordmark-original.svg` 是字标源文件；`wordmark-approved-<主题>.svg` 是 App 使用的主题资源，`logo-wordmark-<主题>.svg` 是同内容的导出。
+- `wordmark-original.svg` 是字标源文件；官网与原生 App 共用 `wordmark-approved-<主题>.svg`，`logo-wordmark-<主题>.svg` 是同内容的导出。
+- README 封面的内嵌字标位于 `docs/assets/readme/hero-<主题>.svg`，与对应主题资源保持一致。
 - `logo-icon-<主题>.svg` 是当前图标的独立导出；`final.svg`／`final.png` 展示当前图标和字标。
 - `Sources/App/AppIcon.icon` 是 App 的图标源文件，系统负责生成着色与透明外观。
 

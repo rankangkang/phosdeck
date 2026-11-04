@@ -7,15 +7,15 @@
 - 主线 `master`，仅维护原生 macOS（SwiftUI + Metal + GRDB）。
 - 目录 schema 13（`CatalogStore.schemaVersion`），旧版本目录直接拒绝。
 - 开发机有两台（M4 Pro／macOS 26.6.2，M4／macOS 27.0.1），各有一份固定体验 App 与 `UnratedReview.omlrcat`，内容不同，基线不能混用。macOS 27 这台的图库记录为 6 张合成图加 7 张固定公开样片，程序包含 SAM、Selfie 与仅限本地非商业研究的 FaceParsing。
-- 默认 Debug 用本机临时签名（用户选择“免证书直接构建，注明限制”）；固定体验 App 通过 `Config/LocalSigning.xcconfig` 使用开发证书和 hardened runtime。
+- 默认 Debug 用本机临时签名（用户选择“免证书直接构建，注明限制”）；固定体验 App 更新后使用有效开发证书重签，保留沙箱与 hardened runtime。
 
 ## 待用户验收
 
 以下内容已实现并完成工程检查，用户尚未体验确认：
 
 - **模块命名**：中文“编辑”、英文 Develop，保留 D 快捷键。
-- **品牌外观**：圆角字标已接入石墨和米白主题，待固定体验 App 实窗确认。
-- **产品官网**：`site/` 中的 Astro 中英双语站点仅在 `master` 推送包含 `site/` 变更时通过 GitHub Actions 发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/)；首屏链接 GitHub Releases，默认石墨并支持米白，线上效果待用户验收；开发命令见[贡献指南](../CONTRIBUTING.zh.md#官网开发)。
+- **品牌外观**：p 左竖边修补后的字标已同步官网、README、品牌总览与固定体验 App，石墨和米白实窗已核对，待用户确认。
+- **产品官网**：`site/` 中的 Astro 中英双语站点仅在 `master` 推送包含 `site/` 变更时通过 GitHub Actions 发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/)；默认石墨并支持米白，保留合成截图。首屏说明、工作流排版和下载区域已完成设计调整，线上效果待用户验收；开发命令见[贡献指南](../CONTRIBUTING.zh.md#官网开发)。
 - **预览性能**：中央布局定尺寸、Observation 细粒度观察、质量预览调度与局部刷新、画布显示等待移出主线程。遗留见下节。
 - **中英界面与社区语言包**：英文问题见下节。
 - **工作流**：最近一次导入跨重启（导航状态存本机偏好，不随备份或换机携带）、普通集合删除撤销（仅当前会话）。

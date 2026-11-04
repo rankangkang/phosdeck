@@ -414,6 +414,10 @@ extension FoundationTests {
             XCTAssertEqual(image.size, Wordmark.artworkSize)
             let bitmap = try XCTUnwrap(image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)))
             func alpha(_ x: Int, _ y: Int) -> CGFloat { bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0 }
+            // The p stem must stay solid along its straight left edge.
+            for y in 210...370 {
+                XCTAssertGreaterThan(alpha(0, y), 0.9, "p stem has a notch at row \(y)")
+            }
             // The e crossbar stays thicker while remaining separate from its left bowl.
             XCTAssertGreaterThan(alpha(1363, 176), 0.9)
             XCTAssertGreaterThan(alpha(1363, 223), 0.9)

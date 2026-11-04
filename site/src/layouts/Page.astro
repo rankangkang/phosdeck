@@ -3,6 +3,7 @@ import '../styles/site.css';
 import { copy, type Locale } from '../content';
 import { themeCSS } from '../design';
 import favicon from '../../../design/logo/logo-icon-graphite.svg?url';
+import socialImage from '../assets/workspace-graphite.jpg';
 
 interface Props { locale: Locale; }
 const { locale } = Astro.props;
@@ -30,6 +31,11 @@ const canonical = new URL(`${base}${locale === 'zh' ? 'zh/' : ''}`, Astro.site);
     <meta property="og:description" content={t.description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:locale" content={locale === 'zh' ? 'zh_CN' : 'en_US'} />
+    <meta property="og:image" content={new URL(socialImage.src, Astro.site)} />
+    <meta property="og:image:width" content={String(socialImage.width)} />
+    <meta property="og:image:height" content={String(socialImage.height)} />
+    <meta property="og:image:alt" content={t.screenshotAlt} />
+    <meta name="twitter:card" content="summary_large_image" />
     <script is:inline>
       try {
         if (localStorage.getItem('phosdeck.website.theme') === 'ivory') {

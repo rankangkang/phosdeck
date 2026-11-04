@@ -23,11 +23,38 @@ for (const page of pages) {
     assert.match(html, /hreflang="zh-CN"/);
     assert.match(html, /hreflang="x-default"/);
     assert.equal((html.match(/<article\b[^>]*\bdata-workflow-panel/g) ?? []).length, 3);
-    assert.equal((html.match(/<details>/g) ?? []).length, 4);
+    const questions = html.match(/<div class="questions">([\s\S]*?)<\/div>/)[1];
+    assert.equal((questions.match(/<details>/g) ?? []).length, 4);
     const primary = html.match(/<a\b[^>]*class="[^"]*\bkey--primary\b[^"]*"[^>]*>[^<]*/)?.[0];
     assert.ok(primary?.includes('href="https://github.com/rankangkang/phosdeck/releases"'));
     assert.ok(primary?.endsWith(page.download));
     assert.ok(html.includes('synthetic test image') || html.includes('合成测试图'));
+  });
+
+  test(`${page.language}: download is available before optional source-build instructions`, () => {
+    const downloads = [...html.matchAll(/<a\b[^>]*class="[^"]*\bkey--primary\b[^"]*"[^>]*>/g)];
+    assert.equal(downloads.length, 2);
+    for (const [link] of downloads) {
+      assert.ok(link.includes('href="https://github.com/rankangkang/phosdeck/releases"'));
+    }
+    const section = html.match(/<section id="get-started"[^>]*>([\s\S]*?)<\/section>/)[1];
+    const sourceBuild = section.match(/<details class="source-build">([\s\S]*?)<\/details>/)[1];
+    assert.ok(section.indexOf('/releases') < section.indexOf('<details'));
+    assert.match(sourceBuild, /<summary>/);
+    assert.match(sourceBuild, /Xcode 26\+/);
+    assert.match(sourceBuild, /data-build-commands/);
+    assert.ok(!section.slice(0, section.indexOf('<details')).includes('Xcode'));
+  });
+
+  test(`${page.language}: social preview uses an existing, deployable workspace image`, () => {
+    const image = new URL(html.match(/<meta property="og:image" content="([^"]+)"/)[1]);
+    assert.equal(image.origin, new URL(page.canonical).origin);
+    assert.ok(image.pathname.startsWith('/phosdeck/'));
+    assert.ok(existsSync(resolve(output.pathname, decodeURIComponent(image.pathname.slice('/phosdeck/'.length)))));
+    assert.match(html, /property="og:image:width" content="\d+"/);
+    assert.match(html, /property="og:image:height" content="\d+"/);
+    assert.match(html, /property="og:image:alt" content="[^"]+"/);
+    assert.match(html, /name="twitter:card" content="summary_large_image"/);
   });
 
   test(`${page.language}: anchors and all local assets resolve under the Pages base path`, () => {
