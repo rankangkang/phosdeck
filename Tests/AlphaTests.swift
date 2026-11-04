@@ -62,7 +62,11 @@ final class AlphaTests: XCTestCase {
         XCTAssertEqual(image.bitsPerComponent,16); XCTAssertEqual(image.alphaInfo,.last)
         return try XCTUnwrap(image.dataProvider?.data as Data?).withUnsafeBytes { raw in
             let values = raw.bindMemory(to:UInt16.self)
-            return (0..<image.height).flatMap { row in Array(values[(row*image.bytesPerRow/2)..<(row*image.bytesPerRow/2+image.width*4)]) }
+            return (0..<image.height).flatMap { row -> [UInt16] in
+                let start: Int = row * image.bytesPerRow / 2
+                let end: Int = start + image.width * 4
+                return Array(values[start..<end])
+            }
         }
     }
 
@@ -461,9 +465,12 @@ final class AlphaTests: XCTestCase {
                 var alpha = max(0,min(1,(140-distance)/26))
                 if x > 130 && x < 215 && y > 115 && y < 285 { alpha = 0.5 }
                 if x > 290 && x < 355 && y > 145 && y < 255 { alpha = 0 }
-                let red = Int((0.12+0.76*Double(x)/640)*Double(maximum))
-                let green = Int((0.15+0.7*Double(y)/400)*Double(maximum))
-                let blue = Int((0.82-0.56*Double(x)/640)*Double(maximum))
+                let redValue: Double = 0.12 + 0.76 * Double(x) / 640
+                let greenValue: Double = 0.15 + 0.7 * Double(y) / 400
+                let blueValue: Double = 0.82 - 0.56 * Double(x) / 640
+                let red = Int(redValue * Double(maximum))
+                let green = Int(greenValue * Double(maximum))
+                let blue = Int(blueValue * Double(maximum))
                 let values = alpha == 0 ? [maximum,0,maximum,0] : [red,green,blue,Int(alpha*Double(maximum))]
                 for value in values { if depth == 16 { raw.append(UInt8(value>>8)) }; raw.append(UInt8(value&255)) }
             } }

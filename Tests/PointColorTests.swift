@@ -275,7 +275,14 @@ extension PointColorTests {
         for (i,source) in sources.enumerated() {
             var recipe = try await pipeline.baseline(source)
             let reference = try await pipeline.pointColorReference(ImageRequest(photo:source.photo,root:source.root,recipe:recipe),longEdge:96)
-            let sample = try XCTUnwrap((0..<reference.height).lazy.flatMap { y in (0..<reference.width).map { x in CGPoint(x:(Double(x)+0.5)/Double(reference.width),y:(Double(y)+0.5)/Double(reference.height)) } }.compactMap { reference.sample(at:$0) }.first)
+            let positions = (0..<reference.height).lazy.flatMap { y -> [CGPoint] in
+                (0..<reference.width).map { x -> CGPoint in
+                    let px = (Double(x) + 0.5) / Double(reference.width)
+                    let py = (Double(y) + 0.5) / Double(reference.height)
+                    return CGPoint(x: px, y: py)
+                }
+            }
+            let sample = try XCTUnwrap(positions.compactMap { reference.sample(at: $0) }.first)
             recipe.develop.pointColors = [sample]; recipe.develop.pointColors[0].luminanceShift = 35; recipe.develop.pointColors[0].variance = -40
             let request = ImageRequest(photo:source.photo,root:source.root,recipe:recipe)
             let quality = try await pipeline.render(request,longEdge:64,pixelFormat:.RGBA16)
