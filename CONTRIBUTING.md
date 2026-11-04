@@ -70,10 +70,30 @@ RELEASE_DIR="$(mktemp -d "$PWD/build/release.XXXXXXXX")"
 xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -configuration Release \
   -derivedDataPath build -destination 'generic/platform=macOS' \
   -archivePath "$RELEASE_DIR/Phosdeck.xcarchive" archive
-open "$RELEASE_DIR/Phosdeck.xcarchive"
 ```
 
-In Xcode Organizer, select the archive and choose **Distribute App → Developer ID / Direct Distribution → Upload**. Sign with the appropriate team and submit to Apple for notarization; this sends the app to Apple and does not create a public download. After notarization succeeds, export the app with its ticket to `$RELEASE_DIR/export/Phosdeck.app`. The project's default archive is ad hoc signed and has no team; exporting it with a real Developer ID has not yet been verified. If Xcode cannot select the team or sign the archive, resolve the archive signing configuration first. Do not distribute the ad hoc archive.
+The archive uses ad hoc signing. Set `TEAM_ID` to the ten-character ID of the team that owns the certificate, then export a Developer ID-signed app without changing the project or signing its dependencies with a global build setting:
+
+```sh
+TEAM_ID="YOUR_TEAM_ID"
+plutil -create xml1 "$RELEASE_DIR/ExportOptions.plist"
+plutil -insert method -string developer-id "$RELEASE_DIR/ExportOptions.plist"
+plutil -insert destination -string export "$RELEASE_DIR/ExportOptions.plist"
+plutil -insert signingStyle -string manual "$RELEASE_DIR/ExportOptions.plist"
+plutil -insert signingCertificate -string 'Developer ID Application' "$RELEASE_DIR/ExportOptions.plist"
+plutil -insert teamID -string "$TEAM_ID" "$RELEASE_DIR/ExportOptions.plist"
+xcodebuild -exportArchive -archivePath "$RELEASE_DIR/Phosdeck.xcarchive" \
+  -exportPath "$RELEASE_DIR/export" -exportOptionsPlist "$RELEASE_DIR/ExportOptions.plist"
+```
+
+For notarization, prepare a Keychain profile with `xcrun notarytool store-credentials PhosdeckNotary` and follow its interactive prompts; never put credentials in the repository or command history. Submit the signed app to Apple as follows. This uploads the binary to Apple but does not create a public download. Continue only if the submission status is `Accepted`:
+
+```sh
+ditto -c -k --sequesterRsrc --keepParent "$RELEASE_DIR/export/Phosdeck.app" "$RELEASE_DIR/notary.zip"
+xcrun notarytool submit "$RELEASE_DIR/notary.zip" --keychain-profile PhosdeckNotary --wait
+xcrun stapler staple "$RELEASE_DIR/export/Phosdeck.app"
+xcrun stapler validate "$RELEASE_DIR/export/Phosdeck.app"
+```
 
 Run this against the exported app:
 

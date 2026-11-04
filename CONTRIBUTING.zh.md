@@ -70,10 +70,30 @@ RELEASE_DIR="$(mktemp -d "$PWD/build/release.XXXXXXXX")"
 xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -configuration Release \
   -derivedDataPath build -destination 'generic/platform=macOS' \
   -archivePath "$RELEASE_DIR/Phosdeck.xcarchive" archive
-open "$RELEASE_DIR/Phosdeck.xcarchive"
 ```
 
-在 Xcode Organizer 选择归档，选择 **Distribute App → Developer ID / Direct Distribution → Upload**，使用对应团队签名并提交 Apple 公证；这是发送给 Apple 检查，不会创建公开下载。公证成功后再次导出带票据的 App，放在 `$RELEASE_DIR/export/Phosdeck.app`。项目默认归档为临时签名且不含团队信息；用真实 Developer ID 从该归档导出的路径尚未验证，若 Xcode 无法选择团队或签名，须先解决归档签名配置。不要把临时签名归档当作发行包。
+归档使用临时签名。将 `TEAM_ID` 改成证书所属团队的十位 ID，再导出 Developer ID 签名的 App；无需更改工程或通过全局构建设置为依赖签名：
+
+```sh
+TEAM_ID="YOUR_TEAM_ID"
+plutil -create xml1 "$RELEASE_DIR/ExportOptions.plist"
+plutil -insert method -string developer-id "$RELEASE_DIR/ExportOptions.plist"
+plutil -insert destination -string export "$RELEASE_DIR/ExportOptions.plist"
+plutil -insert signingStyle -string manual "$RELEASE_DIR/ExportOptions.plist"
+plutil -insert signingCertificate -string 'Developer ID Application' "$RELEASE_DIR/ExportOptions.plist"
+plutil -insert teamID -string "$TEAM_ID" "$RELEASE_DIR/ExportOptions.plist"
+xcodebuild -exportArchive -archivePath "$RELEASE_DIR/Phosdeck.xcarchive" \
+  -exportPath "$RELEASE_DIR/export" -exportOptionsPlist "$RELEASE_DIR/ExportOptions.plist"
+```
+
+公证前运行 `xcrun notarytool store-credentials PhosdeckNotary`，按交互提示将凭据存入钥匙串；不要把凭据写入仓库或命令历史。以下操作会把已签名的应用二进制提交给 Apple 检查，不会创建公开下载。确认提交状态为 `Accepted` 后再继续：
+
+```sh
+ditto -c -k --sequesterRsrc --keepParent "$RELEASE_DIR/export/Phosdeck.app" "$RELEASE_DIR/notary.zip"
+xcrun notarytool submit "$RELEASE_DIR/notary.zip" --keychain-profile PhosdeckNotary --wait
+xcrun stapler staple "$RELEASE_DIR/export/Phosdeck.app"
+xcrun stapler validate "$RELEASE_DIR/export/Phosdeck.app"
+```
 
 对导出的 App 运行：
 

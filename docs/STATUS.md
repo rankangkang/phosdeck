@@ -29,7 +29,7 @@
 - **偶发测试失败**：`ComparisonTests.testAdjustmentReturnEndsEditingAndDoesNotReapplyAnUndoneValue` 多次在首次全量中失败、单跑通过，根因未定位；测试期间切换窗口可能影响焦点。
 - **模型资源复制测试**：`SmartMaskTests.testOptionalModelCapabilitiesAndPartialBundleCopies` 在全量和单跑中均因测试宿主沙箱拒绝 `ditto` 的 `.BC.T_*` 临时文件而失败，具体触发机制未定位；对应脚本与测试未改动，不能以跳过断言替代修复。
 - **临时签名**：hardened runtime 关闭；强制开启会因动态库 Team ID 不一致导致 XCTest 宿主无法启动。外置卷检出时测试宿主曾长时间停在 dyld `open`，原因未明。
-- **发行签名**：本机尚无 Developer ID Application 证书；已在登录钥匙串生成申请私钥，CSR 暂存于 `build/local-release-prep.maDPDy1M/`，Safari 选择该文件时“上传”按钮灰显，尚未提交 Apple。Release 临时签名归档可创建，但未验证正式签名导出；开发证书按名称未找到匹配的 Mac Development 证书，按指纹全局指定又与 GRDB_GRDB 自动签名冲突，尚未解决。
+- **应用分发**：本机已配置 Developer ID Application 证书，Release 临时签名归档已能导出正式签名的 App；Apple 公证、附票、Gatekeeper 和最终打包流程尚待实证，下载安装体验也未验证。
 - **智能蒙版模型**：FaceParsing 权重标注 MIT，训练数据条款对权重分发的适用性尚不明确；LiteRT 预编译包的完整依赖清单与正式模型安装／分发方案仍待核对，见 [模型说明](smart-mask-models.md)。
 - **普通图像曝光响应表**：按用户决定保留现有表、显影行为与对照资料。[Adobe 通用条款第 17 节](https://www.adobe.com/legal/terms.html)限制为重建软件而跟踪输入与输出；当前表由 Lightroom 输出拟合，具体合同与法律适用尚未判定。数值对照见[现行 TIFF 比较](references/lightroom-exposure-v4-comparisons.json)与[JPEG 分区表](references/lightroom-exposure-v4-jpeg-regions.csv)，来源资料和公开使用依据仍须核对。
 - **固定合成图库**：macOS 27 这台的合成图仅剩 `Workflow-3.jpg` 源文件，另 5 个源文件缺失，原因未确认；图库记录、配方及历史保留。恢复前不以其他图像替代或改写来源身份；7 张固定公开样片仍可体验智能蒙版。
@@ -42,4 +42,4 @@
 - 模型分发：确认训练数据条款对现有 FaceParsing 权重的适用性，或更换授权依据清晰的权重；补齐运行时依赖声明并确定安装方式。
 - 修正英文界面截断与文案。
 - 工作流：相对批量曝光补测、快照创建撤销、集合组；内容感知填补、外部编辑往返、物理文件管理为后续大项。
-- 应用分发：准备 Developer ID Application 后验证归档签名、公证与下载安装，核对发行说明和随包许可；用户尚未同意公开发布。
+- 应用分发：验证公证与下载安装，核对发行说明和随包许可；用户尚未同意公开发布。
