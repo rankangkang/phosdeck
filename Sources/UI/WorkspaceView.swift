@@ -59,7 +59,8 @@ struct WorkspaceView: View {
         smartDraft != nil || versionRename || collectionDialog || snapshotDialog || pasteDialog || presetRenameDialog || reports
     }
     var body: some View { presentations(workspace) }
-    private var workspace: some View {
+    // Bound each expression for Xcode 26.6 without adding an Observation boundary.
+    private var workspaceLayout: some View {
         GeometryReader { geometry in
         let showMasks = model.editMode && model.maskMode
         let maskDockWidth: CGFloat = showMasks ? (maskListExpanded ? 266 : 26) : 0
@@ -101,6 +102,9 @@ struct WorkspaceView: View {
             WorkspaceRegion { statusBar }
         }
         }
+    }
+    private var observedWorkspace: some View {
+        workspaceLayout
         .ignoresSafeArea(.container, edges: .top)
         .navigationTitle("\(model.catalogName) — Phosdeck")
         .onChange(of: utilityOpen) {
@@ -135,6 +139,9 @@ struct WorkspaceView: View {
             if !model.editMode && model.cropMode { model.cropMode = false; model.requestPreview() }
             model.persistWorkspace()
         }
+    }
+    private var workspace: some View {
+        observedWorkspace
         .font(.body13).foregroundStyle(Theme.text).buttonStyle(.borderless).controlSize(.small)
         .tint(Theme.accentSignal)
         .background(InstrumentPlate()).preferredColorScheme(chromeTheme.colorScheme)
