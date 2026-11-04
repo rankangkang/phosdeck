@@ -77,6 +77,7 @@ jobs:
               -only-testing:PhosdeckTests/RecoveryTests
               -only-testing:PhosdeckTests/LocalizationTests
               -only-testing:PhosdeckTests/XMPPresetImportTests
+              -only-testing:PhosdeckTests/SpotRepairTests/testCoverageWeightedBilinearSamplingIgnoresTransparentColors
               -only-testing:PhosdeckTests/ExportTests/testFrozenExportRetryAndCollision
               -only-testing:PhosdeckTests/ExportTests/testExportInterruptionsRecoverAndNeverOverwrite
               -only-testing:PhosdeckTests/ExportTests/testLosslessFormatsPreserveDepthOrientationColorAndPrivacy
@@ -96,9 +97,11 @@ jobs:
         if: ${{ !cancelled() && hashFiles('build/Tests.xcresult/Info.plist') != '' }}
         run: |
           xcrun xcresulttool get test-results summary --path build/Tests.xcresult > build/test-summary.json
-          printf '```json\n' >> "$GITHUB_STEP_SUMMARY"
-          cat build/test-summary.json >> "$GITHUB_STEP_SUMMARY"
-          printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          {
+            printf '```json\n'
+            cat build/test-summary.json
+            printf '\n```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload test evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

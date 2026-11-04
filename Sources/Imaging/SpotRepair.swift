@@ -75,7 +75,12 @@ struct SpotBuffer: Sendable, Equatable {
             let aa = coverage(x0,y0), ab = coverage(x0+1,y0), ac = coverage(x0,y0+1), ad = coverage(x0+1,y0+1)
             let mass = sampleCoverage(x,y)
             guard mass > 0 else { return .zero }
-            return (a*aa*(1-tx)*(1-ty) + b*ab*tx*(1-ty) + c*ac*(1-tx)*ty + d*ad*tx*ty) / mass
+            let weightedA: SIMD3<Float> = a * aa * (1 - tx) * (1 - ty)
+            let weightedB: SIMD3<Float> = b * ab * tx * (1 - ty)
+            let weightedC: SIMD3<Float> = c * ac * (1 - tx) * ty
+            let weightedD: SIMD3<Float> = d * ad * tx * ty
+            let weighted: SIMD3<Float> = weightedA + weightedB + weightedC + weightedD
+            return weighted / mass
         }
         return a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty
     }

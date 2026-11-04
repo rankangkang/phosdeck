@@ -27,6 +27,22 @@ final class SpotRepairTests: XCTestCase {
         return data[0]
     }
 
+    func testCoverageWeightedBilinearSamplingIgnoresTransparentColors() {
+        let image = SpotBuffer(width: 2, height: 2,
+            pixels: [SIMD3(1, 0, 0), SIMD3(0, 1, 0), SIMD3(0, 0, 1), SIMD3(repeating: 9)],
+            alpha: [1, 0.5, 0.25, 0])
+        let sampled = image.sample(0.25, 0.5)
+        XCTAssertEqual(sampled.x, 12.0 / 17.0, accuracy: 1e-6)
+        XCTAssertEqual(sampled.y, 2.0 / 17.0, accuracy: 1e-6)
+        XCTAssertEqual(sampled.z, 3.0 / 17.0, accuracy: 1e-6)
+        XCTAssertEqual(image.sample(1, 1), .zero)
+        var opaque = image
+        opaque.alpha = nil
+        var covered = opaque
+        covered.alpha = [1, 1, 1, 1]
+        XCTAssertEqual(covered.sample(0.25, 0.5), opaque.sample(0.25, 0.5))
+    }
+
     func testBitmapKeepsBottomLeft() throws {
         let red = CIImage(color: CIColor(red: 1, green: 0, blue: 0, alpha: 1, colorSpace: linear)!).cropped(to: CGRect(x: 0, y: 0, width: 1, height: 1))
         let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 1, colorSpace: linear)!).cropped(to: CGRect(x: 0, y: 0, width: 4, height: 4))

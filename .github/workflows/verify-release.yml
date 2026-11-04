@@ -48,4 +48,4 @@ jobs:
           shasum -a 256 --check "Phosdeck-$version.sha256"
           ditto -x -k "Phosdeck-$version.zip" extracted
           "$GITHUB_WORKSPACE/scripts/verify-release.sh" "$PWD/extracted/Phosdeck.app" "$version"
-          printf 'Verified `%s`: checksum, version, universal binary, Developer ID, notarization and bundle contents.\n' "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Verified %s: checksum, version, universal binary, Developer ID, notarization and bundle contents.\n' "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
