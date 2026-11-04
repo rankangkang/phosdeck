@@ -103,7 +103,7 @@ struct WorkspaceView: View {
         }
         }
     }
-    private var observedWorkspace: some View {
+    private var previewObservedWorkspace: some View {
         workspaceLayout
         .ignoresSafeArea(.container, edges: .top)
         .navigationTitle("\(model.catalogName) — Phosdeck")
@@ -121,6 +121,9 @@ struct WorkspaceView: View {
             model.adjustmentRequest = nil
             openAdjustments(action)
         }
+    }
+    private var observedWorkspace: some View {
+        previewObservedWorkspace
         .onChange(of: model.search) { model.filterCriteriaChanged() }
         .onChange(of: model.ratingComparison) { model.filterCriteriaChanged() }
         .onChange(of: model.ratingThreshold) { model.filterCriteriaChanged() }
