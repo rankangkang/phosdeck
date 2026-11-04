@@ -239,6 +239,7 @@ struct WorkspaceCommands: Commands {
             Divider()
         }
         CommandGroup(replacing: .help) {
+            Button(L10n.text("camera.title", defaultValue: "Camera Compatibility…")) { openWindow(id: "main"); model.showCameraDiagnostics = true }.disabled(model.presentingSheet)
             Button(L10n.text("app.keyboardShortcuts", defaultValue: "Keyboard Shortcuts…")) { model.settingsPane = .shortcuts; openSettings() }.disabled(model.presentingSheet)
         }
     }

@@ -40,7 +40,8 @@ Themes affect the interface only. They do not change photo pixels or exported im
 | Photo organization | Import in place or copy files; ratings, flags, color labels, keywords, regular and smart collections, virtual copies, stacks, and RAW/JPEG pairing |
 | Global adjustments | Exposure, white balance, point curves, HSL, B&W mixing, point color, sharpening, noise reduction, grain, and vignette; presets, history, and snapshots |
 | Local adjustments | Brushes, linear and radial gradients, color and luminance range masks, person selection, and spot repair |
-| Geometry | Crop, straighten, flip, and manual perspective correction |
+| Geometry | Crop, line-based straightening, flip, and guided or automatic perspective correction |
+| Camera checks | Local RAW decoding and pipeline consistency checks with JSON reports |
 | Export | JPEG, PNG, and 16-bit TIFF; naming templates, export presets, multiple output specifications, and optional metadata; existing files are never overwritten |
 
 Lightroom XMP preset import supports an approximate conversion of selected global parameters. Results may differ from Lightroom. Lightroom catalogs cannot be opened directly.
@@ -136,6 +137,7 @@ Phosdeck draws on Lightroom Classic's workflow and uses algorithms and implement
 |---|---|
 | [Adobe Lightroom Classic](https://www.adobe.com/products/photoshop-lightroom-classic.html) | Workflow reference for photo organization, culling, developing, local adjustments, and batch export. The exposure response tables for raster images use Lightroom output from synthetic images as reference; the basis for public use still needs review. See [known issues (Chinese)](docs/STATUS.md#已知问题). |
 | [Lightcraft](https://github.com/storytold/lightcraft) | Feature and interaction reference. Selected algorithms and implementations, including preset strength, masks, vignette, grain, point color, and stacks, were ported or adapted to Swift/Metal under MIT. |
+| [Redlamp](https://github.com/pdcgomes/redlamp) | Line detection adapted under MPL-2.0; line constraints, conservative geometry fallback and camera-evidence organization inform native implementations. |
 | [PhotoCraft](https://github.com/storytold/photocraft) | Source of the test-only PatchMatch prototype through Lightcraft, adapted under MIT. The prototype is not part of the app's current repair pipeline. |
 | [Oklab — Björn Ottosson](https://bottosson.github.io/posts/oklab/) | Conversion matrices and reference implementation for perceptual color processing, with MIT attribution retained. |
 
@@ -146,6 +148,7 @@ The [third-party attribution and license notice](docs/references/lightcraft-LICE
 Project code is licensed under [AGPL-3.0-only](LICENSE). Third-party code, dependencies, and resources retain their own licenses. Notices include:
 
 - [Lightcraft/PhotoCraft attribution and MIT license](docs/references/lightcraft-LICENSE.txt).
+- [Redlamp attribution and MPL-2.0 license](docs/references/redlamp-LICENSE.txt).
 - [Oklab attribution and MIT license](docs/references/oklab-LICENSE.txt).
 - [GRDB MIT license](docs/references/grdb-LICENSE.txt).
 - [SmartMaskRuntime/LiteRT Apache-2.0 license](Packages/SmartMaskRuntime/LICENSE) and [pinned runtime dependency notices](docs/references/litert-NOTICES.txt).

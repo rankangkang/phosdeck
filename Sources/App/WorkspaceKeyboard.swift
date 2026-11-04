@@ -74,6 +74,9 @@ final class WorkspaceKeyboard {
             if key == "y" { model.toggleBeforeAfter(event.modifierFlags.contains(.shift) ? .split : .sideBySide); return nil }
             if key == "j" { model.showClipping.toggle(); return nil }
         }
+        if model.editMode, model.perspectiveGuideTool != nil, [53, 36, 76].contains(event.keyCode) {
+            model.finishPerspectiveGuides(); return nil
+        }
         if model.editMode, event.keyCode == 53, model.whiteBalanceSampling { model.cancelWhiteBalanceSampling(); return nil }
         // Delete belongs to the active local tool, even when nothing is selected.
         if model.editMode, modifiers.isEmpty, event.keyCode == 51 || event.keyCode == 117 {

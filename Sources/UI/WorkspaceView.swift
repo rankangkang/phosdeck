@@ -239,6 +239,7 @@ struct WorkspaceView: View {
         }
         .sheet(isPresented: $model.showOutputRecovery) { ExportRecoverySheet(model: model) }
         .sheet(isPresented: $model.showCopyRecovery) { ImportRecoverySheet(model: model) }
+        .sheet(isPresented: $model.showCameraDiagnostics) { CameraDiagnosticsView() }
         .sheet(isPresented: $model.showNewCatalog) { NewCatalogSheet(model: model) }
         .sheet(item: $model.importConflict) { conflict in
             ImportConflictSheet(model: model, conflict: conflict).id(conflict.id).interactiveDismissDisabled()

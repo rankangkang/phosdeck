@@ -44,6 +44,8 @@ targets:
         buildPhase: resources
       - path: docs/references/lightcraft-LICENSE.txt
         buildPhase: resources
+      - path: docs/references/redlamp-LICENSE.txt
+        buildPhase: resources
     info:
       path: Sources/App/Info.plist
       properties:

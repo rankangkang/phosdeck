@@ -153,8 +153,25 @@ final class AppModel {
     var pageOffset = 0
     var activePhoto: Photo?
     var folders: [String: [FolderNode]] = [:]
-    var cropMode = false { didSet { if cropMode { cancelWhiteBalanceSampling(); cancelPointColorTools(); maskMode = false; spotMode = false; fillView = false; fullResolution = false; beforeAfter = .off; cancelZoneSampling() } } }
+    var cropMode = false { didSet { if !cropMode { finishPerspectiveGuides() }; if cropMode { cancelWhiteBalanceSampling(); cancelPointColorTools(); maskMode = false; spotMode = false; fillView = false; fullResolution = false; beforeAfter = .off; cancelZoneSampling() } } }
     var cropGuide = CropGuide.thirds
+    var perspectiveGuideTool: PerspectiveGuideTool?
+    var perspectiveGuides: [PerspectiveLine] = []
+    var perspectiveGuideBase: EditRecipe?
+    var perspectiveMessage = ""
+    var uprightAnalyzing = false
+    var uprightGeneration = UUID()
+    @ObservationIgnored var uprightTask: Task<Void, Never>?
+    @ObservationIgnored var applyingPerspective = false
+    @ObservationIgnored var detectPerspectiveLines: @Sendable (ImageRequest) async throws -> [PerspectiveLine] = { request in
+        let worker = Task.detached(priority: .userInitiated) {
+            let input = try await ImagePipeline().smartMaskInput(request, longEdge: 1024)
+            try Task.checkCancellation()
+            return try UprightLineDetector.lines(in: input.image)
+        }
+        return try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+    }
+    var showCameraDiagnostics = false
     var maskMode = false { didSet { if maskMode { cancelWhiteBalanceSampling(); cancelPointColorTools(); spotMode = false; beforeAfter = .off; cancelZoneSampling() } else if oldValue { endMaskEffectPreview(); cancelSmartMask() } } }
     var spotMode = false {
         didSet {
@@ -262,7 +279,7 @@ final class AppModel {
     var recentKeywords: [String] = []
     private var recentKeywordCatalog: String?
     var keywordFilter = "" { didSet { if keywordFilter != oldValue { prepareFilterSection(.metadata) } } }
-    var activeID: String? { didSet { if activeID != oldValue { cancelSmartMask(); cancelPointColorTools(); selectedPointColorID = nil; cancelSpotSourceRefresh(); rememberViewPosition(leaving: oldValue); cancelWhiteBalanceSampling(); cancelZoneSampling(); selectedZone = nil; sampledZoneEV = nil } } }
+    var activeID: String? { didSet { if activeID != oldValue { finishPerspectiveGuides(); perspectiveMessage = ""; cancelSmartMask(); cancelPointColorTools(); selectedPointColorID = nil; cancelSpotSourceRefresh(); rememberViewPosition(leaving: oldValue); cancelWhiteBalanceSampling(); cancelZoneSampling(); selectedZone = nil; sampledZoneEV = nil } } }
     var scope = "all"
     var search = "" { didSet { if search != oldValue { prepareFilterSection(.text) } } }
     var ratingComparison = RatingComparison.atLeast { didSet { if ratingComparison != oldValue { prepareFilterSection(.attribute) } } }
@@ -348,8 +365,15 @@ final class AppModel {
     var recipe: EditRecipe? {
         didSet {
             hasRecipe = recipe != nil
+            let changed = oldValue != recipe
+            if changed, uprightAnalyzing { cancelUprightAnalysis() }
+            if perspectiveGuideTool != nil, !applyingPerspective {
+                if let previous = oldValue, let current = recipe {
+                    if !previous.hasSameGeometry(as: current) { finishPerspectiveGuides() }
+                } else { finishPerspectiveGuides() }
+            }
             if let session = smartMaskSession, recipe.map({ !session.acceptsRecipe($0) }) ?? true { cancelSmartMask() }
-            if oldValue != recipe { cancelSpotSourceRefresh(); cancelWhiteBalanceSampling(keepTool: true); endAdjustmentPreview(redraw: false); cancelZoneSampling(); refreshPointColorTools() }
+            if changed { cancelSpotSourceRefresh(); cancelWhiteBalanceSampling(keepTool: true); endAdjustmentPreview(redraw: false); cancelZoneSampling(); refreshPointColorTools() }
             if oldValue?.quarterTurns != recipe?.quarterTurns || oldValue?.straightenDegrees != recipe?.straightenDegrees ||
                 oldValue?.crop != recipe?.crop || oldValue?.flipHorizontal != recipe?.flipHorizontal || oldValue?.flipVertical != recipe?.flipVertical ||
                 oldValue?.perspective != recipe?.perspective || oldValue?.rawDetails.lensCorrection != recipe?.rawDetails.lensCorrection {
@@ -428,7 +452,7 @@ final class AppModel {
     var catalog: CatalogStore?
     var catalogName: String { catalog?.fileURL.deletingPathExtension().lastPathComponent ?? L10n.text("app.noCatalogOpen", defaultValue: "No catalog open") }
     /// Menu-bar commands stay reachable while a sheet is up, so they must not stack a second sheet.
-    var presentingSheet: Bool { showImport || showXMPPresetImport || showExport || showNewCatalog || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
+    var presentingSheet: Bool { showCameraDiagnostics || showImport || showXMPPresetImport || showExport || showNewCatalog || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
     var canSwitchCatalog: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var workspaceAvailable: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var canLocateOriginal: Bool { catalog != nil && active != nil && workspaceAvailable && comparison == nil && survey == nil }

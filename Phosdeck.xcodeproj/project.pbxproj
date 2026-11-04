@@ -7,6 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4C0B38C57003462C59396DE9 /* redlamp-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 21F5D7CEC50F9DD8E6F09743 /* redlamp-LICENSE.txt */; };
+		A6A6287BB2B6932AFDE35052 /* CameraDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14EC3A28953F72C09F416976 /* CameraDiagnosticsTests.swift */; };
+		7210A8A29658FD0074AAEBCB /* UprightTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A715E6F6E099A51F9F2FE8 /* UprightTests.swift */; };
+		B3C9E17B4A01206F174B01CC /* CameraDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8564E1CB8872537018DA81C /* CameraDiagnosticsView.swift */; };
+		9E896E2E24DD4845778D7BC5 /* PerspectiveGuides.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC668E6AA888E9E161ECF22A /* PerspectiveGuides.swift */; };
+		AFDDBC156179E2D2753AB7DD /* PerspectiveEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CEA153F5198722E2FB01653 /* PerspectiveEditing.swift */; };
+		E9762ECBD336774EE24FCAA2 /* CameraDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58399C60CDC7BE1AD2BED947 /* CameraDiagnostics.swift */; };
+		59BE6219F9A5AA82AB00A9E9 /* UprightLineDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 923D00D2D9A47E43B39CC567 /* UprightLineDetector.swift */; };
+		88FFCDDFB0ABE1A7B829D514 /* UprightCorrection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 974380F5EBFA586BBD9151E4 /* UprightCorrection.swift */; };
 		FEEDBEEF00000000000000B1 /* wordmark-approved-ivory.svg in Resources */ = {isa = PBXBuildFile; fileRef = FEEDBEEF00000000000000A1 /* wordmark-approved-ivory.svg */; };
 		FEEDBEEF00000000000000B2 /* wordmark-approved-graphite.svg in Resources */ = {isa = PBXBuildFile; fileRef = FEEDBEEF00000000000000A2 /* wordmark-approved-graphite.svg */; };
 		08AE74690DB619415969B071 /* XMPPresetSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D53D3CC77BFC5680ACDE04B /* XMPPresetSettings.swift */; };
@@ -187,6 +196,15 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		21F5D7CEC50F9DD8E6F09743 /* redlamp-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "redlamp-LICENSE.txt"; sourceTree = "<group>"; };
+		14EC3A28953F72C09F416976 /* CameraDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CameraDiagnosticsTests.swift"; sourceTree = "<group>"; };
+		B9A715E6F6E099A51F9F2FE8 /* UprightTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UprightTests.swift"; sourceTree = "<group>"; };
+		B8564E1CB8872537018DA81C /* CameraDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CameraDiagnosticsView.swift"; sourceTree = "<group>"; };
+		AC668E6AA888E9E161ECF22A /* PerspectiveGuides.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PerspectiveGuides.swift"; sourceTree = "<group>"; };
+		8CEA153F5198722E2FB01653 /* PerspectiveEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PerspectiveEditing.swift"; sourceTree = "<group>"; };
+		58399C60CDC7BE1AD2BED947 /* CameraDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CameraDiagnostics.swift"; sourceTree = "<group>"; };
+		923D00D2D9A47E43B39CC567 /* UprightLineDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UprightLineDetector.swift"; sourceTree = "<group>"; };
+		974380F5EBFA586BBD9151E4 /* UprightCorrection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UprightCorrection.swift"; sourceTree = "<group>"; };
 		FEEDBEEF00000000000000A1 /* wordmark-approved-ivory.svg */ = {isa = PBXFileReference; lastKnownFileType = image.svg; path = "design/logo/wordmark-approved-ivory.svg"; sourceTree = "<group>"; };
 		FEEDBEEF00000000000000A2 /* wordmark-approved-graphite.svg */ = {isa = PBXFileReference; lastKnownFileType = image.svg; path = "design/logo/wordmark-approved-graphite.svg"; sourceTree = "<group>"; };
 		C0DE00000000000000000001 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Debug.xcconfig; sourceTree = "<group>"; };
@@ -375,6 +393,7 @@
 		1F05C26FD1E0E7229F41104B /* references */ = {
 			isa = PBXGroup;
 			children = (
+				21F5D7CEC50F9DD8E6F09743 /* redlamp-LICENSE.txt */,
 				D20300010000000000000002 /* grdb-LICENSE.txt */,
 				D20300010000000000000003 /* litert-NOTICES.txt */,
 				A5334CF392C1CE1E6D909AB9 /* oklab-LICENSE.txt */,
@@ -451,6 +470,8 @@
 		B274E2A30A0290015302BDBD /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				14EC3A28953F72C09F416976 /* CameraDiagnosticsTests.swift */,
+				B9A715E6F6E099A51F9F2FE8 /* UprightTests.swift */,
 				B4FE28784DA7DEE0BA3D66BA /* LocalizationTests.swift */,
 				77AC34E25F283E1DB318AD24 /* XMPPresetImportTests.swift */,
 				2975F66BC6A7700080B2D2C0 /* WorkflowReuseTests.swift */,
@@ -527,6 +548,7 @@
 		D4A5E980B763E5EA3AB2C4DB /* App */ = {
 			isa = PBXGroup;
 			children = (
+				8CEA153F5198722E2FB01653 /* PerspectiveEditing.swift */,
 				37388F095F97F9A1A884022D /* InfoPlist.xcstrings */,
 				823069D53EBEA6FC1C67AC9E /* Localizable.xcstrings */,
 				691024E81AAC14EBBC52121D /* Localization.swift */,
@@ -564,6 +586,9 @@
 		E13AA38654469C7AE7ADC909 /* Imaging */ = {
 			isa = PBXGroup;
 			children = (
+				58399C60CDC7BE1AD2BED947 /* CameraDiagnostics.swift */,
+				923D00D2D9A47E43B39CC567 /* UprightLineDetector.swift */,
+				974380F5EBFA586BBD9151E4 /* UprightCorrection.swift */,
 				8D53D3CC77BFC5680ACDE04B /* XMPPresetSettings.swift */,
 				F44788E9D8A7699251A84F46 /* LocalParameterPreset.swift */,
 				B27C267D11F949CAA0A2A6D0 /* PointColor.swift */,
@@ -601,6 +626,8 @@
 		F35CCDB0AF953A2A5FC6872C /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				B8564E1CB8872537018DA81C /* CameraDiagnosticsView.swift */,
+				AC668E6AA888E9E161ECF22A /* PerspectiveGuides.swift */,
 				1AE0EE456E9FC2842A71E298 /* XMPPresetImportSheet.swift */,
 				54B1003C01B7E5A1CC4F22F4 /* ColorLabelKeys.swift */,
 				9D46B0B41920D54E006B4530 /* PresetBrowser.swift */,
@@ -728,6 +755,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4C0B38C57003462C59396DE9 /* redlamp-LICENSE.txt in Resources */,
 				59471FE023E9B7EC983A06B5 /* InfoPlist.xcstrings in Resources */,
 				0D00E47DA3A434471722E5BB /* Localizable.xcstrings in Resources */,
 				D1A000020000000000000002 /* raster-exposure-colour-v4.bin in Resources */,
@@ -776,6 +804,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A6A6287BB2B6932AFDE35052 /* CameraDiagnosticsTests.swift in Sources */,
+				7210A8A29658FD0074AAEBCB /* UprightTests.swift in Sources */,
 				FA9542299C4A4DCDDFCDEA21 /* LocalizationTests.swift in Sources */,
 				5FBFE658D9C6481E0C4EDD28 /* WorkflowReuseTests.swift in Sources */,
 				0A7FF23DBFE60723B7EF2E5E /* ColorLabelTests.swift in Sources */,
@@ -838,6 +868,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B3C9E17B4A01206F174B01CC /* CameraDiagnosticsView.swift in Sources */,
+				9E896E2E24DD4845778D7BC5 /* PerspectiveGuides.swift in Sources */,
+				AFDDBC156179E2D2753AB7DD /* PerspectiveEditing.swift in Sources */,
+				E9762ECBD336774EE24FCAA2 /* CameraDiagnostics.swift in Sources */,
+				59BE6219F9A5AA82AB00A9E9 /* UprightLineDetector.swift in Sources */,
+				88FFCDDFB0ABE1A7B829D514 /* UprightCorrection.swift in Sources */,
 				C3B54169C57243C29C7C38A2 /* ColorLabelKeys.swift in Sources */,
 				5F45857D29F86A145432162D /* Localization.swift in Sources */,
 				DD42DE80928F978418F3D127 /* PresetBrowser.swift in Sources */,

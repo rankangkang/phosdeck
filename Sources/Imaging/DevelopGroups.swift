@@ -38,7 +38,7 @@ enum DevelopGroup: String, CaseIterable, Identifiable, Hashable {
         case .vignette: return L10n.text("app.creativeVignette", defaultValue: "Creative Vignette")
         case .grain: return L10n.text("app.grain", defaultValue: "Grain")
         case .crop: return L10n.text("app.cropStraightenAndFlip", defaultValue: "Crop, Straighten, and Flip")
-        case .perspective: return L10n.text("app.manualPerspective", defaultValue: "Manual Perspective")
+        case .perspective: return L10n.text("geometry.title", defaultValue: "Perspective")
         }
     }
 

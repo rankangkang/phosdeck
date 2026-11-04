@@ -40,7 +40,8 @@ Phosdeck 是 macOS 上的照片管理与非破坏性编辑工具，使用 SwiftU
 | 照片整理 | 引用或复制导入，评级、标旗、颜色标签、关键词，普通／智能集合，虚拟副本、堆叠与 RAW/JPEG 关联 |
 | 全局调整 | 曝光、白平衡、自由点曲线、HSL、黑白混色、点颜色、锐化、降噪、颗粒与暗角；预设、历史和快照 |
 | 局部调整 | 画笔、线性／径向渐变、颜色／亮度范围蒙版，人物选择与污点修复 |
-| 画面几何 | 裁剪、拉直、翻转与手动透视校正 |
+| 画面几何 | 裁剪、画线拉直、翻转、引导与自动透视校正 |
+| 相机检查 | 本地 RAW 解码与管线一致性检查，保存 JSON 报告 |
 | 导出 | JPEG、PNG、TIFF16，命名模板、导出预设、多规格输出与可选元数据；同名文件不覆盖 |
 
 支持导入 Lightroom XMP 预设的部分全局参数，属于近似转换，不保证与 Lightroom 的渲染结果相同。Lightroom 图库不能直接打开。
@@ -136,6 +137,7 @@ Phosdeck 参考了 Lightroom Classic 的工作流，也使用了以下开源项�
 |---|---|
 | [Adobe Lightroom Classic](https://www.adobe.com/products/photoshop-lightroom-classic.html) | 照片管理、选片、显影、局部调整与批量输出的工作流参考。普通图像曝光响应表使用了合成图的 Lightroom 输出作为对照，公开使用依据仍待核对，见[已知问题](docs/STATUS.md#已知问题)。 |
 | [Lightcraft](https://github.com/storytold/lightcraft) | 功能组织与交互参考；部分算法和实现按 MIT 许可移植、适配为 Swift／Metal，包括预设强度、蒙版、暗角、颗粒、点颜色和堆叠等。 |
+| [Redlamp](https://github.com/pdcgomes/redlamp) | 直线检测按 MPL-2.0 适配；几何求解的线约束与保守回退、相机诊断的证据组织方式作为参考，其余为原生自有实现。 |
 | [PhotoCraft](https://github.com/storytold/photocraft) | 经 Lightcraft 引入的测试用 PatchMatch 原型来源，按 MIT 许可适配；该原型不属于当前 App 的修复管线。 |
 | [Oklab — Björn Ottosson](https://bottosson.github.io/posts/oklab/) | 感知色彩处理使用其转换矩阵与参考实现，保留 MIT 许可及归属。 |
 
@@ -146,6 +148,7 @@ Phosdeck 参考了 Lightroom Classic 的工作流，也使用了以下开源项�
 本项目代码采用 [AGPL-3.0-only](LICENSE)。第三方代码、依赖和资源遵循各自许可，相关声明包括：
 
 - [Lightcraft／PhotoCraft 的归属与 MIT 许可](docs/references/lightcraft-LICENSE.txt)。
+- [Redlamp 的归属与 MPL-2.0 许可](docs/references/redlamp-LICENSE.txt)。
 - [Oklab 的归属与 MIT 许可](docs/references/oklab-LICENSE.txt)。
 - [GRDB 的 MIT 许可](docs/references/grdb-LICENSE.txt)。
 - [SmartMaskRuntime／LiteRT 的 Apache-2.0 许可](Packages/SmartMaskRuntime/LICENSE)与[固定运行时依赖声明](docs/references/litert-NOTICES.txt)。

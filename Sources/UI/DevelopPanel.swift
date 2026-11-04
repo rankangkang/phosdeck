@@ -80,7 +80,7 @@ struct DevelopPanel: View {
                 if isVisible(.crop) { PanelSection(L10n.text("app.cropStraightenAndFlip", defaultValue: "Crop, Straighten, and Flip"), group: .crop, isExpanded: $cropOpen, reset: {
                     change { $0.crop = Crop(); $0.quarterTurns = 0; $0.straightenDegrees = 0; $0.cropAspectRatio = nil; $0.flipHorizontal = false; $0.flipVertical = false }
                 }, modified: isModified(.crop), previewing: previewingGroup == .crop, preview: previewHandler(.crop), previewPulse: previewPulseHandler(.crop)) { crop.sectionContent() } }
-                if isVisible(.perspective) { PanelSection(L10n.text("app.manualPerspective", defaultValue: "Manual Perspective"), group: .perspective, isExpanded: $perspectiveOpen, reset: { change { $0.perspective = PerspectiveSettings() } }, modified: isModified(.perspective), previewing: previewingGroup == .perspective, preview: previewHandler(.perspective), previewPulse: previewPulseHandler(.perspective)) {
+                if isVisible(.perspective) { PanelSection(L10n.text("geometry.title", defaultValue: "Perspective"), group: .perspective, isExpanded: $perspectiveOpen, reset: { change { $0.perspective = PerspectiveSettings() } }, modified: isModified(.perspective), previewing: previewingGroup == .perspective, preview: previewHandler(.perspective), previewPulse: previewPulseHandler(.perspective)) {
                     perspective.sectionContent()
                 } }
             } else {
@@ -483,6 +483,32 @@ struct DevelopPanel: View {
     }
     private var perspective: some View {
         VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                Button(L10n.text("geometry.straighten", defaultValue: "Straighten by Line")) { model.beginPerspectiveGuides(.straighten) }
+                    .buttonStyle(.key(selected: model.perspectiveGuideTool == .straighten, position: .leading))
+                    .accessibilityIdentifier("straighten-by-line")
+                Button(L10n.text("geometry.guided", defaultValue: "Guided Perspective")) { model.beginPerspectiveGuides(.perspective) }
+                    .buttonStyle(.key(selected: model.perspectiveGuideTool == .perspective, position: .trailing))
+                    .accessibilityIdentifier("guided-perspective")
+            }.padding(.vertical, 6)
+            Menu(L10n.text("geometry.automatic", defaultValue: "Automatic Correction")) {
+                ForEach(UprightMode.allCases) { mode in
+                    Button(mode.title) { model.applyUpright(mode) }.accessibilityIdentifier("upright-" + mode.rawValue)
+                }
+            }.disabled(model.uprightAnalyzing || !model.canEdit).padding(.vertical, 4)
+            if model.uprightAnalyzing {
+                Text(L10n.text("geometry.analyzing", defaultValue: "Analyzing edges…")).font(.caption11).foregroundStyle(Theme.textSecondary)
+            }
+            if model.perspectiveGuideTool != nil {
+                HStack {
+                    Button(L10n.text("geometry.clearGuides", defaultValue: "Clear Guides")) {
+                        model.perspectiveGuides = []; model.perspectiveGuideBase = model.recipe; model.perspectiveMessage = ""
+                    }.buttonStyle(.key).disabled(model.perspectiveGuides.isEmpty)
+                    Button(L10n.text("app.done", defaultValue: "Done")) { model.finishPerspectiveGuides() }.buttonStyle(.key)
+                }.padding(.vertical, 4)
+                note(L10n.text("geometry.guideHelp", defaultValue: "Draw one edge to straighten, or two to four edges for perspective. Enter or Esc finishes the guides."))
+            }
+            if !model.perspectiveMessage.isEmpty { note(model.perspectiveMessage) }
             row(L10n.text("app.horizontalPerspective", defaultValue: "Horizontal Perspective"), \.perspective.horizontal, step: 0.1, digits: 1)
             row(L10n.text("app.verticalPerspective", defaultValue: "Vertical Perspective"), \.perspective.vertical, step: 0.1, digits: 1)
             row(L10n.text("app.aspectFineTuning", defaultValue: "Aspect Fine-Tuning"), \.perspective.aspect, step: 0.1, digits: 1)
