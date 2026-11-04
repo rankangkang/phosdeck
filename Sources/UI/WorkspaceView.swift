@@ -133,12 +133,7 @@ struct WorkspaceView: View {
         .onChange(of: model.holdFilterResults) { model.filterCriteriaChanged() }
         .onChange(of: model.autoAdvance) { model.persistWorkspace() }
         .onChange(of: model.singleView) { model.persistWorkspace() }
-        .onChange(of: model.editMode) {
-            if !model.editMode { model.clearSavedEditPreview() }
-            if !model.editMode { model.maskMode = false }
-            if !model.editMode && model.cropMode { model.cropMode = false; model.requestPreview() }
-            model.persistWorkspace()
-        }
+        .onChange(of: model.editMode) { editModeChanged() }
     }
     private var workspace: some View {
         observedWorkspace
@@ -153,6 +148,12 @@ struct WorkspaceView: View {
     private func endTemporaryInspection() {
         model.clearSavedEditPreview(); model.endMaskEffectPreview(); model.endAdjustmentPreview()
         model.displayPixelReadout = nil; clippingPreview.cancel()
+    }
+    private func editModeChanged() {
+        if !model.editMode { model.clearSavedEditPreview() }
+        if !model.editMode { model.maskMode = false }
+        if !model.editMode && model.cropMode { model.cropMode = false; model.requestPreview() }
+        model.persistWorkspace()
     }
     private func panels(widths: (left: CGFloat, right: CGFloat), showMasks: Bool, maskDockWidth: CGFloat, compactMasks: Bool) -> some View {
         HStack(spacing: 0) {
