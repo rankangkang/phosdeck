@@ -402,20 +402,49 @@ struct KeyRow<Value: Hashable>: View {
     var height: CGFloat = Metrics.key
     var lampDrop: CGFloat = Metrics.lampDrop
     var padding: CGFloat = 10
+    /// Keep long option names intact, using extra rows only when necessary.
+    var wrappingColumns: Int? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isEnabled) private var enabled
     var body: some View {
+        Group {
+            if let columns = wrappingColumns, columns > 0 {
+                ViewThatFits(in: .horizontal) {
+                    keys(options.indices, preserveLabels: true)
+                    VStack(spacing: Metrics.gap) {
+                        ForEach(Array(stride(from: 0, to: options.count, by: columns)), id: \.self) { start in
+                            keys(start..<min(start + columns, options.count), preserveLabels: true)
+                        }
+                    }
+                }
+            } else {
+                keys(options.indices)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: selection)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
+        .onKeyPress(.leftArrow) { move(-1) }
+        .onKeyPress(.rightArrow) { move(1) }
+    }
+    private func keys(_ indices: Range<Int>, preserveLabels: Bool = false) -> some View {
         let lampsBelow = lamps && !lampsInside
-        let row = HStack(spacing: 1) {
-            ForEach(Array(options.enumerated()), id: \.offset) { index, option in
+        return HStack(spacing: 1) {
+            ForEach(indices, id: \.self) { index in
+                let option = options[index]
                 let selected = option.value == selection
+                let minimumLabelWidth: CGFloat? = preserveLabels
+                    ? (option.title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)]).width
+                    : nil
                 Button { selection = option.value } label: {
                     Group {
                         let content = Group { if let icon = option.icon { Image(systemName: icon) } else { Text(option.title) } }
                         if lamps && lampsInside { LampLabel(on: selected) { content } } else { content }
-                    }.frame(maxWidth: expand ? .infinity : nil)
+                    }.fixedSize(horizontal: preserveLabels, vertical: false)
+                        .frame(maxWidth: expand ? .infinity : nil)
                 }
-                .buttonStyle(.key(selected: selected, position: KeyPosition(index: index, count: options.count), height: height, padding: padding))
+                .buttonStyle(.key(selected: selected, position: KeyPosition(index: index - indices.lowerBound, count: indices.count), height: height, padding: padding))
+                .frame(minWidth: minimumLabelWidth.map { $0 + 2 * padding })
                 .disabled(!option.enabled)
                 .overlay(alignment: .bottom) { if lampsBelow { Lamp(on: selected).offset(y: lampDrop) } }
                 .help(option.help ?? option.title)
@@ -423,13 +452,7 @@ struct KeyRow<Value: Hashable>: View {
                 .accessibilityIdentifier(option.identifier ?? "")
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
-        }
-        row.lampRow(drop: lampsBelow ? lampDrop : 0)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: selection)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(title)
-        .onKeyPress(.leftArrow) { move(-1) }
-        .onKeyPress(.rightArrow) { move(1) }
+        }.lampRow(drop: lampsBelow ? lampDrop : 0)
     }
     private func move(_ offset: Int) -> KeyPress.Result {
         guard enabled else { return .ignored }

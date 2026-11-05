@@ -372,6 +372,38 @@ final class ComparisonTests: XCTestCase {
         XCTAssertTrue(condition())
     }
 
+    @MainActor func testWrappingKeyRowsFitInspectorWidthsWithoutShrinkingLabels() throws {
+        let languages = [["Three-Way", "Shadows", "Midtones", "Highlights", "Global"], ["三向", "阴影", "中间调", "高光", "全局"], ["Hue", "Saturation", "Luminance", "All"]]
+        for (language, titles) in languages.enumerated() {
+            for theme in [ChromeTheme.ivory, .graphite] {
+                for width in [304.0, 336, 400] {
+                    let options = titles.enumerated().map { KeyOption($0.offset, $0.element) }
+                    let controller = NSHostingController(rootView: KeyRow(title: "Wheel", options: options,
+                        selection: .constant(0), expand: true, wrappingColumns: titles.count == 4 ? 2 : 3)
+                        .padding(Metrics.padding).preferredColorScheme(theme.colorScheme))
+                    let size = controller.sizeThatFits(in: CGSize(width: width, height: 1000))
+                    XCTAssertLessThanOrEqual(size.width, width + 1)
+                    let oneRow = Metrics.key + Metrics.lampDrop + 2 * Metrics.padding
+                    XCTAssertLessThanOrEqual(size.height, oneRow + Metrics.key + Metrics.lampDrop + Metrics.gap + 1)
+                    if language == 0 && width < 400 {
+                        XCTAssertGreaterThanOrEqual(size.height, oneRow + Metrics.key + Metrics.lampDrop + Metrics.gap - 1,
+                            "English names need a second row rather than truncation at \(width) pt")
+                    } else if language != 0 {
+                        XCTAssertLessThanOrEqual(size.height, oneRow + 1, "Short labels retain the existing single row")
+                    }
+                    let host = controller.view
+                    host.frame = CGRect(origin: .zero, size: size)
+                    host.layoutSubtreeIfNeeded()
+                    let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                    host.cacheDisplay(in: host.bounds, to: bitmap)
+                    let attachment = XCTAttachment(data: try XCTUnwrap(bitmap.representation(using: .png, properties: [:])), uniformTypeIdentifier: "public.png")
+                    attachment.name = "wheel-keys-\(language)-\(Int(width))-\(theme.rawValue)"
+                    attachment.lifetime = .keepAlways; add(attachment)
+                }
+            }
+        }
+    }
+
     @MainActor func testAdjustmentValuesAlignWithAndWithoutUnitsAtInspectorWidths() async throws {
         func fields(_ root: NSView) -> [NSTextField] {
             (root as? NSTextField).map { [$0] } ?? root.subviews.flatMap(fields)

@@ -43,7 +43,7 @@
 | 有顺序的固定档位 | 缓存额度 1／5／10 GiB 滑槽，三档吸附，双击回默认 5 GiB |
 | 有界整数 | 数值窗加相邻加减键，支持直接输入、Enter 提交、Esc 取消和相邻错误提示；无效草稿保留最后有效值，并阻止保存预设与导出入队 |
 
-动态或标签较长的选项（预设、来源、集合等）用原生菜单。组件在 `DarkroomControls.swift`、`InstrumentFormControls.swift`、`ParameterRow.swift`。
+动态或标签较长的选项（预设、来源、集合等）用原生菜单。HSL 与色轮视图保留直接琴键入口，空间不足时完整保留标签并换行；每行只在外角倒圆，方向键仍按视觉顺序跨行切换。侧栏复制／粘贴调整在同一行放不下时上下排列，不缩字或截断操作名。组件在 `DarkroomControls.swift`、`InstrumentFormControls.swift`、`ParameterRow.swift`。
 
 档位旋钮的 `DetentSelector.labelLayout` 默认 `.right`，可传 `.top`／`.bottom`／`.left` 或组合；由调用方决定，不加用户偏好。组合按上／右／下／左顺时针连续分组。文字按半粗体宽度预留，切换不移动引线；档位多或文字长时组件变大，调用方须留足空间。方向键上／左为前一档、下／右为后一档，首尾止挡。
 

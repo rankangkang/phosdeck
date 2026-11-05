@@ -2277,6 +2277,23 @@
         }
       }
     },
+    "app.addQuickCollectionShortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "B: Add to %@ · %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "B：加入%1$@ · %2$@"
+          }
+        }
+      }
+    },
     "app.addRecentKeyword": {
       "extractionState": "manual",
       "comment": "Sources/UI/KeywordEditor.swift: 64",
@@ -2687,6 +2704,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "调整照片"
+          }
+        }
+      }
+    },
+    "app.adjustTool": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adjust"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调整"
           }
         }
       }
@@ -7943,6 +7977,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "向右收起蒙版面板"
+          }
+        }
+      }
+    },
+    "app.collapsePanelShortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse %@ (%@)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起%1$@（%2$@）"
           }
         }
       }
@@ -13415,6 +13466,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "展开或收起%1$@"
+          }
+        }
+      }
+    },
+    "app.expandPanelShortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand %@ (%@)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "展开%1$@（%2$@）"
           }
         }
       }
@@ -29511,6 +29579,23 @@
         }
       }
     },
+    "app.removeQuickCollectionShortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "B: Remove from %@ · %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "B：从%1$@移除 · %2$@"
+          }
+        }
+      }
+    },
     "app.removeSelectedPhotos": {
       "extractionState": "manual",
       "comment": "Sources/UI/WorkspaceView.swift: 550",
@@ -32686,7 +32771,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Set %@ to %lld stars; click the current rating again to clear (0)"
+            "value": "Set %@ to rating %lld; click the current rating again to clear (0)"
           }
         },
         "zh-Hans": {

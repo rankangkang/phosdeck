@@ -61,6 +61,19 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testWorkspaceControlPromptsUseCompleteLocalizedSentences() {
+        let english = Localization(language: "en"), chinese = Localization(language: "zh-Hans")
+        let label = "Left Panel", shortcut = "⌥⌘1", target = "Review %42", scope = "Current Photo", rating = 1
+        XCTAssertEqual(english.text("app.adjustTool", defaultValue: "Adjust"), "Adjust")
+        XCTAssertEqual(chinese.text("app.adjustTool", defaultValue: "Adjust"), "调整")
+        XCTAssertEqual(english.text("app.collapsePanelShortcut", defaultValue: "Collapse \(label) (\(shortcut))"), "Collapse Left Panel (⌥⌘1)")
+        XCTAssertEqual(chinese.text("app.collapsePanelShortcut", defaultValue: "Collapse \(label) (\(shortcut))"), "收起Left Panel（⌥⌘1）")
+        XCTAssertEqual(english.text("app.expandPanelShortcut", defaultValue: "Expand \(label) (\(shortcut))"), "Expand Left Panel (⌥⌘1)")
+        XCTAssertEqual(english.text("app.addQuickCollectionShortcut", defaultValue: "B: Add to \(target) · \(scope)"), "B: Add to Review %42 · Current Photo")
+        XCTAssertEqual(english.text("app.removeQuickCollectionShortcut", defaultValue: "B: Remove from \(target) · \(scope)"), "B: Remove from Review %42 · Current Photo")
+        XCTAssertEqual(english.text("app.setToStarsClickTheCurrentRatingAgainTo", defaultValue: "Set \(scope) to rating \(rating); click the current rating again to clear (0)"), "Set Current Photo to rating 1; click the current rating again to clear (0)")
+    }
+
     func testAllAppTextKeysHaveBothOfficialTranslations() throws {
         func keys(_ language: String) throws -> Set<String> {
             var keys = Set<String>()

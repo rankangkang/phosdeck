@@ -574,15 +574,26 @@ struct WorkspaceView: View {
             Seam()
             HStack(spacing: Metrics.gap) {
                 if model.editMode {
-                    Button { model.copyAdjustments() } label: { Text(L10n.text("app.copyAdjustments", defaultValue: "Copy Adjustments")).frame(maxWidth: .infinity) }.buttonStyle(.key)
-                    Button { model.requestAdjustments(.paste) } label: { Text(L10n.text("app.pasteAdjustments_280", defaultValue: "Paste Adjustments…")).frame(maxWidth: .infinity) }.buttonStyle(.key)
-                        .disabled(model.copiedRecipe == nil)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: Metrics.gap) { copyAdjustmentsKey; pasteAdjustmentsKey }
+                        VStack(spacing: Metrics.gap) { copyAdjustmentsKey; pasteAdjustmentsKey }
+                    }
                 } else {
                     Button { model.importReference() } label: { Text(L10n.text("app.import_2042", defaultValue: "Import…")).frame(maxWidth: .infinity) }.buttonStyle(.key)
                         .disabled(model.busy || model.catalog == nil).help(L10n.text("app.importPhotosI", defaultValue: "Import photos (⇧⌘I)"))
                 }
             }.disabled(model.editMode && !model.canEdit).padding(12)
         }.background(InstrumentPlate())
+    }
+    private var copyAdjustmentsKey: some View {
+        Button { model.copyAdjustments() } label: {
+            Text(L10n.text("app.copyAdjustments", defaultValue: "Copy Adjustments")).fixedSize().frame(maxWidth: .infinity)
+        }.buttonStyle(.key)
+    }
+    private var pasteAdjustmentsKey: some View {
+        Button { model.requestAdjustments(.paste) } label: {
+            Text(L10n.text("app.pasteAdjustments_280", defaultValue: "Paste Adjustments…")).fixedSize().frame(maxWidth: .infinity)
+        }.buttonStyle(.key).disabled(model.copiedRecipe == nil)
     }
 
     // MARK: Center
@@ -953,12 +964,21 @@ struct WorkspaceView: View {
                 }
             }.fixedSize()
             HStack(spacing: 1) {
+                Button { model.organize(rating: 0) } label: {
+                    Text("0").font(.value).frame(width: 16)
+                }.buttonStyle(.key(selected: model.selectedRating == 0, height: Self.toolKey, padding: 4))
+                    .help(L10n.text("app.unrated0", defaultValue: "Unrated (0)"))
+                    .accessibilityLabel(L10n.text("app.clearRating", defaultValue: "Clear Rating"))
+                    .accessibilityValue(model.selectedRating == nil ? L10n.text("app.mixedState", defaultValue: "Mixed State") : model.selectedRating == 0 ? L10n.text("app.selected", defaultValue: "Selected") : L10n.text("app.notSelected", defaultValue: "Not selected"))
+                    .accessibilityAddTraits(model.selectedRating == 0 ? .isSelected : [])
+                    .accessibilityIdentifier("set-rating-0")
                 ForEach(1...5, id: \.self) { n in
                     Button { model.toggleRating(n) } label: {
                         Image(systemName: (model.selectedRating ?? 0) >= n ? "star.fill" : "star").font(.system(size: 11))
                             .frame(width: 16, height: Self.toolKey).contentShape(Rectangle())
                     }.buttonStyle(.plain)
-                        .help(L10n.text("app.setToStarsClickTheCurrentRatingAgainTo", defaultValue: "Set \(model.survey == nil ? L10n.text("app.selectedPhotos_2133", defaultValue: "Selected Photos") : L10n.text("app.currentPhoto", defaultValue: "Current Photo")) to \(n) stars; click the current rating again to clear (0)")).accessibilityLabel(L10n.text("app.ratingStars", defaultValue: "Rating \(n) Stars"))
+                        .help(L10n.text("app.setToStarsClickTheCurrentRatingAgainTo", defaultValue: "Set \(model.survey == nil ? L10n.text("app.selectedPhotos_2133", defaultValue: "Selected Photos") : L10n.text("app.currentPhoto", defaultValue: "Current Photo")) to rating \(n); click the current rating again to clear (0)")).accessibilityLabel(L10n.text("app.ratingStars", defaultValue: "Rating \(n) Stars"))
+                        .accessibilityIdentifier("set-rating-\(n)")
                 }
             }.foregroundStyle(Theme.text).accessibilityElement(children: .contain)
                 .accessibilityLabel(L10n.text("app.rating", defaultValue: "Rating")).accessibilityValue(model.selectedRating.map { $0 == 0 ? L10n.text("app.unrated", defaultValue: "Unrated") : L10n.text("app.stars_1722", defaultValue: "\($0) Stars") } ?? L10n.text("app.mixedState", defaultValue: "Mixed State"))
@@ -975,7 +995,9 @@ struct WorkspaceView: View {
             }.buttonStyle(.key(selected: model.quickCollectMembership == true, position: .leading, height: Self.toolKey, padding: 5))
                 .accessibilityLabel(L10n.text("app.quickCollection", defaultValue: "Quick Collection")).accessibilityIdentifier("quick-collect")
                 .accessibilityValue(model.quickCollectMembership == nil ? L10n.text("app.someAdded", defaultValue: "Some Added") : model.quickCollectMembership == true ? L10n.text("app.added_2136", defaultValue: "Added") : L10n.text("app.notAdded", defaultValue: "Not Added"))
-                .help("B：\(model.quickCollectMembership == true ? L10n.text("app.removeFrom", defaultValue: "Remove from") : L10n.text("app.addTo", defaultValue: "Add to"))\(model.targetCollection?.name ?? L10n.text("app.quickCollection", defaultValue: "Quick Collection")) · \(model.quickCollectScope)")
+                .help(model.quickCollectMembership == true
+                      ? L10n.text("app.removeQuickCollectionShortcut", defaultValue: "B: Remove from \(model.targetCollection?.name ?? L10n.text("app.quickCollection", defaultValue: "Quick Collection")) · \(model.quickCollectScope)")
+                      : L10n.text("app.addQuickCollectionShortcut", defaultValue: "B: Add to \(model.targetCollection?.name ?? L10n.text("app.quickCollection", defaultValue: "Quick Collection")) · \(model.quickCollectScope)"))
             Menu {
                 Text(L10n.text("app.target", defaultValue: "Target: \(model.targetCollection?.name ?? L10n.text("app.quickCollection", defaultValue: "Quick Collection"))"))
                 Text(L10n.text("app.scope", defaultValue: "Scope: \(model.quickCollectScope)"))
@@ -997,7 +1019,7 @@ struct WorkspaceView: View {
         Button { model.autoAdvance.toggle() } label: {
             LampLabel(on: model.autoAdvance) { Image(systemName: "arrow.right.to.line") }
         }.buttonStyle(.key(selected: model.autoAdvance, height: Self.toolKey, padding: 5))
-            .accessibilityLabel(L10n.text("app.autoAdvance", defaultValue: "Auto Advance")).accessibilityValue(model.autoAdvance ? L10n.text("app.enable", defaultValue: "Enable") : L10n.text("app.close", defaultValue: "Close"))
+            .accessibilityLabel(L10n.text("app.autoAdvance", defaultValue: "Auto Advance")).accessibilityValue(model.autoAdvance ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off"))
             .help(L10n.text("app.autoAdvanceSelectTheNextPhotoAfterFlaggingOr", defaultValue: "Auto Advance: select the next photo after flagging or rating. Shift temporarily reverses it; Caps Lock also enables keyboard culling"))
             .disabled(!model.workspaceAvailable)
     }
@@ -1129,7 +1151,7 @@ struct WorkspaceView: View {
             if let photo = model.active {
                 if model.editMode {
                     Seam()
-                    KeyRow(title: L10n.text("app.tools", defaultValue: "Tools"), options: [KeyOption(.adjust, L10n.text("app.adjustments", defaultValue: "Adjustments")), KeyOption(.crop, L10n.text("app.crop", defaultValue: "Crop"), help: L10n.text("app.cropR", defaultValue: "Crop (R)")), KeyOption(.spot, L10n.text("app.spots", defaultValue: "Spots"), help: L10n.text("app.spotRemovalQ", defaultValue: "Spot Removal (Q)")), KeyOption(.mask, L10n.text("app.masks", defaultValue: "Masks"), help: L10n.text("app.masksW", defaultValue: "Masks (⇧W)"))],
+                    KeyRow(title: L10n.text("app.tools", defaultValue: "Tools"), options: [KeyOption(.adjust, L10n.text("app.adjustTool", defaultValue: "Adjust")), KeyOption(.crop, L10n.text("app.crop", defaultValue: "Crop"), help: L10n.text("app.cropR", defaultValue: "Crop (R)")), KeyOption(.spot, L10n.text("app.spots", defaultValue: "Spots"), help: L10n.text("app.spotRemovalQ", defaultValue: "Spot Removal (Q)")), KeyOption(.mask, L10n.text("app.masks", defaultValue: "Masks"), help: L10n.text("app.masksW", defaultValue: "Masks (⇧W)"))],
                            selection: tool, expand: true)
                         .disabled(!model.canEdit).padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
                     Seam()
@@ -1549,8 +1571,10 @@ struct RimToggle: View {
         .background(vertical ? Theme.base : .clear)
         .disabled(blocked != nil)
         .onHover { hovering = $0 }
-        .help(blocked ?? "\(isOpen ? L10n.text("app.collapse", defaultValue: "Collapse") : L10n.text("app.expand", defaultValue: "Expand"))\(label)（\(shortcut)）")
-        .accessibilityLabel(label).accessibilityValue(isOpen ? L10n.text("app.expand", defaultValue: "Expand") : L10n.text("app.collapse", defaultValue: "Collapse"))
+        .help(blocked ?? (isOpen
+                         ? L10n.text("app.collapsePanelShortcut", defaultValue: "Collapse \(label) (\(shortcut))")
+                         : L10n.text("app.expandPanelShortcut", defaultValue: "Expand \(label) (\(shortcut))")))
+        .accessibilityLabel(label).accessibilityValue(isOpen ? L10n.text("app.expanded", defaultValue: "Expanded") : L10n.text("app.collapsed", defaultValue: "Collapsed"))
     }
 }
 

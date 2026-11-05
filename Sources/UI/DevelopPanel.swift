@@ -536,7 +536,7 @@ struct DevelopPanel: View {
     private var mixer: some View {
         VStack(spacing: 0) {
             KeyRow(title: L10n.text("app.hslMode", defaultValue: "HSL Mode"), options: [KeyOption(0, L10n.text("app.hue", defaultValue: "Hue")), KeyOption(1, L10n.text("app.saturation", defaultValue: "Saturation")), KeyOption(2, L10n.text("app.luminance_1188", defaultValue: "Luminance")), KeyOption(3, L10n.text("app.all", defaultValue: "All"))],
-                   selection: $mixerTab, expand: true).padding(.bottom, 4)
+                   selection: $mixerTab, expand: true, wrappingColumns: 2).padding(.bottom, 4)
             ForEach(mixerTab == 3 ? [0, 1, 2] : [mixerTab], id: \.self) { tab in
                 if mixerTab == 3 { SubgroupLabel([L10n.text("app.hue", defaultValue: "Hue"), L10n.text("app.saturation", defaultValue: "Saturation"), L10n.text("app.luminance_1188", defaultValue: "Luminance")][tab]) }
                 ForEach(0..<8, id: \.self) { index in
@@ -551,7 +551,7 @@ struct DevelopPanel: View {
     private var grading: some View {
         VStack(spacing: 10) {
             KeyRow(title: L10n.text("app.colorWheelView", defaultValue: "Color Wheel View"), options: [KeyOption(0, L10n.text("app.threeWay", defaultValue: "Three-Way")), KeyOption(1, L10n.text("app.shadows", defaultValue: "Shadows")), KeyOption(2, L10n.text("app.midtones", defaultValue: "Midtones")), KeyOption(3, L10n.text("app.highlights", defaultValue: "Highlights")), KeyOption(4, L10n.text("app.global", defaultValue: "Global"))],
-                   selection: $gradingTab, expand: true)
+                   selection: $gradingTab, expand: true, wrappingColumns: 3)
             if gradingTab == 0 {
                 wheel(L10n.text("app.midtones_1193", defaultValue: "Midtones"), \.midtones, diameter: 118)
                 HStack(alignment: .top, spacing: 12) {
