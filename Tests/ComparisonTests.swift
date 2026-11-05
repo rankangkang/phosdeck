@@ -372,6 +372,136 @@ final class ComparisonTests: XCTestCase {
         XCTAssertTrue(condition())
     }
 
+    @MainActor func testPhotoSwitchKeepsDisplaySeparateFromEditsAndRejectsStaleFrames() async throws {
+        @MainActor final class Gate {
+            var blocked: Set<String> = ["001", "002"]
+            var waiting: [String: [CheckedContinuation<Void, Never>]] = [:]
+            func wait(_ id: String) async {
+                if blocked.contains(id) { await withCheckedContinuation { waiting[id, default: []].append($0) } }
+            }
+            func release(_ id: String) {
+                blocked.remove(id)
+                waiting.removeValue(forKey: id)?.forEach { $0.resume() }
+            }
+        }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let gate = Gate(), pixels = try ["000": bitmap(80), "001": bitmap(60), "002": bitmap(40)]
+        let model = try model(in: folder, renderer: { request, _, _ in
+            await gate.wait(request.photo.id)
+            return try XCTUnwrap(pixels[request.photo.id])
+        })
+        defer { gate.release("001"); gate.release("002"); model.choose([], active: nil) }
+        let catalog = try XCTUnwrap(model.catalog)
+        var secondRecipe = try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(catalog.photo("001")?.recipe))
+        secondRecipe.exposure = 1
+        try catalog.saveRecipe(id: "001", recipe: secondRecipe)
+        try model.reloadPhotos()
+        model.choose([], active: nil); model.choose(["000"], active: "000")
+        try await waitUntil { model.canEdit && model.previewCurrent }
+        let original = try XCTUnwrap(model.image)
+        let originalRecipe = try XCTUnwrap(model.recipe)
+        model.choose(["001"], active: "001")
+        XCTAssertNil(model.recipe); XCTAssertNil(model.image); XCTAssertFalse(model.canEdit)
+        XCTAssertEqual(model.photoSwitchDisplay?.photoID, "000")
+        XCTAssertTrue(model.photoSwitchDisplay?.image === original)
+        XCTAssertEqual(model.editorRecipe, originalRecipe)
+        try await waitUntil { gate.waiting["001"]?.count == 2 }
+        XCTAssertEqual(model.recipe, secondRecipe, "Only the current photo's recipe can enter edit/export state")
+        XCTAssertEqual(model.editorRecipe, originalRecipe, "The disabled panel remains stable until matching pixels arrive")
+        XCTAssertFalse(model.canShowBeforeAfter, "Old pixels must not enter a comparison canvas identified as the new photo")
+        model.changeRecipe { $0.exposure = 4 }
+        XCTAssertEqual(model.recipe, secondRecipe)
+        XCTAssertEqual(try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(catalog.photo("001")?.recipe)), secondRecipe)
+        let photos = try model.exportSelection(), options = ExportOptions()
+        let names = try ExportNamingPlanner.preview(photos: photos, options: options, directory: folder)
+        let snapshots = try model.prepareExport(options: options, photos: photos, names: names, directory: folder)
+        XCTAssertEqual(snapshots.first?.request.photo.id, "001")
+        XCTAssertEqual(snapshots.first?.request.recipe, secondRecipe, "Export must ignore the previous photo's display snapshot")
+
+        model.choose(["002"], active: "002")
+        XCTAssertTrue(model.photoSwitchDisplay?.image === original)
+        try await waitUntil { model.recipe != nil }
+        gate.release("001")
+        try await waitUntil { gate.waiting["002"]?.count == 2 }
+        XCTAssertNil(model.image, "A completed render for the skipped photo must not publish")
+        XCTAssertEqual(model.photoSwitchDisplay?.photoID, "000")
+        gate.release("002")
+        try await waitUntil { model.canEdit && model.previewCurrent }
+        XCTAssertNil(model.photoSwitchDisplay)
+        XCTAssertEqual(model.image?.width, 40)
+        XCTAssertEqual(model.activeID, "002"); XCTAssertEqual(model.editorRecipe, model.recipe)
+        XCTAssertTrue(model.canShowBeforeAfter)
+
+        try await catalog.database.write { db in
+            try db.execute(sql: "UPDATE photo SET recipe = ? WHERE id = ?", arguments: [Data("invalid recipe".utf8), "001"])
+        }
+        try model.reloadPhotos()
+        model.choose(["001"], active: "001")
+        XCTAssertNotNil(model.photoSwitchDisplay)
+        try await waitUntil { model.photoSwitchDisplay == nil }
+        XCTAssertNil(model.image); XCTAssertNil(model.recipe); XCTAssertFalse(model.canEdit)
+    }
+
+    @MainActor func testAdjustmentErrorsPreserveDraftCancelAndClearOnPhotoSwitch() throws {
+        final class Input: ObservableObject {
+            @Published var value = 0.0
+            @Published var photoID = "first"
+            var commits = 0
+        }
+        struct InputView: View {
+            @ObservedObject var input: Input
+            var body: some View {
+                AdjustmentRow(label: "Exposure", value: input.value, range: -5...5, step: 0.05, digits: 2,
+                    change: { value, _ in input.value = value }, commit: { input.commits += 1 })
+                    .environment(\.adjustmentPhotoID, input.photoID).padding(20)
+            }
+        }
+        let input = Input(), host = NSHostingView(rootView: InputView(input: Input()))
+        host.rootView = InputView(input: input)
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 336, height: 145), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.orderOut(nil); window.contentView = nil }
+        window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        host.layoutSubtreeIfNeeded()
+        func fields(_ root: NSView) -> [NSTextField] { (root as? NSTextField).map { [$0] } ?? root.subviews.flatMap(fields) }
+        let field = try XCTUnwrap(fields(host).first { $0.isEditable })
+        let validHeight = host.fittingSize.height
+        func pump() {
+            let deadline = Date().addingTimeInterval(0.08)
+            while Date() < deadline { RunLoop.current.run(mode: .default, before: deadline) }
+        }
+        func enter(_ text: String) throws -> NSTextView {
+            window.makeKeyAndOrderFront(nil); window.makeFirstResponder(field); field.selectText(nil)
+            let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
+            pump()
+            editor.insertText(text, replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+            pump(); editor.insertNewline(nil); pump()
+            return editor
+        }
+        for text in ["oops", "NaN", "6", "0+1"] {
+            _ = try enter(text)
+            XCTAssertEqual(input.value, 0); XCTAssertEqual(input.commits, 0)
+            XCTAssertEqual(field.stringValue, text)
+            XCTAssertGreaterThan(host.fittingSize.height, validHeight, "The error must occupy a visible line below the field")
+            window.makeFirstResponder(nil)
+            pump()
+            XCTAssertEqual(field.stringValue, text, "Blur must preserve the invalid draft for correction")
+        }
+        let editor = try enter("oops")
+        editor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+        pump(); XCTAssertEqual(field.stringValue, "0.00")
+        XCTAssertEqual(input.commits, 0)
+        _ = try enter("bad draft")
+        input.photoID = "second"; input.value = 2
+        pump(); XCTAssertEqual(field.stringValue, "+2.00")
+        window.makeFirstResponder(nil)
+        XCTAssertEqual(input.value, 2); XCTAssertEqual(input.commits, 0)
+        _ = try enter("−1,25")
+        pump(); XCTAssertEqual(input.value, -1.25)
+        XCTAssertEqual(input.commits, 1)
+    }
+
     @MainActor func testWrappingKeyRowsFitInspectorWidthsWithoutShrinkingLabels() throws {
         let languages = [["Three-Way", "Shadows", "Midtones", "Highlights", "Global"], ["三向", "阴影", "中间调", "高光", "全局"], ["Hue", "Saturation", "Luminance", "All"]]
         for (language, titles) in languages.enumerated() {

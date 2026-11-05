@@ -110,4 +110,8 @@ enum PhotoColorLabel: Int, CaseIterable, Identifiable {
         }
     }
     var shortcut: String? { (1...4).contains(rawValue) ? String(rawValue + 5) : nil }
+    var titleWithShortcut: String {
+        guard let shortcut else { return title }
+        return L10n.text("app.titleWithShortcut", defaultValue: "\(title) (\(shortcut))")
+    }
 }

@@ -8,7 +8,10 @@ struct PhotoCanvas: View {
     @State private var draft: Crop?
     @State private var dragOrigin: Crop?
     @State private var dragHandle: CropInteraction.Handle?
-    private var displayImage: CGImage? { model.cropMode == model.previewIsCrop ? (model.showPointColorRange && !model.pointSampling ? model.pointRangeImage ?? model.image : model.image) : nil }
+    private var displayImage: CGImage? {
+        if let previous = model.photoSwitchDisplay { return previous.image }
+        return model.cropMode == model.previewIsCrop ? (model.showPointColorRange && !model.pointSampling ? model.pointRangeImage ?? model.image : model.image) : nil
+    }
     private var maskEditing: MaskCanvasEditing? {
         guard model.maskMode, model.previewingMaskID == nil, model.canvasCoordinatesCurrent, !model.before, let recipe = model.recipe, let size = model.orientedSourceSize else { return nil }
         var draftComponent: MaskComponent?
@@ -40,7 +43,7 @@ struct PhotoCanvas: View {
     private var shadowWarning: Bool { !model.cropMode && !model.showPointColorRange && (clippingPreview?.shadows ?? model.showShadowClipping) }
     private var highlightWarning: Bool { !model.cropMode && !model.showPointColorRange && (clippingPreview?.highlights ?? model.showHighlightClipping) }
     private func pixelReadout(for source: CGImage?) -> ((DisplayPixelSample?) -> Void)? {
-        guard source != nil, !model.cropMode, !model.showPointColorRange else { return nil }
+        guard source != nil, model.photoSwitchDisplay == nil, !model.cropMode, !model.showPointColorRange else { return nil }
         let photoID = model.activeID
         return { sample in
             guard model.activeID == photoID, model.image === source else { return }
@@ -57,7 +60,7 @@ struct PhotoCanvas: View {
                         pane(L10n.text("app.after", defaultValue: "After"), image: displayImage, status: model.imageStatus, after: true)
                     }
                 } else {
-                    MetalPhotoView(viewport: model.viewport, image: displayImage, actualPixels: model.fullResolution && !model.cropMode, photoID: model.activeID, nativeSize: model.renderedNativeSize, backdrop: mat.gray,
+                    MetalPhotoView(viewport: model.viewport, image: displayImage, actualPixels: model.fullResolution && !model.cropMode, photoID: model.photoSwitchDisplay?.photoID ?? model.activeID, nativeSize: model.photoSwitchDisplay?.nativeSize ?? model.renderedNativeSize, backdrop: mat.gray,
                                    zoomScale: model.zoomScale, fill: model.fillView && !model.cropMode,
                                    cropAngle: model.cropMode ? model.recipe?.cropPreviewAngle : nil,
                                    onClick: { model.toggleCanvasZoom(at: $0) },
@@ -70,6 +73,14 @@ struct PhotoCanvas: View {
                                    clipShadows: shadowWarning, clipHighlights: highlightWarning,
                                    onPixelReadout: pixelReadout(for: displayImage),
                                    splitBefore: beforeAfter == .split ? model.beforeImage : nil)
+                        .allowsHitTesting(model.photoSwitchDisplay == nil)
+                    if model.photoSwitchDisplay != nil {
+                        Text(L10n.text("app.loadingPreviousPhotoShown", defaultValue: "Loading photo… Previous photo shown"))
+                            .font(.caption11).foregroundStyle(Color(nsColor: mat.textSecondary))
+                            .padding(8).background(mat.color)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                            .allowsHitTesting(false)
+                    }
                     if displayImage == nil {
                         VStack(spacing: 12) {
                             Text(model.imageStatus).foregroundStyle(Color(nsColor: mat.textSecondary))

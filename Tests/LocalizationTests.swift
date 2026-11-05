@@ -74,6 +74,20 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(english.text("app.setToStarsClickTheCurrentRatingAgainTo", defaultValue: "Set \(scope) to rating \(rating); click the current rating again to clear (0)"), "Set Current Photo to rating 1; click the current rating again to clear (0)")
     }
 
+    func testNumericErrorsFlagCountsAndShortcutPunctuation() {
+        let english = Localization(language: "en"), chinese = Localization(language: "zh-Hans")
+        let low = "−5.00", high = "5.00", title = "Red", shortcut = "6", clear = "; click again to clear"
+        XCTAssertEqual(english.text("app.numberRangeError", defaultValue: "Enter a number between \(low) and \(high). Press Esc to cancel."), "Enter a number between −5.00 and 5.00. Press Esc to cancel.")
+        XCTAssertEqual(chinese.text("app.numberRangeError", defaultValue: "Enter a number between \(low) and \(high). Press Esc to cancel."), "请输入 −5.00 到 5.00 之间的数字。按 Esc 取消。")
+        XCTAssertEqual(english.text("app.titleWithShortcut", defaultValue: "\(title) (\(shortcut))"), "Red (6)")
+        XCTAssertEqual(chinese.text("app.titleWithShortcut", defaultValue: "\(title) (\(shortcut))"), "Red（6）")
+        for count in [0, 1, 2] {
+            let photos = english.text("app.photos", defaultValue: "\(count) photos")
+            let expected = "Red (6); click again to clear. Selection: \(count) " + (count == 1 ? "photo" : "photos")
+            XCTAssertEqual(english.text("app.flagSelectionHelp", defaultValue: "\(title) (\(shortcut))\(clear). Selection: \(photos)"), expected)
+        }
+    }
+
     func testAllAppTextKeysHaveBothOfficialTranslations() throws {
         func keys(_ language: String) throws -> Set<String> {
             var keys = Set<String>()

@@ -394,9 +394,9 @@ struct WorkspaceView: View {
                             mat.color
                             if let preview = model.savedEditPreview {
                                 SavedEditNavigatorView(preview: preview, title: model.savedEditPreviewTitle)
-                            } else if let image = model.image {
+                            } else if let image = model.image ?? model.photoSwitchDisplay?.image {
                                 PhotoNavigator(viewport: model.viewport, image: image, zoomed: (model.fullResolution || model.fillView) && !model.cropMode,
-                                               canNavigate: !model.cropMode, zoomLabel: model.fillView ? L10n.text("app.fill", defaultValue: "Fill") : model.zoomLabel).padding(8)
+                                               canNavigate: !model.cropMode && model.photoSwitchDisplay == nil, zoomLabel: model.fillView ? L10n.text("app.fill", defaultValue: "Fill") : model.zoomLabel).padding(8)
                             } else {
                                 Text(L10n.text("app.selectAPhotoToPreview", defaultValue: "Select a photo to preview")).font(.caption11).foregroundStyle(Color(nsColor: mat.textSecondary))
                             }
@@ -751,7 +751,7 @@ struct WorkspaceView: View {
                     Button { model.selectFilterSection(section, additive: NSEvent.modifierFlags.contains(.shift)) } label: {
                         LampLabel(on: selected) { Text(section.title) }
                     }.buttonStyle(.key(selected: selected, position: index == 0 ? .leading : .middle, height: 22, padding: 6))
-                        .accessibilityLabel(L10n.text("app.filterGroup", defaultValue: "Filter Group: ") + section.title).accessibilityValue(selected ? L10n.text("app.expand", defaultValue: "Expand") : L10n.text("app.close", defaultValue: "Close"))
+                        .accessibilityLabel(L10n.text("app.filterGroup", defaultValue: "Filter Group: ") + section.title).accessibilityValue(selected ? L10n.text("app.expanded", defaultValue: "Expanded") : L10n.text("app.collapsed", defaultValue: "Collapsed"))
                         .accessibilityIdentifier("filter-section-" + section.rawValue)
                         .help(L10n.text("app.showOrDisableFiltersShiftClickToCombineGroups", defaultValue: "Show or disable \(section.title) filters; Shift-click to combine groups"))
                 }
@@ -859,7 +859,7 @@ struct WorkspaceView: View {
                 Button(L10n.text("app.allKeywords", defaultValue: "All Keywords")) { model.keywordFilter = "" }
                 Divider()
                 ForEach(model.keywords) { keyword in
-                    Button("\(keyword.name)（\(keyword.total)）") { model.keywordFilter = keyword.keyword }
+                    Button(L10n.text("app.keywordCount", defaultValue: "\(keyword.name) (\(keyword.total))")) { model.keywordFilter = keyword.keyword }
                 }
             } label: {
                 Label(model.keywordFilter.isEmpty ? L10n.text("app.allKeywords", defaultValue: "All Keywords") : model.keywords.first { $0.keyword == model.keywordFilter }?.name ?? model.keywordFilter,
@@ -914,7 +914,7 @@ struct WorkspaceView: View {
         .accessibilityElement(children: .ignore).accessibilityLabel(L10n.text("app.preview_2115", defaultValue: "Preview")).accessibilityValue(text)
     }
     private var beforeAfterMenu: some View {
-        let title = switch model.beforeAfter { case .off: L10n.text("app.close", defaultValue: "Close"); case .sideBySide: L10n.text("app.sideBySide", defaultValue: "Side by Side"); case .split: L10n.text("app.splitView", defaultValue: "Split View") }
+        let title = switch model.beforeAfter { case .off: L10n.text("app.off", defaultValue: "Off"); case .sideBySide: L10n.text("app.sideBySide", defaultValue: "Side by Side"); case .split: L10n.text("app.splitView", defaultValue: "Split View") }
         let enabled = model.hasRecipe && !model.cropMode
         return Menu {
             Button(model.before ? L10n.text("app.showAfter", defaultValue: "Show After") : L10n.text("app.showBefore", defaultValue: "Show Before")) { model.toggleBefore() }
@@ -924,7 +924,7 @@ struct WorkspaceView: View {
             }
             Divider()
             Picker(L10n.text("app.beforeAfterComparison", defaultValue: "Before / After Comparison"), selection: Binding(get: { model.beforeAfter }, set: { model.showBeforeAfter($0) })) {
-                Text(L10n.text("app.close", defaultValue: "Close")).tag(BeforeAfterLayout.off)
+                Text(L10n.text("app.off", defaultValue: "Off")).tag(BeforeAfterLayout.off)
                 Text(L10n.text("app.sideBySideY", defaultValue: "Side by Side (Y)")).tag(BeforeAfterLayout.sideBySide)
                 Text(L10n.text("app.splitViewY", defaultValue: "Split View (⇧Y)")).tag(BeforeAfterLayout.split)
             }.pickerStyle(.inline).labelsHidden().disabled(!model.canShowBeforeAfter)
@@ -950,6 +950,14 @@ struct WorkspaceView: View {
             }
         }.fixedSize().disabled(!model.workspaceAvailable)
     }
+    private func flagHelp(_ flag: PhotoFlag) -> String {
+        let clear = flag == .unflagged ? "" : L10n.text("app.clickAgainToClear", defaultValue: "; click again to clear")
+        if model.survey != nil {
+            return L10n.text("app.flagCurrentPhotoHelp", defaultValue: "\(flag.title) (\(flag.shortcut))\(clear). Applies to the current photo")
+        }
+        let count = L10n.text("app.photos", defaultValue: "\(model.organizationIDs.count) photos")
+        return L10n.text("app.flagSelectionHelp", defaultValue: "\(flag.title) (\(flag.shortcut))\(clear). Selection: \(count)")
+    }
     private var organizationControls: some View {
         HStack(alignment: .keyCenter, spacing: 8) {
             HStack(spacing: -1) {
@@ -960,7 +968,7 @@ struct WorkspaceView: View {
                     }.buttonStyle(.key(selected: selected, position: KeyPosition(index: index, count: 3), height: Self.toolKey, padding: 5))
                         .accessibilityLabel(flag.title).accessibilityValue(model.selectedFlag == nil ? L10n.text("app.mixedState", defaultValue: "Mixed State") : selected ? L10n.text("app.selected", defaultValue: "Selected") : L10n.text("app.notSelected", defaultValue: "Not selected"))
                         .accessibilityAddTraits(selected ? .isSelected : []).accessibilityIdentifier("set-flag-\(flag.rawValue)")
-                        .help(L10n.text("app.appliesToPhotos", defaultValue: "\(flag.title) (\(flag.shortcut))\(flag == .unflagged ? "" : L10n.text("app.clickAgainToClear", defaultValue: "; click again to clear")). Applies to \(model.survey == nil ? L10n.text("app.selected_2130", defaultValue: "Selected") : L10n.text("app.current", defaultValue: "Current")) \(model.organizationIDs.count) photos"))
+                        .help(flagHelp(flag))
                 }
             }.fixedSize()
             HStack(spacing: 1) {
@@ -1110,7 +1118,7 @@ struct WorkspaceView: View {
                         .buttonStyle(.key(selected: model.developReference != nil, height: Self.toolKey, padding: 6)).fixedSize()
                         .disabled(!model.canShowDevelopReference || !model.workspaceAvailable)
                         .help(L10n.text("app.pinAReferenceAndEditTheCurrentPhotoR", defaultValue: "Pin a reference and edit the current photo (⇧R); zoom each side independently"))
-                        .accessibilityLabel(L10n.text("app.developReference", defaultValue: "Develop Reference")).accessibilityValue(model.developReference == nil ? L10n.text("app.close", defaultValue: "Close") : L10n.text("app.show", defaultValue: "Show"))
+                        .accessibilityLabel(L10n.text("app.developReference", defaultValue: "Develop Reference")).accessibilityValue(model.developReference == nil ? L10n.text("app.off", defaultValue: "Off") : L10n.text("app.on", defaultValue: "On"))
                 }
             } else {
                 Image(systemName: "square.grid.2x2").font(.system(size: 10)).foregroundStyle(Theme.textSecondary)
@@ -1129,7 +1137,7 @@ struct WorkspaceView: View {
     private func inspector(compactMasks: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             WorkspaceRegion {
-                HistogramScope(histogram: model.histogram,
+                HistogramScope(histogram: model.histogram ?? model.photoSwitchDisplay?.histogram,
                                details: model.editMode && model.developTool == .adjust && model.developReference == nil
                                    && model.comparison == nil && model.survey == nil ? nil : model.active?.details,
                                placeholder: model.comparison != nil ? L10n.text("app.histogramHiddenDuringComparison", defaultValue: "Histogram hidden during comparison") : L10n.text("app.waitingForPreview", defaultValue: "Waiting for preview"),
@@ -1164,7 +1172,7 @@ struct WorkspaceView: View {
                         }.padding(.horizontal, 12).padding(.vertical, 6)
                         Seam()
                     }
-                    if photo.supportsEditing, model.hasRecipe {
+                    if photo.supportsEditing, model.hasRecipe || model.photoSwitchDisplay != nil {
                         if model.maskMode {
                             MaskPanel(model: model, compact: compactMasks).disabled(!model.canEdit)
                         } else if model.spotMode {
@@ -1260,6 +1268,7 @@ struct WorkspaceView: View {
                     .help(L10n.text("app.resetAllAdjustmentsForTheCurrentPhotoUndoAvailable", defaultValue: "Reset all adjustments for the current photo; undo available"))
             }.padding(12)
         }.background(InstrumentPlate())
+            .environment(\.adjustmentPhotoID, model.activeID)
     }
 
     private var canInspectClipping: Bool {

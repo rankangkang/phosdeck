@@ -112,6 +112,16 @@ private struct AdjustmentDisplayState {
     let spotOffsets: [UUID: MaskPoint]
 }
 
+/// Display only: edits and exports always use the active photo's recipe.
+struct PhotoSwitchDisplay {
+    let photoID: String
+    let recipe: EditRecipe
+    let image: CGImage
+    let histogram: ImageHistogram?
+    let nativeSize: CGSize?
+    let rawDefaults: RAWDetailSettings?
+}
+
 enum WorkspaceMode { case grid, single, develop, compare, survey }
 enum WorkspaceModule: Hashable { case library, develop }
 enum DevelopTool: Hashable { case adjust, crop, mask, spot }
@@ -362,6 +372,12 @@ final class AppModel {
     var orientedSourceSize: CGSize?
     var renderedNativeSize: CGSize?
     private(set) var hasRecipe = false
+    private(set) var photoSwitchDisplay: PhotoSwitchDisplay?
+    var editorRecipe: EditRecipe? { photoSwitchDisplay?.recipe ?? recipe }
+    var editorRawDefaults: RAWDetailSettings? {
+        if let previous = photoSwitchDisplay { return previous.rawDefaults }
+        return rawDefaults
+    }
     var recipe: EditRecipe? {
         didSet {
             hasRecipe = recipe != nil
@@ -1035,6 +1051,12 @@ final class AppModel {
         if activeID != id {
             guard commitRecipe() else { return }
             clearSavedEditPreview(); endAdjustmentPreview(redraw: false); displayPixelReadout = nil; presetListFocused = false; beforeReference = nil; endMaskEffectPreview(redraw: false)
+            if id != nil, comparison == nil, survey == nil {
+                if let activeID, let image, let recipe, !previewIsCrop {
+                    photoSwitchDisplay = PhotoSwitchDisplay(photoID: activeID, recipe: recipe, image: image,
+                        histogram: histogram, nativeSize: renderedNativeSize, rawDefaults: rawDefaults)
+                }
+            } else { photoSwitchDisplay = nil }
             if canEdit, let photo = activePhoto, let recipe {
                 previousAdjustmentSource = AdjustmentSource(photo: photo, recipe: recipe)
             } else { previousAdjustmentSource = nil }
@@ -1107,6 +1129,7 @@ final class AppModel {
             guard let candidate, candidate.id != reference.id else { error = L10n.text("app.selectAtLeastTwoPhotosToCompare", defaultValue: "Select at least two photos to compare"); return }
             let comparison = makeComparisonRenderer()
             comparison.groupIDs = group
+            photoSwitchDisplay = nil
             editMode = false; singleView = true; beforeAfter = .off; self.comparison = comparison
             comparison.update(comparison.reference, photo: reference, roots: roots)
             if let offset = try catalog.offset(of: candidate.id, query: query) { pageOffset = offset / pageSize * pageSize; try reloadPhotos() }
@@ -1177,6 +1200,7 @@ final class AppModel {
             endComparison(); endSurvey()
             editMode = false; singleView = true; beforeAfter = .off
             let next = PhotoSurvey(ids: chosen, renderer: makeComparisonRenderer())
+            photoSwitchDisplay = nil
             next.offset = offset; survey = next
             choose(Set(chosen), active: active.flatMap { chosen.contains($0) ? $0 : nil } ?? activeID.flatMap { chosen.contains($0) ? $0 : nil } ?? chosen.first)
             try refreshSurvey()
@@ -1801,9 +1825,9 @@ final class AppModel {
     private func loadActive() {
         previewTask?.cancel(); previewGeneration = UUID(); pendingPreview = nil; pendingQualityPreview = nil; qualityRender?.cancel()
         interactivePreview = false; previewCurrent = false
-        guard comparison == nil, survey == nil else { return }
+        guard comparison == nil, survey == nil else { photoSwitchDisplay = nil; return }
         let token = previewGeneration
-        guard let photo = active, let root = roots.first(where: { $0.id == photo.rootID }) else { imageStatus = L10n.text("app.noPhotoSelected", defaultValue: "No photo selected"); return }
+        guard let photo = active, let root = roots.first(where: { $0.id == photo.rootID }) else { photoSwitchDisplay = nil; imageStatus = L10n.text("app.noPhotoSelected", defaultValue: "No photo selected"); return }
         imageStatus = L10n.text("app.loadingPhoto", defaultValue: "Loading photo…")
         previewTask = Task {
             do {
@@ -1823,7 +1847,7 @@ final class AppModel {
                 }
                 rawDefaults = defaults; recipe = value; savedRecipe = value; dirty = false
                 requestPreview(prepareInteractive: photo.supportsEditing)
-            } catch { if token == previewGeneration { imageStatus = error.localizedDescription } }
+            } catch { if token == previewGeneration { photoSwitchDisplay = nil; imageStatus = error.localizedDescription } }
         }
     }
     func changeRecipe(_ mutation: (inout EditRecipe) -> Void, commit: Bool = true, title: String? = nil, preview: Bool = true) {
@@ -2295,7 +2319,7 @@ final class AppModel {
             viewport.focusOnNextGeometry(point)
         }
     }
-    var canShowBeforeAfter: Bool { !isPreviewingAdjustment && !whiteBalanceSampling && !pointSampling && !showPointColorRange && hasRecipe && !cropMode && !maskMode && !spotMode && comparison == nil }
+    var canShowBeforeAfter: Bool { photoSwitchDisplay == nil && !isPreviewingAdjustment && !whiteBalanceSampling && !pointSampling && !showPointColorRange && hasRecipe && !cropMode && !maskMode && !spotMode && comparison == nil }
     /// `\`: the whole canvas shows the untoned, uncropped original.
     func toggleBefore() {
         guard recipe != nil, !cropMode else { return }
@@ -2410,7 +2434,7 @@ final class AppModel {
                         if mayPublish { self.publishPreview(result, job: delivery) }
                     case .failure(let error):
                         if !(error is CancellationError), job.generation == self.previewGeneration,
-                           mayPublish, self.pendingPreview == nil { self.imageStatus = error.localizedDescription }
+                           mayPublish, self.pendingPreview == nil { self.photoSwitchDisplay = nil; self.imageStatus = error.localizedDescription }
                     }
                     self.startInteractiveWorker()
                 }
@@ -2437,6 +2461,7 @@ final class AppModel {
                 if !task.isCancelled, job.revision == previewRevision { publishPreview(result, job: job) }
             } catch is CancellationError {} catch {
                 if job.generation == previewGeneration, job.revision == previewRevision {
+                    photoSwitchDisplay = nil
                     imageStatus = error.localizedDescription
                 }
             }
@@ -2456,6 +2481,7 @@ final class AppModel {
             Task { try? await thumbnails.storePreview(result.image, photo: photo) }
         }
         image = result.image; interactivePreview = job.interactive
+        photoSwitchDisplay = nil
         previewCurrent = !job.interactive && job.revision == previewRevision
         previewIsCrop = job.cropPreview
         renderedCropRecipe = job.cropPreview ? job.request.recipe : nil
@@ -2970,6 +2996,7 @@ extension AppModel {
         selection = []; activeID = nil; activePhoto = nil; photos = []; roots = []; collections = []; folders = [:]
         viewPositions = [:]; lockViewPosition = false
         collectionMembers = []; reports = []; pageOffset = 0; folderPhotoCount = -1
+        photoSwitchDisplay = nil
         recipe = nil; savedRecipe = nil; renderedCropRecipe = nil; image = nil; histogram = nil; dirty = false; canEdit = false; rawDefaults = nil
         orientedSourceSize = nil; renderedNativeSize = nil; renderedCoordinateRecipe = nil; imageStatus = L10n.text("app.noPhotoSelected", defaultValue: "No photo selected")
         editHistory = []; editSnapshots = []; copiedRecipe = nil; copiedLocalParameters = nil; localParameterPresets = []; copiedPhotoName = ""; copiedAdjustmentPhoto = nil; previousAdjustmentSource = nil; adjustmentRequest = nil; hasMoreHistory = false

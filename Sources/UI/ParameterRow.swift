@@ -1,6 +1,16 @@
 import SwiftUI
 import AppKit
 
+private struct AdjustmentPhotoIDKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+extension EnvironmentValues {
+    var adjustmentPhotoID: String? {
+        get { self[AdjustmentPhotoIDKey.self] }
+        set { self[AdjustmentPhotoIDKey.self] = newValue }
+    }
+}
+
 /// `label | scale fader | value`. Double-click or context-menu the label to reset.
 struct AdjustmentRow: View {
     let label: String
@@ -14,18 +24,30 @@ struct AdjustmentRow: View {
     let change: (Double, Bool) -> Void
     let commit: () -> Void
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.adjustmentPhotoID) private var photoID
     @FocusState private var editing: Bool
     @State private var draft: String?
+    @State private var draftPhotoID: String?
     @State private var invalid = false
     private var bipolar: Bool { range.lowerBound < 0 && range.upperBound > 0 }
     private var modified: Bool { abs(value - reset) >= max(step, 1e-9) / 2 }
     private func bounded(_ v: Double) -> Double { v.isFinite ? min(range.upperBound, max(range.lowerBound, v)) : value }
     var body: some View {
-        HStack(spacing: Metrics.gap) {
-            labelView.frame(width: Metrics.rowLabel, alignment: .leading)
-            slider.frame(height: 28)
-            valueField.frame(width: Metrics.rowValue, alignment: .trailing)
-        }.frame(minHeight: Metrics.row)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: Metrics.gap) {
+                labelView.frame(width: Metrics.rowLabel, alignment: .leading)
+                slider.frame(height: 28)
+                valueField.frame(width: Metrics.rowValue, alignment: .trailing)
+            }.frame(minHeight: Metrics.row)
+            if invalid {
+                Label(errorMessage, systemImage: "exclamationmark.circle")
+                    .font(.caption11).foregroundStyle(Theme.error)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, Metrics.rowLabel + Metrics.gap).padding(.bottom, 4)
+            }
+        }
+        .onChange(of: photoID) { cancel(); editing = false }
+        .onChange(of: value) { if !editing { cancel() } }
     }
     private var labelView: some View {
         HStack(spacing: 4) {
@@ -35,8 +57,8 @@ struct AdjustmentRow: View {
             if modified { Circle().fill(Theme.accentSignal).frame(width: 4, height: 4).accessibilityHidden(true) }
         }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { change(bounded(reset), true) }
-        .contextMenu { Button(L10n.text("app.reset", defaultValue: "Reset \(label)")) { change(bounded(reset), true) } }
+        .onTapGesture(count: 2, perform: resetValue)
+        .contextMenu { Button(L10n.text("app.reset", defaultValue: "Reset \(label)"), action: resetValue) }
         .help(L10n.text("app.doubleClickTheLabelToReset", defaultValue: "Double-click the label to reset"))
     }
     private var slider: some View {
@@ -46,12 +68,12 @@ struct AdjustmentRow: View {
     private var valueField: some View {
         HStack(spacing: 3) {
             TextField(label, text: Binding(get: { draft ?? Self.display(value, digits: digits, signed: bipolar) },
-                                           set: { draft = $0; invalid = false }))
+                                           set: { draft = $0; draftPhotoID = photoID; invalid = false }))
                 .textFieldStyle(.plain).font(.value).multilineTextAlignment(.trailing)
                 .foregroundStyle(enabled ? Theme.text : Theme.textDisabled)
                 .padding(.horizontal, 3).frame(height: 20)
                 .background {
-                    if editing {
+                    if editing || invalid {
                         RoundedRectangle(cornerRadius: Metrics.inputRadius).fill(Theme.raised)
                             .overlay(RoundedRectangle(cornerRadius: Metrics.inputRadius)
                                 .strokeBorder(invalid ? Theme.error : Theme.focusRing, lineWidth: invalid ? 1.5 : 1))
@@ -59,25 +81,37 @@ struct AdjustmentRow: View {
                 }
                 .focused($editing)
                 .onSubmit { apply(); if !invalid { editing = false } }
-                .onExitCommand { draft = nil; invalid = false; editing = false }
+                .onExitCommand { cancel(); editing = false }
                 .onChange(of: editing) {
                     guard !editing, draft != nil else { return }
                     apply()
-                    if invalid { draft = nil; invalid = false }
                 }
-                .help(invalid ? L10n.text("app.enterANumberBetweenAnd", defaultValue: "Enter a number between \(Self.display(range.lowerBound, digits: digits, signed: false)) and \(Self.display(range.upperBound, digits: digits, signed: false))") : "")
+                .help(invalid ? errorMessage : "")
                 .accessibilityLabel(L10n.text("app.value", defaultValue: "\(label) value"))
             Text(unit ?? "").font(.caption11).foregroundStyle(Theme.textSecondary)
                 .frame(width: Metrics.rowUnit, alignment: .leading).accessibilityHidden(unit == nil || unit?.isEmpty == true)
         }
     }
+    private var errorMessage: String {
+        L10n.text("app.numberRangeError", defaultValue: "Enter a number between \(Self.display(range.lowerBound, digits: digits, signed: false)) and \(Self.display(range.upperBound, digits: digits, signed: false)). Press Esc to cancel.")
+    }
+    private func cancel() { draft = nil; draftPhotoID = nil; invalid = false }
+    private func resetValue() { cancel(); editing = false; change(bounded(reset), true) }
     private func apply() {
-        guard let text = draft else { commit(); return }
-        let cleaned = text.replacingOccurrences(of: "−", with: "-").replacingOccurrences(of: "+", with: "")
+        guard enabled, draft == nil || draftPhotoID == photoID else { cancel(); return }
+        guard let text = draft else { return }
+        let cleaned = text.replacingOccurrences(of: "−", with: "-")
             .replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)
-        guard let number = Double(cleaned), number.isFinite else { invalid = true; return }
-        draft = nil; invalid = false
-        change(bounded(number), false); commit()
+        guard let number = Double(cleaned), number.isFinite, range.contains(number) else {
+            if !invalid, let app = NSApp {
+                NSAccessibility.post(element: app, notification: .announcementRequested,
+                    userInfo: [.announcement: "\(label): \(errorMessage)", .priority: NSAccessibilityPriorityLevel.high.rawValue])
+            }
+            invalid = true; return
+        }
+        cancel()
+        guard number != value else { return }
+        change(number, false); commit()
     }
     static func display(_ value: Double, digits: Int, signed: Bool) -> String {
         let text = String(format: "%.\(digits)f", abs(value))

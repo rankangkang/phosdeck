@@ -155,7 +155,9 @@ struct WorkspaceCommands: Commands {
         CommandMenu(L10n.text("app.photo", defaultValue: "Photo")) {
             Menu(L10n.text("app.rating", defaultValue: "Rating")) {
                 ForEach(0...5, id: \.self) { rating in
-                    Toggle(rating == 0 ? L10n.text("app.unrated0", defaultValue: "Unrated (0)") : L10n.text("app.stars_266", defaultValue: "\(rating) Stars (\(rating))"), isOn: Binding(
+                    let stars = L10n.text("app.stars_1722", defaultValue: "\(rating) Stars")
+                    let title = rating == 0 ? L10n.text("app.unrated0", defaultValue: "Unrated (0)") : L10n.text("app.titleWithShortcut", defaultValue: "\(stars) (\(String(rating)))")
+                    Toggle(title, isOn: Binding(
                         get: { model.selectedRating == rating },
                         set: { if $0 { model.organize(rating: rating) } }))
                 }
@@ -167,7 +169,7 @@ struct WorkspaceCommands: Commands {
             }.disabled(!photoSelected)
             Menu(L10n.text("app.colorLabel", defaultValue: "Color Label")) {
                 ForEach(PhotoColorLabel.allCases) { label in
-                    Toggle(label.title + (label.shortcut.map { "（\($0)）" } ?? ""), isOn: Binding(
+                    Toggle(label.titleWithShortcut, isOn: Binding(
                         get: { model.selectedColorLabel == label.rawValue },
                         set: { _ in model.toggleColorLabel(label.rawValue) }))
                 }

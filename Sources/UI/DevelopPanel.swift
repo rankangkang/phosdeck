@@ -12,7 +12,7 @@ struct DevelopPanel: View {
     var previewingGroup: DevelopGroup? = nil
     var onOpenGroup: ((DevelopGroup) -> Void)? = nil
     private var recipe: EditRecipe? {
-        guard let source = model.recipe else { return nil }
+        guard let source = local ? model.recipe : model.editorRecipe else { return nil }
         return local ? model.selectedMask?.editingRecipe(from: source) : source
     }
     private func change(_ edit: (inout EditRecipe) -> Void, commit: Bool = true) {
@@ -134,7 +134,7 @@ struct DevelopPanel: View {
 
     @ViewBuilder private var panelToolbar: some View {
         HStack(spacing: 8) {
-            Text(L10n.text("app.adjustments", defaultValue: "Adjustments")).font(.section).foregroundStyle(Theme.textSecondary)
+            Text(model.photoSwitchDisplay == nil ? L10n.text("app.adjustments", defaultValue: "Adjustments") : L10n.text("app.loadingPhoto", defaultValue: "Loading photo…")).font(.section).foregroundStyle(Theme.textSecondary)
             Seam().frame(maxWidth: .infinity)
             Menu {
                 Toggle(L10n.text("app.expandOneAdjustmentPanelAtATime", defaultValue: "Expand One Adjustment Panel at a Time"), isOn: $solo)
@@ -297,7 +297,7 @@ struct DevelopPanel: View {
     private var details: some View {
         VStack(alignment: .leading, spacing: 0) {
             detailZoom
-            if model.rawDefaults == nil {
+            if model.editorRawDefaults == nil {
                 note(L10n.text("app.readingAvailableAdjustmentsForThisRAW", defaultValue: "Reading available adjustments for this RAW…"))
             } else {
                 SubgroupLabel(L10n.text("app.noiseReduction_1116", defaultValue: "Noise Reduction"))
@@ -306,7 +306,7 @@ struct DevelopPanel: View {
                 SubgroupLabel(L10n.text("app.sharpening_759", defaultValue: "Sharpening"))
                 detailRow(L10n.text("app.sharpening_759", defaultValue: "Sharpening"), \.sharpness)
                 SubgroupLabel(L10n.text("app.lens", defaultValue: "Lens"))
-                if let baseline = model.rawDefaults?.lensCorrection {
+                if let baseline = model.editorRawDefaults?.lensCorrection {
                     HStack(spacing: Metrics.gap) {
                         Text(L10n.text("app.lensCorrection", defaultValue: "Lens Correction")).frame(width: Metrics.rowLabel, alignment: .leading)
                         LampSwitch(title: L10n.text("app.lensCorrection", defaultValue: "Lens Correction"), isOn: Binding(get: { recipe?.rawDetails.lensCorrection ?? baseline },
@@ -371,7 +371,7 @@ struct DevelopPanel: View {
             commit: { model.commitRecipe() })
     }
     @ViewBuilder private func detailRow(_ name: String, _ key: WritableKeyPath<RAWDetailSettings, Double?>) -> some View {
-        if let baseline = model.rawDefaults?[keyPath: key] {
+        if let baseline = model.editorRawDefaults?[keyPath: key] {
             AdjustmentRow(label: name, value: (recipe?.rawDetails[keyPath: key] ?? baseline) * 100,
                 range: 0...100, reset: baseline * 100, change: { value, commit in
                     change({ $0.rawDetails[keyPath: key] = Float(value / 100) == Float(baseline) ? nil : value / 100 }, commit: commit)

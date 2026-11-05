@@ -42,8 +42,7 @@ private struct ColorLabelKey: View {
         if prefix == "smart-color" { return L10n.text("app.chooseColorCondition", defaultValue: "Choose Color Condition: ") + label.title }
         if prefix == "color-filter" { return L10n.text("app.filter", defaultValue: "Filter: ") + label.title + L10n.text("app.combineColorsOrTurnAllOffToShowEvery", defaultValue: "; combine colors, or turn all off to show every color") }
         if label == .none { return L10n.text("app.clearColorLabelsForSelectedPhotos", defaultValue: "Clear color labels for selected photos") }
-        let key = label.shortcut.map { "（\($0)）" } ?? ""
-        return label.title + key + L10n.text("app.clickAgainToClear", defaultValue: "; click again to clear")
+        return label.titleWithShortcut + L10n.text("app.clickAgainToClear", defaultValue: "; click again to clear")
     }
     var body: some View {
         Button(action: action) {
@@ -75,7 +74,7 @@ struct ColorLabelPicker: View {
             ColorLabelKeys(selected: Set(model.selectedColorLabel.map { [$0] } ?? []), action: { model.toggleColorLabel($0) })
             Menu {
                 ForEach(PhotoColorLabel.allCases) { label in
-                    Toggle(label.title + (label.shortcut.map { "（\($0)）" } ?? ""), isOn: Binding(
+                    Toggle(label.titleWithShortcut, isOn: Binding(
                         get: { model.selectedColorLabel == label.rawValue }, set: { _ in model.toggleColorLabel(label.rawValue) }))
                 }
             } label: {

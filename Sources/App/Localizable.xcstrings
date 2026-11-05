@@ -3445,24 +3445,6 @@
         }
       }
     },
-    "app.appliesToPhotos": {
-      "extractionState": "manual",
-      "comment": "Sources/UI/WorkspaceView.swift: 929",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ (%@)%@. Applies to %@ %lld photos"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@（%2$@）%3$@。应用于%4$@ %5$lld 张照片"
-          }
-        }
-      }
-    },
     "app.appliesToTheCombinedSelectionALargeSnapRange": {
       "extractionState": "manual",
       "comment": "Sources/UI/MaskPanel.swift: 208",
@@ -15143,6 +15125,40 @@
         }
       }
     },
+    "app.flagCurrentPhotoHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (%@)%@. Applies to the current photo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@（%2$@）%3$@。应用于当前照片"
+          }
+        }
+      }
+    },
+    "app.flagSelectionHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (%@)%@. Selection: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@（%2$@）%3$@。已选照片：%4$@"
+          }
+        }
+      }
+    },
     "app.flag_1890": {
       "extractionState": "manual",
       "comment": "Sources/UI/SmartCollectionSheet.swift: 62",
@@ -19733,6 +19749,23 @@
         }
       }
     },
+    "app.keywordCount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (%lld)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@（%2$lld）"
+          }
+        }
+      }
+    },
     "app.keywords": {
       "extractionState": "manual",
       "comment": "Sources/Catalog/SmartCollections.swift: 13",
@@ -20305,6 +20338,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在读取照片…"
+          }
+        }
+      }
+    },
+    "app.loadingPreviousPhotoShown": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading photo… Previous photo shown"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在载入照片… 暂时显示上一张"
           }
         }
       }
@@ -23815,6 +23865,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "未核验"
+          }
+        }
+      }
+    },
+    "app.numberRangeError": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a number between %@ and %@. Press Esc to cancel."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入 %1$@ 到 %2$@ 之间的数字。按 Esc 取消。"
           }
         }
       }
@@ -35212,24 +35279,6 @@
         }
       }
     },
-    "app.stars_266": {
-      "extractionState": "manual",
-      "comment": "Sources/App/PhosdeckApp.swift: 157",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld Stars (%lld)"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld 星（%2$lld）"
-          }
-        }
-      }
-    },
     "app.start": {
       "extractionState": "manual",
       "comment": "Sources/UI/ExportSheet.swift: 603",
@@ -39744,6 +39793,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "色调"
+          }
+        }
+      }
+    },
+    "app.titleWithShortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (%@)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@（%2$@）"
           }
         }
       }
