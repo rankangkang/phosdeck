@@ -50,6 +50,10 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(chinese.text("app.importPhotos", defaultValue: "Import Photos…"), "导入照片…")
         XCTAssertEqual(chinese.text("app.develop", defaultValue: "Develop"), "编辑")
         XCTAssertEqual(english.text("app.develop", defaultValue: "Develop"), "Develop")
+        XCTAssertEqual(chinese.text("app.tone", defaultValue: "Tone"), "明暗")
+        XCTAssertEqual(english.text("app.tone", defaultValue: "Tone"), "Tone")
+        XCTAssertEqual(chinese.text("app.textureAndColor", defaultValue: "Texture & Color"), "质感与色彩")
+        XCTAssertEqual(english.text("app.textureAndColor", defaultValue: "Texture & Color"), "Texture & Color")
         XCTAssertEqual(chinese.text("app.developD", defaultValue: "Develop (D)"), "编辑（D）")
         for count in [1, 2, 21] {
             XCTAssertEqual(english.text("app.photos", defaultValue: "\(count) photos"), "\(count) " + (count == 1 ? "photo" : "photos"))

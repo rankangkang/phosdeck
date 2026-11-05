@@ -204,68 +204,61 @@ struct HistogramScope: View {
             return ["sRGB", pixelReadout.alpha == 0 ? L10n.text("app.transparent", defaultValue: "Transparent") : pixelReadout.rgbText]
                 + (pixelReadout.alpha < 255 && pixelReadout.alpha > 0 ? ["α \(pixelReadout.alpha)"] : [])
         }
-        return details.map { info in
-            [info.iso.map { "ISO \($0)" }, info.aperture.map { String(format: "ƒ/%.1f", $0) },
-             info.exposureText, info.focalLength.map { String(format: "%.0f mm", $0) }].compactMap { $0 }
-        } ?? []
+        let capture = PhotoViewingInfo.captureItems(details)
+        return capture.isEmpty ? ["sRGB"] : capture
     }
     var body: some View {
         let clip = Self.clipping(histogram)
         let shadowShown = shadowClippingShown ?? clippingShown
         let highlightShown = highlightClippingShown ?? clippingShown
-        ScopeDisplay {
-            VStack(spacing: 0) {
-                ZStack(alignment: .top) {
-                    Canvas { context, size in
-                        var grid = Path()
-                        for i in 1..<4 {
-                            let x = (size.width * Double(i) / 4).rounded() + 0.5
-                            grid.move(to: CGPoint(x: x, y: 0)); grid.addLine(to: CGPoint(x: x, y: size.height))
-                        }
-                        context.stroke(grid, with: .color(Theme.scopeGrid), lineWidth: 1)
-                        guard let histogram else { return }
-                        let maximum = max(1, histogram.channels.flatMap { $0 }.max() ?? 1)
-                        context.blendMode = .screen
-                        for (index, values) in histogram.channels.enumerated() where index < Theme.traceRGB.count {
-                            var path = Path(); path.move(to: CGPoint(x: 0, y: size.height))
-                            for (bin, count) in values.enumerated() {
-                                path.addLine(to: CGPoint(x: Double(bin) / Double(max(1, values.count - 1)) * size.width,
-                                                         y: size.height * (1 - sqrt(count / maximum))))
+        VStack(spacing: 6) {
+            if !compact {
+                HStack(spacing: 12) {
+                    Text(L10n.text("app.histogram_1659", defaultValue: "Histogram"))
+                        .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize()
+                    clippingControls(clip: clip, shadowShown: shadowShown, highlightShown: highlightShown)
+                }
+            }
+            ScopeDisplay {
+                VStack(spacing: 0) {
+                    ZStack(alignment: .top) {
+                        Canvas { context, size in
+                            var grid = Path()
+                            for i in 1..<4 {
+                                let x = (size.width * Double(i) / 4).rounded() + 0.5
+                                grid.move(to: CGPoint(x: x, y: 0)); grid.addLine(to: CGPoint(x: x, y: size.height))
                             }
-                            path.addLine(to: CGPoint(x: size.width, y: size.height)); path.closeSubpath()
-                            context.fill(path, with: .color(Theme.traceRGB[index].opacity(0.55)))
+                            context.stroke(grid, with: .color(Theme.scopeGrid), lineWidth: 1)
+                            guard let histogram else { return }
+                            let maximum = max(1, histogram.channels.flatMap { $0 }.max() ?? 1)
+                            context.blendMode = .screen
+                            for (index, values) in histogram.channels.enumerated() where index < Theme.traceRGB.count {
+                                var path = Path(); path.move(to: CGPoint(x: 0, y: size.height))
+                                for (bin, count) in values.enumerated() {
+                                    path.addLine(to: CGPoint(x: Double(bin) / Double(max(1, values.count - 1)) * size.width,
+                                                             y: size.height * (1 - sqrt(count / maximum))))
+                                }
+                                path.addLine(to: CGPoint(x: size.width, y: size.height)); path.closeSubpath()
+                                context.fill(path, with: .color(Theme.traceRGB[index].opacity(0.55)))
+                            }
                         }
+                        if compact {
+                            clippingControls(clip: clip, shadowShown: shadowShown, highlightShown: highlightShown).padding(6)
+                        }
+                        if histogram == nil {
+                            Text(placeholder).font(.caption11).foregroundStyle(Theme.scopeText).frame(maxHeight: .infinity)
+                        }
+                    }.frame(height: compact ? Metrics.histogramPlot.compact : Metrics.histogramPlot.regular)
+                    if !compact {
+                        Theme.scopeGrid.frame(height: 1)
+                        HStack(spacing: 0) {
+                            ForEach(Array(readout.enumerated()), id: \.offset) { _, item in
+                                Text(item).frame(maxWidth: pixelReadout == nil ? .infinity : nil)
+                            }
+                        }
+                        .font(.system(size: 11).monospacedDigit()).foregroundStyle(Theme.scopeText).lineLimit(1)
+                        .frame(height: 23)
                     }
-                    HStack {
-                        clipLamp(L10n.text("app.shadows_1650", defaultValue: "Shadows"), on: clip.shadows, shown: shadowShown, toggle: toggleShadowClipping ?? toggleClipping)
-                        if let previewClipping, let pulseClipping {
-                            MomentaryPreviewKey(title: L10n.text("app.temporarilyInspectShadowClipping", defaultValue: "Temporarily Inspect Shadow Clipping"), systemImage: "eye", selected: shadowShown,
-                                height: 18, onPress: { previewClipping(true, $0) }, onPulse: { pulseClipping(true) })
-                                .accessibilityValue(L10n.text("app.holdToInspectShadowClippingReleaseToRestore", defaultValue: "Hold to inspect shadow clipping; release to restore"))
-                                .help(L10n.text("app.holdToInspectShadowClippingReleaseToRestoreThe", defaultValue: "Hold to inspect shadow clipping; release to restore the previous display"))
-                        }
-                        Spacer()
-                        if let previewClipping, let pulseClipping {
-                            MomentaryPreviewKey(title: L10n.text("app.temporarilyInspectHighlightClipping", defaultValue: "Temporarily Inspect Highlight Clipping"), systemImage: "eye", selected: highlightShown,
-                                height: 18, onPress: { previewClipping(false, $0) }, onPulse: { pulseClipping(false) })
-                                .accessibilityValue(L10n.text("app.holdToInspectHighlightClippingReleaseToRestore", defaultValue: "Hold to inspect highlight clipping; release to restore"))
-                                .help(L10n.text("app.holdToInspectHighlightClippingReleaseToRestoreThe", defaultValue: "Hold to inspect highlight clipping; release to restore the previous display"))
-                        }
-                        clipLamp(L10n.text("app.highlights", defaultValue: "Highlights"), on: clip.highlights, shown: highlightShown, toggle: toggleHighlightClipping ?? toggleClipping)
-                    }.padding(6)
-                    if histogram == nil {
-                        Text(placeholder).font(.caption11).foregroundStyle(Theme.scopeText).frame(maxHeight: .infinity)
-                    }
-                }.frame(height: compact ? Metrics.histogramPlot.compact : Metrics.histogramPlot.regular)
-                if !compact {
-                    Theme.scopeGrid.frame(height: 1)
-                    HStack(spacing: 0) {
-                        ForEach(Array(readout.enumerated()), id: \.offset) { _, item in
-                            Text(item).frame(maxWidth: pixelReadout == nil ? .infinity : nil)
-                        }
-                    }
-                    .font(.system(size: 11).monospacedDigit()).foregroundStyle(Theme.scopeText).lineLimit(1)
-                    .frame(height: 23)
                 }
             }
         }
@@ -288,13 +281,33 @@ struct HistogramScope: View {
             }
         }
     }
+    private func clippingControls(clip: (shadows: Bool, highlights: Bool), shadowShown: Bool, highlightShown: Bool) -> some View {
+        HStack(spacing: 4) {
+            clipLamp(L10n.text("app.shadows_1650", defaultValue: "Shadows"), on: clip.shadows, shown: shadowShown, toggle: toggleShadowClipping ?? toggleClipping)
+            if let previewClipping, let pulseClipping {
+                MomentaryPreviewKey(title: L10n.text("app.temporarilyInspectShadowClipping", defaultValue: "Temporarily Inspect Shadow Clipping"), systemImage: "eye", selected: shadowShown,
+                    height: 18, onPress: { previewClipping(true, $0) }, onPulse: { pulseClipping(true) })
+                    .accessibilityValue(L10n.text("app.holdToInspectShadowClippingReleaseToRestore", defaultValue: "Hold to inspect shadow clipping; release to restore"))
+                    .help(L10n.text("app.holdToInspectShadowClippingReleaseToRestoreThe", defaultValue: "Hold to inspect shadow clipping; release to restore the previous display"))
+            }
+            Spacer(minLength: 0)
+            if let previewClipping, let pulseClipping {
+                MomentaryPreviewKey(title: L10n.text("app.temporarilyInspectHighlightClipping", defaultValue: "Temporarily Inspect Highlight Clipping"), systemImage: "eye", selected: highlightShown,
+                    height: 18, onPress: { previewClipping(false, $0) }, onPulse: { pulseClipping(false) })
+                    .accessibilityValue(L10n.text("app.holdToInspectHighlightClippingReleaseToRestore", defaultValue: "Hold to inspect highlight clipping; release to restore"))
+                    .help(L10n.text("app.holdToInspectHighlightClippingReleaseToRestoreThe", defaultValue: "Hold to inspect highlight clipping; release to restore the previous display"))
+            }
+            clipLamp(L10n.text("app.highlights", defaultValue: "Highlights"), on: clip.highlights, shown: highlightShown, toggle: toggleHighlightClipping ?? toggleClipping)
+        }
+    }
     @ViewBuilder private func clipLamp(_ title: String, on: Bool, shown: Bool, toggle: (() -> Void)?) -> some View {
+        let ink = compact ? Theme.scopeText : Theme.textSecondary
         let lamp = HStack(spacing: 4) {
-            Lamp(on: on, onScope: true)
-            Text(title).font(.system(size: 10)).foregroundStyle(Theme.scopeText)
+            Lamp(on: on, onScope: compact)
+            Text(title).font(.system(size: 10)).foregroundStyle(ink)
         }
         .padding(.horizontal, 3).padding(.vertical, 1)
-        .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.scopeText.opacity(shown ? 0.8 : 0), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(ink.opacity(shown ? 0.8 : 0), lineWidth: 1))
         if let toggle {
             Button(action: toggle) { lamp.contentShape(Rectangle()) }.buttonStyle(.plain)
                 .help(L10n.text("app.clickToClipping", defaultValue: "\(on ? L10n.text("app.clipped", defaultValue: "\(title) clipped") : L10n.text("app.notClipped", defaultValue: "\(title) not clipped")); click to \(shown ? L10n.text("app.hide", defaultValue: "Hide") : L10n.text("app.show", defaultValue: "Show")) \(title) clipping"))

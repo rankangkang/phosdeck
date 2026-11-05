@@ -382,9 +382,8 @@ struct DevelopPanel: View {
         VStack(spacing: 0) {
             keyField(L10n.text("app.treatment", defaultValue: "Treatment"), [KeyOption(false, L10n.text("app.color_1139", defaultValue: "Color")), KeyOption(true, L10n.text("app.blackWhite", defaultValue: "Black & White"))],
                      Binding(get: { recipe?.develop.blackAndWhite ?? false }, set: { v in change { $0.develop.blackAndWhite = v } }))
-            HStack {
+            HStack(spacing: Metrics.gap) {
                 SubgroupLabel(L10n.text("app.whiteBalance", defaultValue: "White Balance"))
-                Spacer()
                 if !local {
                     Button { model.toggleWhiteBalanceSampling() } label: {
                         LampLabel(on: model.whiteBalanceSampling) { Image(systemName: "eyedropper") }
@@ -392,28 +391,29 @@ struct DevelopPanel: View {
                         .disabled(!model.canEdit).help(L10n.text("app.sampleWhiteBalanceFromANeutralAreaWEsc", defaultValue: "Sample white balance from a neutral area (W); Esc exits"))
                         .accessibilityLabel(L10n.text("app.sampleWhiteBalance", defaultValue: "Sample White Balance")).accessibilityValue(model.whiteBalanceSampling ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off"))
                 }
-            }
+            }.padding(.top, Metrics.gap)
             if !local, model.whiteBalanceSampling {
                 KeyRow(title: L10n.text("app.afterSampling", defaultValue: "After Sampling"), options: [KeyOption(false, L10n.text("app.single", defaultValue: "Single")), KeyOption(true, L10n.text("app.continuous", defaultValue: "Continuous"))], selection: $model.whiteBalanceContinuous, expand: true)
                     .padding(.bottom, 6)
                 note(model.whiteBalanceSamplingBusy ? L10n.text("app.calculatingWhiteBalance", defaultValue: "Calculating white balance…") : L10n.text("app.clickANeutralGrayAreaHoldSpaceToPan", defaultValue: "Click a neutral gray area. Hold Space to pan; Esc exits."))
             }
-            keyField(L10n.text("app.whiteBalance", defaultValue: "White Balance"), [KeyOption(true, local ? L10n.text("app.unchanged", defaultValue: "Unchanged") : L10n.text("app.asShot", defaultValue: "As Shot")), KeyOption(false, L10n.text("app.custom", defaultValue: "Custom"))],
-                     Binding(get: { recipe?.asShotWhiteBalance ?? true }, set: { v in change { r in
+            KeyRow(title: L10n.text("app.whiteBalance", defaultValue: "White Balance"), options: [KeyOption(true, local ? L10n.text("app.unchanged", defaultValue: "Unchanged") : L10n.text("app.asShot", defaultValue: "As Shot")), KeyOption(false, L10n.text("app.custom", defaultValue: "Custom"))],
+                     selection: Binding(get: { recipe?.asShotWhiteBalance ?? true }, set: { v in change { r in
                         r.asShotWhiteBalance = v
                         if v { r.temperature = r.baselineTemperature; r.tint = r.baselineTint }
-                     } }))
+                     } }), expand: true)
+                .padding(.leading, Metrics.rowLabel + Metrics.gap).padding(.top, Metrics.gap).padding(.bottom, 4)
             row(L10n.text("app.temperature", defaultValue: "Temperature"), \.temperature, range: 2000...50000, step: 50, reset: recipe?.baselineTemperature ?? 5500, unit: "K")
             row(L10n.text("app.tint", defaultValue: "Tint"), \.tint, range: -150...150, reset: recipe?.baselineTint ?? 0)
             if local || recipe?.isRaster == true { note(L10n.text("app.5500K0IsNeutralAdjustmentsApplyOverThe", defaultValue: "5500 K / 0 is neutral. Adjustments apply over the current photo colors.")) }
-            SubgroupLabel(L10n.text("app.tint", defaultValue: "Tint"))
+            SubgroupLabel(L10n.text("app.tone", defaultValue: "Tone")).padding(.top, Metrics.gap)
             row(L10n.text("app.exposure", defaultValue: "Exposure"), \.exposure, range: -5...5, step: 0.05, digits: 2, unit: "EV")
             row(L10n.text("app.contrast", defaultValue: "Contrast"), \.contrast, scale: 100, offset: -100)
             row(L10n.text("app.highlights", defaultValue: "Highlights"), \.develop.highlights)
             row(L10n.text("app.shadows", defaultValue: "Shadows"), \.develop.shadows)
             row(L10n.text("app.whites", defaultValue: "Whites"), \.develop.whites)
             row(L10n.text("app.blacks", defaultValue: "Blacks"), \.develop.blacks)
-            SubgroupLabel(L10n.text("app.preferences", defaultValue: "Preferences"))
+            SubgroupLabel(L10n.text("app.textureAndColor", defaultValue: "Texture & Color")).padding(.top, Metrics.gap)
             row(L10n.text("app.texture", defaultValue: "Texture"), \.develop.texture)
             row(L10n.text("app.clarity", defaultValue: "Clarity"), \.develop.clarity)
             row(L10n.text("app.dehaze", defaultValue: "Dehaze"), \.develop.dehaze)

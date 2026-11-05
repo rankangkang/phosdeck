@@ -598,7 +598,17 @@ struct WorkspaceView: View {
             HStack(spacing: 0) {
                 if let reference = model.developReference, model.editMode {
                     DevelopReferenceView(model: model, reference: reference)
-                } else { PhotoCanvas(model: model, clippingPreview: clippingPreview.preview) }
+                } else {
+                    VStack(spacing: 0) {
+                        if model.editMode, model.developTool == .adjust {
+                            WorkspaceRegion { PhotoViewingInfo(photo: model.active, mat: mat) }
+                        }
+                        PhotoCanvas(model: model, clippingPreview: clippingPreview.preview)
+                        if model.editMode, model.developTool == .adjust {
+                            WorkspaceRegion { PhotoViewingInfo(photo: model.active, mat: mat, capture: true) }
+                        }
+                    }.background(mat.color)
+                }
                 if showMasks {
                     Seam(axis: .vertical)
                     VStack(spacing: 0) {
@@ -1097,7 +1107,9 @@ struct WorkspaceView: View {
     private func inspector(compactMasks: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             WorkspaceRegion {
-                HistogramScope(histogram: model.histogram, details: model.active?.details,
+                HistogramScope(histogram: model.histogram,
+                               details: model.editMode && model.developTool == .adjust && model.developReference == nil
+                                   && model.comparison == nil && model.survey == nil ? nil : model.active?.details,
                                placeholder: model.comparison != nil ? L10n.text("app.histogramHiddenDuringComparison", defaultValue: "Histogram hidden during comparison") : L10n.text("app.waitingForPreview", defaultValue: "Waiting for preview"),
                                clippingShown: model.showClipping,
                                shadowClippingShown: clippingPreview.preview?.shadows ?? model.showShadowClipping,
@@ -1363,6 +1375,51 @@ struct WorkspaceView: View {
             Button(L10n.text("app.taskResults_2221", defaultValue: "Task results \(model.reports.count)")) { reports = true }
                 .buttonStyle(.plain).foregroundStyle(model.reports.isEmpty ? Theme.textSecondary : Theme.text)
                 .help(L10n.text("app.viewIndividualResultsFromTheLatestTask", defaultValue: "View individual results from the latest task"))
+        }
+    }
+}
+
+/// These strips read photo metadata independently of high-frequency canvas pixels.
+struct PhotoViewingInfo: View {
+    let photo: Photo?
+    let mat: PhotoMat
+    var capture = false
+
+    static func captureItems(_ details: PhotoMetadata?) -> [String] {
+        guard let details else { return [] }
+        return [details.focalLength.map { String(format: "%.0f mm", $0) },
+                details.aperture.map { String(format: "ƒ/%.1f", $0) }, details.exposureText,
+                details.iso.map { "ISO \($0)" }].compactMap { $0 }
+    }
+
+    @ViewBuilder var body: some View {
+        if let photo {
+            if capture {
+                let items = Self.captureItems(photo.details)
+                if photo.camera?.isEmpty == false || !items.isEmpty {
+                    HStack(spacing: Metrics.gap) {
+                        if let camera = photo.camera {
+                            Text(camera).lineLimit(1).truncationMode(.middle).help(camera)
+                        }
+                        Spacer(minLength: Metrics.gap)
+                        Text(items.joined(separator: " · ")).fixedSize()
+                    }
+                    .font(.caption11).monospacedDigit().foregroundStyle(Color(nsColor: mat.textSecondary))
+                    .padding(.horizontal, Metrics.padding).frame(height: Metrics.topBar).background(mat.color)
+                    .accessibilityElement(children: .combine).accessibilityIdentifier("develop-photo-capture")
+                }
+            } else {
+                HStack(spacing: Metrics.gap) {
+                    Image(systemName: "photo").accessibilityHidden(true)
+                    Text(photo.displayName).lineLimit(1).truncationMode(.middle).help(photo.displayName)
+                    Spacer(minLength: Metrics.gap)
+                    Text(photo.isRAW ? "RAW" : URL(fileURLWithPath: photo.relativePath).pathExtension.uppercased())
+                        .font(.caption11).foregroundStyle(Color(nsColor: mat.textSecondary))
+                }
+                .font(.section).foregroundStyle(Color(nsColor: mat.text))
+                .padding(.horizontal, Metrics.padding).frame(height: Metrics.topBar).background(mat.color)
+                .accessibilityElement(children: .combine).accessibilityIdentifier("develop-photo-title")
+            }
         }
     }
 }

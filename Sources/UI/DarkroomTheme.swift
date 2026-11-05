@@ -154,12 +154,13 @@ enum Metrics {
     static let rightPanel = (initial: 336.0, range: 304.0...400.0)
     static let photoMinWidth: CGFloat = 480
     static let compactMaskWindowHeight: CGFloat = 800
-    static let histogramPlot = (regular: CGFloat(104), compact: CGFloat(36))
+    static let histogramPlot = (regular: CGFloat(80), compact: CGFloat(36))
     static let padding: CGFloat = 16
     static let sectionHeader: CGFloat = 32
     static let row: CGFloat = 32
     static let rowLabel: CGFloat = 80
     static let rowValue: CGFloat = 64
+    static let rowUnit: CGFloat = 16
     static let gap: CGFloat = 8
     static let key: CGFloat = 28
     static let keyRadius: CGFloat = 3

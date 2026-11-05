@@ -372,6 +372,32 @@ final class ComparisonTests: XCTestCase {
         XCTAssertTrue(condition())
     }
 
+    @MainActor func testAdjustmentValuesAlignWithAndWithoutUnitsAtInspectorWidths() async throws {
+        func fields(_ root: NSView) -> [NSTextField] {
+            (root as? NSTextField).map { [$0] } ?? root.subviews.flatMap(fields)
+        }
+        for width in [Metrics.rightPanel.range.lowerBound, Metrics.rightPanel.initial, Metrics.rightPanel.range.upperBound] {
+            let host = NSHostingView(rootView: VStack(spacing: 0) {
+                AdjustmentRow(label: "色温", value: 5500, range: 2000...50000, unit: "K", change: { _, _ in }, commit: {})
+                AdjustmentRow(label: "曝光度", value: 0, range: -5...5, digits: 2, unit: "EV", change: { _, _ in }, commit: {})
+                AdjustmentRow(label: "饱和度", value: 100, change: { _, _ in }, commit: {})
+            }.padding(.horizontal, Metrics.padding))
+            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: width, height: 120), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = host
+            defer { window.contentView = nil }
+            try await waitUntil { fields(host).filter(\.isEditable).count == 3 }
+            host.layoutSubtreeIfNeeded()
+            let editors = fields(host).filter(\.isEditable)
+            XCTAssertEqual(Set(editors.map(\.stringValue)), ["5500", "0.00", "+100"])
+            let frames = editors.map { $0.convert($0.bounds, to: host) }
+            for frame in frames {
+                XCTAssertEqual(frame.maxX, frames[0].maxX, accuracy: 0.5, "Units keep their own lane at \(width) pt")
+                XCTAssertEqual(frame.width, frames[0].width, accuracy: 0.5)
+                XCTAssertGreaterThanOrEqual(frame.width, 42)
+            }
+        }
+    }
+
     @MainActor func testAdjustmentReturnEndsEditingAndDoesNotReapplyAnUndoneValue() async throws {
         final class Input: ObservableObject {
             @Published var value = 0.0

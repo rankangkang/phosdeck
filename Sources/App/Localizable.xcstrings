@@ -36243,6 +36243,24 @@
         }
       }
     },
+    "app.textureAndColor": {
+      "extractionState": "manual",
+      "comment": "Sources/UI/DevelopPanel.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texture & Color"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "质感与色彩"
+          }
+        }
+      }
+    },
     "app.the64PromptLimitWasReachedUndoAPrompt": {
       "extractionState": "manual",
       "comment": "Sources/App/SmartMaskEditing.swift: 171",

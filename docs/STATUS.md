@@ -14,6 +14,7 @@
 以下内容已实现并完成工程检查，用户尚未体验确认：
 
 - **几何校正**：画线拉直、引导透视和自动校正尚未验收；须先与 Lightroom 做功能对照并优化，再交用户验收。用户要求留待后续开展，当前暂缓。
+- **编辑区域外观**：按已确认方案落实白平衡去重、明暗／质感与色彩分组、数值与单位列对齐、照片信息条及图外剪切控制；固定体验 App 已更新，保留原图库并以引用方式加入方案使用的公开样片，原生交互与双主题外观待用户体验确认。
 - **模块命名**：中文“编辑”、英文 Develop，保留 D 快捷键。
 - **品牌外观**：p 左竖边修补后的字标已同步官网、README、品牌总览与固定体验 App，石墨和米白实窗已核对，待用户确认。
 - **产品官网**：`site/` 中的 Astro 中英双语站点仅在 `master` 推送包含 `site/` 变更时通过 GitHub Actions 发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/)；默认石墨并支持米白，保留合成截图。首屏说明、工作流排版和下载区域已完成设计调整，线上效果待用户验收；开发命令见[贡献指南](../CONTRIBUTING.zh.md#官网开发)。
@@ -26,7 +27,7 @@
 ## 已知问题
 
 - **预览**：原一秒卡顿根因未证实（drawable 默认一秒超时只是候选，相关等待已移出主线程）；质量图计算完到发布仍有约 0.1 秒主线程等待。严格同条件前后对照、物理屏幕呈现、长时间拖动帧率、大 RAW 与 Release 实窗都未测。继续时先在无 AX 遍历干扰的交互区间做 CPU 与主线程等待采样。
-- **英文界面**：窄侧栏下 `Adjustments`、`White Balance`、色轮选项、复制／粘贴调整等被截断；色调分组显示 `TINT`、纹理分组显示 `PREFERENCES`，语义待复核；辅助功能文案有 `CollapseLeft Panel`、`1 stars` 一类拼接与单复数问题。
+- **英文界面**：窄侧栏下 `Adjustments`、`White Balance`、色轮选项、复制／粘贴调整等被截断；辅助功能文案有 `CollapseLeft Panel`、`1 stars` 一类拼接与单复数问题。
 - **偶发测试失败**：`ComparisonTests.testAdjustmentReturnEndsEditingAndDoesNotReapplyAnUndoneValue` 多次在首次全量中失败、单跑通过，根因未定位；测试期间切换窗口可能影响焦点。
 - **模型资源复制测试**：`SmartMaskTests.testOptionalModelCapabilitiesAndPartialBundleCopies` 在全量和单跑中均因测试宿主沙箱拒绝 `ditto` 的 `.BC.T_*` 临时文件而失败，具体触发机制未定位；对应脚本与测试未改动，不能以跳过断言替代修复。
 - **临时签名**：hardened runtime 关闭；强制开启会因动态库 Team ID 不一致导致 XCTest 宿主无法启动。外置卷检出时测试宿主曾长时间停在 dyld `open`，原因未明。
@@ -35,7 +36,7 @@
 - **普通图像曝光响应表**：按用户决定保留现有表、显影行为与对照资料。[Adobe 通用条款第 17 节](https://www.adobe.com/legal/terms.html)限制为重建软件而跟踪输入与输出；当前表由 Lightroom 输出拟合，具体合同与法律适用尚未判定。数值对照见[现行 TIFF 比较](references/lightroom-exposure-v4-comparisons.json)与[JPEG 分区表](references/lightroom-exposure-v4-jpeg-regions.csv)，来源资料和公开使用依据仍须核对。
 - **固定合成图库**：macOS 27 这台的合成图仅剩 `Workflow-3.jpg` 源文件，另 5 个源文件缺失，原因未确认；图库记录、配方及历史保留。恢复前不以其他图像替代或改写来源身份；7 张固定公开样片仍可体验智能蒙版。
 - **日志**：构建与测试日志反复出现 `MDB_MAP_FULL`，来源未定位。
-- **验证工具**：CUA 不支持普通指针移动，hover 需人工检查；关闭设置后曾出现持续读取超时，App 主线程采样空闲，从 Dock 重新显示主窗口后恢复。相机诊断的离屏截图偶发漏绘保存按钮文字，双主题实窗显示正常，不能将截图缺字直接视为产品复现。
+- **验证工具**：CUA 不支持普通指针移动，hover 需人工检查；关闭设置后曾出现持续读取超时，App 主线程采样空闲，从 Dock 重新显示主窗口后恢复。相机诊断的离屏截图偶发漏绘保存按钮文字，双主题实窗显示正常，不能将截图缺字直接视为产品复现。退出参考模式后照片信息条曾在 CUA 截图中漏绘，AX 读数正确、切换对照后恢复，物理屏幕表现仍需核实。
 
 ## 候选下一步（均需用户决定）
 

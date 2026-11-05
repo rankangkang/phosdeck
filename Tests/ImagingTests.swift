@@ -1772,6 +1772,14 @@ extension ImagingTests {
         XCTAssertEqual(model.workspaceMode, .single, "Recovering an empty single-photo view preserves the view")
     }
 
+    func testViewingCaptureReadoutUsesOnlyAvailablePhotoMetadata() {
+        XCTAssertTrue(PhotoViewingInfo.captureItems(nil).isEmpty)
+        XCTAssertTrue(PhotoViewingInfo.captureItems(PhotoMetadata()).isEmpty)
+        XCTAssertEqual(PhotoViewingInfo.captureItems(PhotoMetadata(iso: 100)), ["ISO 100"])
+        let details = PhotoMetadata(iso: 100, aperture: 2.8, exposureTime: 0.005, focalLength: 70)
+        XCTAssertEqual(PhotoViewingInfo.captureItems(details), ["70 mm", "ƒ/2.8", details.exposureText!, "ISO 100"])
+    }
+
     @MainActor func testWorkspaceFitsPlannedWindowSizesAndBothOrientations() async throws {
         let suite = "layout-" + UUID().uuidString
         let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -1792,7 +1800,8 @@ extension ImagingTests {
                 let model = AppModel()
                 model.editMode = true; model.singleView = true; model.canEdit = true
                 let source = portrait ? CGSize(width: 80, height: 120) : CGSize(width: 120, height: 80)
-                model.activePhoto = Photo(id: "layout", rootID: "test", relativePath: "layout.ARW", identity: Data(), identityKey: "layout", width: Int(source.width), height: Int(source.height))
+                model.activePhoto = Photo(id: "layout", rootID: "test", relativePath: "layout.ARW", identity: Data(), identityKey: "layout", width: Int(source.width), height: Int(source.height), camera: "Synthetic Camera",
+                                          metadata: try JSONEncoder().encode(PhotoMetadata(iso: 100, aperture: 2.8, exposureTime: 0.005, focalLength: 70)))
                 model.activeID = "layout"; model.selection = ["layout"]; model.photos = [try XCTUnwrap(model.activePhoto)]
                 model.recipe = EditRecipe(sourceDigest: String(repeating: "a", count: 64), decoderVersion: "test", baselineExposure: 0, baselineTemperature: 5500, baselineTint: 0, temperature: 5500, tint: 0)
                 model.image = CIContext().createCGImage(CIImage(color: CIColor(red: 0.25, green: 0.4, blue: 0.5)), from: CGRect(origin: .zero, size: source))

@@ -261,7 +261,7 @@
     "contextBarHeight": 32,
     "compactMaskWindowHeightExclusive": 800,
     "histogramPlotHeight": {
-      "regular": 104,
+      "regular": 80,
       "compactMask": 36
     },
     "leftSidebar": {
@@ -293,7 +293,8 @@
       "gap1": 8,
       "slider": 144,
       "gap2": 8,
-      "value": 64
+      "value": 64,
+      "unitWithinValue": 16
     },
     "overflowPolicy": "Remember user panel sizes; when photo viewport would fall below its minimum, collapse optional left sidebar before clipping values or shrinking labels.",
     "chassisRim": 8
@@ -328,7 +329,7 @@
       "labelOffsetRule": "minus half the remaining sidewall, including disabled keys; reduced-motion labels stay stationary"
     },
     "scope": {
-      "histogramHeight": 128,
+      "histogramHeight": 104,
       "curveEditorMinHeight": 208,
       "majorGridDivisions": 4,
       "decorativeScanlines": false,
@@ -336,7 +337,7 @@
       "bezelPt": 1,
       "readoutHeight": 22,
       "clipLamps": true,
-      "histogramPlotHeight": 104,
+      "histogramPlotHeight": 80,
       "externalBevelPt": 3
     },
     "lamp": {

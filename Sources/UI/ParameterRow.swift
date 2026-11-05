@@ -67,7 +67,8 @@ struct AdjustmentRow: View {
                 }
                 .help(invalid ? L10n.text("app.enterANumberBetweenAnd", defaultValue: "Enter a number between \(Self.display(range.lowerBound, digits: digits, signed: false)) and \(Self.display(range.upperBound, digits: digits, signed: false))") : "")
                 .accessibilityLabel(L10n.text("app.value", defaultValue: "\(label) value"))
-            if let unit { Text(unit).font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize() }
+            Text(unit ?? "").font(.caption11).foregroundStyle(Theme.textSecondary)
+                .frame(width: Metrics.rowUnit, alignment: .leading).accessibilityHidden(unit == nil || unit?.isEmpty == true)
         }
     }
     private func apply() {
