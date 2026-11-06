@@ -11,10 +11,11 @@ struct SpotPanel: View {
             VStack(alignment: .leading, spacing: 0) {
                 PanelTitle(L10n.text("app.spotRemoval", defaultValue: "Spot Removal")) {
                     Button { model.showSpotGuides.toggle() } label: {
-                        LampLabel(on: model.showSpotGuides) { Image(systemName: "mappin.and.ellipse") }
-                    }.buttonStyle(.key(selected: model.showSpotGuides, height: 24, padding: 7))
+                        Image(systemName: "mappin.and.ellipse")
+                    }.buttonStyle(.key(selected: model.showSpotGuides, height: 24, padding: 7, lampInside: true))
                         .help(L10n.text("app.showSpotPinsAndSourcesHTheHealingEffect", defaultValue: "Show spot pins and sources (H); the healing effect is preserved"))
                         .accessibilityLabel(L10n.text("app.showSpotPins", defaultValue: "Show Spot Pins")).accessibilityValue(model.showSpotGuides ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off"))
+                        .accessibilityAddTraits(model.showSpotGuides ? .isSelected : [])
                 }
                 Button(model.refreshingSpotSource ? L10n.text("app.findingASource", defaultValue: "Finding a source…") : L10n.text("app.changeSource", defaultValue: "Change Source  /")) { model.refreshSpotSource() }
                     .buttonStyle(.key(height: 24)).padding(.horizontal, 12).padding(.top, 8)

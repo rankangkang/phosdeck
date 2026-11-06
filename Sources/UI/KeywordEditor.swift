@@ -44,7 +44,7 @@ struct KeywordEditor: View {
                 HStack {
                     TextField(L10n.text("app.enterOrFindKeywords", defaultValue: "Enter or find keywords"), text: $input).textFieldStyle(.instrument)
                         .onSubmit(addKeyword).accessibilityIdentifier("keyword-input")
-                    Button(L10n.text("app.added", defaultValue: "Added"), action: addKeyword).buttonStyle(.key).disabled(!canAdd).accessibilityIdentifier("keyword-add")
+                    Button(L10n.text("app.addAction", defaultValue: "Add"), action: addKeyword).buttonStyle(.key).disabled(!canAdd).accessibilityIdentifier("keyword-add")
                 }
                 if terms.count > 1 {
                     Text(terms.joined(separator: " · ")).font(.caption11).foregroundStyle(Theme.text)

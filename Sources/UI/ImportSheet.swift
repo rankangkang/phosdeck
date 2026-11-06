@@ -60,7 +60,7 @@ struct ImportSheet: View {
             }.frame(width: 200, alignment: .leading)
             Image(systemName: "chevron.right").foregroundStyle(Theme.textSecondary)
             VStack(spacing: 7) {
-                KeyRow(title: L10n.text("app.importMethod", defaultValue: "Import Method"), options: [KeyOption(true, L10n.text("app.copy_1359", defaultValue: "Copy")), KeyOption(false, L10n.text("app.added", defaultValue: "Added"))], selection: $copy, expand: true).frame(width: 230)
+                KeyRow(title: L10n.text("app.importMethod", defaultValue: "Import Method"), options: [KeyOption(true, L10n.text("app.copy_1359", defaultValue: "Copy")), KeyOption(false, L10n.text("app.addAction", defaultValue: "Add"))], selection: $copy, expand: true).frame(width: 230)
                 Text(copy ? L10n.text("app.copyToANewLocationPreserveOriginals", defaultValue: "Copy to a new location; preserve originals") : L10n.text("app.keepFilesInPlaceAndAddToCatalog", defaultValue: "Keep files in place and add to catalog"))
                     .font(.caption11).foregroundStyle(Theme.textSecondary)
             }.frame(maxWidth: .infinity)

@@ -393,10 +393,11 @@ struct DevelopPanel: View {
                 SubgroupLabel(L10n.text("app.whiteBalance", defaultValue: "White Balance"))
                 if !local {
                     Button { model.toggleWhiteBalanceSampling() } label: {
-                        LampLabel(on: model.whiteBalanceSampling) { Image(systemName: "eyedropper") }
-                    }.buttonStyle(.key(selected: model.whiteBalanceSampling, height: 24, padding: 8))
+                        Image(systemName: "eyedropper")
+                    }.buttonStyle(.key(selected: model.whiteBalanceSampling, height: 24, padding: 8, lampInside: true))
                         .editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto).help(L10n.text("app.sampleWhiteBalanceFromANeutralAreaWEsc", defaultValue: "Sample white balance from a neutral area (W); Esc exits"))
                         .accessibilityLabel(L10n.text("app.sampleWhiteBalance", defaultValue: "Sample White Balance")).accessibilityValue(model.whiteBalanceSampling ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off"))
+                        .accessibilityAddTraits(model.whiteBalanceSampling ? .isSelected : [])
                 }
             }.padding(.top, Metrics.gap)
             if !local, model.whiteBalanceSampling {
