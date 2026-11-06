@@ -150,7 +150,7 @@ enum AdjustmentTrack {
 }
 
 /// Native keyboard/accessibility and event handling for the physical fader.
-struct GradientAdjustmentSlider: NSViewRepresentable {
+struct GradientAdjustmentSlider: View {
     let value: Double
     let range: ClosedRange<Double>
     let step: Double
@@ -162,6 +162,17 @@ struct GradientAdjustmentSlider: NSViewRepresentable {
     var tickCount = 5
     var valueDescription: String?
     @Environment(\.isEnabled) private var enabled
+    var body: some View {
+        NativeAdjustmentSlider(configuration: self, enabled: enabled)
+            // Let AppKit receive pointer pressure while the actual control
+            // remains disabled for editing, keyboard and accessibility.
+            .environment(\.isEnabled, true)
+    }
+}
+
+private struct NativeAdjustmentSlider: NSViewRepresentable {
+    let configuration: GradientAdjustmentSlider
+    let enabled: Bool
     func makeNSView(context: Context) -> AdjustmentNSSlider {
         let slider = AdjustmentNSSlider()
         slider.sliderType = .linear
@@ -172,18 +183,19 @@ struct GradientAdjustmentSlider: NSViewRepresentable {
         return slider
     }
     func updateNSView(_ slider: AdjustmentNSSlider, context: Context) {
+        let range = configuration.range
         slider.isEnabled = enabled
         if slider.minValue != range.lowerBound { slider.minValue = range.lowerBound }
         if slider.maxValue != range.upperBound { slider.maxValue = range.upperBound }
-        slider.synchronizeValue(value)
-        slider.step = step
-        slider.resetValue = neutral
-        slider.change = change; slider.commit = commit
-        if slider.tickCount != tickCount { slider.tickCount = tickCount; slider.needsDisplay = true }
-        slider.setAccessibilityValueDescription(valueDescription)
-        if slider.accessibilityLabel() != label { slider.setAccessibilityLabel(label) }
-        let colors = track.colors
-        let marker = (neutral - range.lowerBound) / (range.upperBound - range.lowerBound)
+        slider.synchronizeValue(configuration.value)
+        slider.step = configuration.step
+        slider.resetValue = configuration.neutral
+        slider.change = configuration.change; slider.commit = configuration.commit
+        if slider.tickCount != configuration.tickCount { slider.tickCount = configuration.tickCount; slider.needsDisplay = true }
+        slider.setAccessibilityValueDescription(configuration.valueDescription)
+        if slider.accessibilityLabel() != configuration.label { slider.setAccessibilityLabel(configuration.label) }
+        let colors = configuration.track.colors
+        let marker = (configuration.neutral - range.lowerBound) / (range.upperBound - range.lowerBound)
         let bipolar = range.lowerBound < 0 && range.upperBound > 0
         if slider.trackColors != colors || slider.neutral != marker || slider.bipolar != bipolar {
             slider.trackColors = colors; slider.neutral = marker; slider.bipolar = bipolar
@@ -204,6 +216,17 @@ final class AdjustmentNSSlider: NSSlider {
     private(set) var trackingMouse = false
     private var anchor: (position: CGFloat, value: Double) = (0, 0)
     private var fine = false
+    private var lockedAnchor: CGFloat?
+    private var lockedReturn: Task<Void, Never>?
+    private(set) var lockedOffset: CGFloat = 0 { didSet { needsDisplay = true } }
+    override var isEnabled: Bool {
+        didSet {
+            guard oldValue != isEnabled else { return }
+            trackingMouse = false
+            releaseLockedGrip(animated: false)
+            needsDisplay = true
+        }
+    }
 
     // SwiftUI may deliver an older render while the native control is tracking.
     func synchronizeValue(_ value: Double) {
@@ -220,7 +243,7 @@ final class AdjustmentNSSlider: NSSlider {
     private var trackY: CGFloat { floor(bounds.height / 2) - 2 }
     private var fraction: Double { maxValue > minValue ? min(1, max(0, (doubleValue - minValue) / (maxValue - minValue))) : 0 }
     private func x(at fraction: Double) -> CGFloat { travel.lowerBound + CGFloat(fraction) * (travel.upperBound - travel.lowerBound) }
-    private var capRect: NSRect { NSRect(x: x(at: fraction).rounded() - 4.5, y: trackY - 8, width: 9, height: 16) }
+    private var capRect: NSRect { NSRect(x: x(at: fraction).rounded() + lockedOffset - 4.5, y: trackY - 8, width: 9, height: 16) }
     private var focused: Bool { window?.firstResponder === self && window?.isKeyWindow == true }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -230,11 +253,13 @@ final class AdjustmentNSSlider: NSSlider {
         let well = NSBezierPath(roundedRect: track, xRadius: 1, yRadius: 1)
         Palette.seamLight.setFill()
         NSRect(x: track.minX + 1, y: track.maxY, width: track.width - 2, height: 1).fill()
-        if enabled, let colors = trackColors, let gradient = NSGradient(colors: colors) { gradient.draw(in: well, angle: 0) }
-        else { Palette.lampSocket.withAlphaComponent(enabled ? 0.65 : 0.25).setFill(); well.fill() }
+        if let colors = trackColors, let gradient = NSGradient(colors: colors) {
+            gradient.draw(in: well, angle: 0)
+            if !enabled { Palette.surfacePanel.withAlphaComponent(0.45).setFill(); well.fill() }
+        } else { Palette.lampSocket.withAlphaComponent(0.65).setFill(); well.fill() }
         Palette.insetShadow.setFill()
         NSRect(x: track.minX + 1, y: track.minY, width: track.width - 2, height: 1).fill(using: .sourceOver)
-        (enabled ? Palette.materialEdge : Palette.textDisabled).setStroke()
+        Palette.materialEdge.setStroke()
         well.lineWidth = 0.5; well.stroke()
 
         let ticks = NSBezierPath()
@@ -251,24 +276,22 @@ final class AdjustmentNSSlider: NSSlider {
 
         let cap = capRect
         let capPath = NSBezierPath(roundedRect: cap.insetBy(dx: 0.5, dy: 0.5), xRadius: 2, yRadius: 2)
-        if enabled {
-            for (color, offset, blur) in [(Palette.keyAmbientShadow, 4.0, 4.0), (Palette.keyContactShadow, 1.5, 1.0)] {
-                NSGraphicsContext.saveGraphicsState()
-                let shadow = NSShadow()
-                shadow.shadowColor = color; shadow.shadowOffset = NSSize(width: 0, height: -offset); shadow.shadowBlurRadius = blur
-                shadow.set()
-                Palette.capBottom.setFill(); capPath.fill()
-                NSGraphicsContext.restoreGraphicsState()
-            }
-            Palette.keyLip.setFill(); capPath.fill()
-            let face = NSBezierPath(roundedRect: cap.insetBy(dx: 0.75, dy: 0.5).offsetBy(dx: 0, dy: -0.5), xRadius: 2, yRadius: 2)
-            NSGradient(starting: Palette.capTop, ending: Palette.capBottom)?.draw(in: face, angle: 90)
-            Palette.keyHighlight.setFill()
-            NSRect(x: cap.minX + 2, y: cap.minY + 1.5, width: cap.width - 4, height: 1).fill(using: .sourceOver)
-        } else {
-            Palette.surfacePanel.setFill(); capPath.fill()
+        for (color, offset, blur) in [(Palette.keyAmbientShadow, 4.0, 4.0), (Palette.keyContactShadow, 1.5, 1.0)] {
+            NSGraphicsContext.saveGraphicsState()
+            let shadow = NSShadow()
+            shadow.shadowColor = color.withAlphaComponent(color.alphaComponent * (enabled ? 1 : 0.45))
+            shadow.shadowOffset = NSSize(width: 0, height: -offset); shadow.shadowBlurRadius = blur
+            shadow.set()
+            Palette.capBottom.setFill(); capPath.fill()
+            NSGraphicsContext.restoreGraphicsState()
         }
-        (enabled ? (NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? Palette.controlBorder : Palette.materialEdge) : Palette.textDisabled).setStroke()
+        Palette.keyLip.setFill(); capPath.fill()
+        let face = NSBezierPath(roundedRect: cap.insetBy(dx: 0.75, dy: 0.5).offsetBy(dx: 0, dy: -0.5), xRadius: 2, yRadius: 2)
+        NSGradient(starting: Palette.capTop, ending: Palette.capBottom)?.draw(in: face, angle: 90)
+        Palette.keyHighlight.setFill()
+        NSRect(x: cap.minX + 2, y: cap.minY + 1.5, width: cap.width - 4, height: 1).fill(using: .sourceOver)
+        if !enabled { Palette.surfacePanel.withAlphaComponent(0.45).setFill(); face.fill() }
+        (NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? Palette.controlBorder : Palette.materialEdge).setStroke()
         capPath.lineWidth = 0.75; capPath.stroke()
         let active = enabled && (trackingMouse || focused)
         (active ? Palette.accentSignal : enabled ? Palette.textSecondary : Palette.textDisabled).setFill()
@@ -303,7 +326,13 @@ final class AdjustmentNSSlider: NSSlider {
     override func accessibilityPerformDecrement() -> Bool { nudge(-1) }
 
     override func mouseDown(with event: NSEvent) {
-        guard isEnabled else { return }
+        if !isEnabled {
+            let point = convert(event.locationInWindow, from: nil)
+            guard capRect.insetBy(dx: -2, dy: -6).contains(point) else { return }
+            lockedReturn?.cancel(); lockedReturn = nil
+            lockedAnchor = point.x - lockedOffset
+            return
+        }
         window?.makeFirstResponder(self)
         if event.clickCount == 2 {
             doubleValue = min(maxValue, max(minValue, resetValue))
@@ -328,11 +357,18 @@ final class AdjustmentNSSlider: NSSlider {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if let lockedAnchor {
+            let delta = convert(event.locationInWindow, from: nil).x - lockedAnchor
+            // The locked cap has 2 pt of mechanical play, bounded by the rail ends.
+            lockedOffset = min(travel.upperBound - x(at: fraction), max(travel.lowerBound - x(at: fraction), min(2, max(-2, delta))))
+            return
+        }
         guard trackingMouse else { return }
         updateDrag(event)
     }
 
     override func mouseUp(with event: NSEvent) {
+        if lockedAnchor != nil { releaseLockedGrip(); return }
         guard trackingMouse else { return }
         updateDrag(event)
         finishDrag()
@@ -359,8 +395,34 @@ final class AdjustmentNSSlider: NSSlider {
         commit?()
     }
 
+    private func releaseLockedGrip(animated: Bool = true) {
+        lockedAnchor = nil
+        lockedReturn?.cancel(); lockedReturn = nil
+        guard animated, lockedOffset != 0, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            lockedOffset = 0; return
+        }
+        let start = lockedOffset
+        lockedReturn = Task { @MainActor [weak self] in
+            for frame in 1...8 {
+                do { try await Task.sleep(for: .milliseconds(15)) } catch { return }
+                guard !Task.isCancelled else { return }
+                self?.lockedOffset = start * pow(1 - CGFloat(frame) / 8, 3)
+            }
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        if let window {
+            NotificationCenter.default.addObserver(self, selector: #selector(cancelLockedGrip), name: NSWindow.didResignKeyNotification, object: window)
+        }
+    }
+    @objc private func cancelLockedGrip() { releaseLockedGrip(animated: false) }
+    deinit { lockedReturn?.cancel(); NotificationCenter.default.removeObserver(self) }
+
     override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil { finishDrag() }
+        if newWindow == nil { finishDrag(); releaseLockedGrip(animated: false) }
         super.viewWillMove(toWindow: newWindow)
     }
 }

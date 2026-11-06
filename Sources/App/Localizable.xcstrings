@@ -20413,6 +20413,23 @@
         }
       }
     },
+    "app.localAdjustmentsTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local Adjustments"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "局部调整"
+          }
+        }
+      }
+    },
     "app.localCacheQuota": {
       "extractionState": "manual",
       "comment": "Sources/UI/SettingsSheet.swift: 63",
@@ -27806,6 +27823,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "上一张"
+          }
+        }
+      }
+    },
+    "app.previousPhotoSettings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous Photo Settings"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上张照片的调整"
           }
         }
       }

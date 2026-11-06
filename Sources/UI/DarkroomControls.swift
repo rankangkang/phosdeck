@@ -642,7 +642,7 @@ extension PanelSection where Accessory == EmptyView {
     }
 }
 
-/// Fixed panel title (no disclosure) with the same silk line.
+/// Panel title (no disclosure) with the same silk line and room for long labels.
 struct PanelTitle<Accessory: View>: View {
     let title: String
     let accessory: Accessory
@@ -650,11 +650,21 @@ struct PanelTitle<Accessory: View>: View {
         self.title = title; self.accessory = accessory()
     }
     var body: some View {
-        HStack(spacing: 8) {
-            Text(title).font(.section).foregroundStyle(Theme.textSecondary).lineLimit(1).truncationMode(.middle).help(title)
-            Seam().frame(maxWidth: .infinity)
-            accessory
-        }.padding(.horizontal, 12).frame(height: Metrics.sectionHeader)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                heading.fixedSize()
+                Seam().frame(minWidth: 8, maxWidth: .infinity)
+                accessory.fixedSize()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) { heading; Seam() }
+                HStack(spacing: 8) { Spacer(minLength: 0); accessory }
+            }.padding(.vertical, 6)
+        }.padding(.horizontal, 12).frame(minHeight: Metrics.sectionHeader)
+    }
+    private var heading: some View {
+        Text(title).font(.section).foregroundStyle(Theme.textSecondary)
+            .fixedSize(horizontal: false, vertical: true).help(title)
     }
 }
 

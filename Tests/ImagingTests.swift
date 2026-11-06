@@ -1061,6 +1061,20 @@ final class ImagingTests: XCTestCase {
         XCTAssertFalse(slider.isEnabled)
         XCTAssertFalse(slider.accessibilityPerformIncrement())
         XCTAssertEqual(changes, 0, "旁路或不适用的参数不能通过读屏操作改变")
+        func pointer(_ type: NSEvent.EventType, delta: CGFloat = 0) throws -> NSEvent {
+            let point = slider.convert(CGPoint(x: slider.bounds.midX + delta, y: slider.bounds.midY - 2), to: nil)
+            return try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        }
+        let point = slider.convert(CGPoint(x: slider.bounds.midX, y: slider.bounds.midY - 2), to: host.superview)
+        let hit = try XCTUnwrap(host.hitTest(point), "The disabled SwiftUI host must still expose the physical grip")
+        XCTAssertTrue(hit === slider)
+        hit.mouseDown(with: try pointer(.leftMouseDown))
+        hit.mouseDragged(with: try pointer(.leftMouseDragged, delta: 40))
+        XCTAssertEqual(slider.lockedOffset, 2)
+        hit.mouseUp(with: try pointer(.leftMouseUp, delta: 40))
+        try await waitUntil { slider.lockedOffset == 0 }
+        XCTAssertEqual(changes, 0)
         host.rootView = control(enabled: true)
         try await waitUntil { slider.isEnabled }
         XCTAssertTrue(slider.accessibilityPerformIncrement())
@@ -1071,6 +1085,65 @@ final class ImagingTests: XCTestCase {
         XCTAssertFalse(slider.isEnabled)
         XCTAssertFalse(slider.accessibilityPerformDecrement())
         XCTAssertEqual(changes, 1)
+    }
+
+    @MainActor func testLockedFaderStopsAndReturnsWithoutEditing() async throws {
+        let slider = AdjustmentNSSlider(frame: CGRect(x: 0, y: 0, width: 211, height: 28))
+        slider.minValue = -100; slider.maxValue = 100; slider.doubleValue = 0; slider.isEnabled = false
+        var changes = 0, commits = 0
+        slider.change = { _ in changes += 1 }; slider.commit = { commits += 1 }
+        let window = NSWindow(contentRect: slider.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = slider
+        defer { window.contentView = nil }
+        func event(_ type: NSEvent.EventType, _ x: CGFloat) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.mouseEvent(with: type, location: CGPoint(x: x, y: 14), modifierFlags: [],
+                timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        }
+        slider.mouseDown(with: try event(.leftMouseDown, 105.5))
+        slider.mouseDragged(with: try event(.leftMouseDragged, 106.5))
+        XCTAssertEqual(slider.lockedOffset, 1)
+        slider.mouseDragged(with: try event(.leftMouseDragged, 165.5))
+        XCTAssertEqual(slider.lockedOffset, 2)
+        slider.mouseDragged(with: try event(.leftMouseDragged, 205.5))
+        XCTAssertEqual(slider.lockedOffset, 2, "Continued pressure must stop at the mechanical limit")
+        slider.mouseDragged(with: try event(.leftMouseDragged, 45.5))
+        XCTAssertEqual(slider.lockedOffset, -2)
+        XCTAssertEqual(slider.doubleValue, 0); XCTAssertFalse(slider.trackingMouse)
+        XCTAssertFalse(slider.accessibilityPerformIncrement())
+        slider.mouseUp(with: try event(.leftMouseUp, 45.5))
+        try await waitUntil { slider.lockedOffset == 0 }
+        slider.doubleValue = slider.maxValue
+        slider.mouseDown(with: try event(.leftMouseDown, 205.5))
+        slider.mouseDragged(with: try event(.leftMouseDragged, 250))
+        XCTAssertEqual(slider.lockedOffset, 0, "The cap must stay inside the rail at an end stop")
+        slider.mouseDragged(with: try event(.leftMouseDragged, 190))
+        XCTAssertEqual(slider.lockedOffset, -2)
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+        XCTAssertEqual(slider.lockedOffset, 0)
+        slider.doubleValue = 0
+        slider.mouseDown(with: try event(.leftMouseDown, 105.5))
+        slider.mouseDragged(with: try event(.leftMouseDragged, 165.5))
+        slider.isEnabled = true
+        XCTAssertEqual(slider.lockedOffset, 0, "An incoming photo must cancel the old locked grip")
+        slider.mouseDragged(with: try event(.leftMouseDragged, 205.5))
+        slider.mouseUp(with: try event(.leftMouseUp, 205.5))
+        XCTAssertEqual(slider.doubleValue, 0)
+        XCTAssertEqual(changes, 0); XCTAssertEqual(commits, 0, "Feedback cannot write parameters or create history")
+        slider.isEnabled = false
+        slider.mouseDown(with: try event(.leftMouseDown, 105.5))
+        slider.mouseDragged(with: try event(.leftMouseDragged, 165.5))
+        slider.mouseUp(with: try event(.leftMouseUp, 165.5))
+        slider.isEnabled = true
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(slider.lockedOffset, 0, "A cancelled return must not displace a newly enabled cap")
+        for (name, appearance) in [("ivory", NSAppearance.Name.aqua), ("graphite", .darkAqua)] {
+            slider.appearance = NSAppearance(named: appearance)
+            slider.trackColors = AdjustmentTrack.basic(L10n.text("app.temperature", defaultValue: "Temperature")).colors
+            for enabled in [true, false] {
+                slider.isEnabled = enabled
+                try attachUISnapshot(slider, name: "locked-fader-\(name)-\(enabled ? "enabled" : "disabled")")
+            }
+        }
     }
 
     @MainActor func testPointColorControlsFitMinimumInspectorAndRespectBlackWhiteBypass() async throws {

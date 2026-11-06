@@ -401,12 +401,55 @@ final class ComparisonTests: XCTestCase {
         try await waitUntil { model.canEdit && model.previewCurrent }
         let original = try XCTUnwrap(model.image)
         let originalRecipe = try XCTUnwrap(model.recipe)
-        model.choose(["001"], active: "001")
-        XCTAssertNil(model.recipe); XCTAssertNil(model.image); XCTAssertFalse(model.canEdit)
+        model.selectWorkspace(.develop)
+        let suite = "switch-controls-" + UUID().uuidString
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
+        for key in ["showLeftPanel", "showRightPanel", "showFilmstrip", "developBasicOpen"] { preferences.set(true, forKey: key) }
+        preferences.set(false, forKey: "developSoloMode")
+        preferences.set(false, forKey: "developShowOnlyModified")
+        preferences.set(304.0, forKey: "workspaceRightWidth")
+        preferences.set(160.0, forKey: "developScrollOffset")
+        let host = NSHostingView(rootView: WorkspaceView(model: model).defaultAppStorage(preferences))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1280, height: 800), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil; preferences.removePersistentDomain(forName: suite) }
+        func sliders(_ root: NSView) -> [AdjustmentNSSlider] {
+            (root as? AdjustmentNSSlider).map { [$0] } ?? root.subviews.flatMap(sliders)
+        }
+        host.layoutSubtreeIfNeeded()
+        try await waitUntil { sliders(host).count >= 13 }
+        let originalSliders = sliders(host)
+        let exposure = try XCTUnwrap(originalSliders.first { $0.accessibilityLabel() == L10n.text("app.exposure", defaultValue: "Exposure") })
+        let editorScroll = try XCTUnwrap(exposure.enclosingScrollView)
+        try await waitUntil { abs(editorScroll.contentView.bounds.minY - 160) < 1 }
+        let originalFrame = exposure.convert(exposure.bounds, to: host)
+        func collection(_ root: NSView) -> KeyboardCollectionView? {
+            (root as? KeyboardCollectionView) ?? root.subviews.compactMap(collection).first
+        }
+        let film = try XCTUnwrap(collection(host))
+        let selectionBridge = try XCTUnwrap(film.delegate as? PhotoGrid.Coordinator)
+        let oldPath = IndexPath(item: try XCTUnwrap(model.filtered.firstIndex { $0.id == "000" }), section: 0)
+        let newPath = IndexPath(item: try XCTUnwrap(model.filtered.firstIndex { $0.id == "001" }), section: 0)
+        // AppKit reports deselection before selection when a thumbnail replaces
+        // the current selection. That intermediate empty set is not a deselect command.
+        film.selectionIndexPaths = []
+        selectionBridge.collectionView(film, didDeselectItemsAt: [oldPath])
+        XCTAssertEqual(model.activeID, "000", "An intermediate native deselection must not clear the editor")
+        film.selectionIndexPaths = [newPath]
+        selectionBridge.collectionView(film, didSelectItemsAt: [newPath])
+        try await waitUntil { model.activeID == "001" }
+        if let recipe = model.recipe { XCTAssertEqual(recipe, secondRecipe, "A native selection may already have loaded the current recipe") }
+        XCTAssertNil(model.image); XCTAssertFalse(model.canEdit)
         XCTAssertEqual(model.photoSwitchDisplay?.photoID, "000")
         XCTAssertTrue(model.photoSwitchDisplay?.image === original)
         XCTAssertEqual(model.editorRecipe, originalRecipe)
         try await waitUntil { gate.waiting["001"]?.count == 2 }
+        host.layoutSubtreeIfNeeded()
+        XCTAssertEqual(sliders(host).map(ObjectIdentifier.init), originalSliders.map(ObjectIdentifier.init), "Loading must retain the mounted native controls")
+        XCTAssertFalse(exposure.isEnabled)
+        XCTAssertTrue(exposure.enclosingScrollView === editorScroll)
+        XCTAssertEqual(editorScroll.contentView.bounds.minY, 160, accuracy: 1)
+        XCTAssertEqual(exposure.convert(exposure.bounds, to: host), originalFrame)
         XCTAssertEqual(model.recipe, secondRecipe, "Only the current photo's recipe can enter edit/export state")
         XCTAssertEqual(model.editorRecipe, originalRecipe, "The disabled panel remains stable until matching pixels arrive")
         XCTAssertFalse(model.canShowBeforeAfter, "Old pixels must not enter a comparison canvas identified as the new photo")
@@ -429,6 +472,9 @@ final class ComparisonTests: XCTestCase {
         gate.release("002")
         try await waitUntil { model.canEdit && model.previewCurrent }
         XCTAssertNil(model.photoSwitchDisplay)
+        host.layoutSubtreeIfNeeded()
+        XCTAssertEqual(sliders(host).map(ObjectIdentifier.init), originalSliders.map(ObjectIdentifier.init), "Publication must update the existing controls")
+        XCTAssertTrue(exposure.isEnabled)
         XCTAssertEqual(model.image?.width, 40)
         XCTAssertEqual(model.activeID, "002"); XCTAssertEqual(model.editorRecipe, model.recipe)
         XCTAssertTrue(model.canShowBeforeAfter)
@@ -441,6 +487,84 @@ final class ComparisonTests: XCTestCase {
         XCTAssertNotNil(model.photoSwitchDisplay)
         try await waitUntil { model.photoSwitchDisplay == nil }
         XCTAssertNil(model.image); XCTAssertNil(model.recipe); XCTAssertFalse(model.canEdit)
+        host.layoutSubtreeIfNeeded()
+        XCTAssertEqual(sliders(host).map(ObjectIdentifier.init), originalSliders.map(ObjectIdentifier.init), "A failed load must retain disabled editor controls as well")
+        XCTAssertFalse(exposure.isEnabled)
+        XCTAssertTrue(exposure.enclosingScrollView === editorScroll)
+        XCTAssertEqual(editorScroll.contentView.bounds.minY, 160, accuracy: 1)
+        model.choose(["000"], active: "000")
+        XCTAssertNil(model.photoSwitchDisplay, "There is no previous image after a failed decode")
+        host.layoutSubtreeIfNeeded()
+        XCTAssertEqual(sliders(host).map(ObjectIdentifier.init), originalSliders.map(ObjectIdentifier.init), "Switching without an image must retain the same controls")
+        try await waitUntil { model.canEdit && model.previewCurrent }
+        host.layoutSubtreeIfNeeded()
+        XCTAssertEqual(sliders(host).map(ObjectIdentifier.init), originalSliders.map(ObjectIdentifier.init))
+        let thirdPath = IndexPath(item: try XCTUnwrap(model.filtered.firstIndex { $0.id == "002" }), section: 0)
+        film.selectionIndexPaths = [oldPath, thirdPath]
+        selectionBridge.collectionView(film, didSelectItemsAt: [thirdPath])
+        try await waitUntil { model.selection == ["000", "002"] && model.activeID == "002" }
+        film.selectionIndexPaths = [oldPath]
+        selectionBridge.collectionView(film, didDeselectItemsAt: [thirdPath])
+        try await waitUntil { model.selection == ["000"] && model.activeID == "000" }
+        film.selectionIndexPaths = [oldPath]
+        selectionBridge.collectionView(film, didSelectItemsAt: [oldPath])
+        // A queued pointer update must not undo a later source/navigation change.
+        model.choose(["002"], active: "002")
+        try await waitUntil { model.canEdit && model.previewCurrent }
+        XCTAssertEqual(model.activeID, "002")
+        film.selectionIndexPaths = []
+        selectionBridge.collectionView(film, didDeselectItemsAt: [thirdPath])
+        try await waitUntil { model.activeID == nil }
+        XCTAssertTrue(model.selection.isEmpty, "A final empty selection still clears the editor")
+    }
+
+    @MainActor func testNarrowInspectorAndLocalPanelLayouts() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = try model(in: folder)
+        model.choose([], active: nil); model.choose(["000"], active: "000"); model.selectWorkspace(.develop)
+        try await waitUntil { model.canEdit && model.previewCurrent }
+        let suite = "narrow-panel-labels-" + UUID().uuidString
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { preferences.removePersistentDomain(forName: suite); model.choose([], active: nil) }
+        for key in ["showLeftPanel", "showRightPanel", "showFilmstrip", "developBasicOpen", "developVignetteOpen"] { preferences.set(true, forKey: key) }
+        for key in ["developSoloMode", "developShowOnlyModified"] { preferences.set(false, forKey: key) }
+        func sliders(_ root: NSView) -> [AdjustmentNSSlider] {
+            (root as? AdjustmentNSSlider).map { [$0] } ?? root.subviews.flatMap(sliders)
+        }
+        for theme in [ChromeTheme.ivory, .graphite] {
+            preferences.set(theme.rawValue, forKey: "chromeTheme")
+            for width in [304.0, 336, 400] {
+                preferences.set(width, forKey: "workspaceRightWidth")
+                let host = NSHostingView(rootView: WorkspaceView(model: model).defaultAppStorage(preferences))
+                let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1280, height: 800), styleMask: [.borderless], backing: .buffered, defer: false)
+                window.appearance = NSAppearance(named: theme == .ivory ? .aqua : .darkAqua)
+                window.contentView = host; host.layoutSubtreeIfNeeded()
+                try await waitUntil { sliders(host).count >= 18 }
+                let edge = 1280 - Metrics.rim - 1 - width
+                for slider in sliders(host) {
+                    let frame = slider.convert(slider.bounds, to: host)
+                    XCTAssertGreaterThanOrEqual(frame.minX, edge)
+                    XCTAssertLessThanOrEqual(frame.maxX, 1280 - Metrics.rim)
+                }
+                window.contentView = nil
+            }
+        }
+        let group = LocalAdjustment(name: "Window highlights and background color refinement", components: [MaskComponent(tool: .linear)], exposure: 0.25)
+        model.recipe?.localAdjustments = [group]; model.selectedMaskID = group.id; model.selectedComponentID = group.components.first?.id
+        for theme in [ChromeTheme.ivory, .graphite] {
+            preferences.set(theme.rawValue, forKey: "chromeTheme")
+            let host = NSHostingView(rootView: MaskPanel(model: model).defaultAppStorage(preferences).preferredColorScheme(theme.colorScheme))
+            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 304, height: 800), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: theme == .ivory ? .aqua : .darkAqua)
+            window.contentView = host; host.layoutSubtreeIfNeeded()
+            try await waitUntil { sliders(host).count >= 13 }
+            for slider in sliders(host) {
+                let frame = slider.convert(slider.bounds, to: host)
+                XCTAssertGreaterThanOrEqual(frame.minX, 0); XCTAssertLessThanOrEqual(frame.maxX, 304)
+            }
+            window.contentView = nil
+        }
     }
 
     @MainActor func testAdjustmentErrorsPreserveDraftCancelAndClearOnPhotoSwitch() throws {

@@ -62,7 +62,7 @@ struct MaskPanel: View {
                 PanelSection(L10n.text("app.refineSelection", defaultValue: "Refine Selection"), isExpanded: $refinementOpen, reset: { model.showMaskOverlay = true; model.changeMask { $0.refinement = nil } }) {
                     refinementControls(group).sectionContent()
                 }
-                PanelTitle(L10n.text("app.localAdjustments", defaultValue: "Local Adjustments · \(group.name)")) {
+                PanelTitle(L10n.text("app.localAdjustmentsTitle", defaultValue: "Local Adjustments")) {
                     Text(model.previewingMaskID == group.id ? L10n.text("app.previewing", defaultValue: "Previewing") : !group.enabled ? L10n.text("app.disabled", defaultValue: "Disabled") : group.isNeutral ? L10n.text("app.unmodified", defaultValue: "Unmodified") : L10n.text("app.modified", defaultValue: "Modified"))
                         .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize()
                     MomentaryPreviewKey(title: L10n.text("app.previewCurrentMaskEffect", defaultValue: "Preview Current Mask Effect"),
@@ -75,6 +75,10 @@ struct MaskPanel: View {
                         .accessibilityIdentifier("mask-effect-preview")
                         .accessibilityValue(model.previewingMaskID == group.id ? L10n.text("app.temporarilyHidden_1458", defaultValue: "Temporarily Hidden") : L10n.text("app.normalDisplay", defaultValue: "Normal Display"))
                 }
+                Text(group.name).font(.caption11).foregroundStyle(Theme.textSecondary)
+                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12).padding(.bottom, 6)
                 groupRow(L10n.text("app.effectAmount", defaultValue: "Effect Amount"), \.amount, value: group.amount, scale: 100, range: 0...100, reset: 100)
                     .padding(.horizontal, 12).padding(.bottom, 6)
                     .help(L10n.text("app.controlsTheCurrentMaskSAdjustmentStrengthAdjustExposure", defaultValue: "Controls the current mask's adjustment strength. Adjust exposure or color first to see an effect"))

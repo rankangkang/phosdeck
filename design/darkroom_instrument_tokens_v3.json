@@ -313,7 +313,10 @@
       "neutralTickPt": 5,
       "capIndexLine": true,
       "focusRing": false,
-      "activeFeedback": "cap index line only; preserve keyboard and accessibility operations"
+      "activeFeedback": "cap index line only; preserve keyboard and accessibility operations",
+      "disabledPlayPt": 2,
+      "disabledReturnMs": 120,
+      "disabledFeedback": "cap-only motion bounded by rail ends; no value mutation; reduced motion returns immediately"
     },
     "key": {
       "defaultHeight": 28,
@@ -579,6 +582,13 @@
       "ambientShadow": {
         "visualY": 4,
         "appKitBlur": 4
+      },
+      "disabled": {
+        "faceOverlayColor": "surface.panel",
+        "faceOverlayOpacity": 0.45,
+        "shadowOpacityMultiplier": 0.45,
+        "contour": "material.edge; border.control in increased contrast",
+        "ticksAndIndex": "text.disabled"
       }
     },
     "detentSelector": {

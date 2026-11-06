@@ -1172,7 +1172,7 @@ struct WorkspaceView: View {
                         }.padding(.horizontal, 12).padding(.vertical, 6)
                         Seam()
                     }
-                    if photo.supportsEditing, model.hasRecipe || model.photoSwitchDisplay != nil {
+                    if photo.supportsEditing, model.hasEditorRecipe {
                         if model.maskMode {
                             MaskPanel(model: model, compact: compactMasks).disabled(!model.canEdit)
                         } else if model.spotMode {
@@ -1246,29 +1246,52 @@ struct WorkspaceView: View {
                 Spacer()
             }
             Seam()
-            HStack(spacing: Metrics.gap) {
-                Button(L10n.text("app.undo_244", defaultValue: "Undo")) { if model.smartMaskSession != nil { model.undoSmartPrompt() } else { model.undo.undo() } }.buttonStyle(.key)
-                    .disabled(model.smartMaskSession.map { $0.busy || $0.promptHistory.isEmpty } ?? !model.undo.canUndo).help(L10n.text("app.undoZ", defaultValue: "Undo (⌘Z)"))
-                Button(L10n.text("app.redo_245", defaultValue: "Redo")) { model.undo.redo() }.buttonStyle(.key).disabled(model.smartMaskSession != nil || !model.undo.canRedo).help(L10n.text("app.redoZ", defaultValue: "Redo (⇧⌘Z)"))
-                Spacer()
-                if model.editMode, model.selection.subtracting(Set([model.activeID].compactMap { $0 })).count > 0 {
-                    Button(L10n.text("app.sync", defaultValue: "Sync…")) { model.requestAdjustments(.sync) }.buttonStyle(.key)
-                        .disabled(!model.canEdit || !model.workspaceAvailable)
-                        .help(L10n.text("app.syncSelectedAdjustmentsFromTheCurrentPhotoToOther", defaultValue: "Sync selected adjustments from the current photo to other selected photos")).accessibilityLabel(L10n.text("app.syncAdjustments", defaultValue: "Sync Adjustments"))
-                }
-                if model.editMode, model.selection.count == 1 {
-                    Button(L10n.text("app.usePrevious", defaultValue: "Use Previous…")) { model.requestAdjustments(.previous) }.buttonStyle(.key)
-                        .disabled(!model.canUsePreviousAdjustments || !model.workspaceAvailable)
-                        .help(model.previousAdjustmentSource.map { L10n.text("app.source_2184", defaultValue: "Source: ") + $0.photo.displayName + L10n.text("app.scope_2185", defaultValue: "; scope: ") + model.confirmedAdjustmentOptions.summary } ?? L10n.text("app.viewAnotherDecodedPhotoToReuseItsAdjustments", defaultValue: "View another decoded photo to reuse its adjustments"))
-                        .accessibilityIdentifier("previous-adjustments")
-                }
-                Button(L10n.text("app.reset_2187", defaultValue: "Reset")) { model.changeRecipe { $0 = $0.resetForCurrentPipeline() } }
-                    .buttonStyle(.key)
-                    .disabled(!model.hasRecipe || !model.canEdit)
-                    .help(L10n.text("app.resetAllAdjustmentsForTheCurrentPhotoUndoAvailable", defaultValue: "Reset all adjustments for the current photo; undo available"))
-            }.padding(12)
+            inspectorFooter.padding(12)
         }.background(InstrumentPlate())
             .environment(\.adjustmentPhotoID, model.activeID)
+    }
+
+    private var inspectorFooter: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Metrics.gap) {
+                inspectorUndoControls.fixedSize()
+                Spacer(minLength: 0)
+                inspectorTransferControl.fixedSize()
+                inspectorResetControl.fixedSize()
+            }
+            VStack(alignment: .leading, spacing: Metrics.gap) {
+                HStack(spacing: Metrics.gap) {
+                    inspectorUndoControls.fixedSize()
+                    Spacer(minLength: 0)
+                    inspectorResetControl.fixedSize()
+                }
+                inspectorTransferControl.fixedSize()
+            }
+        }
+    }
+    @ViewBuilder private var inspectorUndoControls: some View {
+        Button(L10n.text("app.undo_244", defaultValue: "Undo")) { if model.smartMaskSession != nil { model.undoSmartPrompt() } else { model.undo.undo() } }.buttonStyle(.key)
+            .disabled(model.smartMaskSession.map { $0.busy || $0.promptHistory.isEmpty } ?? !model.undo.canUndo).help(L10n.text("app.undoZ", defaultValue: "Undo (⌘Z)"))
+        Button(L10n.text("app.redo_245", defaultValue: "Redo")) { model.undo.redo() }.buttonStyle(.key).disabled(model.smartMaskSession != nil || !model.undo.canRedo).help(L10n.text("app.redoZ", defaultValue: "Redo (⇧⌘Z)"))
+    }
+    @ViewBuilder private var inspectorTransferControl: some View {
+        if model.editMode, model.selection.subtracting(Set([model.activeID].compactMap { $0 })).count > 0 {
+            Button(L10n.text("app.sync", defaultValue: "Sync…")) { model.requestAdjustments(.sync) }.buttonStyle(.key)
+                .disabled(!model.canEdit || !model.workspaceAvailable)
+                .help(L10n.text("app.syncSelectedAdjustmentsFromTheCurrentPhotoToOther", defaultValue: "Sync selected adjustments from the current photo to other selected photos")).accessibilityLabel(L10n.text("app.syncAdjustments", defaultValue: "Sync Adjustments"))
+        }
+        if model.editMode, model.selection.count == 1 {
+            Button(L10n.text("app.usePrevious", defaultValue: "Use Previous…")) { model.requestAdjustments(.previous) }.buttonStyle(.key)
+                .disabled(!model.canUsePreviousAdjustments || !model.workspaceAvailable)
+                .help(model.previousAdjustmentSource.map { L10n.text("app.source_2184", defaultValue: "Source: ") + $0.photo.displayName + L10n.text("app.scope_2185", defaultValue: "; scope: ") + model.confirmedAdjustmentOptions.summary } ?? L10n.text("app.viewAnotherDecodedPhotoToReuseItsAdjustments", defaultValue: "View another decoded photo to reuse its adjustments"))
+                .accessibilityIdentifier("previous-adjustments")
+        }
+    }
+    @ViewBuilder private var inspectorResetControl: some View {
+        Button(L10n.text("app.reset_2187", defaultValue: "Reset")) { model.changeRecipe { $0 = $0.resetForCurrentPipeline() } }
+            .buttonStyle(.key)
+            .disabled(!model.hasRecipe || !model.canEdit)
+            .help(L10n.text("app.resetAllAdjustmentsForTheCurrentPhotoUndoAvailable", defaultValue: "Reset all adjustments for the current photo; undo available"))
     }
 
     private var canInspectClipping: Bool {

@@ -115,11 +115,9 @@ private struct AdjustmentDisplayState {
 /// Display only: edits and exports always use the active photo's recipe.
 struct PhotoSwitchDisplay {
     let photoID: String
-    let recipe: EditRecipe
     let image: CGImage
     let histogram: ImageHistogram?
     let nativeSize: CGSize?
-    let rawDefaults: RAWDetailSettings?
 }
 
 enum WorkspaceMode { case grid, single, develop, compare, survey }
@@ -373,10 +371,13 @@ final class AppModel {
     var renderedNativeSize: CGSize?
     private(set) var hasRecipe = false
     private(set) var photoSwitchDisplay: PhotoSwitchDisplay?
-    var editorRecipe: EditRecipe? { photoSwitchDisplay?.recipe ?? recipe }
+    // A missing image must not unmount the last real parameter controls.
+    private var retainedEditorDisplay: (recipe: EditRecipe, rawDefaults: RAWDetailSettings?)?
+    var hasEditorRecipe: Bool { hasRecipe || retainedEditorDisplay != nil }
+    var editorUsesPreviousPhoto: Bool { !canEdit && retainedEditorDisplay != nil }
+    var editorRecipe: EditRecipe? { editorUsesPreviousPhoto ? retainedEditorDisplay?.recipe : recipe }
     var editorRawDefaults: RAWDetailSettings? {
-        if let previous = photoSwitchDisplay { return previous.rawDefaults }
-        return rawDefaults
+        editorUsesPreviousPhoto ? retainedEditorDisplay?.rawDefaults : rawDefaults
     }
     var recipe: EditRecipe? {
         didSet {
@@ -1052,11 +1053,14 @@ final class AppModel {
             guard commitRecipe() else { return }
             clearSavedEditPreview(); endAdjustmentPreview(redraw: false); displayPixelReadout = nil; presetListFocused = false; beforeReference = nil; endMaskEffectPreview(redraw: false)
             if id != nil, comparison == nil, survey == nil {
-                if let activeID, let image, let recipe, !previewIsCrop {
-                    photoSwitchDisplay = PhotoSwitchDisplay(photoID: activeID, recipe: recipe, image: image,
-                        histogram: histogram, nativeSize: renderedNativeSize, rawDefaults: rawDefaults)
+                if let recipe, canEdit || retainedEditorDisplay == nil {
+                    retainedEditorDisplay = (recipe, rawDefaults)
                 }
-            } else { photoSwitchDisplay = nil }
+                if let activeID, let image, recipe != nil, !previewIsCrop {
+                    photoSwitchDisplay = PhotoSwitchDisplay(photoID: activeID, image: image,
+                        histogram: histogram, nativeSize: renderedNativeSize)
+                }
+            } else { photoSwitchDisplay = nil; retainedEditorDisplay = nil }
             if canEdit, let photo = activePhoto, let recipe {
                 previousAdjustmentSource = AdjustmentSource(photo: photo, recipe: recipe)
             } else { previousAdjustmentSource = nil }
@@ -1129,7 +1133,7 @@ final class AppModel {
             guard let candidate, candidate.id != reference.id else { error = L10n.text("app.selectAtLeastTwoPhotosToCompare", defaultValue: "Select at least two photos to compare"); return }
             let comparison = makeComparisonRenderer()
             comparison.groupIDs = group
-            photoSwitchDisplay = nil
+            photoSwitchDisplay = nil; retainedEditorDisplay = nil
             editMode = false; singleView = true; beforeAfter = .off; self.comparison = comparison
             comparison.update(comparison.reference, photo: reference, roots: roots)
             if let offset = try catalog.offset(of: candidate.id, query: query) { pageOffset = offset / pageSize * pageSize; try reloadPhotos() }
@@ -1200,7 +1204,7 @@ final class AppModel {
             endComparison(); endSurvey()
             editMode = false; singleView = true; beforeAfter = .off
             let next = PhotoSurvey(ids: chosen, renderer: makeComparisonRenderer())
-            photoSwitchDisplay = nil
+            photoSwitchDisplay = nil; retainedEditorDisplay = nil
             next.offset = offset; survey = next
             choose(Set(chosen), active: active.flatMap { chosen.contains($0) ? $0 : nil } ?? activeID.flatMap { chosen.contains($0) ? $0 : nil } ?? chosen.first)
             try refreshSurvey()
@@ -2319,7 +2323,7 @@ final class AppModel {
             viewport.focusOnNextGeometry(point)
         }
     }
-    var canShowBeforeAfter: Bool { photoSwitchDisplay == nil && !isPreviewingAdjustment && !whiteBalanceSampling && !pointSampling && !showPointColorRange && hasRecipe && !cropMode && !maskMode && !spotMode && comparison == nil }
+    var canShowBeforeAfter: Bool { photoSwitchDisplay == nil && !editorUsesPreviousPhoto && !isPreviewingAdjustment && !whiteBalanceSampling && !pointSampling && !showPointColorRange && hasRecipe && !cropMode && !maskMode && !spotMode && comparison == nil }
     /// `\`: the whole canvas shows the untoned, uncropped original.
     func toggleBefore() {
         guard recipe != nil, !cropMode else { return }
@@ -2996,7 +3000,7 @@ extension AppModel {
         selection = []; activeID = nil; activePhoto = nil; photos = []; roots = []; collections = []; folders = [:]
         viewPositions = [:]; lockViewPosition = false
         collectionMembers = []; reports = []; pageOffset = 0; folderPhotoCount = -1
-        photoSwitchDisplay = nil
+        photoSwitchDisplay = nil; retainedEditorDisplay = nil
         recipe = nil; savedRecipe = nil; renderedCropRecipe = nil; image = nil; histogram = nil; dirty = false; canEdit = false; rawDefaults = nil
         orientedSourceSize = nil; renderedNativeSize = nil; renderedCoordinateRecipe = nil; imageStatus = L10n.text("app.noPhotoSelected", defaultValue: "No photo selected")
         editHistory = []; editSnapshots = []; copiedRecipe = nil; copiedLocalParameters = nil; localParameterPresets = []; copiedPhotoName = ""; copiedAdjustmentPhoto = nil; previousAdjustmentSource = nil; adjustmentRequest = nil; hasMoreHistory = false

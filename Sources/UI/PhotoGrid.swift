@@ -153,6 +153,9 @@ struct PhotoGrid: NSViewRepresentable {
         var positionKey = ""
         var lastActive: String?
         var scrollObserver: NSObjectProtocol?
+        private var selectionUpdateScheduled = false
+        private var pendingActiveID: String?
+        private var pendingSelectionModifiers: NSEvent.ModifierFlags = []
         deinit { if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) } }
         weak var collection: NSCollectionView?
         init(model: AppModel, film: Bool, ordering: CollectionOrdering?) { self.model = model; self.film = film; self.ordering = ordering }
@@ -232,16 +235,33 @@ struct PhotoGrid: NSViewRepresentable {
             guard before == nil || !ids.contains(before!) else { return false }
             return ordering.reorder(ids, before)
         }
-        func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { changed(collectionView, active: indexPaths.sorted().last) }
-        func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { changed(collectionView, active: nil) }
-        private func changed(_ collection: NSCollectionView, active: IndexPath?) {
+        func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionChanged(collectionView, active: indexPaths.sorted().last) }
+        func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionChanged(collectionView, active: nil) }
+        private func selectionChanged(_ collection: NSCollectionView, active: IndexPath?) {
             guard !applyingChanges else { return }
+            if let active, photos.indices.contains(active.item) { pendingActiveID = photos[active.item].id }
+            pendingSelectionModifiers = NSEvent.modifierFlags
+            guard !selectionUpdateScheduled else { return }
+            selectionUpdateScheduled = true
+            let queryKey = positionKey, previousActive = model.activeID
+            // A mouse selection reports an empty deselection before selecting
+            // its replacement. Publish only the final set from this event.
+            Task { @MainActor [weak self, weak collection] in
+                guard let self, let collection else { return }
+                self.selectionUpdateScheduled = false
+                let active = self.pendingActiveID
+                self.pendingActiveID = nil
+                guard self.positionKey == queryKey, self.model.activeID == previousActive else { return }
+                self.changed(collection, active: active, modifiers: self.pendingSelectionModifiers)
+            }
+        }
+        private func changed(_ collection: NSCollectionView, active: String?, modifiers: NSEvent.ModifierFlags) {
             let visibleIDs = Set(photos.map(\.id))
-            let carry = NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty ? Set<String>() : model.selection.subtracting(visibleIDs)
+            let carry = modifiers.intersection([.command, .shift]).isEmpty ? Set<String>() : model.selection.subtracting(visibleIDs)
             let ids = carry.union(Set(collection.selectionIndexPaths.compactMap { photos.indices.contains($0.item) ? photos[$0.item].id : nil }))
-            let id = active.map { photos[$0.item].id } ?? (ids.contains(model.activeID ?? "") ? model.activeID : ids.sorted().first)
+            let id = active.flatMap { ids.contains($0) ? $0 : nil } ?? (ids.contains(model.activeID ?? "") ? model.activeID : ids.sorted().first)
             if let survey = model.survey {
-                if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty, let id, survey.ids.contains(id) { model.activateSurveyPhoto(id) }
+                if modifiers.intersection([.command, .shift]).isEmpty, let id, survey.ids.contains(id) { model.activateSurveyPhoto(id) }
                 else { model.updateSurveySelection(ids, active: id) }
                 return
             }

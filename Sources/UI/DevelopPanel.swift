@@ -134,7 +134,9 @@ struct DevelopPanel: View {
 
     @ViewBuilder private var panelToolbar: some View {
         HStack(spacing: 8) {
-            Text(model.photoSwitchDisplay == nil ? L10n.text("app.adjustments", defaultValue: "Adjustments") : L10n.text("app.loadingPhoto", defaultValue: "Loading photo…")).font(.section).foregroundStyle(Theme.textSecondary)
+            Text(model.editorUsesPreviousPhoto ? L10n.text("app.previousPhotoSettings", defaultValue: "Previous Photo Settings") : L10n.text("app.adjustments", defaultValue: "Adjustments"))
+                .font(.section).foregroundStyle(Theme.textSecondary)
+                .help(model.editorUsesPreviousPhoto ? model.imageStatus : "")
             Seam().frame(maxWidth: .infinity)
             Menu {
                 Toggle(L10n.text("app.expandOneAdjustmentPanelAtATime", defaultValue: "Expand One Adjustment Panel at a Time"), isOn: $solo)
@@ -235,7 +237,7 @@ struct DevelopPanel: View {
     private func keyField<Value: Hashable>(_ title: String, _ options: [KeyOption<Value>], _ selection: Binding<Value>) -> some View {
         HStack(alignment: .top, spacing: Metrics.gap) {
             Text(title).frame(width: Metrics.rowLabel, height: Metrics.key, alignment: .leading)
-            KeyRow(title: title, options: options, selection: selection, expand: true)
+            KeyRow(title: title, options: options, selection: selection, expand: true, wrappingColumns: 1)
         }.padding(.vertical, 2)
     }
     private var zones: some View {

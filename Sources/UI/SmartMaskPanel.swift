@@ -59,9 +59,9 @@ struct SmartMaskPanel: View {
             Text(L10n.text("app.1SelectionMethod", defaultValue: "1  Selection Method")).font(.section)
             KeyRow(title: L10n.text("app.mouse", defaultValue: "Mouse"), options: [KeyOption(SmartMaskPickMode.include, L10n.text("app.clickToAdd", defaultValue: "Click to Add")),
                 KeyOption(.exclude, L10n.text("app.clickToExclude", defaultValue: "Click to Exclude")), KeyOption(.box, L10n.text("app.boxSelection", defaultValue: "Box Selection"))],
-                selection: Binding(get: { session.mode }, set: { model.smartMaskSession?.mode = $0 }), expand: true)
+                selection: Binding(get: { session.mode }, set: { model.smartMaskSession?.mode = $0 }), expand: true, wrappingColumns: 1)
             Text(session.pointerInstruction).font(.body13).foregroundStyle(Theme.textSecondary)
-                .frame(height: 38, alignment: .top).fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: 38, alignment: .top).fixedSize(horizontal: false, vertical: true)
             HStack {
                 Button(L10n.text("app.undoLastStep", defaultValue: "Undo Last Step")) { model.undoSmartPrompt() }.buttonStyle(.key(height: 24, padding: 6))
                     .disabled(!session.ready || session.promptHistory.isEmpty).accessibilityIdentifier("smart-mask-undo-prompt")
