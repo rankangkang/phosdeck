@@ -174,12 +174,12 @@ struct MaskPanel: View {
                     .keySurface(height: 24).accessibilityLabel(L10n.text("app.maskComponent", defaultValue: "\(operation.title) mask component"))
             }
             Spacer(minLength: 0)
-            Button { model.showMaskGuides.toggle() } label: {
-                LampLabel(on: hasControlLines && model.showMaskGuides) { Text(L10n.text("app.controls", defaultValue: "Controls")) }
-            }.buttonStyle(.key(selected: hasControlLines && model.showMaskGuides, height: 24, padding: 7))
+            Button(L10n.text("app.controls", defaultValue: "Controls")) { model.showMaskGuides.toggle() }
+                .buttonStyle(.key(selected: hasControlLines && model.showMaskGuides, height: 24, padding: 7, lampInside: true))
                 .disabled(!hasControlLines)
                 .help(hasControlLines ? L10n.text("app.showPinsAndControlsHSelectionOverlayOIs", defaultValue: "Show pins and controls (H); selection overlay (O) is independent") : L10n.text("app.thisSelectionHasNoControlsUseThisSwitchFor", defaultValue: "This selection has no controls. Use this switch for gradients or color samples"))
                 .accessibilityLabel(L10n.text("app.showMaskControls", defaultValue: "Show Mask Controls")).accessibilityValue(hasControlLines ? (model.showMaskGuides ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off")) : L10n.text("app.noControls", defaultValue: "No Controls"))
+                .accessibilityAddTraits(hasControlLines && model.showMaskGuides ? .isSelected : [])
         }
     }
     private var hasControlLines: Bool {
@@ -241,9 +241,10 @@ struct MaskPanel: View {
                     .accessibilityIdentifier("mask-regenerate-object").disabled(c.raster?.isPersonSelection != true && SmartMaskEngine.bundledModels.objectDirectory == nil)
             case .brush:
                 KeyRow(title: L10n.text("app.brushMode", defaultValue: "Brush Mode"), options: [KeyOption(false, L10n.text("app.brush", defaultValue: "Brush")), KeyOption(true, L10n.text("app.erase", defaultValue: "Erase"))], selection: $model.brushErase, expand: true)
+                SubgroupLabel(L10n.text("app.autoMask", defaultValue: "Auto Mask"))
                 KeyRow(title: L10n.text("app.autoMask", defaultValue: "Auto Mask"), options: [
-                    KeyOption(false, L10n.text("app.close", defaultValue: "Close"), help: L10n.text("app.paintTheEntireStrokeRegardlessOfColor", defaultValue: "Paint the entire stroke regardless of color"), identifier: "brush-auto-off"),
-                    KeyOption(true, L10n.text("app.enable", defaultValue: "Enable"), help: L10n.text("app.paintColorsSimilarToTheStrokeStartThenSnap", defaultValue: "Paint colors similar to the stroke start, then snap edges to tonal boundaries"), identifier: "brush-auto-on")
+                    KeyOption(false, L10n.text("app.off", defaultValue: "Off"), help: L10n.text("app.paintTheEntireStrokeRegardlessOfColor", defaultValue: "Paint the entire stroke regardless of color"), identifier: "brush-auto-off"),
+                    KeyOption(true, L10n.text("app.on", defaultValue: "On"), help: L10n.text("app.paintColorsSimilarToTheStrokeStartThenSnap", defaultValue: "Paint colors similar to the stroke start, then snap edges to tonal boundaries"), identifier: "brush-auto-on")
                 ], selection: Binding(get: { model.brushAutoMask }, set: { value in
                     model.brushAutoMask = value
                     if value { model.showMaskOverlay = true; model.prepareMaskReference() }

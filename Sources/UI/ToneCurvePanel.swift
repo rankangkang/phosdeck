@@ -17,7 +17,7 @@ struct ToneCurvePanel: View {
     }
     var body: some View {
         VStack(spacing: 0) {
-            KeyRow(title: L10n.text("app.curveChannel", defaultValue: "Curve Channel"), options: (0..<4).map { KeyOption($0, ToneCurves.names[$0]) }, selection: $channel, expand: true)
+            KeyRow(title: L10n.text("app.curveChannel", defaultValue: "Curve Channel"), options: (0..<4).map { KeyOption($0, ToneCurves.names[$0]) }, selection: $channel, expand: true, wrappingColumns: 2)
             Bracket().stroke(Theme.textSecondary, lineWidth: 1).frame(height: 12).padding(.horizontal, 2).padding(.bottom, 4)
                 .accessibilityHidden(true)
             ScopeDisplay {
@@ -37,7 +37,7 @@ struct ToneCurvePanel: View {
                     }
                 }.labelsHidden().accessibilityLabel(L10n.text("app.curveControlPoints", defaultValue: "Curve Control Points")).frame(maxWidth: .infinity)
                 Text("\(points.count)/16").font(.caption11).foregroundStyle(Theme.textSecondary)
-                Button(L10n.text("app.added", defaultValue: "Added")) {
+                Button(L10n.text("app.addAction", defaultValue: "Add")) {
                     var value = curves
                     let i = min(selected, points.count-2), x = (points[i].x+points[i+1].x)/2
                     if let added = value.insert(channel: channel, x: x, y: TonalPipeline.evaluate(points, at: x)) {

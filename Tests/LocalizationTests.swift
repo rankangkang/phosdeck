@@ -66,6 +66,11 @@ final class LocalizationTests: XCTestCase {
         let label = "Left Panel", shortcut = "⌥⌘1", target = "Review %42", scope = "Current Photo", rating = 1
         XCTAssertEqual(english.text("app.adjustTool", defaultValue: "Adjust"), "Adjust")
         XCTAssertEqual(chinese.text("app.adjustTool", defaultValue: "Adjust"), "调整")
+        XCTAssertEqual(english.text("app.addAction", defaultValue: "Add"), "Add")
+        XCTAssertEqual(chinese.text("app.addAction", defaultValue: "Add"), "添加")
+        XCTAssertEqual(english.text("app.added", defaultValue: "Added"), "Added", "The status wording remains separate from the mask action")
+        XCTAssertEqual(english.text("app.off", defaultValue: "Off"), "Off")
+        XCTAssertEqual(english.text("app.on", defaultValue: "On"), "On")
         XCTAssertEqual(english.text("app.collapsePanelShortcut", defaultValue: "Collapse \(label) (\(shortcut))"), "Collapse Left Panel (⌥⌘1)")
         XCTAssertEqual(chinese.text("app.collapsePanelShortcut", defaultValue: "Collapse \(label) (\(shortcut))"), "收起Left Panel（⌥⌘1）")
         XCTAssertEqual(english.text("app.expandPanelShortcut", defaultValue: "Expand \(label) (\(shortcut))"), "Expand Left Panel (⌥⌘1)")

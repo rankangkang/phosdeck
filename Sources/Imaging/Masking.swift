@@ -25,7 +25,7 @@ enum MaskTool: String, Codable, CaseIterable, Identifiable {
 enum MaskOperation: String, Codable, CaseIterable {
     case replace, add, subtract, intersect
     var title: String {
-        switch self { case .replace: return L10n.text("app.base", defaultValue: "Base"); case .add: return L10n.text("app.added", defaultValue: "Added"); case .subtract: return L10n.text("app.subtract", defaultValue: "Subtract"); case .intersect: return L10n.text("app.intersect", defaultValue: "Intersect") }
+        switch self { case .replace: return L10n.text("app.base", defaultValue: "Base"); case .add: return L10n.text("app.addAction", defaultValue: "Add"); case .subtract: return L10n.text("app.subtract", defaultValue: "Subtract"); case .intersect: return L10n.text("app.intersect", defaultValue: "Intersect") }
     }
 }
 /// Color-range width, matched to lightcraft refine 0...100.

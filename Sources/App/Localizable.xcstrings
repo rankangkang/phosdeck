@@ -2216,6 +2216,24 @@
         }
       }
     },
+    "app.addAction": {
+      "extractionState": "manual",
+      "comment": "Add an item, distinct from an already-added status or appending a color sample.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加"
+          }
+        }
+      }
+    },
     "app.addAllCurrentResultsPhotosAcrossEveryPageHold": {
       "extractionState": "manual",
       "comment": "Sources/UI/WorkspaceView.swift: 197",

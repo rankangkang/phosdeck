@@ -408,7 +408,7 @@ struct DevelopPanel: View {
                      selection: Binding(get: { recipe?.asShotWhiteBalance ?? true }, set: { v in change { r in
                         r.asShotWhiteBalance = v
                         if v { r.temperature = r.baselineTemperature; r.tint = r.baselineTint }
-                     } }), expand: true)
+                     } }), expand: true, wrappingColumns: 1)
                 .padding(.leading, Metrics.rowLabel + Metrics.gap).padding(.top, Metrics.gap).padding(.bottom, 4)
             row(L10n.text("app.temperature", defaultValue: "Temperature"), \.temperature, range: 2000...50000, step: 50, reset: recipe?.baselineTemperature ?? 5500, unit: "K")
             row(L10n.text("app.tint", defaultValue: "Tint"), \.tint, range: -150...150, reset: recipe?.baselineTint ?? 0)

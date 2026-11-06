@@ -584,20 +584,27 @@ final class ComparisonTests: XCTestCase {
                 window.contentView = nil
             }
         }
-        let group = LocalAdjustment(name: "Window highlights and background color refinement", components: [MaskComponent(tool: .linear)], exposure: 0.25)
+        let group = LocalAdjustment(name: "Window highlights and background color refinement", components: [MaskComponent(tool: .linear), MaskComponent(tool: .brush)], exposure: 0.25)
         model.recipe?.localAdjustments = [group]; model.selectedMaskID = group.id; model.selectedComponentID = group.components.first?.id
         for theme in [ChromeTheme.ivory, .graphite] {
             preferences.set(theme.rawValue, forKey: "chromeTheme")
-            let host = NSHostingView(rootView: MaskPanel(model: model).defaultAppStorage(preferences).preferredColorScheme(theme.colorScheme))
-            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 304, height: 800), styleMask: [.borderless], backing: .buffered, defer: false)
-            window.appearance = NSAppearance(named: theme == .ivory ? .aqua : .darkAqua)
-            window.contentView = host; host.layoutSubtreeIfNeeded()
-            try await waitUntil { sliders(host).count >= 13 }
-            for slider in sliders(host) {
-                let frame = slider.convert(slider.bounds, to: host)
-                XCTAssertGreaterThanOrEqual(frame.minX, 0); XCTAssertLessThanOrEqual(frame.maxX, 304)
+            for component in group.components {
+                model.selectedComponentID = component.id
+                let host = NSHostingView(rootView: MaskPanel(model: model).defaultAppStorage(preferences).preferredColorScheme(theme.colorScheme))
+                let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 304, height: 800), styleMask: [.borderless], backing: .buffered, defer: false)
+                window.appearance = NSAppearance(named: theme == .ivory ? .aqua : .darkAqua)
+                window.contentView = host; host.layoutSubtreeIfNeeded()
+                try await waitUntil { sliders(host).count >= 13 }
+                for slider in sliders(host) {
+                    let frame = slider.convert(slider.bounds, to: host)
+                    XCTAssertGreaterThanOrEqual(frame.minX, 0); XCTAssertLessThanOrEqual(frame.maxX, 304)
+                }
+                let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                let attachment = XCTAttachment(data: try XCTUnwrap(bitmap.representation(using: .png, properties: [:])), uniformTypeIdentifier: "public.png")
+                attachment.name = "local-inspector-\(component.tool.rawValue)-\(theme.rawValue)"; attachment.lifetime = .keepAlways; add(attachment)
+                window.contentView = nil
             }
-            window.contentView = nil
         }
     }
 
@@ -671,7 +678,7 @@ final class ComparisonTests: XCTestCase {
     }
 
     @MainActor func testWrappingKeyRowsFitInspectorWidthsWithoutShrinkingLabels() throws {
-        let languages = [["Three-Way", "Shadows", "Midtones", "Highlights", "Global"], ["三向", "阴影", "中间调", "高光", "全局"], ["Hue", "Saturation", "Luminance", "All"]]
+        let languages = [["Three-Way", "Shadows", "Midtones", "Highlights", "Global"], ["三向", "阴影", "中间调", "高光", "全局"], ["Hue", "Saturation", "Luminance", "All"], ["Luminance", "Red", "Green", "Blue"]]
         for (language, titles) in languages.enumerated() {
             for theme in [ChromeTheme.ivory, .graphite] {
                 for width in [304.0, 336, 400] {
