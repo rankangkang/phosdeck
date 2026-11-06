@@ -584,7 +584,7 @@ final class ComparisonTests: XCTestCase {
                 window.contentView = nil
             }
         }
-        let group = LocalAdjustment(name: "Window highlights and background color refinement", components: [MaskComponent(tool: .linear), MaskComponent(tool: .brush)], exposure: 0.25)
+        let group = LocalAdjustment(name: "Window highlights and background color refinement", components: [MaskComponent(tool: .linear), MaskComponent(tool: .brush), MaskComponent(tool: .luminance)], exposure: 0.25)
         model.recipe?.localAdjustments = [group]; model.selectedMaskID = group.id; model.selectedComponentID = group.components.first?.id
         for theme in [ChromeTheme.ivory, .graphite] {
             preferences.set(theme.rawValue, forKey: "chromeTheme")
@@ -675,6 +675,76 @@ final class ComparisonTests: XCTestCase {
         _ = try enter("−1,25")
         pump(); XCTAssertEqual(input.value, -1.25)
         XCTAssertEqual(input.commits, 1)
+    }
+
+    @MainActor func testLuminanceRangeInputsValidateBeforeSavingAndDiscardOtherComponentDrafts() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = try model(in: folder)
+        model.choose([], active: nil); model.choose(["000"], active: "000"); model.selectWorkspace(.develop)
+        try await waitUntil { model.canEdit && model.previewCurrent }
+        model.maskReference = try bitmap().image
+        let first = MaskComponent(tool: .luminance), second = MaskComponent(tool: .luminance, operation: .add)
+        let group = LocalAdjustment(components: [first, second])
+        model.changeRecipe { $0.localAdjustments = [group] }
+        model.selectDevelopTool(.mask); model.selectMask(group.id, component: first.id)
+        model.undo.removeAllActions()
+        let history = model.editHistory.count
+        let host = NSHostingView(rootView: MaskPanel(model: model).environment(\.adjustmentPhotoID, model.activeID))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 304, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host; window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        defer { window.orderOut(nil); window.contentView = nil; model.choose([], active: nil) }
+        func pump() {
+            let end = Date().addingTimeInterval(0.08)
+            while Date() < end { RunLoop.current.run(mode: .default, before: end) }
+        }
+        func fields(_ view: NSView) -> [NSTextField] { (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap(fields) }
+        func field(_ label: String) throws -> NSTextField {
+            try XCTUnwrap(fields(host).first { $0.placeholderString == label })
+        }
+        func type(_ text: String, into field: NSTextField) throws -> NSTextView {
+            window.makeKeyAndOrderFront(nil); window.makeFirstResponder(field); field.selectText(nil); pump()
+            let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
+            editor.insertText(text, replacementRange: NSRange(location: 0, length: editor.string.utf16.count)); pump()
+            return editor
+        }
+        host.layoutSubtreeIfNeeded(); pump()
+        let minimumLabel = L10n.text("app.minimumLuminance", defaultValue: "Minimum Luminance")
+        let maximumLabel = L10n.text("app.maximumLuminance", defaultValue: "Maximum Luminance")
+        let lower = try field(minimumLabel)
+        for text in ["85", "-1", "oops", "NaN", "1e309"] {
+            let editor = try type(text, into: lower)
+            XCTAssertEqual(model.selectedMaskComponent?.lower, 0.25, "Typing must not save intermediate digits")
+            editor.insertNewline(nil); pump()
+            XCTAssertEqual(model.selectedMaskComponent?.lower, 0.25)
+            XCTAssertEqual(lower.stringValue, text, "Invalid drafts must remain available to correct")
+            window.makeFirstResponder(nil); pump()
+            XCTAssertEqual(lower.stringValue, text)
+            XCTAssertEqual(model.editHistory.count, history); XCTAssertFalse(model.undo.canUndo)
+        }
+        let cancelled = try type("85", into: lower)
+        cancelled.doCommand(by: #selector(NSResponder.cancelOperation(_:))); pump()
+        XCTAssertEqual(lower.stringValue, "25"); XCTAssertEqual(model.editHistory.count, history)
+        let valid = try type("30", into: lower)
+        valid.insertNewline(nil); pump()
+        XCTAssertEqual(model.selectedMaskComponent?.lower, 0.3)
+        XCTAssertEqual(model.editHistory.count, history + 1)
+        window.makeFirstResponder(nil); pump()
+        XCTAssertEqual(model.editHistory.count, history + 1, "Blur after Return must not save twice")
+        model.undo.undo(); pump()
+        XCTAssertEqual(model.selectedMaskComponent?.lower, 0.25)
+        let upper = try field(maximumLabel)
+        let crossed = try type("20", into: upper)
+        crossed.insertNewline(nil); pump()
+        XCTAssertEqual(model.selectedMaskComponent?.upper, 0.75); XCTAssertEqual(upper.stringValue, "20")
+        crossed.doCommand(by: #selector(NSResponder.cancelOperation(_:))); pump()
+        let beforeSelection = model.editHistory.count
+        _ = try type("35", into: lower)
+        model.selectMask(group.id, component: second.id); pump()
+        XCTAssertEqual(model.selectedMaskComponent?.lower, 0.25)
+        XCTAssertEqual(model.recipe?.localAdjustments.first?.components.first?.lower, 0.25)
+        XCTAssertEqual(model.editHistory.count, beforeSelection, "A retiring editor cannot apply its draft to another component")
+        XCTAssertEqual(try field(minimumLabel).stringValue, "25")
     }
 
     @MainActor func testWrappingKeyRowsFitInspectorWidthsWithoutShrinkingLabels() throws {

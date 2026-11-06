@@ -21,6 +21,7 @@ struct AdjustmentRow: View {
     var reset = 0.0
     var track: AdjustmentTrack = .tonal
     var unit: String?
+    var showsSlider = true
     let change: (Double, Bool) -> Void
     let commit: () -> Void
     @Environment(\.isEnabled) private var enabled
@@ -37,7 +38,7 @@ struct AdjustmentRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: Metrics.gap) {
                 labelView.frame(width: Metrics.rowLabel, alignment: .leading)
-                slider.frame(height: 28)
+                if showsSlider { slider.frame(height: 28) } else { Spacer(minLength: 0) }
                 valueField.frame(width: Metrics.rowValue, alignment: .trailing)
             }.frame(minHeight: Metrics.row)
             if invalid {
@@ -51,12 +52,12 @@ struct AdjustmentRow: View {
         .onChange(of: value) { if !editing { cancel() } }
     }
     private var labelView: some View {
-        HStack(spacing: 4) {
-            Text(label).font(.system(size: 13, weight: modified ? .semibold : .regular))
-                .foregroundStyle(enabled || preservesAppearance ? Theme.text : Theme.textDisabled)
-                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-            if modified { Circle().fill(Theme.accentSignal).frame(width: 4, height: 4).accessibilityHidden(true) }
-        }
+        Text(label).font(.system(size: 13, weight: modified ? .semibold : .regular))
+            .foregroundStyle(enabled || preservesAppearance ? Theme.text : Theme.textDisabled)
+            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            .overlay(alignment: .trailing) {
+                if modified { Circle().fill(Theme.accentSignal).frame(width: 4, height: 4).offset(x: 8).accessibilityHidden(true) }
+            }
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: resetValue)
         .contextMenu { Button(L10n.text("app.reset", defaultValue: "Reset \(label)"), action: resetValue) }
@@ -256,7 +257,7 @@ private struct NativeAdjustmentSlider: NSViewRepresentable {
     }
 }
 
-final class AdjustmentNSSlider: NSSlider {
+class AdjustmentNSSlider: NSSlider {
     var step = 1.0
     var resetValue = 0.0
     var change: ((Double) -> Void)?
@@ -272,6 +273,8 @@ final class AdjustmentNSSlider: NSSlider {
     private var lockedAnchor: CGFloat?
     private var lockedReturn: Task<Void, Never>?
     private(set) var lockedOffset: CGFloat = 0 { didSet { needsDisplay = true } }
+    /// Range endpoints share a rail but stop at the other endpoint.
+    var valueBounds: ClosedRange<Double> { minValue...maxValue }
     override var isEnabled: Bool {
         didSet {
             guard oldValue != isEnabled else { return }
@@ -287,20 +290,24 @@ final class AdjustmentNSSlider: NSSlider {
     }
     override var isFlipped: Bool { true }
     @objc func changed() {
-        doubleValue = min(maxValue, max(minValue, minValue + ((doubleValue - minValue) / step).rounded() * step))
+        doubleValue = min(valueBounds.upperBound, max(valueBounds.lowerBound, minValue + ((doubleValue - minValue) / step).rounded() * step))
         change?(doubleValue)
         if !trackingMouse { commit?() }
     }
 
     private var travel: ClosedRange<CGFloat> { (bounds.minX + 5.5)...max(bounds.minX + 6.5, bounds.maxX - 5.5) }
-    private var trackY: CGFloat { floor(bounds.height / 2) - 2 }
+    var trackY: CGFloat { floor(bounds.height / 2) - 2 }
     private var fraction: Double { maxValue > minValue ? min(1, max(0, (doubleValue - minValue) / (maxValue - minValue))) : 0 }
-    private func x(at fraction: Double) -> CGFloat { travel.lowerBound + CGFloat(fraction) * (travel.upperBound - travel.lowerBound) }
-    private var capRect: NSRect { NSRect(x: x(at: fraction).rounded() + lockedOffset - 4.5, y: trackY - 8, width: 9, height: 16) }
+    func x(at fraction: Double) -> CGFloat { travel.lowerBound + CGFloat(fraction) * (travel.upperBound - travel.lowerBound) }
+    var capRect: NSRect { NSRect(x: x(at: fraction).rounded() + lockedOffset - 4.5, y: trackY - 8, width: 9, height: 16) }
     private var focused: Bool { window?.firstResponder === self && window?.isKeyWindow == true }
 
     override func draw(_ dirtyRect: NSRect) {
         let enabled = isEnabled || preservesAppearance
+        drawTrack(enabled: enabled)
+        drawCap(enabled: enabled)
+    }
+    func drawTrack(enabled: Bool) {
         let y = trackY
         let track = NSRect(x: bounds.minX + 1, y: y - 1.5, width: bounds.width - 2, height: 3)
         let well = NSBezierPath(roundedRect: track, xRadius: 1, yRadius: 1)
@@ -326,7 +333,9 @@ final class AdjustmentNSSlider: NSSlider {
         }
         (enabled ? Palette.textSecondary : Palette.textDisabled).setStroke()
         ticks.lineWidth = 1; ticks.stroke()
-
+    }
+    private func drawCap(enabled: Bool) {
+        let y = trackY
         let cap = capRect
         let capPath = NSBezierPath(roundedRect: cap.insetBy(dx: 0.5, dy: 0.5), xRadius: 2, yRadius: 2)
         for (color, offset, blur) in [(Palette.keyAmbientShadow, 4.0, 4.0), (Palette.keyContactShadow, 1.5, 1.0)] {
@@ -366,7 +375,7 @@ final class AdjustmentNSSlider: NSSlider {
 
     private func nudge(_ direction: Double) -> Bool {
         guard isEnabled, step.isFinite, step > 0 else { return false }
-        doubleValue = min(maxValue, max(minValue, doubleValue + direction*step))
+        doubleValue = min(valueBounds.upperBound, max(valueBounds.lowerBound, doubleValue + direction*step))
         changed(); needsDisplay = true
         return true
     }
@@ -388,7 +397,7 @@ final class AdjustmentNSSlider: NSSlider {
         }
         window?.makeFirstResponder(self)
         if event.clickCount == 2 {
-            doubleValue = min(maxValue, max(minValue, resetValue))
+            doubleValue = min(valueBounds.upperBound, max(valueBounds.lowerBound, resetValue))
             change?(doubleValue); commit?(); needsDisplay = true
             return
         }
@@ -413,7 +422,9 @@ final class AdjustmentNSSlider: NSSlider {
         if let lockedAnchor {
             let delta = convert(event.locationInWindow, from: nil).x - lockedAnchor
             // The locked cap has 2 pt of mechanical play, bounded by the rail ends.
-            lockedOffset = min(travel.upperBound - x(at: fraction), max(travel.lowerBound - x(at: fraction), min(2, max(-2, delta))))
+            let lower = x(at: (valueBounds.lowerBound - minValue) / (maxValue - minValue))
+            let upper = x(at: (valueBounds.upperBound - minValue) / (maxValue - minValue))
+            lockedOffset = min(upper - x(at: fraction), max(lower - x(at: fraction), min(2, max(-2, delta))))
             return
         }
         guard trackingMouse else { return }
@@ -435,7 +446,9 @@ final class AdjustmentNSSlider: NSSlider {
         if shift != fine { anchor = (position, doubleValue); fine = shift }
         let distance = travel.upperBound - travel.lowerBound
         let delta = Double((position - anchor.position) / distance) * (maxValue - minValue) * (fine ? 0.1 : 1)
-        doubleValue = min(maxValue, max(minValue, anchor.value + delta))
+        let value = min(valueBounds.upperBound, max(valueBounds.lowerBound, anchor.value + delta))
+        guard value != doubleValue else { return }
+        doubleValue = value
         changed()
         needsDisplay = true
     }

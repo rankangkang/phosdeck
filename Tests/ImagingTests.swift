@@ -1521,6 +1521,73 @@ extension ImagingTests {
 }
 
 extension ImagingTests {
+    @MainActor func testLuminanceRangeFadersDoNotJumpOrCrossAndKeepLockedFeedback() async throws {
+        let range = MaskLuminanceSliderView(frame: CGRect(x: 0, y: 0, width: 211, height: 28))
+        let window = NSWindow(contentRect: range.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = range; range.layoutSubtreeIfNeeded()
+        defer { window.contentView = nil }
+        let lower = range.lower, upper = range.upper
+        lower.doubleValue = 25.4; upper.doubleValue = 75
+        var changes = 0, commits = 0
+        for slider in [lower, upper] {
+            slider.change = { _ in changes += 1 }; slider.commit = { commits += 1 }
+        }
+        func event(_ type: NSEvent.EventType, x: CGFloat, shift: Bool = false) throws -> NSEvent {
+            let point = range.convert(CGPoint(x: x, y: 14), to: nil)
+            return try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point, modifierFlags: shift ? [.shift] : [],
+                timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        }
+        let grip = lower.capRect.midX + 2
+        XCTAssertTrue(range.hitTest(CGPoint(x: grip, y: 14)) === lower)
+        XCTAssertTrue(range.hitTest(CGPoint(x: upper.capRect.midX, y: 14)) === upper)
+        lower.mouseDown(with: try event(.leftMouseDown, x: grip))
+        lower.mouseUp(with: try event(.leftMouseUp, x: grip))
+        XCTAssertEqual(lower.doubleValue, 25.4, "Grabbing a sampled fractional value must not snap it to an integer")
+        XCTAssertEqual(changes, 0)
+        commits = 0
+        lower.mouseDown(with: try event(.leftMouseDown, x: grip))
+        lower.mouseDragged(with: try event(.leftMouseDragged, x: grip + 20))
+        XCTAssertEqual(lower.doubleValue, 35)
+        lower.mouseDragged(with: try event(.leftMouseDragged, x: grip + 20, shift: true))
+        XCTAssertEqual(lower.doubleValue, 35, "Changing Shift must not jump the cap")
+        lower.mouseDragged(with: try event(.leftMouseDragged, x: grip + 40, shift: true))
+        XCTAssertEqual(lower.doubleValue, 36)
+        XCTAssertEqual(commits, 0)
+        lower.mouseUp(with: try event(.leftMouseUp, x: grip + 40, shift: true))
+        XCTAssertEqual(commits, 1, "Only release commits the drag")
+        lower.mouseDown(with: try event(.leftMouseDown, x: lower.capRect.midX))
+        lower.mouseDragged(with: try event(.leftMouseDragged, x: 300))
+        lower.mouseUp(with: try event(.leftMouseUp, x: 300))
+        XCTAssertEqual(lower.doubleValue, 75); XCTAssertEqual(upper.doubleValue, 75)
+        XCTAssertTrue(lower.accessibilityPerformIncrement()); XCTAssertEqual(lower.doubleValue, 75)
+        XCTAssertTrue(upper.accessibilityPerformDecrement()); XCTAssertEqual(upper.doubleValue, 75)
+        XCTAssertTrue(upper.accessibilityPerformIncrement()); XCTAssertEqual(upper.doubleValue, 76)
+        lower.isEnabled = false; upper.isEnabled = false
+        changes = 0; commits = 0
+        let lockedGrip = lower.capRect.midX
+        lower.mouseDown(with: try event(.leftMouseDown, x: lockedGrip))
+        lower.mouseDragged(with: try event(.leftMouseDragged, x: lockedGrip - 40))
+        XCTAssertEqual(lower.lockedOffset, -2)
+        lower.mouseUp(with: try event(.leftMouseUp, x: lockedGrip - 40))
+        try await waitUntil { lower.lockedOffset == 0 }
+        upper.doubleValue = lower.doubleValue
+        lower.mouseDown(with: try event(.leftMouseDown, x: lower.capRect.midX))
+        lower.mouseDragged(with: try event(.leftMouseDragged, x: 300))
+        XCTAssertEqual(lower.lockedOffset, 0, "A locked endpoint cannot push through its peer")
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+        XCTAssertEqual(lower.lockedOffset, 0)
+        XCTAssertFalse(lower.accessibilityPerformIncrement()); XCTAssertFalse(upper.accessibilityPerformDecrement())
+        XCTAssertEqual(changes, 0); XCTAssertEqual(commits, 0)
+        lower.doubleValue = 25; upper.doubleValue = 75
+        for (name, appearance) in [("ivory", NSAppearance.Name.aqua), ("graphite", .darkAqua)] {
+            window.appearance = NSAppearance(named: appearance)
+            for enabled in [true, false] {
+                lower.isEnabled = enabled; upper.isEnabled = enabled
+                try attachUISnapshot(range, name: "range-fader-\(name)-\(enabled ? "enabled" : "disabled")")
+            }
+        }
+    }
+
     @MainActor func testFaderHorizontalDragFineStepResetAndDisabledState() throws {
         let slider = AdjustmentNSSlider(frame: NSRect(x: 0, y: 0, width: 211, height: 28))
         slider.minValue = -5; slider.maxValue = 5; slider.step = 0.05

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import CoreImage
 
 private extension MaskTool {
@@ -58,7 +59,7 @@ struct MaskPanel: View {
             } else if let group = model.selectedMask {
                 maskActions.padding(12)
                 Seam()
-                if let component = model.selectedMaskComponent { toolControls(component); Seam() }
+                if let component = model.selectedMaskComponent { toolControls(component).id(component.id); Seam() }
                 PanelSection(L10n.text("app.refineSelection", defaultValue: "Refine Selection"), isExpanded: $refinementOpen, reset: { model.showMaskOverlay = true; model.changeMask { $0.refinement = nil } }) {
                     refinementControls(group).sectionContent()
                 }
@@ -308,16 +309,21 @@ struct MaskPanel: View {
                 if c.samples.isEmpty { Text(L10n.text("app.sampleThePhotoFirstThenAdjustSimilarColors", defaultValue: "Sample the photo first, then adjust Similar Colors.")).font(.caption11).foregroundStyle(Theme.textSecondary) }
             case .luminance:
                 SubgroupLabel(L10n.text("app.luminanceRange", defaultValue: "Luminance Range"))
-                MaskLuminanceSlider(model: model, lower: c.lower, upper: c.upper)
-                HStack {
-                    Text(L10n.text("app.dark", defaultValue: "Dark"))
-                    TextField(L10n.text("app.minimumLuminance", defaultValue: "Minimum Luminance"), value: Binding(get: { c.lower * 100 }, set: { v in model.showMaskOverlay = true; model.changeMaskComponent { $0.lower = min($0.upper, max(0, v / 100)) } }), format: .number.precision(.fractionLength(0)))
-                        .frame(width: 48).textFieldStyle(.instrument)
-                    Spacer()
-                    TextField(L10n.text("app.maximumLuminance", defaultValue: "Maximum Luminance"), value: Binding(get: { c.upper * 100 }, set: { v in model.showMaskOverlay = true; model.changeMaskComponent { $0.upper = max($0.lower, min(1, v / 100)) } }), format: .number.precision(.fractionLength(0)))
-                        .frame(width: 48).textFieldStyle(.instrument)
-                    Text(L10n.text("app.light", defaultValue: "Light"))
-                }.monospacedDigit()
+                MaskLuminanceSlider(model: model, componentID: c.id, lower: c.lower, upper: c.upper)
+                AdjustmentRow(label: L10n.text("app.minimumLuminance", defaultValue: "Minimum Luminance"), value: c.lower * 100,
+                    range: 0...(c.upper * 100), showsSlider: false,
+                    change: { v, commit in
+                        guard model.selectedComponentID == c.id else { return }
+                        model.showMaskOverlay = true; model.changeMaskComponent(commit: commit) { $0.lower = v / 100 }
+                    },
+                    commit: { model.commitRecipe() })
+                AdjustmentRow(label: L10n.text("app.maximumLuminance", defaultValue: "Maximum Luminance"), value: c.upper * 100,
+                    range: (c.lower * 100)...100, reset: 100, showsSlider: false,
+                    change: { v, commit in
+                        guard model.selectedComponentID == c.id else { return }
+                        model.showMaskOverlay = true; model.changeMaskComponent(commit: commit) { $0.upper = v / 100 }
+                    },
+                    commit: { model.commitRecipe() })
                 componentPercent(L10n.text("app.smoothness", defaultValue: "Smoothness"), \.smoothness, value: c.smoothness)
                 samplingButton(L10n.text("app.selectLuminance", defaultValue: "Select Luminance"))
             }
@@ -581,36 +587,90 @@ private struct MaskThumbnail: View {
 
 private struct MaskLuminanceSlider: View {
     @Bindable var model: AppModel
+    let componentID: UUID
     let lower: Double
     let upper: Double
-    @State private var editingLower: Bool?
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
     var body: some View {
-        GeometryReader { geometry in
-            let width = max(1, geometry.size.width - 16)
-            ZStack(alignment: .leading) {
-                LinearGradient(colors: [.black, .white], startPoint: .leading, endPoint: .trailing).frame(height: 8).padding(.horizontal, 8)
-                Rectangle().stroke(Theme.accentSignal, lineWidth: 2).frame(width: max(1, (upper - lower) * width), height: 14).offset(x: lower * width + 8)
-                ForEach([true, false], id: \.self) { isLower in
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(LinearGradient(colors: [Theme.keyTop, Theme.keyBottom], startPoint: .top, endPoint: .bottom))
-                        .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.controlBorder))
-                        .frame(width: 9, height: 18).offset(x: (isLower ? lower : upper) * width + 3.5)
-                }
-            }.frame(height: 28).contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 0).onChanged { event in
-                    let value = min(1, max(0, (event.location.x - 8) / width))
-                    if editingLower == nil { editingLower = lower == upper ? value <= lower : abs(value - lower) < abs(value - upper) }
-                    model.showMaskOverlay = true
-                    model.changeMaskComponent(commit: false) { c in
-                        if editingLower == true { c.lower = min(value, c.upper) } else { c.upper = max(value, c.lower) }
-                    }
-                }.onEnded { _ in editingLower = nil; model.commitRecipe() })
-        }.frame(height: 28)
-        .accessibilityRepresentation {
-            VStack {
-                Slider(value: Binding(get: { lower * 100 }, set: { v in model.changeMaskComponent { $0.lower = min(v / 100, $0.upper) } }), in: 0...100).accessibilityLabel(L10n.text("app.luminanceRangeMinimum", defaultValue: "Luminance Range Minimum"))
-                Slider(value: Binding(get: { upper * 100 }, set: { v in model.changeMaskComponent { $0.upper = max(v / 100, $0.lower) } }), in: 0...100).accessibilityLabel(L10n.text("app.luminanceRangeMaximum", defaultValue: "Luminance Range Maximum"))
+        NativeMaskLuminanceSlider(lower: lower, upper: upper, enabled: enabled, preservesAppearance: preservesAppearance,
+            change: { low, high in
+                guard model.selectedComponentID == componentID else { return }
+                model.showMaskOverlay = true
+                model.changeMaskComponent(commit: false) { $0.lower = low / 100; $0.upper = high / 100 }
+            }, commit: { model.commitRecipe() })
+            .environment(\.isEnabled, true).frame(height: 28)
+    }
+}
+
+private struct NativeMaskLuminanceSlider: NSViewRepresentable {
+    let lower: Double
+    let upper: Double
+    let enabled: Bool
+    let preservesAppearance: Bool
+    let change: (Double, Double) -> Void
+    let commit: () -> Void
+    func makeNSView(context: Context) -> MaskLuminanceSliderView { MaskLuminanceSliderView() }
+    func updateNSView(_ view: MaskLuminanceSliderView, context: Context) {
+        view.lower.synchronizeValue(lower * 100); view.upper.synchronizeValue(upper * 100)
+        view.lower.setAccessibilityLabel(L10n.text("app.luminanceRangeMinimum", defaultValue: "Luminance Range Minimum"))
+        view.upper.setAccessibilityLabel(L10n.text("app.luminanceRangeMaximum", defaultValue: "Luminance Range Maximum"))
+        for slider in [view.lower, view.upper] {
+            slider.isEnabled = enabled; slider.preservesAppearance = preservesAppearance
+            slider.change = { [weak view] _ in
+                guard let view else { return }
+                view.lower.needsDisplay = true
+                change(view.lower.doubleValue, view.upper.doubleValue)
             }
+            slider.commit = commit; slider.needsDisplay = true
         }
+    }
+}
+
+/// Two native faders share one rail and keep separate keyboard and accessibility focus.
+final class MaskLuminanceSliderView: NSView {
+    let lower = MaskLuminanceEndpointSlider()
+    let upper = MaskLuminanceEndpointSlider()
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        lower.isLower = true; lower.peer = upper; upper.peer = lower
+        for slider in [lower, upper] {
+            slider.minValue = 0; slider.maxValue = 100; slider.step = 1
+            slider.resetValue = slider === lower ? 0 : 100
+            slider.sliderType = .linear; slider.isContinuous = true; slider.focusRingType = .none
+            slider.target = slider; slider.action = #selector(AdjustmentNSSlider.changed)
+            slider.trackColors = [.black, .white]
+            slider.autoresizingMask = [.width, .height]; addSubview(slider)
+        }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func layout() {
+        super.layout()
+        lower.frame = bounds; upper.frame = bounds
+    }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        guard bounds.contains(local) else { return nil }
+        return local.x <= (lower.capRect.midX + upper.capRect.midX) / 2 ? lower : upper
+    }
+}
+
+final class MaskLuminanceEndpointSlider: AdjustmentNSSlider {
+    var isLower = false
+    weak var peer: MaskLuminanceEndpointSlider?
+    override var valueBounds: ClosedRange<Double> {
+        isLower ? minValue...max(minValue, peer?.doubleValue ?? maxValue) : min(maxValue, peer?.doubleValue ?? minValue)...maxValue
+    }
+    override func drawTrack(enabled: Bool) {
+        guard isLower else { return }
+        super.drawTrack(enabled: enabled)
+        let range = NSBezierPath()
+        let low = x(at: doubleValue / 100), high = x(at: (peer?.doubleValue ?? 100) / 100)
+        range.move(to: NSPoint(x: low, y: trackY + 3))
+        range.line(to: NSPoint(x: low, y: trackY + 9))
+        range.line(to: NSPoint(x: high, y: trackY + 9))
+        range.line(to: NSPoint(x: high, y: trackY + 3))
+        (enabled ? Palette.accentSignal : Palette.textDisabled).setStroke()
+        range.lineWidth = 1; range.stroke()
     }
 }
