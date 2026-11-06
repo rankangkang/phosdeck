@@ -137,7 +137,7 @@ struct DevelopPanel: View {
     @ViewBuilder private var panelToolbar: some View {
         HStack(spacing: 8) {
             Text(L10n.text("app.adjustments", defaultValue: "Adjustments"))
-                .font(.section).foregroundStyle(Theme.textSecondary)
+                .font(.section).foregroundStyle(Theme.textSecondary).fixedSize()
             Seam().frame(maxWidth: .infinity)
             EditorSwitchStatus(locked: model.editorUsesPreviousPhoto, loading: model.loadingPhoto, detail: model.imageStatus,
                                retry: model.retryPhotoLoad)

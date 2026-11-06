@@ -581,6 +581,10 @@ final class ComparisonTests: XCTestCase {
                     XCTAssertGreaterThanOrEqual(frame.minX, edge)
                     XCTAssertLessThanOrEqual(frame.maxX, 1280 - Metrics.rim)
                 }
+                let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                let attachment = XCTAttachment(data: try XCTUnwrap(bitmap.representation(using: .png, properties: [:])), uniformTypeIdentifier: "public.png")
+                attachment.name = "narrow-workspace-\(Int(width))-\(theme.rawValue)"; attachment.lifetime = .keepAlways; add(attachment)
                 window.contentView = nil
             }
         }
