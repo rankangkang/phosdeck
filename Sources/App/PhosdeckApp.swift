@@ -73,6 +73,7 @@ final class CommandResponder: ObservableObject {
         guard let window else { return nil }
         if let editor = window.firstResponder as? NSTextView { return editor.undoManager }
         guard WorkspaceKeyboard.isWorkspaceWindow(window), window.attachedSheet == nil, model.workspaceAvailable else { return nil }
+        guard !model.editMode || !model.editorUsesPreviousPhoto else { return nil }
         return model.undo
     }
     func refresh() {

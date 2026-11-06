@@ -372,12 +372,16 @@ final class AppModel {
     private(set) var hasRecipe = false
     private(set) var photoSwitchDisplay: PhotoSwitchDisplay?
     // A missing image must not unmount the last real parameter controls.
-    private var retainedEditorDisplay: (recipe: EditRecipe, rawDefaults: RAWDetailSettings?)?
+    private var retainedEditorDisplay: (recipe: EditRecipe, rawDefaults: RAWDetailSettings?, previousAvailable: Bool)?
+    private(set) var loadingPhoto = false
     var hasEditorRecipe: Bool { hasRecipe || retainedEditorDisplay != nil }
     var editorUsesPreviousPhoto: Bool { !canEdit && retainedEditorDisplay != nil }
     var editorRecipe: EditRecipe? { editorUsesPreviousPhoto ? retainedEditorDisplay?.recipe : recipe }
     var editorRawDefaults: RAWDetailSettings? {
         editorUsesPreviousPhoto ? retainedEditorDisplay?.rawDefaults : rawDefaults
+    }
+    var editorPreviousAdjustmentsAvailable: Bool {
+        editorUsesPreviousPhoto ? retainedEditorDisplay?.previousAvailable == true : canUsePreviousAdjustments
     }
     var recipe: EditRecipe? {
         didSet {
@@ -1054,7 +1058,7 @@ final class AppModel {
             clearSavedEditPreview(); endAdjustmentPreview(redraw: false); displayPixelReadout = nil; presetListFocused = false; beforeReference = nil; endMaskEffectPreview(redraw: false)
             if id != nil, comparison == nil, survey == nil {
                 if let recipe, canEdit || retainedEditorDisplay == nil {
-                    retainedEditorDisplay = (recipe, rawDefaults)
+                    retainedEditorDisplay = (recipe, rawDefaults, canUsePreviousAdjustments)
                 }
                 if let activeID, let image, recipe != nil, !previewIsCrop {
                     photoSwitchDisplay = PhotoSwitchDisplay(photoID: activeID, image: image,
@@ -1826,13 +1830,19 @@ final class AppModel {
             status = L10n.text("app.addedResultsToCollectionNewPhotosResultsAcrossAll", defaultValue: "Added results to collection · \(count) new photos (\(resultCount) results across all pages)")
         }
     }
+    func retryPhotoLoad() {
+        guard workspaceAvailable, !canEdit, !loadingPhoto, active != nil, comparison == nil, survey == nil else { return }
+        loadActive()
+    }
     private func loadActive() {
         previewTask?.cancel(); previewGeneration = UUID(); pendingPreview = nil; pendingQualityPreview = nil; qualityRender?.cancel()
         interactivePreview = false; previewCurrent = false
+        loadingPhoto = false
         guard comparison == nil, survey == nil else { photoSwitchDisplay = nil; return }
         let token = previewGeneration
         guard let photo = active, let root = roots.first(where: { $0.id == photo.rootID }) else { photoSwitchDisplay = nil; imageStatus = L10n.text("app.noPhotoSelected", defaultValue: "No photo selected"); return }
         imageStatus = L10n.text("app.loadingPhoto", defaultValue: "Loading photo…")
+        loadingPhoto = true
         previewTask = Task {
             do {
                 if photo.metadata == nil, let catalog {
@@ -1851,7 +1861,7 @@ final class AppModel {
                 }
                 rawDefaults = defaults; recipe = value; savedRecipe = value; dirty = false
                 requestPreview(prepareInteractive: photo.supportsEditing)
-            } catch { if token == previewGeneration { photoSwitchDisplay = nil; imageStatus = error.localizedDescription } }
+            } catch { if token == previewGeneration { photoSwitchDisplay = nil; loadingPhoto = false; imageStatus = error.localizedDescription } }
         }
     }
     func changeRecipe(_ mutation: (inout EditRecipe) -> Void, commit: Bool = true, title: String? = nil, preview: Bool = true) {
@@ -2438,7 +2448,10 @@ final class AppModel {
                         if mayPublish { self.publishPreview(result, job: delivery) }
                     case .failure(let error):
                         if !(error is CancellationError), job.generation == self.previewGeneration,
-                           mayPublish, self.pendingPreview == nil { self.photoSwitchDisplay = nil; self.imageStatus = error.localizedDescription }
+                           mayPublish, self.pendingPreview == nil {
+                            self.photoSwitchDisplay = nil; self.imageStatus = error.localizedDescription
+                            if self.qualityWorker == nil, self.pendingQualityPreview == nil { self.loadingPhoto = false }
+                        }
                     }
                     self.startInteractiveWorker()
                 }
@@ -2466,6 +2479,7 @@ final class AppModel {
             } catch is CancellationError {} catch {
                 if job.generation == previewGeneration, job.revision == previewRevision {
                     photoSwitchDisplay = nil
+                    loadingPhoto = false
                     imageStatus = error.localizedDescription
                 }
             }
@@ -2485,6 +2499,7 @@ final class AppModel {
             Task { try? await thumbnails.storePreview(result.image, photo: photo) }
         }
         image = result.image; interactivePreview = job.interactive
+        loadingPhoto = false
         photoSwitchDisplay = nil
         previewCurrent = !job.interactive && job.revision == previewRevision
         previewIsCrop = job.cropPreview
@@ -3000,7 +3015,7 @@ extension AppModel {
         selection = []; activeID = nil; activePhoto = nil; photos = []; roots = []; collections = []; folders = [:]
         viewPositions = [:]; lockViewPosition = false
         collectionMembers = []; reports = []; pageOffset = 0; folderPhotoCount = -1
-        photoSwitchDisplay = nil; retainedEditorDisplay = nil
+        photoSwitchDisplay = nil; retainedEditorDisplay = nil; loadingPhoto = false
         recipe = nil; savedRecipe = nil; renderedCropRecipe = nil; image = nil; histogram = nil; dirty = false; canEdit = false; rawDefaults = nil
         orientedSourceSize = nil; renderedNativeSize = nil; renderedCoordinateRecipe = nil; imageStatus = L10n.text("app.noPhotoSelected", defaultValue: "No photo selected")
         editHistory = []; editSnapshots = []; copiedRecipe = nil; copiedLocalParameters = nil; localParameterPresets = []; copiedPhotoName = ""; copiedAdjustmentPhoto = nil; previousAdjustmentSource = nil; adjustmentRequest = nil; hasMoreHistory = false

@@ -16,6 +16,7 @@ private struct InstrumentToggleBody: View {
     let kind: InstrumentSwitchKind
     let expand: Bool
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
     var body: some View {
@@ -27,7 +28,7 @@ private struct InstrumentToggleBody: View {
                 SwitchMechanism(on: configuration.isOn, kind: kind).accessibilityHidden(true)
                 Text(configuration.isOn ? L10n.text("app.on_1407", defaultValue: "On") : L10n.text("app.off_1408", defaultValue: "Off")).font(.caption11).fixedSize().accessibilityHidden(true)
             }
-            .foregroundStyle(enabled ? Theme.text : Theme.textDisabled)
+            .foregroundStyle(enabled || preservesAppearance ? Theme.text : Theme.textDisabled)
             .frame(minHeight: 28).contentShape(Rectangle())
         }
         .buttonStyle(.plain).focused($focused)
@@ -51,7 +52,9 @@ extension ToggleStyle where Self == InstrumentToggleStyle {
 private struct SwitchMechanism: View {
     let on: Bool
     let kind: InstrumentSwitchKind
-    @Environment(\.isEnabled) private var enabled
+    @Environment(\.isEnabled) private var interactive
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
+    private var enabled: Bool { interactive || preservesAppearance }
     private var indexColor: Color { !enabled ? Theme.textDisabled : on ? Theme.lampOn : Theme.controlBorder }
     var body: some View {
         if kind == .slide {

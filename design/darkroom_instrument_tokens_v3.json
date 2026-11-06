@@ -300,6 +300,16 @@
     "chassisRim": 8
   },
   "components": {
+    "photoSwitch": {
+      "editingLockedImmediately": true,
+      "preserveControlAppearance": true,
+      "intrinsicallyUnavailableControlsStayDimmed": true,
+      "waitingLampDelayMs": 200,
+      "statusReservesSpace": true,
+      "continuousWaitKeepsIndicator": true,
+      "wholePanelTransition": "none",
+      "unlock": "matching first frame; no additional delay"
+    },
     "slider": {
       "trackHeight": 3,
       "thumbWidth": 9,
@@ -319,6 +329,8 @@
       "disabledFeedback": "cap-only motion bounded by rail ends; no value mutation; reduced motion returns immediately"
     },
     "key": {
+      "faceLampPlacement": "before label",
+      "faceLampState": "latched or enabled pressure; disabled pressure does not light",
       "defaultHeight": 28,
       "primaryHeight": 32,
       "iconWidth": 28,

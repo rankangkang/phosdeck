@@ -8,7 +8,7 @@ struct PointColorPanel:View {
     var body:some View {
         VStack(alignment:.leading,spacing:0) {
             Button(model.pointSampling ? L10n.text("app.cancelSampling", defaultValue: "Cancel Sampling") : L10n.text("app.samplePhoto8", defaultValue: "Sample Photo (\(points.count)/8)")) { model.togglePointColorSampling() }
-                .buttonStyle(.key(selected:model.pointSampling)).disabled(!model.canEdit || points.count >= 8 && !model.pointSampling || model.editorRecipe?.develop.blackAndWhite == true)
+                .buttonStyle(.key(selected:model.pointSampling)).editingDisabled(!model.canEdit || points.count >= 8 && !model.pointSampling || model.editorRecipe?.develop.blackAndWhite == true, temporarilyLocked: model.editorUsesPreviousPhoto && points.count < 8 && model.editorRecipe?.develop.blackAndWhite != true)
                 .accessibilityIdentifier("point-color-pick")
                 .accessibilityValue(model.pointSampling ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off"))
                 .accessibilityAddTraits(model.pointSampling ? .isSelected : [])
@@ -47,9 +47,9 @@ struct PointColorPanel:View {
                     row(L10n.text("app.hueRange", defaultValue: "Hue Range"),selected,\.hueRange,range:0...100,reset:50)
                     row(L10n.text("app.saturationRange", defaultValue: "Saturation Range"),selected,\.saturationRange,range:0...100,reset:50)
                     row(L10n.text("app.luminanceRange_1749", defaultValue: "Luminance Range"),selected,\.luminanceRange,range:0...100,reset:50)
-                }.disabled(model.editorRecipe?.develop.blackAndWhite == true)
+                }.controlUnavailable(model.editorRecipe?.develop.blackAndWhite == true)
                 Toggle(L10n.text("app.showAffectedRange", defaultValue: "Show Affected Range"),isOn:$model.showPointColorRange).toggleStyle(.instrument)
-                    .disabled(model.editorRecipe?.develop.blackAndWhite == true).padding(.vertical, 8)
+                    .controlUnavailable(model.editorRecipe?.develop.blackAndWhite == true).padding(.vertical, 8)
                 if model.showPointColorRange { note(L10n.text("app.whiteIsFullyAffectedBlackIsUnaffectedThisView", defaultValue: "White is fully affected; black is unaffected. This view is for display only.")+(model.pointRangeImage == nil ? L10n.text("app.updating", defaultValue: " Updating…") : "")) }
                 HStack { Button(L10n.text("app.resetSample", defaultValue: "Reset Sample")) { model.resetPointColor(selected.id) }; Spacer(); Button(L10n.text("app.deleteSample", defaultValue: "Delete Sample"),role:.destructive) { model.deletePointColor(selected.id) } }.buttonStyle(.key).padding(.vertical, 8)
                 note(L10n.text("app.colorDifferenceNegativeCompressesPositiveExpandsSamplesApplyIn", defaultValue: "Color Difference: negative compresses; positive expands. Samples apply in numbered order and overlapping ranges influence each other."))

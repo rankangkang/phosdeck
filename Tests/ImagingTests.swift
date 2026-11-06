@@ -1087,6 +1087,110 @@ final class ImagingTests: XCTestCase {
         XCTAssertEqual(changes, 1)
     }
 
+    @MainActor func testPhotoSwitchLockKeepsMaterialsAndIntrinsicUnavailability() async throws {
+        var actions = 0
+        func panel(locked: Bool, unavailable: Bool = false) -> some View {
+            VStack(spacing: 12) {
+                Button("调整") { actions += 1 }.buttonStyle(.key(selected: true)).controlUnavailable(unavailable)
+                AdjustmentRow(label: "色温", value: 0, track: .basic(L10n.text("app.temperature", defaultValue: "Temperature")),
+                    change: { _, _ in actions += 1 }, commit: {}).controlUnavailable(unavailable)
+            }.padding(20).frame(width: 336, height: 120)
+                .background(InstrumentPlate()).editingDisabled(locked, temporarilyLocked: locked)
+        }
+        func sliders(_ view: NSView) -> [AdjustmentNSSlider] {
+            (view as? AdjustmentNSSlider).map { [$0] } ?? view.subviews.flatMap(sliders)
+        }
+        func fields(_ view: NSView) -> [NSTextField] {
+            (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap(fields)
+        }
+        func readouts(_ view: NSView) -> [ParameterReadoutView] {
+            (view as? ParameterReadoutView).map { [$0] } ?? view.subviews.flatMap(readouts)
+        }
+        func pixels(_ view: NSView) throws -> Data {
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            return try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        }
+        for theme in [ChromeTheme.ivory, .graphite] {
+            let previousActions = actions
+            let host = NSHostingView(rootView: panel(locked: false).preferredColorScheme(theme.colorScheme))
+            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 336, height: 120), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: theme == .ivory ? .aqua : .darkAqua)
+            window.contentView = host; window.orderFront(nil)
+            defer { window.orderOut(nil); window.contentView = nil }
+            host.layoutSubtreeIfNeeded()
+            let slider = try XCTUnwrap(sliders(host).first)
+            let field = try XCTUnwrap(fields(host).first { $0.isEditable })
+            XCTAssertTrue(field.isEnabled)
+            let readout = try XCTUnwrap(readouts(host).first)
+            XCTAssertFalse(readout.isAccessibilityElement())
+            let fieldPoint = field.convert(CGPoint(x: field.bounds.midX, y: field.bounds.midY), to: host.superview)
+            let fieldHit = try XCTUnwrap(host.hitTest(fieldPoint))
+            XCTAssertTrue(fieldHit === readout, "The resting display must expose its click-to-edit route: \(fieldHit)")
+            try await Task.sleep(for: .milliseconds(100))
+            let ready = try pixels(host)
+            try attachUISnapshot(host, name: "photo-lock-ready-\(theme.rawValue)")
+            host.rootView = panel(locked: true).preferredColorScheme(theme.colorScheme)
+            try await waitUntil { !slider.isEnabled && slider.preservesAppearance }
+            try await Task.sleep(for: .milliseconds(150))
+            let locked = try pixels(host)
+            try attachUISnapshot(host, name: "photo-lock-waiting-\(theme.rawValue)")
+            XCTAssertTrue(ready == locked, "Waiting must not change labels, cap materials, lamps or readouts in \(theme.rawValue)")
+            XCTAssertFalse(slider.accessibilityPerformIncrement())
+            XCTAssertFalse(slider.accessibilityPerformDecrement())
+            XCTAssertTrue(fields(host).contains { $0 === field }, "Waiting keeps the same native text editor")
+            XCTAssertFalse(field.isEnabled)
+            XCTAssertTrue(readouts(host).allSatisfy { !$0.isAccessibilityElement() })
+            XCTAssertTrue(readouts(host).allSatisfy { !$0.interactive && $0.hitTest(.zero) == nil })
+            XCTAssertEqual(actions, previousActions)
+            host.rootView = panel(locked: true, unavailable: true).preferredColorScheme(theme.colorScheme)
+            try await waitUntil { !slider.preservesAppearance }
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertFalse(slider.isEnabled)
+            XCTAssertTrue(try pixels(host) != locked, "A genuinely unavailable control must retain its dimmed appearance")
+            try attachUISnapshot(host, name: "photo-lock-unavailable-\(theme.rawValue)")
+            host.rootView = panel(locked: false).preferredColorScheme(theme.colorScheme)
+            try await waitUntil { slider.isEnabled }
+            XCTAssertTrue(slider.accessibilityPerformIncrement())
+            XCTAssertEqual(actions, theme == .ivory ? 1 : 2)
+        }
+    }
+
+    @MainActor func testPhotoSwitchStatusDelaysWaitingAndKeepsItsSlot() async throws {
+        func status(locked: Bool, loading: Bool = true, detail: String = "first") -> some View {
+            EditorSwitchStatus(locked: locked, loading: loading, detail: detail)
+                .padding(8).background(InstrumentPlate()).preferredColorScheme(.dark)
+        }
+        func pixels(_ view: NSView) throws -> Data {
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            return try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        }
+        let host = NSHostingView(rootView: status(locked: false))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 140, height: 40), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua); window.contentView = host; window.orderFront(nil)
+        defer { window.orderOut(nil); window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+        let originalSize = host.fittingSize, original = try pixels(host)
+        host.rootView = status(locked: true)
+        host.layoutSubtreeIfNeeded()
+        let shortWait = try pixels(host)
+        XCTAssertEqual(host.fittingSize, originalSize)
+        try await Task.sleep(for: .milliseconds(300))
+        let longWait = try pixels(host)
+        XCTAssertTrue(shortWait != longWait, "Only a sustained wait should illuminate the indicator")
+        host.rootView = status(locked: true, detail: "next photo")
+        host.layoutSubtreeIfNeeded()
+        XCTAssertTrue(try pixels(host) == longWait, "Another selection in the same wait must not reset the lamp")
+        host.rootView = status(locked: false)
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertTrue(try pixels(host) == original, "Finishing a switch must cancel delayed indicator work")
+        host.rootView = status(locked: true, loading: false)
+        host.layoutSubtreeIfNeeded()
+        XCTAssertEqual(host.fittingSize, originalSize, "Failure and retry share the same reserved status slot")
+    }
+
     @MainActor func testLockedFaderStopsAndReturnsWithoutEditing() async throws {
         let slider = AdjustmentNSSlider(frame: CGRect(x: 0, y: 0, width: 211, height: 28))
         slider.minValue = -100; slider.maxValue = 100; slider.doubleValue = 0; slider.isEnabled = false

@@ -24,6 +24,7 @@ struct AdjustmentRow: View {
     let change: (Double, Bool) -> Void
     let commit: () -> Void
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
     @Environment(\.adjustmentPhotoID) private var photoID
     @FocusState private var editing: Bool
     @State private var draft: String?
@@ -52,7 +53,7 @@ struct AdjustmentRow: View {
     private var labelView: some View {
         HStack(spacing: 4) {
             Text(label).font(.system(size: 13, weight: modified ? .semibold : .regular))
-                .foregroundStyle(enabled ? Theme.text : Theme.textDisabled)
+                .foregroundStyle(enabled || preservesAppearance ? Theme.text : Theme.textDisabled)
                 .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             if modified { Circle().fill(Theme.accentSignal).frame(width: 4, height: 4).accessibilityHidden(true) }
         }
@@ -70,7 +71,7 @@ struct AdjustmentRow: View {
             TextField(label, text: Binding(get: { draft ?? Self.display(value, digits: digits, signed: bipolar) },
                                            set: { draft = $0; draftPhotoID = photoID; invalid = false }))
                 .textFieldStyle(.plain).font(.value).multilineTextAlignment(.trailing)
-                .foregroundStyle(enabled ? Theme.text : Theme.textDisabled)
+                .foregroundStyle(enabled || preservesAppearance ? Theme.text : Theme.textDisabled)
                 .padding(.horizontal, 3).frame(height: 20)
                 .background {
                     if editing || invalid {
@@ -88,6 +89,20 @@ struct AdjustmentRow: View {
                 }
                 .help(invalid ? errorMessage : "")
                 .accessibilityLabel(L10n.text("app.value", defaultValue: "\(label) value"))
+                // Keep the semantic editor, and render its resting readout
+                // independently of AppKit's additional disabled text tint.
+                .opacity(!editing && !invalid ? 0 : 1)
+                .allowsHitTesting(enabled)
+                .accessibilityHidden(false)
+                .overlay(alignment: .trailing) {
+                    if !editing && !invalid {
+                        ParameterReadout(text: Self.display(value, digits: digits, signed: bipolar),
+                                         lit: enabled || preservesAppearance, interactive: enabled,
+                                         activate: { editing = true })
+                            .padding(.horizontal, 3)
+                            .accessibilityHidden(true)
+                    }
+                }
             Text(unit ?? "").font(.caption11).foregroundStyle(Theme.textSecondary)
                 .frame(width: Metrics.rowUnit, alignment: .leading).accessibilityHidden(unit == nil || unit?.isEmpty == true)
         }
@@ -117,6 +132,40 @@ struct AdjustmentRow: View {
         let text = String(format: "%.\(digits)f", abs(value))
         if Double(text) == 0 { return text }
         return value < 0 ? "−" + text : signed ? "+" + text : text
+    }
+}
+
+private struct ParameterReadout: NSViewRepresentable {
+    let text: String
+    let lit: Bool
+    let interactive: Bool
+    let activate: () -> Void
+    func makeNSView(context: Context) -> ParameterReadoutView { ParameterReadoutView() }
+    func updateNSView(_ view: ParameterReadoutView, context: Context) {
+        view.text = text; view.lit = lit; view.interactive = interactive
+        view.activate = activate; view.needsDisplay = true
+    }
+}
+
+/// The resting display opens its native editor on click; only that editor has AX semantics.
+final class ParameterReadoutView: NSView {
+    var text = ""
+    var lit = true
+    var interactive = true
+    var activate: () -> Void = {}
+    override var isFlipped: Bool { true }
+    override func isAccessibilityElement() -> Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { interactive ? super.hitTest(point) : nil }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { if interactive { activate() } }
+    override func viewDidChangeEffectiveAppearance() { needsDisplay = true }
+    override func draw(_ dirtyRect: NSRect) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium), // Font.value
+            .foregroundColor: lit ? Palette.textPrimary : Palette.textDisabled
+        ]
+        let string = text as NSString, size = string.size(withAttributes: attributes)
+        string.draw(at: NSPoint(x: bounds.maxX - size.width, y: (bounds.height - size.height) / 2), withAttributes: attributes)
     }
 }
 
@@ -162,8 +211,9 @@ struct GradientAdjustmentSlider: View {
     var tickCount = 5
     var valueDescription: String?
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
     var body: some View {
-        NativeAdjustmentSlider(configuration: self, enabled: enabled)
+        NativeAdjustmentSlider(configuration: self, enabled: enabled, preservesAppearance: preservesAppearance)
             // Let AppKit receive pointer pressure while the actual control
             // remains disabled for editing, keyboard and accessibility.
             .environment(\.isEnabled, true)
@@ -173,6 +223,7 @@ struct GradientAdjustmentSlider: View {
 private struct NativeAdjustmentSlider: NSViewRepresentable {
     let configuration: GradientAdjustmentSlider
     let enabled: Bool
+    let preservesAppearance: Bool
     func makeNSView(context: Context) -> AdjustmentNSSlider {
         let slider = AdjustmentNSSlider()
         slider.sliderType = .linear
@@ -185,6 +236,7 @@ private struct NativeAdjustmentSlider: NSViewRepresentable {
     func updateNSView(_ slider: AdjustmentNSSlider, context: Context) {
         let range = configuration.range
         slider.isEnabled = enabled
+        slider.preservesAppearance = preservesAppearance
         if slider.minValue != range.lowerBound { slider.minValue = range.lowerBound }
         if slider.maxValue != range.upperBound { slider.maxValue = range.upperBound }
         slider.synchronizeValue(configuration.value)
@@ -213,6 +265,7 @@ final class AdjustmentNSSlider: NSSlider {
     var neutral = 0.5
     var bipolar = false
     var tickCount = 5
+    var preservesAppearance = false { didSet { if oldValue != preservesAppearance { needsDisplay = true } } }
     private(set) var trackingMouse = false
     private var anchor: (position: CGFloat, value: Double) = (0, 0)
     private var fine = false
@@ -247,7 +300,7 @@ final class AdjustmentNSSlider: NSSlider {
     private var focused: Bool { window?.firstResponder === self && window?.isKeyWindow == true }
 
     override func draw(_ dirtyRect: NSRect) {
-        let enabled = isEnabled
+        let enabled = isEnabled || preservesAppearance
         let y = trackY
         let track = NSRect(x: bounds.minX + 1, y: y - 1.5, width: bounds.width - 2, height: 3)
         let well = NSBezierPath(roundedRect: track, xRadius: 1, yRadius: 1)
@@ -293,7 +346,7 @@ final class AdjustmentNSSlider: NSSlider {
         if !enabled { Palette.surfacePanel.withAlphaComponent(0.45).setFill(); face.fill() }
         (NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? Palette.controlBorder : Palette.materialEdge).setStroke()
         capPath.lineWidth = 0.75; capPath.stroke()
-        let active = enabled && (trackingMouse || focused)
+        let active = isEnabled && (trackingMouse || focused)
         (active ? Palette.accentSignal : enabled ? Palette.textSecondary : Palette.textDisabled).setFill()
         NSRect(x: cap.minX + 2, y: y - (active ? 1 : 0.5), width: cap.width - 4, height: active ? 2 : 1).fill()
     }

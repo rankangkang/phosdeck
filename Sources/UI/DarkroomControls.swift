@@ -1,6 +1,33 @@
 import SwiftUI
 import AppKit
 
+private struct PreservesControlAppearanceKey: EnvironmentKey {
+    static let defaultValue = false
+}
+extension EnvironmentValues {
+    var preservesControlAppearance: Bool {
+        get { self[PreservesControlAppearanceKey.self] }
+        set { self[PreservesControlAppearanceKey.self] = newValue }
+    }
+}
+extension View {
+    /// A photo switch locks actions immediately without dimming the whole instrument.
+    func editingDisabled(_ disabled: Bool, temporarilyLocked: Bool) -> some View {
+        self.disabled(disabled).environment(\.preservesControlAppearance, disabled && temporarilyLocked)
+    }
+    /// Intrinsic unavailability still looks disabled inside a temporarily locked panel.
+    func controlUnavailable(_ unavailable: Bool) -> some View {
+        modifier(ControlUnavailable(unavailable: unavailable))
+    }
+}
+private struct ControlUnavailable: ViewModifier {
+    let unavailable: Bool
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
+    func body(content: Content) -> some View {
+        content.disabled(unavailable).environment(\.preservesControlAppearance, preservesAppearance && !unavailable)
+    }
+}
+
 /// Broad, quiet light on the moulded enclosure; never applied to a photo or its viewing mat.
 struct InstrumentPlate: View {
     var body: some View {
@@ -93,7 +120,9 @@ struct KeySurface: View {
     var pressed = false
     var selected = false
     var enabled = true
+    var preservesAppearance = false
     var hovering = false
+    private var lit: Bool { enabled || preservesAppearance }
     @Environment(\.colorSchemeContrast) private var contrast
     var body: some View {
         let shape = position.shape(radius: radius)
@@ -101,12 +130,12 @@ struct KeySurface: View {
         shape.fill(selected ? Theme.keyLipSelected : Theme.keyLip)
             .overlay(alignment: .top) {
                 face(travel)
-                    .overlay(enabled ? nil : shape.fill(Theme.panel.opacity(0.45)))
+                    .overlay(lit ? nil : shape.fill(Theme.panel.opacity(0.45)))
                     .padding(.bottom, travel.lip(height: height))
             }
             .overlay(shape.strokeBorder(contrast == .increased ? Theme.controlBorder : Theme.materialEdge, lineWidth: contrast == .increased ? 1 : 0.5))
-            .shadow(color: travel == .held ? .clear : Theme.keyContactShadow.opacity(enabled ? 1 : 0.45), radius: 0.6, y: travel == .raised ? 0.8 : 0.25)
-            .shadow(color: travel == .raised ? Theme.keyAmbientShadow.opacity(enabled ? 1 : 0.45) : .clear, radius: 2.5, y: 2)
+            .shadow(color: travel == .held ? .clear : Theme.keyContactShadow.opacity(lit ? 1 : 0.45), radius: 0.6, y: travel == .raised ? 0.8 : 0.25)
+            .shadow(color: travel == .raised ? Theme.keyAmbientShadow.opacity(lit ? 1 : 0.45) : .clear, radius: 2.5, y: 2)
     }
     @ViewBuilder private func face(_ travel: KeyTravel) -> some View {
         let shape = position.shape(radius: radius)
@@ -136,6 +165,10 @@ struct KeyButtonStyle: ButtonStyle {
     var radius: CGFloat = Metrics.keyRadius
     var multiline = false
     var onPress: ((Bool) -> Void)?
+    var held = false
+    /// A key-face status lamp follows the key's latch and enabled pressure.
+    var lampInside = false
+    var expand = false
     func makeBody(configuration: Configuration) -> some View { KeyButtonBody(configuration: configuration, style: self) }
 }
 
@@ -167,9 +200,11 @@ struct MomentaryPreviewKey: View {
     }
 }
 
-private struct MomentaryPreviewCapture: NSViewRepresentable {
+struct MomentaryPreviewCapture: NSViewRepresentable {
     let onPress: (Bool) -> Void
     let enabled: Bool
+    var requiresOption = false
+    var interactionID: String?
 
     func makeNSView(context: Context) -> MomentaryPreviewCaptureView {
         let view = MomentaryPreviewCaptureView()
@@ -179,27 +214,42 @@ private struct MomentaryPreviewCapture: NSViewRepresentable {
     }
 
     func updateNSView(_ view: MomentaryPreviewCaptureView, context: Context) {
+        if view.interactionID != interactionID { view.resetTracking(); view.interactionID = interactionID }
         view.onPress = onPress
+        view.requiresOption = requiresOption
         view.enabled = enabled
     }
 }
 
-private final class MomentaryPreviewCaptureView: NSView {
+final class MomentaryPreviewCaptureView: NSView {
     var onPress: (Bool) -> Void = { _ in }
     var enabled = true {
         didSet { if !enabled { cancelPress() } }
     }
     private var active = false
+    private var tracking = false
+    var requiresOption = false
+    var interactionID: String?
+
+    func acceptsPointer(modifiers: NSEvent.ModifierFlags) -> Bool {
+        enabled && (!requiresOption || modifiers.contains(.option))
+    }
+    override func isAccessibilityElement() -> Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard tracking || acceptsPointer(modifiers: NSApp.currentEvent?.modifierFlags ?? []) else { return nil }
+        return super.hitTest(point)
+    }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        guard enabled else { return }
-        active = true
+        guard acceptsPointer(modifiers: event.modifierFlags) else { return }
+        tracking = true; active = true
         onPress(true)
     }
 
     override func mouseDragged(with event: NSEvent) {
+        guard tracking else { return }
         let inside = bounds.contains(convert(event.locationInWindow, from: nil))
         guard inside != active else { return }
         active = inside
@@ -207,7 +257,8 @@ private final class MomentaryPreviewCaptureView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        active = false
+        guard tracking else { return }
+        tracking = false; active = false
         onPress(false)
     }
 
@@ -219,11 +270,13 @@ private final class MomentaryPreviewCaptureView: NSView {
                                                name: NSWindow.didResignKeyNotification, object: window)
     }
 
-    @objc private func cancelPress() {
-        guard active else { return }
-        active = false
+    @objc func cancelPress() {
+        guard tracking || active else { return }
+        resetTracking()
         onPress(false)
     }
+    // The owning key ends its preview in onChange, outside the native view update.
+    func resetTracking() { tracking = false; active = false }
 
     deinit {
         if active { onPress(false) }
@@ -235,23 +288,31 @@ private struct KeyButtonBody: View {
     let configuration: ButtonStyleConfiguration
     let style: KeyButtonStyle
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
     @Environment(\.isFocused) private var focused
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
     @State private var lockedPressed = false
     var body: some View {
-        let pressed = configuration.isPressed || (!enabled && lockedPressed)
+        let pressed = configuration.isPressed || style.held || (!enabled && lockedPressed)
         let travel = KeyTravel(pressed: pressed, selected: style.selected, enabled: enabled)
-        configuration.label
+        Group {
+            if style.lampInside {
+                LampLabel(on: style.selected || (enabled && pressed)) { configuration.label }
+            } else {
+                configuration.label
+            }
+        }
+            .frame(maxWidth: style.expand ? .infinity : nil)
             .offset(y: !reduceMotion ? travel.labelOffset(height: style.height) : 0)
             .font(.system(size: 12, weight: style.selected ? .semibold : .regular))
-            .foregroundStyle(enabled ? (configuration.role == .destructive ? Theme.error : Theme.text) : Theme.textDisabled)
+            .foregroundStyle(enabled || preservesAppearance ? (configuration.role == .destructive ? Theme.error : Theme.text) : Theme.textDisabled)
             .lineLimit(style.multiline ? nil : 1)
             .fixedSize(horizontal: false, vertical: style.multiline)
             .padding(.horizontal, style.padding)
             .frame(minWidth: style.height, minHeight: style.height, maxHeight: style.multiline ? nil : style.height)
             .background(KeySurface(position: style.position, radius: style.radius, height: style.height, pressed: pressed,
-                                   selected: style.selected, enabled: enabled, hovering: hovering))
+                                   selected: style.selected, enabled: enabled, preservesAppearance: preservesAppearance, hovering: hovering))
             .overlay {
                 if !enabled { LockedKeyFeedback(pressed: $lockedPressed).environment(\.isEnabled, true).accessibilityHidden(true) }
             }
@@ -269,8 +330,8 @@ private struct KeyButtonBody: View {
 
 extension ButtonStyle where Self == KeyButtonStyle {
     static var key: KeyButtonStyle { KeyButtonStyle() }
-    static func key(selected: Bool = false, position: KeyPosition = .single, height: CGFloat = Metrics.key, padding: CGFloat = 10) -> KeyButtonStyle {
-        KeyButtonStyle(selected: selected, position: position, height: height, padding: padding)
+    static func key(selected: Bool = false, position: KeyPosition = .single, height: CGFloat = Metrics.key, padding: CGFloat = 10, lampInside: Bool = false, expand: Bool = false) -> KeyButtonStyle {
+        KeyButtonStyle(selected: selected, position: position, height: height, padding: padding, lampInside: lampInside, expand: expand)
     }
     /// Square icon key.
     static var iconKey: KeyButtonStyle { KeyButtonStyle(padding: 0) }
@@ -286,6 +347,7 @@ private struct PrimaryKeyBody: View {
     let configuration: ButtonStyleConfiguration
     let height: CGFloat
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
     @Environment(\.isFocused) private var focused
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var lockedPressed = false
@@ -297,10 +359,10 @@ private struct PrimaryKeyBody: View {
         configuration.label
             .offset(y: !reduceMotion ? travel.labelOffset(height: height) : 0)
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(enabled ? Theme.keyPrimaryText : Theme.textDisabled)
+            .foregroundStyle(enabled || preservesAppearance ? Theme.keyPrimaryText : Theme.textDisabled)
             .padding(.horizontal, 14).frame(height: height)
             .background {
-                if enabled {
+                if enabled || preservesAppearance {
                     shape.fill(Theme.keyPrimaryLip)
                         .overlay(alignment: .top) {
                             Group {
@@ -437,15 +499,12 @@ struct KeyRow<Value: Hashable>: View {
                     ? (option.title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)]).width
                     : nil
                 Button { selection = option.value } label: {
-                    Group {
-                        let content = Group { if let icon = option.icon { Image(systemName: icon) } else { Text(option.title) } }
-                        if lamps && lampsInside { LampLabel(on: selected) { content } } else { content }
-                    }.fixedSize(horizontal: preserveLabels, vertical: false)
-                        .frame(maxWidth: expand ? .infinity : nil)
+                    Group { if let icon = option.icon { Image(systemName: icon) } else { Text(option.title) } }
+                        .fixedSize(horizontal: preserveLabels, vertical: false)
                 }
-                .buttonStyle(.key(selected: selected, position: KeyPosition(index: index - indices.lowerBound, count: indices.count), height: height, padding: padding))
+                .buttonStyle(.key(selected: selected, position: KeyPosition(index: index - indices.lowerBound, count: indices.count), height: height, padding: padding, lampInside: lamps && lampsInside, expand: expand))
                 .frame(minWidth: minimumLabelWidth.map { $0 + 2 * padding })
-                .disabled(!option.enabled)
+                .controlUnavailable(!option.enabled)
                 .overlay(alignment: .bottom) { if lampsBelow { Lamp(on: selected).offset(y: lampDrop) } }
                 .help(option.help ?? option.title)
                 .accessibilityLabel(option.title)
@@ -467,12 +526,12 @@ struct KeyRow<Value: Hashable>: View {
 
 /// Background for a menu or other non-button content that must look like a joined key.
 extension View {
-    func keySurface(position: KeyPosition = .single, height: CGFloat = Metrics.key, selected: Bool = false, enabled: Bool = true) -> some View {
+    func keySurface(position: KeyPosition = .single, height: CGFloat = Metrics.key, selected: Bool = false, enabled: Bool = true, preservesAppearance: Bool = false) -> some View {
         offset(y: KeyTravel(pressed: false, selected: selected).labelOffset(height: height))
             .font(.system(size: 12, weight: selected ? .semibold : .regular))
-            .foregroundStyle(enabled ? Theme.text : Theme.textDisabled).tint(enabled ? Theme.text : Theme.textDisabled)
+            .foregroundStyle(enabled || preservesAppearance ? Theme.text : Theme.textDisabled).tint(enabled || preservesAppearance ? Theme.text : Theme.textDisabled)
             .padding(.horizontal, 8).frame(minWidth: height, minHeight: height, maxHeight: height)
-            .background(KeySurface(position: position, height: height, selected: selected, enabled: enabled))
+            .background(KeySurface(position: position, height: height, selected: selected, enabled: enabled, preservesAppearance: preservesAppearance))
     }
 }
 
@@ -484,12 +543,13 @@ struct ListRowLabel: View {
     var selected = false
     var height: CGFloat = 24
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
     var body: some View {
         HStack(spacing: 6) {
             if let icon { Image(systemName: icon).font(.system(size: 11)).foregroundStyle(Theme.textSecondary).frame(width: 14) }
             Text(title).lineLimit(1).truncationMode(.middle)
                 .fontWeight(selected ? .semibold : .regular)
-                .foregroundStyle(enabled ? Theme.text : Theme.textDisabled)
+                .foregroundStyle(enabled || preservesAppearance ? Theme.text : Theme.textDisabled)
             Spacer(minLength: 4)
             if let detail { Text(detail).font(.system(size: 11).monospacedDigit()).foregroundStyle(Theme.textSecondary).lineLimit(1) }
         }
@@ -521,16 +581,17 @@ struct InstrumentTextFieldStyle: TextFieldStyle {
 private struct InstrumentField<Content: View>: View {
     let content: Content
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
     @Environment(\.colorSchemeContrast) private var contrast
     @FocusState private var focused: Bool
     var body: some View {
         content.textFieldStyle(.plain).focused($focused)
-            .foregroundStyle(enabled ? Theme.text : Theme.textDisabled)
+            .foregroundStyle(enabled || preservesAppearance ? Theme.text : Theme.textDisabled)
             .padding(.horizontal, 7).padding(.vertical, 4).frame(minHeight: 24)
             .background(Theme.raised.shadow(.inner(color: Theme.insetShadow.opacity(0.5), radius: 2, y: 1)), in: RoundedRectangle(cornerRadius: Metrics.inputRadius))
             .overlay {
                 RoundedRectangle(cornerRadius: Metrics.inputRadius)
-                    .strokeBorder(focused ? Theme.focusRing : enabled ? (contrast == .increased ? Theme.controlBorder : Theme.materialEdge) : Theme.textDisabled, lineWidth: focused ? 2 : 0.75)
+                    .strokeBorder(focused && enabled ? Theme.focusRing : enabled || preservesAppearance ? (contrast == .increased ? Theme.controlBorder : Theme.materialEdge) : Theme.textDisabled, lineWidth: focused && enabled ? 2 : 0.75)
                     .allowsHitTesting(false)
             }
     }
@@ -565,6 +626,8 @@ struct PanelSection<Accessory: View, Content: View>: View {
     let accessory: Accessory
     private let content: () -> Content
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
     private func pulsePreview(_ preview: ((Bool) -> Void)?) {
         guard let preview else { return }
         if let previewPulse {
@@ -603,6 +666,7 @@ struct PanelSection<Accessory: View, Content: View>: View {
                     }.frame(maxHeight: .infinity).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .environment(\.isEnabled, enabled || preservesAppearance)
                 .accessibilityLabel(title).accessibilityValue(isExpanded ? L10n.text("app.expanded", defaultValue: "Expanded") : L10n.text("app.collapsed", defaultValue: "Collapsed"))
                 if modified {
                     Lamp(on: true).accessibilityLabel(L10n.text("app.modified", defaultValue: "Modified"))

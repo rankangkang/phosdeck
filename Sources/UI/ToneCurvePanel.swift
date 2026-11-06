@@ -43,15 +43,15 @@ struct ToneCurvePanel: View {
                     if let added = value.insert(channel: channel, x: x, y: TonalPipeline.evaluate(points, at: x)) {
                         point = added; change(value, true)
                     }
-                }.buttonStyle(.key).disabled(points.count >= ToneCurves.maxPoints || points[min(selected,points.count-2)+1].x-points[min(selected,points.count-2)].x < 2*ToneCurves.minimumSpacing)
+                }.buttonStyle(.key).controlUnavailable(points.count >= ToneCurves.maxPoints || points[min(selected,points.count-2)+1].x-points[min(selected,points.count-2)].x < 2*ToneCurves.minimumSpacing)
                 Button(L10n.text("app.delete", defaultValue: "Delete")) {
                     var value = curves
                     if value.remove(channel: channel, point: selected) { point = max(0, selected-1); change(value, true) }
-                }.buttonStyle(.key).disabled(selected == 0 || selected == points.count-1)
+                }.buttonStyle(.key).controlUnavailable(selected == 0 || selected == points.count-1)
             }.padding(.bottom, 4)
             AdjustmentRow(label: L10n.text("app.input", defaultValue: "Input %"), value: current.x*100, range: 0...100, step: 0.1, digits: 1, reset: current.x*100,
                 change: { v, save in move(x: v/100, y: current.y, save: save) }, commit: commit)
-                .disabled(selected == 0 || selected == points.count-1).id("x-\(channel)-\(selected)")
+                .controlUnavailable(selected == 0 || selected == points.count-1).id("x-\(channel)-\(selected)")
             AdjustmentRow(label: L10n.text("app.output", defaultValue: "Output %"), value: current.y*100, range: 0...100, step: 0.1, digits: 1, reset: current.x*100,
                 change: { v, save in move(x: current.x, y: v/100, save: save) }, commit: commit).id("y-\(channel)-\(selected)")
             HStack {

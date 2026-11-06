@@ -405,7 +405,7 @@ struct WorkspaceView: View {
                 }
                 PanelSection(L10n.text("app.presets", defaultValue: "Presets"), isExpanded: $presetsOpen, accessory: {
                     headerButton("square.and.arrow.down", help: L10n.text("app.importLightroomXMPPresets", defaultValue: "Import Lightroom XMP Presets…")) { model.requestXMPPresetImport() }.disabled(!model.workspaceAvailable || model.catalog == nil)
-                    headerButton("plus", help: L10n.text("app.saveCurrentAdjustmentsAsPreset", defaultValue: "Save Current Adjustments as Preset…")) { openAdjustments(.save) }.disabled(!model.canEdit || model.busy)
+                    headerButton("plus", help: L10n.text("app.saveCurrentAdjustmentsAsPreset", defaultValue: "Save Current Adjustments as Preset…")) { openAdjustments(.save) }.editingDisabled(!model.canEdit || model.busy, temporarilyLocked: model.editorUsesPreviousPhoto && !model.busy)
                 }) {
                     VStack(alignment: .leading, spacing: 0) {
                         if model.adjustmentPresets.isEmpty {
@@ -424,14 +424,14 @@ struct WorkspaceView: View {
                             onUpdate: { preset in model.endPresetPreview(); openAdjustments(.update, preset: preset) },
                             onFavorite: { model.setPresetFavorite($0, favorite: $1) },
                             onGroup: { model.setPresetGroup($0, group: $1) })
-                            .disabled(!model.canEdit || !model.workspaceAvailable || model.developTool != .adjust)
+                            .editingDisabled(!model.canEdit || !model.workspaceAvailable || model.developTool != .adjust, temporarilyLocked: model.editorUsesPreviousPhoto && model.workspaceAvailable && model.developTool == .adjust)
                             .frame(height: model.adjustmentPresets.isEmpty ? 76 : 220)
                     }.padding(.bottom, 6)
                 }
                 PanelSection(L10n.text("app.snapshots", defaultValue: "Snapshots"), isExpanded: $snapshotsOpen, accessory: {
                     if !model.editSnapshots.isEmpty { Text("\(model.editSnapshots.count)").font(.system(size: 11).monospacedDigit()).foregroundStyle(Theme.textSecondary) }
                     headerButton("plus", help: L10n.text("app.newSnapshot", defaultValue: "New Snapshot")) { snapshotRenameID = nil; snapshotName = L10n.text("app.snapshot", defaultValue: "Snapshot \(model.editSnapshots.count + 1)"); snapshotDialog = true }
-                        .disabled(!model.canEdit)
+                        .editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto)
                 }) {
                     VStack(alignment: .leading, spacing: 0) {
                         if model.editSnapshots.isEmpty {
@@ -445,7 +445,7 @@ struct WorkspaceView: View {
                                                 model.applySavedEdit(data: entry.recipe, photoID: entry.photoID, title: L10n.text("app.restoreSnapshot", defaultValue: "Restore snapshot: ") + entry.title)
                                             } label: { ListRowLabel(title: entry.title) }
                                                 .buttonStyle(.plain)
-                                                .disabled(!model.canEdit)
+                                                .editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto)
                                                 .help(entry.title + " · " + Date(timeIntervalSince1970: entry.createdAt).formatted())
                                                 .onHover { hovering in
                                                     if hovering { model.previewSavedEdit(data: entry.recipe, photoID: entry.photoID, key: "snapshot:" + entry.id, title: entry.title) }
@@ -462,7 +462,7 @@ struct WorkspaceView: View {
                                                     Button(L10n.text("app.deleteSnapshot", defaultValue: "Delete Snapshot"), role: .destructive) { model.deleteSnapshot(entry) }
                                                 }
                                             headerButton("trash", help: L10n.text("app.deleteSnapshotUndoAvailable", defaultValue: "Delete snapshot “\(entry.title)”; undo available")) { model.deleteSnapshot(entry) }
-                                                .disabled(!model.canEdit || !model.workspaceAvailable)
+                                                .editingDisabled(!model.canEdit || !model.workspaceAvailable, temporarilyLocked: model.editorUsesPreviousPhoto && model.workspaceAvailable)
                                                 .accessibilityIdentifier("snapshot-delete-" + entry.id)
                                                 .padding(.trailing, 8)
                                         }
@@ -483,7 +483,7 @@ struct WorkspaceView: View {
                                 Button { model.applySavedEdit(data: entry.recipe, photoID: entry.photoID, title: L10n.text("app.restoreHistory", defaultValue: "Restore history: ") + entry.title) } label: {
                                     ListRowLabel(title: entry.title, detail: date.formatted(date: .omitted, time: .shortened),
                                                  selected: entry.id == model.editHistory.first?.id && !model.dirty)
-                                }.buttonStyle(.plain).disabled(!model.canEdit).help(entry.title + " · " + date.formatted() + L10n.text("app.hoverToPreviewClickToRestoreOrRightClick", defaultValue: "; hover to preview, click to restore, or right-click to compare or create a copy"))
+                                }.buttonStyle(.plain).editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto).help(entry.title + " · " + date.formatted() + L10n.text("app.hoverToPreviewClickToRestoreOrRightClick", defaultValue: "; hover to preview, click to restore, or right-click to compare or create a copy"))
                                     .onHover { hovering in
                                         if hovering { model.previewSavedEdit(data: entry.recipe, photoID: entry.photoID, key: "history:\(entry.id)", title: entry.title) }
                                         else { model.clearSavedEditPreview(key: "history:\(entry.id)") }
@@ -582,7 +582,7 @@ struct WorkspaceView: View {
                     Button { model.importReference() } label: { Text(L10n.text("app.import_2042", defaultValue: "Import…")).frame(maxWidth: .infinity) }.buttonStyle(.key)
                         .disabled(model.busy || model.catalog == nil).help(L10n.text("app.importPhotosI", defaultValue: "Import photos (⇧⌘I)"))
                 }
-            }.disabled(model.editMode && !model.canEdit).padding(12)
+            }.editingDisabled(model.editMode && !model.canEdit, temporarilyLocked: model.editMode && model.editorUsesPreviousPhoto).padding(12)
         }.background(InstrumentPlate())
     }
     private var copyAdjustmentsKey: some View {
@@ -593,7 +593,7 @@ struct WorkspaceView: View {
     private var pasteAdjustmentsKey: some View {
         Button { model.requestAdjustments(.paste) } label: {
             Text(L10n.text("app.pasteAdjustments_280", defaultValue: "Paste Adjustments…")).fixedSize().frame(maxWidth: .infinity)
-        }.buttonStyle(.key).disabled(model.copiedRecipe == nil)
+        }.buttonStyle(.key).controlUnavailable(model.copiedRecipe == nil)
     }
 
     // MARK: Center
@@ -639,7 +639,7 @@ struct WorkspaceView: View {
                     }.frame(width: 25).background(InstrumentPlate())
                     if maskListExpanded {
                         Seam(axis: .vertical)
-                        MaskListPanel(model: model).frame(width: 238).disabled(!model.canEdit)
+                        MaskListPanel(model: model).frame(width: 238).editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto)
                     }
                 }
             }
@@ -896,11 +896,11 @@ struct WorkspaceView: View {
                 } label: { Text(model.zoomLabel).monospacedDigit() }
                     .menuStyle(.borderlessButton).tint(Theme.text).menuIndicator(.hidden).fixedSize()
             }
-                .keySurface(position: .trailing, height: Self.toolKey, selected: model.fullResolution, enabled: !model.cropMode && model.image != nil)
+                .keySurface(position: .trailing, height: Self.toolKey, selected: model.fullResolution, enabled: !model.cropMode && model.image != nil, preservesAppearance: model.editorUsesPreviousPhoto && !model.cropMode)
                 .accessibilityLabel(L10n.text("app.zoom", defaultValue: "Zoom")).accessibilityValue(model.zoomLabel)
         }
         .help(L10n.text("app.zoomLevelClickThePhotoToSwitchBetweenFit", defaultValue: "Zoom level; click the photo to switch between Fit and selected zoom (Z)"))
-        .disabled(model.cropMode || model.image == nil)
+        .editingDisabled(model.cropMode || model.image == nil, temporarilyLocked: model.editorUsesPreviousPhoto && !model.cropMode)
     }
     private func previewIndicator(compact: Bool) -> some View {
         let text = model.isPreviewingAdjustment ? model.adjustmentPreviewTitle : model.previewCurrent ? L10n.text("app.qualityCurrent", defaultValue: "Quality · Current") : model.image == nil ? L10n.text("app.noPreview", defaultValue: "No Preview")
@@ -932,8 +932,8 @@ struct WorkspaceView: View {
             Image(systemName: model.beforeAfter == .split ? "rectangle.lefthalf.inset.filled" : "rectangle.split.2x1")
         }
         .menuStyle(.borderlessButton).tint(Theme.text).menuIndicator(.hidden).fixedSize()
-        .keySurface(height: Self.toolKey, selected: model.beforeAfter != .off || model.before, enabled: enabled)
-        .disabled(!enabled)
+        .keySurface(height: Self.toolKey, selected: model.beforeAfter != .off || model.before, enabled: enabled, preservesAppearance: model.editorUsesPreviousPhoto)
+        .editingDisabled(!enabled || model.editorUsesPreviousPhoto, temporarilyLocked: model.editorUsesPreviousPhoto)
         .help(L10n.text("app.beforeAfterSideBySideYOrSplitView", defaultValue: "Before / after: side by side (Y) or split view (⇧Y)"))
         .accessibilityLabel(L10n.text("app.beforeAfterComparison", defaultValue: "Before / After Comparison")).accessibilityValue(model.before ? L10n.text("app.showBefore", defaultValue: "Show Before") : title)
     }
@@ -1083,7 +1083,7 @@ struct WorkspaceView: View {
                 if compact {
                     Button("1:1") { model.selectZoom(1) }
                         .buttonStyle(.key(selected: model.fullResolution && model.zoomScale == 1, height: Self.toolKey, padding: 6))
-                        .disabled(model.cropMode || model.image == nil)
+                        .editingDisabled(model.cropMode || model.image == nil, temporarilyLocked: model.editorUsesPreviousPhoto && !model.cropMode)
                         .accessibilityLabel(L10n.text("app.inspectAt100", defaultValue: "Inspect at 100%")).help(L10n.text("app.inspectAt1000", defaultValue: "Inspect at 100% (⌥⌘0)"))
                     Menu {
                         Button(L10n.text("app.fit_1691", defaultValue: "Fit")) { model.selectZoom(nil) }; Button(L10n.text("app.fill", defaultValue: "Fill")) { model.selectZoom(nil,fill:true) }
@@ -1093,8 +1093,8 @@ struct WorkspaceView: View {
                         Toggle(L10n.text("app.lockViewPosition", defaultValue: "Lock View Position"), isOn: $model.lockViewPosition)
                     } label:{ Text(model.fullResolution ? model.zoomLabel : model.fillView ? L10n.text("app.fill", defaultValue: "Fill") : L10n.text("app.fit_1691", defaultValue: "Fit")) }
                         .menuStyle(.borderlessButton).fixedSize()
-                        .keySurface(height:Self.toolKey, selected:model.fullResolution || model.fillView, enabled:!model.cropMode && model.image != nil)
-                        .disabled(model.cropMode || model.image == nil)
+                        .keySurface(height:Self.toolKey, selected:model.fullResolution || model.fillView, enabled:!model.cropMode && model.image != nil, preservesAppearance: model.editorUsesPreviousPhoto && !model.cropMode)
+                        .editingDisabled(model.cropMode || model.image == nil, temporarilyLocked: model.editorUsesPreviousPhoto && !model.cropMode)
                         .accessibilityLabel(L10n.text("app.zoom", defaultValue: "Zoom")).accessibilityValue(model.fullResolution ? model.zoomLabel : model.fillView ? L10n.text("app.fill", defaultValue: "Fill") : L10n.text("app.fit_1691", defaultValue: "Fit"))
                 } else { zoomControls.fixedSize() }
                 if !narrow { Button { matPopover.toggle() } label: { Image(systemName: "circle.lefthalf.filled") }
@@ -1109,14 +1109,14 @@ struct WorkspaceView: View {
                     }
                 Button { model.toggleBefore() } label:{ if compact { Image(systemName:"backward.end") } else { Text(L10n.text("app.before", defaultValue: "Before")) } }
                     .buttonStyle(.key(selected: model.before, height: Self.toolKey)).fixedSize()
-                    .disabled(!model.hasRecipe || model.cropMode)
+                    .editingDisabled(!model.hasRecipe || model.cropMode || model.editorUsesPreviousPhoto, temporarilyLocked: model.editorUsesPreviousPhoto && !model.cropMode)
                     .help(model.before ? L10n.text("app.showingBeforeClickToShowAdjustmentsBackslash", defaultValue: "Showing Before; click to show adjustments (Backslash)") : L10n.text("app.showBeforeBackslash", defaultValue: "Show Before (Backslash)"))
                     .accessibilityLabel(L10n.text("app.before", defaultValue: "Before")).accessibilityValue(model.before ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off")) }
                 beforeAfterMenu
                 if model.editMode {
                     Button { model.toggleDevelopReference() } label: { Text(L10n.text("app.reference_2157", defaultValue: "Reference")) }
                         .buttonStyle(.key(selected: model.developReference != nil, height: Self.toolKey, padding: 6)).fixedSize()
-                        .disabled(!model.canShowDevelopReference || !model.workspaceAvailable)
+                        .editingDisabled(!model.canShowDevelopReference || !model.workspaceAvailable, temporarilyLocked: model.editorUsesPreviousPhoto && model.workspaceAvailable)
                         .help(L10n.text("app.pinAReferenceAndEditTheCurrentPhotoR", defaultValue: "Pin a reference and edit the current photo (⇧R); zoom each side independently"))
                         .accessibilityLabel(L10n.text("app.developReference", defaultValue: "Develop Reference")).accessibilityValue(model.developReference == nil ? L10n.text("app.off", defaultValue: "Off") : L10n.text("app.on", defaultValue: "On"))
                 }
@@ -1154,14 +1154,14 @@ struct WorkspaceView: View {
                                pulseClipping: canInspectClipping ? { shadows in
                                    clippingPreview.pulse(current: fixedClipping, preview: ClippingVisibility(shadows: shadows, highlights: !shadows))
                                } : nil,
-                               pixelReadout: model.displayPixelReadout, compact: compactMasks).padding(compactMasks ? 6 : 12)
+                               pixelReadout: model.displayPixelReadout, compact: compactMasks, interactionID: model.activeID).padding(compactMasks ? 6 : 12)
             }
             if let photo = model.active {
                 if model.editMode {
                     Seam()
                     KeyRow(title: L10n.text("app.tools", defaultValue: "Tools"), options: [KeyOption(.adjust, L10n.text("app.adjustTool", defaultValue: "Adjust")), KeyOption(.crop, L10n.text("app.crop", defaultValue: "Crop"), help: L10n.text("app.cropR", defaultValue: "Crop (R)")), KeyOption(.spot, L10n.text("app.spots", defaultValue: "Spots"), help: L10n.text("app.spotRemovalQ", defaultValue: "Spot Removal (Q)")), KeyOption(.mask, L10n.text("app.masks", defaultValue: "Masks"), help: L10n.text("app.masksW", defaultValue: "Masks (⇧W)"))],
                            selection: tool, expand: true)
-                        .disabled(!model.canEdit).padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
+                        .editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto).padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
                     Seam()
                     if model.developTool != .adjust {
                         HStack {
@@ -1174,9 +1174,9 @@ struct WorkspaceView: View {
                     }
                     if photo.supportsEditing, model.hasEditorRecipe {
                         if model.maskMode {
-                            MaskPanel(model: model, compact: compactMasks).disabled(!model.canEdit)
+                            MaskPanel(model: model, compact: compactMasks).editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto)
                         } else if model.spotMode {
-                            SpotPanel(model: model).disabled(!model.canEdit)
+                            SpotPanel(model: model).editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto)
                         } else {
                             ScrollViewReader { proxy in
                                 RememberedPanelScroll(offset: model.cropMode ? $cropScrollOffset : $developScrollOffset) {
@@ -1193,7 +1193,7 @@ struct WorkspaceView: View {
                                         DispatchQueue.main.async {
                                             proxy.scrollTo("develop-group-\(group.rawValue)", anchor: .top)
                                         }
-                                    }).disabled(!model.canEdit)
+                                    }).editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto)
                                 }.id(model.cropMode).accessibilityIdentifier("develop-scroll")
                             }
                         }
@@ -1271,18 +1271,18 @@ struct WorkspaceView: View {
     }
     @ViewBuilder private var inspectorUndoControls: some View {
         Button(L10n.text("app.undo_244", defaultValue: "Undo")) { if model.smartMaskSession != nil { model.undoSmartPrompt() } else { model.undo.undo() } }.buttonStyle(.key)
-            .disabled(model.smartMaskSession.map { $0.busy || $0.promptHistory.isEmpty } ?? !model.undo.canUndo).help(L10n.text("app.undoZ", defaultValue: "Undo (⌘Z)"))
-        Button(L10n.text("app.redo_245", defaultValue: "Redo")) { model.undo.redo() }.buttonStyle(.key).disabled(model.smartMaskSession != nil || !model.undo.canRedo).help(L10n.text("app.redoZ", defaultValue: "Redo (⇧⌘Z)"))
+            .editingDisabled(model.editMode && !model.canEdit || (model.smartMaskSession.map { $0.busy || $0.promptHistory.isEmpty } ?? !model.undo.canUndo), temporarilyLocked: model.editorUsesPreviousPhoto && model.undo.canUndo).help(L10n.text("app.undoZ", defaultValue: "Undo (⌘Z)"))
+        Button(L10n.text("app.redo_245", defaultValue: "Redo")) { model.undo.redo() }.buttonStyle(.key).editingDisabled(model.editMode && !model.canEdit || model.smartMaskSession != nil || !model.undo.canRedo, temporarilyLocked: model.editorUsesPreviousPhoto && model.undo.canRedo).help(L10n.text("app.redoZ", defaultValue: "Redo (⇧⌘Z)"))
     }
     @ViewBuilder private var inspectorTransferControl: some View {
         if model.editMode, model.selection.subtracting(Set([model.activeID].compactMap { $0 })).count > 0 {
             Button(L10n.text("app.sync", defaultValue: "Sync…")) { model.requestAdjustments(.sync) }.buttonStyle(.key)
-                .disabled(!model.canEdit || !model.workspaceAvailable)
+                .editingDisabled(!model.canEdit || !model.workspaceAvailable, temporarilyLocked: model.editorUsesPreviousPhoto && model.workspaceAvailable)
                 .help(L10n.text("app.syncSelectedAdjustmentsFromTheCurrentPhotoToOther", defaultValue: "Sync selected adjustments from the current photo to other selected photos")).accessibilityLabel(L10n.text("app.syncAdjustments", defaultValue: "Sync Adjustments"))
         }
         if model.editMode, model.selection.count == 1 {
             Button(L10n.text("app.usePrevious", defaultValue: "Use Previous…")) { model.requestAdjustments(.previous) }.buttonStyle(.key)
-                .disabled(!model.canUsePreviousAdjustments || !model.workspaceAvailable)
+                .editingDisabled(!model.canUsePreviousAdjustments || !model.workspaceAvailable, temporarilyLocked: model.editorUsesPreviousPhoto && model.editorPreviousAdjustmentsAvailable && model.workspaceAvailable)
                 .help(model.previousAdjustmentSource.map { L10n.text("app.source_2184", defaultValue: "Source: ") + $0.photo.displayName + L10n.text("app.scope_2185", defaultValue: "; scope: ") + model.confirmedAdjustmentOptions.summary } ?? L10n.text("app.viewAnotherDecodedPhotoToReuseItsAdjustments", defaultValue: "View another decoded photo to reuse its adjustments"))
                 .accessibilityIdentifier("previous-adjustments")
         }
@@ -1290,7 +1290,7 @@ struct WorkspaceView: View {
     @ViewBuilder private var inspectorResetControl: some View {
         Button(L10n.text("app.reset_2187", defaultValue: "Reset")) { model.changeRecipe { $0 = $0.resetForCurrentPipeline() } }
             .buttonStyle(.key)
-            .disabled(!model.hasRecipe || !model.canEdit)
+            .editingDisabled(!model.hasRecipe || !model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto)
             .help(L10n.text("app.resetAllAdjustmentsForTheCurrentPhotoUndoAvailable", defaultValue: "Reset all adjustments for the current photo; undo available"))
     }
 

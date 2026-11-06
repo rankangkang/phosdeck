@@ -1,6 +1,125 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "app.clippingKeyHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@. Click to toggle the warning; Option-hold to inspect temporarily, release to restore."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@。单击切换剪切覆盖；按住 ⌥ 点按可临时查看，松开恢复。"
+          }
+        }
+      }
+    },
+    "app.clippingKeyState": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@; overlay %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@；覆盖显示：%2$@"
+          }
+        }
+      }
+    },
+    "app.photoLoadFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "载入失败"
+          }
+        }
+      }
+    },
+    "app.retainedPhotoSettingsHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing the previous photo’s settings. Editing resumes when the selected photo is ready."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时显示上张照片的参数；所选照片就绪后恢复编辑。"
+          }
+        }
+      }
+    },
+    "app.retryPhotoLoad": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry loading photo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新载入照片"
+          }
+        }
+      }
+    },
+    "app.switchingPhoto": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switching"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换中"
+          }
+        }
+      }
+    },
+    "app.temporarilyInspectClipping": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Temporarily inspect clipping"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "临时查看剪切"
+          }
+        }
+      }
+    },
     "camera.ui.hasUnverified": {
       "extractionState": "manual",
       "localizations": {
@@ -10482,20 +10601,20 @@
         }
       }
     },
-    "app.currentPreviewSRGBHistogramALitIndicatorMeansOver": {
+    "app.currentPreviewSRGBHistogramClippingKeyLamps": {
       "extractionState": "manual",
       "comment": "Sources/UI/PhotoCanvas.swift: 265",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Current preview · sRGB histogram. A lit indicator means over 0.1% of pixels are in the darkest or brightest bin"
+            "value": "Current preview · sRGB histogram. The key lamps light when clipping overlays are shown or a key is held"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "当前预览 · sRGB 直方图；灯亮表示有超过 0.1% 的像素落在最暗或最亮一档"
+            "value": "当前预览 · sRGB 直方图；开启剪切覆盖或按住按键时灯亮"
           }
         }
       }

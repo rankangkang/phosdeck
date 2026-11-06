@@ -38,6 +38,8 @@ struct DevelopPanel: View {
     @State private var legacyDetails = false
     @State private var mixerTab = 0
     @State private var gradingTab = 0
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
     private let cropRatios: [Double] = [1, 1.5, 4.0/3, 16.0/9, 4.0/5, 2.0/3]
     private var modifiedGroups: Set<DevelopGroup> { recipe?.modifiedDevelopGroups ?? [] }
     private func isModified(_ group: DevelopGroup) -> Bool { modifiedGroups.contains(group) }
@@ -134,10 +136,12 @@ struct DevelopPanel: View {
 
     @ViewBuilder private var panelToolbar: some View {
         HStack(spacing: 8) {
-            Text(model.editorUsesPreviousPhoto ? L10n.text("app.previousPhotoSettings", defaultValue: "Previous Photo Settings") : L10n.text("app.adjustments", defaultValue: "Adjustments"))
+            Text(L10n.text("app.adjustments", defaultValue: "Adjustments"))
                 .font(.section).foregroundStyle(Theme.textSecondary)
-                .help(model.editorUsesPreviousPhoto ? model.imageStatus : "")
             Seam().frame(maxWidth: .infinity)
+            EditorSwitchStatus(locked: model.editorUsesPreviousPhoto, loading: model.loadingPhoto, detail: model.imageStatus,
+                               retry: model.retryPhotoLoad)
+                .environment(\.isEnabled, model.workspaceAvailable)
             Menu {
                 Toggle(L10n.text("app.expandOneAdjustmentPanelAtATime", defaultValue: "Expand One Adjustment Panel at a Time"), isOn: $solo)
                 Toggle(L10n.text("app.modifiedOnly", defaultValue: "Modified Only"), isOn: $showOnlyModified)
@@ -150,6 +154,7 @@ struct DevelopPanel: View {
                     .frame(width: 20, height: 20).contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton).tint(Theme.textSecondary)
+            .environment(\.isEnabled, enabled || preservesAppearance)
             .help(L10n.text("app.filterGroupsJumpToAdjustmentsAndUseSinglePanel", defaultValue: "Filter groups, jump to adjustments, and use single-panel mode"))
             .accessibilityLabel(L10n.text("app.adjustmentGroups", defaultValue: "Adjustment Groups"))
         }
@@ -227,7 +232,7 @@ struct DevelopPanel: View {
                     track: .luminance(HSLBand.centers[band]), change: { value, save in
                         change({ $0.pipelineVersion = 2; $0.develop.blackWhiteMixer[band] = value }, commit: save)
                     }, commit: { model.commitRecipe() })
-                    .disabled(recipe?.develop.blackAndWhite != true)
+                    .controlUnavailable(recipe?.develop.blackAndWhite != true)
             }
             note(L10n.text("app.selectColorsAfterHSLVibranceAndSaturationToSmoothly", defaultValue: "Select colors after HSL, Vibrance, and Saturation to smoothly change black-and-white tones. Color Grading follows. Zero values preserve the original black-and-white appearance."))
                 .padding(.top, 6)
@@ -277,7 +282,7 @@ struct DevelopPanel: View {
             noiseRow(L10n.text("app.luminanceNoiseReduction", defaultValue: "Luminance Noise Reduction"), \.luminance)
             noiseRow(L10n.text("app.colorNoiseReduction", defaultValue: "Color Noise Reduction"), \.color)
             note(L10n.text("app.0DisablesReductionNoiseReductionPrecedesSharpeningCheckTexture", defaultValue: "0 disables reduction. Noise reduction precedes sharpening. Check texture and color edges at 100%.")).padding(.top, 6)
-        }.disabled(model.applyingAdjustments)
+        }.controlUnavailable(model.applyingAdjustments)
     }
     private func noiseRow(_ name: String, _ key: WritableKeyPath<GeneralNoiseReduction,Double>) -> some View {
         AdjustmentRow(label:name,value:recipe?.noiseReduction[keyPath:key] ?? 0,range:0...100,digits:1,reset:0,
@@ -290,7 +295,7 @@ struct DevelopPanel: View {
             sharpenRow(L10n.text("app.sharpeningRadius", defaultValue: "Sharpening Radius"), \.radius, range: 0.5...3, reset: 1, step: 0.1, unit: "px")
             sharpenRow(L10n.text("app.edgeProtection", defaultValue: "Edge Protection"), \.protection, range: 0...100, reset: 25)
             note(L10n.text("app.radiusUsesOriginalImagePixelsAmount0DisablesSharpening", defaultValue: "Radius uses original image pixels; amount 0 disables sharpening. Check fine lines and noise at 100%.")).padding(.top, 6)
-        }.disabled(model.applyingAdjustments)
+        }.controlUnavailable(model.applyingAdjustments)
     }
     private func sharpenRow(_ name: String, _ key: WritableKeyPath<GeneralSharpening,Double>, range: ClosedRange<Double>, reset: Double, step: Double = 1, unit: String = "") -> some View {
         AdjustmentRow(label:name,value:recipe?.sharpening[keyPath:key] ?? reset,range:range,step:step,digits:step < 1 ? 1 : 0,reset:reset,unit:unit,
@@ -322,7 +327,7 @@ struct DevelopPanel: View {
                 } else { note(L10n.text("app.thisRAWDoesNotSupportSystemLensCorrection", defaultValue: "This RAW does not support system lens correction")) }
                 note(L10n.text("app.reducedPreviewsAreApproximateReleaseThenInspectNoiseReduction", defaultValue: "Reduced previews are approximate. Release, then inspect noise reduction and sharpening at 100%. Reset restores system defaults.")).padding(.top, 6)
             }
-        }.disabled(model.applyingAdjustments)
+        }.controlUnavailable(model.applyingAdjustments)
     }
     private var detailZoom: some View {
         let actual = model.fullResolution && model.zoomScale == 1
@@ -390,7 +395,7 @@ struct DevelopPanel: View {
                     Button { model.toggleWhiteBalanceSampling() } label: {
                         LampLabel(on: model.whiteBalanceSampling) { Image(systemName: "eyedropper") }
                     }.buttonStyle(.key(selected: model.whiteBalanceSampling, height: 24, padding: 8))
-                        .disabled(!model.canEdit).help(L10n.text("app.sampleWhiteBalanceFromANeutralAreaWEsc", defaultValue: "Sample white balance from a neutral area (W); Esc exits"))
+                        .editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto).help(L10n.text("app.sampleWhiteBalanceFromANeutralAreaWEsc", defaultValue: "Sample white balance from a neutral area (W); Esc exits"))
                         .accessibilityLabel(L10n.text("app.sampleWhiteBalance", defaultValue: "Sample White Balance")).accessibilityValue(model.whiteBalanceSampling ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off"))
                 }
             }.padding(.top, Metrics.gap)
@@ -497,7 +502,7 @@ struct DevelopPanel: View {
                 ForEach(UprightMode.allCases) { mode in
                     Button(mode.title) { model.applyUpright(mode) }.accessibilityIdentifier("upright-" + mode.rawValue)
                 }
-            }.disabled(model.uprightAnalyzing || !model.canEdit).padding(.vertical, 4)
+            }.editingDisabled(model.uprightAnalyzing || !model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto && !model.uprightAnalyzing).padding(.vertical, 4)
             if model.uprightAnalyzing {
                 Text(L10n.text("geometry.analyzing", defaultValue: "Analyzing edges…")).font(.caption11).foregroundStyle(Theme.textSecondary)
             }
@@ -505,7 +510,7 @@ struct DevelopPanel: View {
                 HStack {
                     Button(L10n.text("geometry.clearGuides", defaultValue: "Clear Guides")) {
                         model.perspectiveGuides = []; model.perspectiveGuideBase = model.recipe; model.perspectiveMessage = ""
-                    }.buttonStyle(.key).disabled(model.perspectiveGuides.isEmpty)
+                    }.buttonStyle(.key).controlUnavailable(model.perspectiveGuides.isEmpty)
                     Button(L10n.text("app.done", defaultValue: "Done")) { model.finishPerspectiveGuides() }.buttonStyle(.key)
                 }.padding(.vertical, 4)
                 note(L10n.text("geometry.guideHelp", defaultValue: "Draw one edge to straighten, or two to four edges for perspective. Enter or Esc finishes the guides."))
@@ -599,6 +604,52 @@ struct DevelopPanel: View {
                             value: (recipe?[keyPath: key] ?? 0) * scale + offset,
                             range: range, step: step, digits: digits, scale: scale, offset: offset, reset: reset, unit: unit)
             .equatable()
+    }
+}
+
+/// A fixed status slot: no layout changes or whole-panel animation while browsing.
+struct EditorSwitchStatus: View {
+    let locked: Bool
+    let loading: Bool
+    let detail: String
+    var retry: () -> Void = {}
+    @State private var waiting = false
+    private var switching: String { L10n.text("app.switchingPhoto", defaultValue: "Switching") }
+    private var failed: String { L10n.text("app.photoLoadFailed", defaultValue: "Load failed") }
+    private var explanation: String {
+        L10n.text("app.retainedPhotoSettingsHint", defaultValue: "Showing the previous photo’s settings. Editing resumes when the selected photo is ready.") + "\n" + detail
+    }
+    var body: some View {
+        HStack(spacing: 4) {
+            ZStack {
+                Lamp(on: waiting).opacity(locked && !loading ? 0 : 1)
+                if locked && !loading {
+                    Button(action: retry) { Image(systemName: "arrow.clockwise").font(.system(size: 10)) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.text("app.retryPhotoLoad", defaultValue: "Retry loading photo"))
+                        .help(L10n.text("app.retryPhotoLoad", defaultValue: "Retry loading photo"))
+                }
+            }.frame(width: 18, height: 20)
+            ZStack(alignment: .trailing) {
+                Text(switching).hidden()
+                Text(failed).hidden()
+                Text(loading ? switching : failed).opacity(locked ? 1 : 0)
+            }.font(.caption11).fixedSize()
+        }
+        .foregroundStyle(Theme.textSecondary)
+        .help(locked ? explanation : "")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(locked ? explanation : "")
+        .accessibilityHidden(!locked)
+        .accessibilityIdentifier("editor-switch-status")
+        .transaction { $0.animation = nil }
+        .task(id: locked && loading) {
+            waiting = false
+            guard locked && loading else { return }
+            do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+            guard !Task.isCancelled else { return }
+            waiting = true
+        }
     }
 }
 

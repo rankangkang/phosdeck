@@ -411,6 +411,7 @@ final class ComparisonTests: XCTestCase {
         preferences.set(160.0, forKey: "developScrollOffset")
         let host = NSHostingView(rootView: WorkspaceView(model: model).defaultAppStorage(preferences))
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1280, height: 800), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.title = "Synthetic — Phosdeck"
         window.contentView = host
         defer { window.contentView = nil; preferences.removePersistentDomain(forName: suite) }
         func sliders(_ root: NSView) -> [AdjustmentNSSlider] {
@@ -440,6 +441,7 @@ final class ComparisonTests: XCTestCase {
         try await waitUntil { model.activeID == "001" }
         if let recipe = model.recipe { XCTAssertEqual(recipe, secondRecipe, "A native selection may already have loaded the current recipe") }
         XCTAssertNil(model.image); XCTAssertFalse(model.canEdit)
+        XCTAssertTrue(model.loadingPhoto)
         XCTAssertEqual(model.photoSwitchDisplay?.photoID, "000")
         XCTAssertTrue(model.photoSwitchDisplay?.image === original)
         XCTAssertEqual(model.editorRecipe, originalRecipe)
@@ -447,6 +449,8 @@ final class ComparisonTests: XCTestCase {
         host.layoutSubtreeIfNeeded()
         XCTAssertEqual(sliders(host).map(ObjectIdentifier.init), originalSliders.map(ObjectIdentifier.init), "Loading must retain the mounted native controls")
         XCTAssertFalse(exposure.isEnabled)
+        XCTAssertTrue(exposure.preservesAppearance, "Loading locks the actual control without dimming its material")
+        XCTAssertNil(CommandResponder.manager(model: model, window: window), "Command-Z cannot consume photo undo while loading")
         XCTAssertTrue(exposure.enclosingScrollView === editorScroll)
         XCTAssertEqual(editorScroll.contentView.bounds.minY, 160, accuracy: 1)
         XCTAssertEqual(exposure.convert(exposure.bounds, to: host), originalFrame)
@@ -461,8 +465,8 @@ final class ComparisonTests: XCTestCase {
         let snapshots = try model.prepareExport(options: options, photos: photos, names: names, directory: folder)
         XCTAssertEqual(snapshots.first?.request.photo.id, "001")
         XCTAssertEqual(snapshots.first?.request.recipe, secondRecipe, "Export must ignore the previous photo's display snapshot")
-
         model.choose(["002"], active: "002")
+        XCTAssertTrue(model.loadingPhoto)
         XCTAssertTrue(model.photoSwitchDisplay?.image === original)
         try await waitUntil { model.recipe != nil }
         gate.release("001")
@@ -475,10 +479,12 @@ final class ComparisonTests: XCTestCase {
         host.layoutSubtreeIfNeeded()
         XCTAssertEqual(sliders(host).map(ObjectIdentifier.init), originalSliders.map(ObjectIdentifier.init), "Publication must update the existing controls")
         XCTAssertTrue(exposure.isEnabled)
+        XCTAssertFalse(model.loadingPhoto)
+        XCTAssertTrue(CommandResponder.manager(model: model, window: window) === model.undo)
         XCTAssertEqual(model.image?.width, 40)
         XCTAssertEqual(model.activeID, "002"); XCTAssertEqual(model.editorRecipe, model.recipe)
         XCTAssertTrue(model.canShowBeforeAfter)
-
+        let thirdRecipe = try XCTUnwrap(model.recipe)
         try await catalog.database.write { db in
             try db.execute(sql: "UPDATE photo SET recipe = ? WHERE id = ?", arguments: [Data("invalid recipe".utf8), "001"])
         }
@@ -487,11 +493,38 @@ final class ComparisonTests: XCTestCase {
         XCTAssertNotNil(model.photoSwitchDisplay)
         try await waitUntil { model.photoSwitchDisplay == nil }
         XCTAssertNil(model.image); XCTAssertNil(model.recipe); XCTAssertFalse(model.canEdit)
+        XCTAssertFalse(model.loadingPhoto, "A failed decode must stop the waiting indicator")
         host.layoutSubtreeIfNeeded()
         XCTAssertEqual(sliders(host).map(ObjectIdentifier.init), originalSliders.map(ObjectIdentifier.init), "A failed load must retain disabled editor controls as well")
         XCTAssertFalse(exposure.isEnabled)
+        XCTAssertTrue(exposure.preservesAppearance)
         XCTAssertTrue(exposure.enclosingScrollView === editorScroll)
         XCTAssertEqual(editorScroll.contentView.bounds.minY, 160, accuracy: 1)
+        try await catalog.database.write { db in
+            try db.execute(sql: "UPDATE photo SET recipe = ? WHERE id = ?", arguments: [try JSONEncoder().encode(secondRecipe), "001"])
+        }
+        try model.reloadPhotos()
+        gate.blocked.insert("001")
+        model.retryPhotoLoad()
+        XCTAssertTrue(model.loadingPhoto)
+        try await waitUntil { gate.waiting["001"]?.count == 2 }
+        XCTAssertFalse(exposure.isEnabled)
+        gate.release("001")
+        try await waitUntil { model.canEdit && model.previewCurrent }
+        XCTAssertFalse(model.loadingPhoto)
+        XCTAssertEqual(model.recipe, secondRecipe)
+        XCTAssertEqual(sliders(host).map(ObjectIdentifier.init), originalSliders.map(ObjectIdentifier.init), "Retry must reuse the same controls")
+        // Fail again to cover changing photos when no previous image is available.
+        try await catalog.database.write { db in
+            try db.execute(sql: "UPDATE photo SET recipe = ? WHERE id = ?", arguments: [Data("invalid recipe".utf8), "002"])
+        }
+        try model.reloadPhotos()
+        model.choose(["002"], active: "002")
+        try await waitUntil { !model.loadingPhoto }
+        try await catalog.database.write { db in
+            try db.execute(sql: "UPDATE photo SET recipe = ? WHERE id = ?", arguments: [try JSONEncoder().encode(thirdRecipe), "002"])
+        }
+        try model.reloadPhotos()
         model.choose(["000"], active: "000")
         XCTAssertNil(model.photoSwitchDisplay, "There is no previous image after a failed decode")
         host.layoutSubtreeIfNeeded()
@@ -516,6 +549,7 @@ final class ComparisonTests: XCTestCase {
         selectionBridge.collectionView(film, didDeselectItemsAt: [thirdPath])
         try await waitUntil { model.activeID == nil }
         XCTAssertTrue(model.selection.isEmpty, "A final empty selection still clears the editor")
+        XCTAssertFalse(model.loadingPhoto)
     }
 
     @MainActor func testNarrowInspectorAndLocalPanelLayouts() async throws {
@@ -595,6 +629,16 @@ final class ComparisonTests: XCTestCase {
             let deadline = Date().addingTimeInterval(0.08)
             while Date() < deadline { RunLoop.current.run(mode: .default, before: deadline) }
         }
+        pump()
+        let fieldPoint = field.convert(CGPoint(x: field.bounds.midX, y: field.bounds.midY), to: host.superview)
+        let readout = try XCTUnwrap(host.hitTest(fieldPoint) as? ParameterReadoutView)
+        let clickPoint = readout.convert(CGPoint(x: readout.bounds.midX, y: readout.bounds.midY), to: nil)
+        readout.mouseDown(with: try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: clickPoint,
+            modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 1, pressure: 1)))
+        pump()
+        XCTAssertNotNil(field.currentEditor(), "Clicking the resting readout must focus the original native editor")
+        window.makeFirstResponder(nil); pump()
         func enter(_ text: String) throws -> NSTextView {
             window.makeKeyAndOrderFront(nil); window.makeFirstResponder(field); field.selectText(nil)
             let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)

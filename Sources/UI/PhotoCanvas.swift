@@ -202,7 +202,8 @@ struct HistogramScope: View {
     var pulseClipping: ((_ shadows: Bool) -> Void)?
     var pixelReadout: DisplayPixelSample?
     var compact = false
-    /// Share of samples in the end bin of any channel that lights a clip lamp.
+    var interactionID: String?
+    /// Share of samples in the end bin of any channel that counts as clipping.
     static let clipShare = 0.001
     static func clipping(_ histogram: ImageHistogram?) -> (shadows: Bool, highlights: Bool) {
         guard let histogram, let first = histogram.channels.first else { return (false, false) }
@@ -273,7 +274,7 @@ struct HistogramScope: View {
                 }
             }
         }
-        .help(histogram == nil ? L10n.text("app.histogram", defaultValue: "Histogram: \(placeholder)") : L10n.text("app.currentPreviewSRGBHistogramALitIndicatorMeansOver", defaultValue: "Current preview · sRGB histogram. A lit indicator means over 0.1% of pixels are in the darkest or brightest bin"))
+        .help(histogram == nil ? L10n.text("app.histogram", defaultValue: "Histogram: \(placeholder)") : L10n.text("app.currentPreviewSRGBHistogramClippingKeyLamps", defaultValue: "Current preview · sRGB histogram. The key lamps light when clipping overlays are shown or a key is held"))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.text("app.histogram_1659", defaultValue: "Histogram"))
         .accessibilityValue(histogram == nil ? placeholder : ([clip.shadows ? L10n.text("app.shadowClipping", defaultValue: "Shadow Clipping") : nil, clip.highlights ? L10n.text("app.highlightClipping", defaultValue: "Highlight Clipping") : nil,
@@ -294,36 +295,68 @@ struct HistogramScope: View {
     }
     private func clippingControls(clip: (shadows: Bool, highlights: Bool), shadowShown: Bool, highlightShown: Bool) -> some View {
         HStack(spacing: 4) {
-            clipLamp(L10n.text("app.shadows_1650", defaultValue: "Shadows"), on: clip.shadows, shown: shadowShown, toggle: toggleShadowClipping ?? toggleClipping)
-            if let previewClipping, let pulseClipping {
-                MomentaryPreviewKey(title: L10n.text("app.temporarilyInspectShadowClipping", defaultValue: "Temporarily Inspect Shadow Clipping"), systemImage: "eye", selected: shadowShown,
-                    height: 18, onPress: { previewClipping(true, $0) }, onPulse: { pulseClipping(true) })
-                    .accessibilityValue(L10n.text("app.holdToInspectShadowClippingReleaseToRestore", defaultValue: "Hold to inspect shadow clipping; release to restore"))
-                    .help(L10n.text("app.holdToInspectShadowClippingReleaseToRestoreThe", defaultValue: "Hold to inspect shadow clipping; release to restore the previous display"))
-            }
+            clipLamp(L10n.text("app.shadows_1650", defaultValue: "Shadows"), shadows: true,
+                     on: clip.shadows, shown: shadowShown, toggle: toggleShadowClipping ?? toggleClipping)
             Spacer(minLength: 0)
-            if let previewClipping, let pulseClipping {
-                MomentaryPreviewKey(title: L10n.text("app.temporarilyInspectHighlightClipping", defaultValue: "Temporarily Inspect Highlight Clipping"), systemImage: "eye", selected: highlightShown,
-                    height: 18, onPress: { previewClipping(false, $0) }, onPulse: { pulseClipping(false) })
-                    .accessibilityValue(L10n.text("app.holdToInspectHighlightClippingReleaseToRestore", defaultValue: "Hold to inspect highlight clipping; release to restore"))
-                    .help(L10n.text("app.holdToInspectHighlightClippingReleaseToRestoreThe", defaultValue: "Hold to inspect highlight clipping; release to restore the previous display"))
-            }
-            clipLamp(L10n.text("app.highlights", defaultValue: "Highlights"), on: clip.highlights, shown: highlightShown, toggle: toggleHighlightClipping ?? toggleClipping)
+            clipLamp(L10n.text("app.highlights", defaultValue: "Highlights"), shadows: false,
+                     on: clip.highlights, shown: highlightShown, toggle: toggleHighlightClipping ?? toggleClipping)
         }
     }
-    @ViewBuilder private func clipLamp(_ title: String, on: Bool, shown: Bool, toggle: (() -> Void)?) -> some View {
+    @ViewBuilder private func clipLamp(_ title: String, shadows: Bool, on: Bool, shown: Bool, toggle: (() -> Void)?) -> some View {
         let ink = compact ? Theme.scopeText : Theme.textSecondary
         let lamp = HStack(spacing: 4) {
-            Lamp(on: on, onScope: compact)
+            Lamp(on: shown, onScope: compact)
             Text(title).font(.system(size: 10)).foregroundStyle(ink)
         }
         .padding(.horizontal, 3).padding(.vertical, 1)
         .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(ink.opacity(shown ? 0.8 : 0), lineWidth: 1))
         if let toggle {
-            Button(action: toggle) { lamp.contentShape(Rectangle()) }.buttonStyle(.plain)
-                .help(L10n.text("app.clickToClipping", defaultValue: "\(on ? L10n.text("app.clipped", defaultValue: "\(title) clipped") : L10n.text("app.notClipped", defaultValue: "\(title) not clipped")); click to \(shown ? L10n.text("app.hide", defaultValue: "Hide") : L10n.text("app.show", defaultValue: "Show")) \(title) clipping"))
+            HistogramClippingKey(title: title, detected: on, shown: shown,
+                interactionID: interactionID, toggle: toggle,
+                preview: previewClipping.map { callback in { callback(shadows, $0) } },
+                pulse: pulseClipping.map { callback in { callback(shadows) } })
         } else {
             lamp.help(on ? L10n.text("app.clipped", defaultValue: "\(title) clipped") : L10n.text("app.notClipped", defaultValue: "\(title) not clipped"))
         }
+    }
+}
+
+/// One labelled key: click latches the warning; Option-pressure is a temporary inspection.
+struct HistogramClippingKey: View {
+    let title: String
+    let detected: Bool
+    let shown: Bool
+    var interactionID: String?
+    let toggle: () -> Void
+    var preview: ((Bool) -> Void)?
+    var pulse: (() -> Void)?
+    @Environment(\.isEnabled) private var enabled
+    @State private var held = false
+    private var detection: String {
+        detected ? L10n.text("app.clipped", defaultValue: "\(title) clipped") : L10n.text("app.notClipped", defaultValue: "\(title) not clipped")
+    }
+    var body: some View {
+        Button(action: toggle) {
+            Text(title).fixedSize().frame(minWidth: (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)]).width)
+        }
+        .buttonStyle(KeyButtonStyle(selected: shown, height: 18, padding: 6, held: held, lampInside: true))
+        .fixedSize()
+        .overlay {
+            if let preview {
+                MomentaryPreviewCapture(onPress: { pressed in held = pressed; preview(pressed) }, enabled: enabled,
+                                        requiresOption: true, interactionID: interactionID)
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityLabel(title)
+        .onChange(of: interactionID) { held = false; preview?(false) }
+        .accessibilityValue(L10n.text("app.clippingKeyState", defaultValue: "\(detection); overlay \(shown ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off"))"))
+        .accessibilityActions {
+            if let pulse {
+                Button(L10n.text("app.temporarilyInspectClipping", defaultValue: "Temporarily inspect clipping"), action: pulse)
+            }
+        }
+        .help(preview == nil ? L10n.text("app.clickToClipping", defaultValue: "\(detection); click to \(shown ? L10n.text("app.hide", defaultValue: "Hide") : L10n.text("app.show", defaultValue: "Show")) \(title) clipping") :
+            L10n.text("app.clippingKeyHelp", defaultValue: "\(detection). Click to toggle the warning; Option-hold to inspect temporarily, release to restore."))
     }
 }
