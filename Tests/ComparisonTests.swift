@@ -552,6 +552,54 @@ final class ComparisonTests: XCTestCase {
         XCTAssertFalse(model.loadingPhoto)
     }
 
+    @MainActor func testPresetSearchKeepsItsVerticalPositionAcrossEmptyResults() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = try model(in: folder)
+        model.choose([], active: nil); model.choose(["000"], active: "000"); model.selectWorkspace(.develop)
+        try await waitUntil { model.canEdit && model.previewCurrent }
+        let recipe = try XCTUnwrap(model.recipe), historyCount = model.editHistory.count
+        XCTAssertTrue(model.savePreset(name: "Window light", source: recipe, options: RecipePasteOptions()))
+        let suite = "preset-empty-layout-" + UUID().uuidString
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { preferences.removePersistentDomain(forName: suite); model.choose([], active: nil) }
+        for key in ["showLeftPanel", "showRightPanel", "showFilmstrip", "workspacePresetsOpen"] { preferences.set(true, forKey: key) }
+        func fields(_ root: NSView) -> [NSTextField] { (root as? NSTextField).map { [$0] } ?? root.subviews.flatMap(fields) }
+        for theme in [ChromeTheme.ivory, .graphite] {
+            preferences.set(theme.rawValue, forKey: "chromeTheme")
+            for width in [200.0, 280] {
+                preferences.set(width, forKey: "workspaceLeftWidth")
+                let host = NSHostingView(rootView: WorkspaceView(model: model).defaultAppStorage(preferences))
+                let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1280, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
+                window.appearance = NSAppearance(named: theme == .ivory ? .aqua : .darkAqua)
+                window.contentView = host; window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+                defer { window.orderOut(nil); window.contentView = nil }
+                host.layoutSubtreeIfNeeded()
+                let field = try XCTUnwrap(fields(host).first { $0.placeholderString == L10n.text("app.searchPresets", defaultValue: "Search Presets") })
+                let original = field.convert(field.bounds, to: host)
+                window.makeFirstResponder(field); field.selectText(nil)
+                let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
+                for query in ["No matching preset", ""] {
+                    editor.insertText(query, replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+                    try await Task.sleep(for: .milliseconds(100))
+                    host.layoutSubtreeIfNeeded()
+                    XCTAssertEqual(field.stringValue, query)
+                    let frame = field.convert(field.bounds, to: host)
+                    XCTAssertEqual(frame.minY, original.minY, accuracy: 1, "Filtering must not move the search toolbar at \(width) pt")
+                    XCTAssertEqual(frame.height, original.height, accuracy: 1)
+                    let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                    host.cacheDisplay(in: host.bounds, to: bitmap)
+                    let attachment = XCTAttachment(data: try XCTUnwrap(bitmap.representation(using: .png, properties: [:])), uniformTypeIdentifier: "public.png")
+                    attachment.name = "preset-\(query.isEmpty ? "restored" : "empty")-\(Int(width))-\(theme.rawValue)"; attachment.lifetime = .keepAlways; add(attachment)
+                }
+                window.makeFirstResponder(nil)
+                XCTAssertEqual(model.recipe, recipe); XCTAssertEqual(model.editHistory.count, historyCount)
+                XCTAssertEqual(model.activeID, "000"); XCTAssertEqual(model.selection, ["000"])
+                XCTAssertEqual(try model.catalog?.presets().count, 1)
+            }
+        }
+    }
+
     @MainActor func testNarrowInspectorAndLocalPanelLayouts() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

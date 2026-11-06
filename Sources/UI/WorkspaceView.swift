@@ -408,9 +408,6 @@ struct WorkspaceView: View {
                     headerButton("plus", help: L10n.text("app.saveCurrentAdjustmentsAsPreset", defaultValue: "Save Current Adjustments as Preset…")) { openAdjustments(.save) }.editingDisabled(!model.canEdit || model.busy, temporarilyLocked: model.editorUsesPreviousPhoto && !model.busy)
                 }) {
                     VStack(alignment: .leading, spacing: 0) {
-                        if model.adjustmentPresets.isEmpty {
-                            emptyNote(L10n.text("app.presetsAreSavedInTheCurrentCatalog", defaultValue: "Presets are saved in the current catalog"))
-                        }
                         PresetBrowser(presets: model.adjustmentPresets,
                             onPreview: { model.previewPreset($0) },
                             onEndPreview: { model.endPresetPreview($0) },
@@ -425,7 +422,7 @@ struct WorkspaceView: View {
                             onFavorite: { model.setPresetFavorite($0, favorite: $1) },
                             onGroup: { model.setPresetGroup($0, group: $1) })
                             .editingDisabled(!model.canEdit || !model.workspaceAvailable || model.developTool != .adjust, temporarilyLocked: model.editorUsesPreviousPhoto && model.workspaceAvailable && model.developTool == .adjust)
-                            .frame(height: model.adjustmentPresets.isEmpty ? 76 : 220)
+                            .frame(height: model.adjustmentPresets.isEmpty ? nil : 220, alignment: .top)
                     }.padding(.bottom, 6)
                 }
                 PanelSection(L10n.text("app.snapshots", defaultValue: "Snapshots"), isExpanded: $snapshotsOpen, accessory: {
