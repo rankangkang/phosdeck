@@ -4,17 +4,24 @@ struct TargetedAdjustmentKey: View {
     let model: AppModel
     let target: TargetedAdjustment
     var available = true
+    private var help: String {
+        target.isDefringe ? L10n.text("defringe.sampleHelp", defaultValue: "Click a fringe to select a 30° hue range. Amount starts at 25 if zero; an existing amount is kept. Drag up/down to adjust, Shift fine-tunes. Release saves once; Escape cancels before release. Hold Space to pan.")
+            : L10n.text("app.targetedAdjustmentHelp", defaultValue: "Sample the photo, then drag up/down or use Up/Down keys. Shift fine-tunes; Escape cancels a drag, then exits. Hold Space to pan.")
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button(L10n.text("app.targetedAdjustment", defaultValue: "Targeted Adjustment")) { model.toggleTargetedAdjustment(target) }
+            Button(target.isDefringe ? (target == .defringePurple
+                ? L10n.text("defringe.samplePurple", defaultValue: "Sample Purple Fringe")
+                : L10n.text("defringe.sampleGreen", defaultValue: "Sample Green Fringe"))
+                : L10n.text("app.targetedAdjustment", defaultValue: "Targeted Adjustment")) { model.toggleTargetedAdjustment(target) }
                 .buttonStyle(.key(selected: model.targetedAdjustment == target, height: 22, lampInside: true))
                 .controlUnavailable(!available || model.recipe.map { !target.available(in: $0) } != false)
                 .accessibilityIdentifier("targeted-adjustment-\(target.identifier)")
                 .accessibilityValue(model.targetedAdjustment == target ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off"))
-                .help(L10n.text("app.targetedAdjustmentHelp", defaultValue: "Sample the photo, then drag up/down or use Up/Down keys. Shift fine-tunes; Escape cancels a drag, then exits. Hold Space to pan."))
+                .help(help)
             if model.targetedAdjustment == target {
                 Text(model.targetedReferenceReady
-                    ? L10n.text("app.targetedAdjustmentHelp", defaultValue: "Sample the photo, then drag up/down or use Up/Down keys. Shift fine-tunes; Escape cancels a drag, then exits. Hold Space to pan.")
+                    ? help
                     : L10n.text("app.preparingTargetSample", defaultValue: "Preparing sampling reference…"))
                     .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             }
@@ -50,6 +57,8 @@ extension TargetedAdjustment {
         case .luminance: "luminance"
         case .blackWhite: "black-white"
         case .curve(let channel): "curve-\(channel)"
+        case .defringePurple: "defringe-purple"
+        case .defringeGreen: "defringe-green"
         }
     }
 }

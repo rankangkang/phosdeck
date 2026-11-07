@@ -5,6 +5,7 @@ struct TargetedReferenceKey: Equatable {
     let photoID: String
     let identity: Data
     let recipe: EditRecipe
+    let nativeFringeReference: Bool
 }
 
 extension AppModel {
@@ -28,7 +29,7 @@ extension AppModel {
         guard let target = targetedAdjustment, let recipe, let photo = active,
               let root = roots.first(where: { $0.id == photo.rootID }) else { return }
         let input = target.referenceRecipe(recipe)
-        let key = TargetedReferenceKey(photoID: photo.id, identity: photo.identity, recipe: input)
+        let key = TargetedReferenceKey(photoID: photo.id, identity: photo.identity, recipe: input, nativeFringeReference: target.isDefringe)
         if key == targetedReferenceKey, targetedReference != nil { targetedReferenceReady = true; return }
         targetedReferenceReady = false; targetedReference = nil; targetedReferenceKey = key
         let token = UUID(); targetedReferenceToken = token
@@ -38,7 +39,7 @@ extension AppModel {
             do {
                 let reference: PointColorReference
                 if let renderer { reference = try await renderer(request) }
-                else { reference = try await pipeline.pointColorReference(request) }
+                else { reference = try await pipeline.pointColorReference(request, longEdge: target.isDefringe ? 2048 : 1024, nativeDecode: target.isDefringe) }
                 guard let self, !Task.isCancelled, self.targetedReferenceToken == token,
                       self.activeID == photo.id, self.targetedAdjustment != nil, self.targetedReferenceKey == key else { return }
                 self.targetedReference = reference; self.targetedReferenceReady = true
@@ -53,12 +54,14 @@ extension AppModel {
     @discardableResult func beginTargetedAdjustment(at point: CGPoint) -> Bool {
         guard let target = targetedAdjustment, targetedReferenceReady, canEdit, canvasCoordinatesCurrent,
               let recipe, MaskPoint(point.x, point.y).valid,
-              let rgb = targetedReference?.linearRGB(at: point), let sample = target.sample(rgb: rgb, recipe: recipe) else {
+              let rgb = targetedReference?.linearRGB(at: point, radius: target.isDefringe ? 0 : 1), let sample = target.sample(rgb: rgb, recipe: recipe) else {
             if targetedReferenceReady { showNotice(L10n.text("app.targetNoSample", defaultValue: "No target at this point: transparent area or no adjustable color")) }
             return false
         }
         targetedSample = sample
-        return beginTargetedAdjustment(sample: sample)
+        guard beginTargetedAdjustment(sample: sample) else { return false }
+        if target.isDefringe { updateTargetedAdjustment(delta: 0) }
+        return true
     }
 
     @discardableResult private func beginTargetedAdjustment(sample: TargetedSample) -> Bool {
@@ -86,7 +89,13 @@ extension AppModel {
     }
 
     @discardableResult func nudgeTargetedAdjustment(_ direction: Double) -> Bool {
-        guard let sample = targetedSample, beginTargetedAdjustment(sample: sample) else { return false }
+        guard var sample = targetedSample else { return false }
+        // A keyboard nudge starts at the current amount, including zero, rather
+        // than reapplying the suggestion captured by an earlier photo click.
+        if sample.target.isDefringe, let recipe {
+            sample.fringeStartAmount = sample.target == .defringePurple ? recipe.manualDefringe.purpleAmount : recipe.manualDefringe.greenAmount
+        }
+        guard beginTargetedAdjustment(sample: sample) else { return false }
         updateTargetedAdjustment(delta: direction * sample.target.step)
         return finishDirectAdjustment()
     }

@@ -38,7 +38,7 @@ Themes affect the interface only. They do not change photo pixels or exported im
 | Feature | Details |
 |---|---|
 | Photo organization | Import in place or copy files; ratings, flags, color labels, keywords, regular and smart collections, virtual copies, stacks, and RAW/JPEG pairing |
-| Global adjustments | Exposure, white balance, point curves, HSL, B&W mixing, point color, sharpening, noise reduction, grain, and vignette; presets, history, and snapshots |
+| Global adjustments | Exposure, white balance, point curves, HSL, B&W mixing, point color, manual defringe, sharpening, noise reduction, grain, and vignette; presets, history, and snapshots |
 | Local adjustments | Brushes, linear and radial gradients, color and luminance range masks, person selection, and spot repair |
 | Geometry | Crop, line-based straightening, flip, and guided or automatic perspective correction |
 | Camera checks | Local RAW decoding and pipeline consistency checks with JSON reports |

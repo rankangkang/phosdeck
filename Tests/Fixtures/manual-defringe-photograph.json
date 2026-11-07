@@ -1,0 +1,10 @@
+{
+  "file": "Purple_fringing.jpg",
+  "sha256": "f59a589a8f88f6cb2dc18145325e031dd0334de1de001f377e298d5618fd8f37",
+  "author": "Kitkatcrazy",
+  "source": "https://commons.wikimedia.org/wiki/File:Purple_fringing.jpg",
+  "download": "https://upload.wikimedia.org/wikipedia/commons/c/c1/Purple_fringing.jpg",
+  "license": "public domain, released worldwide by the author; the description page also grants unrestricted use where such a release is unavailable",
+  "testResource": "PublicDomainFringe/Purple_fringing.jpg",
+  "description": "Optional existing JPEG crop of a horse with purple fringes. It is not RAW, a colorimetric target, or an Adobe equivalence reference. The image is not committed or shipped in the application."
+}

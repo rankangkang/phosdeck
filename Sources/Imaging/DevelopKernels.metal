@@ -270,6 +270,48 @@ float4 generalChromaDenoise(sampler input, float4 extent, float sigma, float ble
     out += y-dot(out,weights);
     return float4(out*s.a,s.a);
 }
+
+// Native narrow-fringe detector. Flat target-colored surfaces are preserved;
+// suppression requires a luminance edge and neutral support on opposite sides.
+// It cannot distinguish every real purple/green object edge from a fringe.
+float4 manualDefringe(sampler input, float4 extent, float4 purple, float4 green, float radius, destination dest) {
+    float2 center = dest.coord();
+    float4 original = input.sample(input.transform(center));
+    float4 s = straightColor(original);
+    if (s.a <= 0 || !all(isfinite(original))) return original;
+    float3 encoded = toneEncode(float4(s.rgb,0)).rgb;
+    float hi = max(encoded.r,max(encoded.g,encoded.b)), lo = min(encoded.r,min(encoded.g,encoded.b));
+    float chroma = hi-lo;
+    if (chroma <= 1e-6f || chroma < 0.05f*hi) return original;
+    float hue = hi == encoded.r ? (encoded.g-encoded.b)/chroma : hi == encoded.g ? 2+(encoded.b-encoded.r)/chroma : 4+(encoded.r-encoded.g)/chroma;
+    hue = fmod(hue*60+360,360.0f);
+    float p = smoothstep(purple.x-5,purple.x,hue)*(1-smoothstep(purple.y,purple.y+5,hue))*purple.z;
+    float g = smoothstep(green.x-5,green.x,hue)*(1-smoothstep(green.y,green.y+5,hue))*green.z;
+    float amount = max(p,g);
+    if (amount <= 0) return original;
+    float3 weights = float3(0.2126,0.7152,0.0722);
+    float y = dot(s.rgb,weights), evidence = 0;
+    // Four opposite pairs require valid coverage on both sides. A transparent
+    // border or broad colored object must not masquerade as a neutral edge.
+    for (int scale = 0; scale < 3; ++scale) { for (int axis = 0; axis < 4; ++axis) {
+        float2 direction = axis == 0 ? float2(1,0) : axis == 1 ? float2(0,1) : axis == 2 ? float2(1,1) : float2(1,-1);
+        float distance = max(1.0f,radius*exp2(float(scale)-2));
+        float2 a = clamp(center+direction*distance,extent.xy+0.5f,extent.xy+extent.zw-0.5f);
+        float2 b = clamp(center-direction*distance,extent.xy+0.5f,extent.xy+extent.zw-0.5f);
+        float4 sa = straightColor(input.sample(input.transform(a))), sb = straightColor(input.sample(input.transform(b)));
+        if (sa.a <= 0 || sb.a <= 0) continue;
+        float3 ea = toneEncode(float4(sa.rgb,0)).rgb, eb = toneEncode(float4(sb.rgb,0)).rgb;
+        float ca = max(ea.r,max(ea.g,ea.b))-min(ea.r,min(ea.g,ea.b));
+        float cb = max(eb.r,max(eb.g,eb.b))-min(eb.r,min(eb.g,eb.b));
+        float neutralSupport = 1-smoothstep(chroma*0.25f,chroma*0.8f,max(ca,cb));
+        float edge = smoothstep(0.04f,0.2f,abs(dot(sa.rgb-sb.rgb,weights))/max(0.1f,max(abs(y),max(dot(sa.rgb,weights),dot(sb.rgb,weights)))));
+        evidence = max(evidence,neutralSupport*edge);
+    } }
+    float strength = amount*evidence;
+    if (strength <= 0) return original;
+    float3 result = mix(s.rgb,float3(y),strength);
+    return float4(result*s.a,s.a);
+}
 // General decoded-image detail. LightCraft f34c7a8 log-luminance / masking,
 // adapted to linear sRGB, alpha-weighted exact Gaussian and bounded EV gain.
 float4 detailGaussian(sampler input, float4 extent, float2 axis, float sigma, float bounds, destination dest) {

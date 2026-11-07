@@ -1768,7 +1768,7 @@ private struct PasteAdjustmentsSheet: View {
                         Toggle(L10n.text("app.whiteBalance", defaultValue: "White Balance"), isOn: Binding(get: { allowsWhiteBalance && options.whiteBalance }, set: { options.whiteBalance = $0 })).disabled(!allowsWhiteBalance)
                     }
                     if options.importedXMP?.contains(.color) ?? true { Toggle(options.importedXMP == nil ? L10n.text("app.saturationBlackAndWhiteHSLPointColorAndGrading", defaultValue: "Saturation, black and white, HSL, Point Color, and grading") : L10n.text("app.saturationBlackAndWhiteHSLAndGrading", defaultValue: "Saturation, black and white, HSL, and grading"), isOn: $options.color) }
-                    if options.importedXMP?.contains(.generalDetails) ?? true { Toggle(L10n.text("app.generalDetailNoiseReductionAndSharpening", defaultValue: "General Detail (Noise Reduction and Sharpening)"), isOn: $options.generalDetails) }
+                    if options.importedXMP?.contains(.generalDetails) ?? true { Toggle(L10n.text("app.generalDetailNoiseReductionAndSharpening", defaultValue: "General Detail (Noise Reduction, Sharpening and Defringe)"), isOn: $options.generalDetails) }
                     if options.importedXMP == nil {
                         Toggle(L10n.text("app.rawDecodingDetailAndLensCorrection", defaultValue: "RAW Decoding Detail and Lens Correction"), isOn: Binding(get: { allowsRAWDetails && options.details }, set: { options.details = $0 })).disabled(!allowsRAWDetails)
                         Toggle(L10n.text("app.cropRotateAndFlip", defaultValue: "Crop, Rotate, and Flip"), isOn: $options.geometry)

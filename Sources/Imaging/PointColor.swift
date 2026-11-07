@@ -80,13 +80,13 @@ struct PointColorReference:Sendable {
     let height:Int
     /// Premultiplied floating-point linear sRGB, in displayed geometry.
     let rgba:[Float]
-    func linearRGB(at point: CGPoint) -> SIMD3<Double>? {
-        guard MaskPoint(point.x,point.y).valid, width > 0, height > 0, rgba.count == width*height*4 else { return nil }
+    func linearRGB(at point: CGPoint, radius: Int = 1) -> SIMD3<Double>? {
+        guard (0...1).contains(radius), MaskPoint(point.x,point.y).valid, width > 0, height > 0, rgba.count == width*height*4 else { return nil }
         let x = PhotoGeometry.pixelIndex(point.x,dimension:width), y = PhotoGeometry.pixelIndex(point.y,dimension:height)
         let center = (y*width+x)*4
         guard rgba[center..<(center+4)].allSatisfy(\.isFinite), rgba[center+3] > 0 else { return nil }
         var rgb = SIMD3<Double>.zero, coverage = 0.0
-        for dy in -1...1 { for dx in -1...1 {
+        for dy in -radius...radius { for dx in -radius...radius {
             let i = (min(height-1,max(0,y+dy))*width+min(width-1,max(0,x+dx)))*4
             let p = rgba[i..<(i+4)].map(Double.init)
             guard p.allSatisfy(\.isFinite), p[3] > 0 else { continue }

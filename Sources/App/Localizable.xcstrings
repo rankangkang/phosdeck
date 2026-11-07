@@ -1,6 +1,312 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "defringe.sampleHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click a fringe to select a 30° hue range. Amount starts at 25 if zero; an existing amount is kept. Drag up/down to adjust, Shift fine-tunes. Release saves once; Escape cancels before release. Hold Space to pan."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点击色边选定 30° 色相范围；数量为 0 时从 25 起步，已有数量保留。上下拖动调整，Shift 精调，松手只保存一次，松手前按 Esc 取消；按住空格可平移。"
+          }
+        }
+      }
+    },
+    "defringe.shadersMissing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Develop shaders missing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "缺少显影着色器"
+          }
+        }
+      }
+    },
+    "defringe.currentPipeline": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manual defringe requires the current development pipeline"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动去边需要使用当前显影管线"
+          }
+        }
+      }
+    },
+    "defringe.green": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Green Fringe"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "绿边"
+          }
+        }
+      }
+    },
+    "defringe.greenAmount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Green Amount"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "绿边数量"
+          }
+        }
+      }
+    },
+    "defringe.greenHigh": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Green Hue High"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "绿色相上限"
+          }
+        }
+      }
+    },
+    "defringe.greenLow": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Green Hue Low"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "绿色相下限"
+          }
+        }
+      }
+    },
+    "defringe.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Targets thin fringes near neutral edges. Real purple or green edges can also change; narrow the hue range and inspect at 100%. Amount 0 bypasses this correction. Sampling uses the decoded image before tone and color adjustments."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主要处理中性边缘附近的细色边，也可能改变真实紫／绿色物体的边缘。请缩小色相范围，并以 100% 检查。数量 0 关闭此项校正；取样使用色调与颜色调整前的解码图。"
+          }
+        }
+      }
+    },
+    "defringe.invalid": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid defringe amount or hue range; endpoints must be at least 10° apart"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "去边数量或色相范围无效；两个端点至少相隔 10°"
+          }
+        }
+      }
+    },
+    "defringe.purple": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Purple Fringe"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "紫边"
+          }
+        }
+      }
+    },
+    "defringe.purpleAmount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Purple Amount"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "紫边数量"
+          }
+        }
+      }
+    },
+    "defringe.purpleHigh": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Purple Hue High"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "紫色相上限"
+          }
+        }
+      }
+    },
+    "defringe.purpleLow": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Purple Hue Low"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "紫色相下限"
+          }
+        }
+      }
+    },
+    "defringe.renderFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manual defringe rendering failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动去边渲染失败"
+          }
+        }
+      }
+    },
+    "defringe.sampleGreen": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sample Green Fringe"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取样绿边"
+          }
+        }
+      }
+    },
+    "defringe.sampleHue": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sample hue %.1f° · drag to adjust amount"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取样色相 %.1f° · 拖动调整数量"
+          }
+        }
+      }
+    },
+    "defringe.samplePurple": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sample Purple Fringe"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取样紫边"
+          }
+        }
+      }
+    },
+    "defringe.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manual Defringe"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动去边"
+          }
+        }
+      }
+    },
     "app.autoWhiteBalance": {
       "extractionState": "manual",
       "localizations": {
@@ -16544,13 +16850,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "General Detail (Noise Reduction and Sharpening)"
+            "value": "General Detail (Noise Reduction, Sharpening and Defringe)"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "通用细节（降噪与锐化）"
+            "value": "通用细节（降噪、锐化与去边）"
           }
         }
       }

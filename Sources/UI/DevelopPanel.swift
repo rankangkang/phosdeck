@@ -28,6 +28,7 @@ struct DevelopPanel: View {
     @AppStorage("developNoiseOpen") private var noiseOpen = false
     @AppStorage("developSharpenOpen") private var sharpenOpen = false
     @AppStorage("developDetailsOpen") private var detailsOpen = false
+    @AppStorage("developDefringeOpen") private var defringeOpen = false
     @AppStorage("developCurvesOpen") private var curvesOpen = false
     @AppStorage("developZonesOpen") private var zonesOpen = false
     @AppStorage("developVignetteOpen") private var vignetteOpen = false
@@ -119,6 +120,9 @@ struct DevelopPanel: View {
                         details.sectionContent()
                     } }
                 }
+                if isVisible(.defringe) { PanelSection(L10n.text("defringe.title", defaultValue: "Manual Defringe"), group: .defringe, isExpanded: expansion(12), reset: { change { $0.defringe = nil } }, modified: isModified(.defringe), previewing: previewingGroup == .defringe, preview: previewHandler(.defringe), previewPulse: previewPulseHandler(.defringe)) {
+                    defringe.sectionContent().controlUnavailable(recipe?.pipelineVersion != 2)
+                } }
                 if isVisible(.vignette) { PanelSection(L10n.text("app.creativeVignette", defaultValue: "Creative Vignette"), group: .vignette, isExpanded: expansion(6), reset: { change { $0.vignette = CreativeVignette() } }, modified: isModified(.vignette), previewing: previewingGroup == .vignette, preview: previewHandler(.vignette), previewPulse: previewPulseHandler(.vignette)) {
                     vignette.sectionContent()
                 } }
@@ -129,11 +133,12 @@ struct DevelopPanel: View {
             }
         }
         .contextMenu { Toggle(L10n.text("app.expandOneAdjustmentPanelAtATime", defaultValue: "Expand One Adjustment Panel at a Time"), isOn: $solo) }
-        .onChange(of: solo) { if solo { basicOpen = true; mixerOpen = false; gradingOpen = false; detailsOpen = false; curvesOpen = false; zonesOpen = false; vignetteOpen = false; grainOpen = false; blackWhiteOpen = false; sharpenOpen = false; noiseOpen = false; pointOpen = false } }
+        .onChange(of: solo) { if solo { basicOpen = true; mixerOpen = false; gradingOpen = false; detailsOpen = false; curvesOpen = false; zonesOpen = false; vignetteOpen = false; grainOpen = false; blackWhiteOpen = false; sharpenOpen = false; noiseOpen = false; pointOpen = false; defringeOpen = false } }
         .onChange(of: mixerTab) { if let target = model.targetedAdjustment, [.hue, .saturation, .luminance].contains(target) { model.cancelTargetedAdjustment() } }
         .onChange(of: mixerOpen) { if !mixerOpen, let target = model.targetedAdjustment, [.hue, .saturation, .luminance].contains(target) { model.cancelTargetedAdjustment() } }
         .onChange(of: curvesOpen) { if !curvesOpen, model.targetedAdjustment?.isCurve == true { model.cancelTargetedAdjustment() } }
         .onChange(of: blackWhiteOpen) { if !blackWhiteOpen, model.targetedAdjustment == .blackWhite { model.cancelTargetedAdjustment() } }
+        .onChange(of: defringeOpen) { if !defringeOpen, model.targetedAdjustment?.isDefringe == true { model.cancelTargetedAdjustment() } }
         .onChange(of: pointOpen) { if !pointOpen && !local { model.cancelPointColorTools() } }
         .onChange(of: zonesOpen) { if !zonesOpen && !local { model.cancelZoneSampling() } }
         .onChange(of: model.cropMode) { if model.cropMode { cropOpen = true; perspectiveOpen = true } }
@@ -173,7 +178,7 @@ struct DevelopPanel: View {
         if solo {
             basicOpen = false; mixerOpen = false; gradingOpen = false; detailsOpen = false
             curvesOpen = false; zonesOpen = false; vignetteOpen = false; grainOpen = false
-            blackWhiteOpen = false; sharpenOpen = false; noiseOpen = false; pointOpen = false
+            blackWhiteOpen = false; sharpenOpen = false; noiseOpen = false; pointOpen = false; defringeOpen = false
             cropOpen = false; perspectiveOpen = false
         }
         if let callback = onOpenGroup, group == .crop || group == .perspective {
@@ -191,6 +196,7 @@ struct DevelopPanel: View {
         case .noiseReduction: noiseOpen = true
         case .sharpening: sharpenOpen = true
         case .rawDetails: detailsOpen = true
+        case .defringe: defringeOpen = true
         case .vignette: vignetteOpen = true
         case .grain: grainOpen = true
         case .crop, .perspective: break
@@ -208,9 +214,9 @@ struct DevelopPanel: View {
         }
     }
     private func expansion(_ panel: Int) -> Binding<Bool> {
-        Binding(get: { [basicOpen, mixerOpen, gradingOpen, detailsOpen, curvesOpen, zonesOpen, vignetteOpen, grainOpen, blackWhiteOpen, sharpenOpen, noiseOpen, pointOpen][panel] }, set: { open in
+        Binding(get: { [basicOpen, mixerOpen, gradingOpen, detailsOpen, curvesOpen, zonesOpen, vignetteOpen, grainOpen, blackWhiteOpen, sharpenOpen, noiseOpen, pointOpen, defringeOpen][panel] }, set: { open in
             if open && solo {
-                basicOpen = false; mixerOpen = false; gradingOpen = false; detailsOpen = false; curvesOpen = false; zonesOpen = false; vignetteOpen = false; grainOpen = false; blackWhiteOpen = false; sharpenOpen = false; noiseOpen = false; pointOpen = false
+                basicOpen = false; mixerOpen = false; gradingOpen = false; detailsOpen = false; curvesOpen = false; zonesOpen = false; vignetteOpen = false; grainOpen = false; blackWhiteOpen = false; sharpenOpen = false; noiseOpen = false; pointOpen = false; defringeOpen = false
             }
             if panel == 0 { basicOpen = open }
             else if panel == 1 { mixerOpen = open }
@@ -223,7 +229,8 @@ struct DevelopPanel: View {
             else if panel == 8 { blackWhiteOpen = open }
             else if panel == 9 { sharpenOpen = open }
             else if panel == 10 { noiseOpen = open }
-            else { pointOpen = open }
+            else if panel == 11 { pointOpen = open }
+            else { defringeOpen = open }
         })
     }
     private func note(_ text: String) -> some View {
@@ -307,6 +314,26 @@ struct DevelopPanel: View {
     private func sharpenRow(_ name: String, _ key: WritableKeyPath<GeneralSharpening,Double>, range: ClosedRange<Double>, reset: Double, step: Double = 1, unit: String = "") -> some View {
         AdjustmentRow(label:name,value:recipe?.sharpening[keyPath:key] ?? reset,range:range,step:step,digits:step < 1 ? 1 : 0,reset:reset,unit:unit,
             change: { value, save in change({ $0.sharpening[keyPath:key] = value },commit:save) },commit: { model.commitRecipe() })
+    }
+    private var defringe: some View {
+        let values = recipe?.manualDefringe ?? ManualDefringe()
+        return VStack(alignment: .leading, spacing: 0) {
+            detailZoom
+            TargetedAdjustmentKey(model: model, target: .defringePurple)
+            row(L10n.text("defringe.purpleAmount", defaultValue: "Purple Amount"), \.manualDefringe.purpleAmount, range: 0...100)
+            row(L10n.text("defringe.purpleLow", defaultValue: "Purple Hue Low"), \.manualDefringe.purpleLower,
+                range: 200...(values.purpleUpper - 10), reset: min(260, values.purpleUpper - 10), unit: "°")
+            row(L10n.text("defringe.purpleHigh", defaultValue: "Purple Hue High"), \.manualDefringe.purpleUpper,
+                range: (values.purpleLower + 10)...360, reset: max(330, values.purpleLower + 10), unit: "°")
+            SubgroupLabel(L10n.text("defringe.green", defaultValue: "Green Fringe"))
+            TargetedAdjustmentKey(model: model, target: .defringeGreen)
+            row(L10n.text("defringe.greenAmount", defaultValue: "Green Amount"), \.manualDefringe.greenAmount, range: 0...100)
+            row(L10n.text("defringe.greenLow", defaultValue: "Green Hue Low"), \.manualDefringe.greenLower,
+                range: 40...(values.greenUpper - 10), reset: min(80, values.greenUpper - 10), unit: "°")
+            row(L10n.text("defringe.greenHigh", defaultValue: "Green Hue High"), \.manualDefringe.greenUpper,
+                range: (values.greenLower + 10)...200, reset: max(160, values.greenLower + 10), unit: "°")
+            note(L10n.text("defringe.help", defaultValue: "Targets thin fringes near neutral edges. Real purple or green edges can also change; narrow the hue range and inspect at 100%. Amount 0 bypasses this correction. Sampling uses the decoded image before tone and color adjustments."))
+        }
     }
     private var details: some View {
         VStack(alignment: .leading, spacing: 0) {

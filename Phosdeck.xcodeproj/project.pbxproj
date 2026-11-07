@@ -159,7 +159,9 @@
 		FB23F056B5AEF44EEF30E376 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9D7E74E491B5B6820B2A5BF /* AppModel.swift */; };
 		FFF2DB5C4DD040DFCFA7F7AF /* ExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A37FA7AE38C5EE2532412C /* ExportTests.swift */; };
 		D19200010000000000000001 /* GeneralDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = D19200020000000000000001 /* GeneralDetail.swift */; };
+		D50700010000000000000001 /* ManualDefringe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D50700020000000000000001 /* ManualDefringe.swift */; };
 		D19200110000000000000001 /* GeneralDetailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D19200120000000000000001 /* GeneralDetailTests.swift */; };
+		D50700110000000000000001 /* ManualDefringeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D50700120000000000000001 /* ManualDefringeTests.swift */; };
 		D19300110000000000000001 /* NoiseReductionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D19300120000000000000001 /* NoiseReductionTests.swift */; };
 		67F1B53C0BAA42498D3B0CCB /* RasterExposure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1F3C96D7834074AD24F35E /* RasterExposure.swift */; };
 		D1A000020000000000000001 /* RasterExposureColour.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A000010000000000000001 /* RasterExposureColour.swift */; };
@@ -366,7 +368,9 @@
 		F7B8465D7B8062C3D5E13D24 /* DevelopPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevelopPanel.swift; sourceTree = "<group>"; };
 		F8F1FD523D1681280A515F8F /* PhosdeckApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhosdeckApp.swift; sourceTree = "<group>"; };
 		D19200020000000000000001 /* GeneralDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralDetail.swift; sourceTree = "<group>"; };
+		D50700020000000000000001 /* ManualDefringe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualDefringe.swift; sourceTree = "<group>"; };
 		D19200120000000000000001 /* GeneralDetailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralDetailTests.swift; sourceTree = "<group>"; };
+		D50700120000000000000001 /* ManualDefringeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualDefringeTests.swift; sourceTree = "<group>"; };
 		D19300120000000000000001 /* NoiseReductionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoiseReductionTests.swift; sourceTree = "<group>"; };
 		2A1F3C96D7834074AD24F35E /* RasterExposure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RasterExposure.swift; sourceTree = "<group>"; };
 		D1A000010000000000000001 /* RasterExposureColour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RasterExposureColour.swift; sourceTree = "<group>"; };
@@ -546,6 +550,7 @@
 				1E5C8A39D02B47F4C6A9B3D2 /* CreativeVignetteTests.swift */,
 				9C401E63D27A58B6F3E0C2D7 /* FilmGrainTests.swift */,
 				D19200120000000000000001 /* GeneralDetailTests.swift */,
+				D50700120000000000000001 /* ManualDefringeTests.swift */,
 				D19300120000000000000001 /* NoiseReductionTests.swift */,
 				A31B6C80E4F25D9A7C18B042 /* RasterIdentityTests.swift */,
 				F7D581C53A784739B2DB4182 /* RasterEditingTests.swift */,
@@ -636,6 +641,7 @@
 				8D4B0C27E91A46F3B5C8D2E1 /* CreativeVignette.swift */,
 				7A2E9C41B05836F4D1C8A0B5 /* FilmGrain.swift */,
 				D19200020000000000000001 /* GeneralDetail.swift */,
+				D50700020000000000000001 /* ManualDefringe.swift */,
 				1F6E16199347E71C3D817B0A /* DevelopAdjustments.swift */,
 				E15831987E3307EB5A6F1B5C /* DevelopKernels.metal */,
 				B576A7E0F58B72A2144EAFF2 /* DevelopPipeline.swift */,
@@ -891,6 +897,7 @@
 				D4B9A28F5C7E61A3B2D5F9E1 /* CreativeVignetteTests.swift in Sources */,
 				AD512F74E38B69C704F1D3E8 /* FilmGrainTests.swift in Sources */,
 				D19200110000000000000001 /* GeneralDetailTests.swift in Sources */,
+				D50700110000000000000001 /* ManualDefringeTests.swift in Sources */,
 				D19300110000000000000001 /* NoiseReductionTests.swift in Sources */,
 				C41E7A29B06D4F13A8C25091 /* RasterIdentityTests.swift in Sources */,
 				F7D581C53A784739B2DB4181 /* RasterEditingTests.swift in Sources */,
@@ -995,6 +1002,7 @@
 				C3A8F17E4B6D5092A1C4E8D0 /* CreativeVignette.swift in Sources */,
 				8B3F0D52C16947A5E2D9B1C6 /* FilmGrain.swift in Sources */,
 				D19200010000000000000001 /* GeneralDetail.swift in Sources */,
+				D50700010000000000000001 /* ManualDefringe.swift in Sources */,
 				E6ED622C035C28A0BC28E566 /* MetalPhotoView.swift in Sources */,
 				6EF877AAEED65D9580278315 /* Models.swift in Sources */,
 				56DE769A278724ED492AF7D1 /* PhosdeckApp.swift in Sources */,

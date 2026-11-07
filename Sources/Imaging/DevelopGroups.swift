@@ -16,6 +16,7 @@ enum DevelopGroup: String, CaseIterable, Identifiable, Hashable {
     case noiseReduction
     case sharpening
     case rawDetails
+    case defringe
     case vignette
     case grain
     case crop
@@ -35,6 +36,7 @@ enum DevelopGroup: String, CaseIterable, Identifiable, Hashable {
         case .noiseReduction: return L10n.text("app.noiseReduction", defaultValue: "Noise Reduction")
         case .sharpening: return L10n.text("app.sharpening", defaultValue: "Sharpening")
         case .rawDetails: return L10n.text("app.rawDetailAndLens", defaultValue: "RAW Detail and Lens")
+        case .defringe: return L10n.text("defringe.title", defaultValue: "Manual Defringe")
         case .vignette: return L10n.text("app.creativeVignette", defaultValue: "Creative Vignette")
         case .grain: return L10n.text("app.grain", defaultValue: "Grain")
         case .crop: return L10n.text("app.cropStraightenAndFlip", defaultValue: "Crop, Straighten, and Flip")
@@ -45,7 +47,7 @@ enum DevelopGroup: String, CaseIterable, Identifiable, Hashable {
     /// Groups that can be shown in the normal Develop inspector.
     static var adjustmentCases: [DevelopGroup] {
         [.basic, .curves, .zones, .mixer, .pointColor, .blackWhite, .grading,
-         .noiseReduction, .sharpening, .rawDetails, .vignette, .grain]
+         .noiseReduction, .sharpening, .rawDetails, .defringe, .vignette, .grain]
     }
 
     /// Return a display-only recipe with this group's controls at their exact
@@ -88,6 +90,8 @@ enum DevelopGroup: String, CaseIterable, Identifiable, Hashable {
             value.noiseReduction = aligned.noiseReduction
         case .sharpening:
             value.sharpening = aligned.sharpening
+        case .defringe:
+            value.defringe = aligned.defringe
         case .rawDetails:
             // Lens correction is stored with RAW details and is part of this
             // group's real neutral state.  Unlike the before/after image

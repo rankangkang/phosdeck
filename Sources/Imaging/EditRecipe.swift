@@ -50,6 +50,7 @@ struct EditRecipe: Codable, Equatable {
         if develop.blackAndWhite || develop.pointColors.allSatisfy(\.isNeutral) { neutral.develop.pointColors = develop.pointColors }
         if perspective.isNeutral { neutral.perspective = perspective }
         if !sharpening.isActive { neutral.sharpening = sharpening }
+        if !manualDefringe.isActive { neutral.defringe = defringe }
         return isRaster && !grain.isActive && self == neutral
     }
     var schemaVersion = 2
@@ -125,6 +126,7 @@ struct EditRecipe: Codable, Equatable {
     var grain = FilmGrain()
     var sharpening = GeneralSharpening()
     var noiseReduction = GeneralNoiseReduction()
+    var defringe: ManualDefringe?
     var rawDetails = RAWDetailSettings()
     var straightenDegrees = 0.0
     /// Pixel aspect ratio, independent of portrait/landscape source dimensions.
@@ -135,7 +137,7 @@ struct EditRecipe: Codable, Equatable {
         case schemaVersion, pipelineVersion, sourceDigest, decoderVersion, systemVersion, appBuild
         case baselineExposure, baselineTemperature, baselineTint, exposure, temperature, tint
         case asShotWhiteBalance, contrast, saturation, quarterTurns, crop, develop, straightenDegrees, cropAspectRatio
-        case flipHorizontal, flipVertical, perspective, sharpening, noiseReduction
+        case flipHorizontal, flipVertical, perspective, sharpening, noiseReduction, defringe
     }
 
     func validate() throws {
@@ -148,6 +150,8 @@ struct EditRecipe: Codable, Equatable {
         try rawDetails.validate()
         try sharpening.validate()
         try noiseReduction.validate()
+        try defringe?.validate()
+        guard defringe == nil || pipelineVersion == 2 else { throw LRCError(L10n.text("defringe.currentPipeline", defaultValue: "Manual defringe requires the current development pipeline")) }
         try perspective.validate()
         try develop.validate()
         guard pipelineVersion == 2 || develop.pointColors.allSatisfy(\.isNeutral) else { throw LRCError(L10n.text("app.pointColorRequiresTheCurrentDevelopmentPipeline", defaultValue: "Point Color requires the current development pipeline")) }
@@ -201,6 +205,7 @@ struct EditRecipe: Codable, Equatable {
         r.grain = FilmGrain()
         r.sharpening = GeneralSharpening()
         r.noiseReduction = GeneralNoiseReduction()
+        r.defringe = nil
         return r
     }
     /// `baseline()` tones on the current rotation, crop and lens correction, so before and after line up pixel for pixel.
@@ -246,6 +251,7 @@ extension EditRecipe {
         perspective = try c.decode(PerspectiveSettings.self, forKey: .perspective)
         sharpening = try c.decode(GeneralSharpening.self, forKey: .sharpening)
         noiseReduction = try c.decode(GeneralNoiseReduction.self, forKey: .noiseReduction)
+        defringe = try c.decodeIfPresent(ManualDefringe.self, forKey: .defringe)
         crop = try c.decode(Crop.self, forKey: .crop)
         if schemaVersion == 1 {
             develop = try c.decodeIfPresent(DevelopAdjustments.self, forKey: .develop) ?? DevelopAdjustments()
@@ -321,7 +327,7 @@ extension EditRecipe {
             value.perspective = source.perspective
             value.crop = source.crop; value.cropAspectRatio = nil // Relative crop can have a different pixel aspect on the target.
         }
-        if options.generalDetails { value.sharpening = source.sharpening; value.noiseReduction = source.noiseReduction }
+        if options.generalDetails { value.sharpening = source.sharpening; value.noiseReduction = source.noiseReduction; value.defringe = source.defringe }
         if options.details, !isRaster, !source.isRaster { value.rawDetails = source.rawDetails }
         if options.curves { value.develop.curves = source.develop.curves }
         if options.zones { value.develop.zones = source.develop.zones }
@@ -398,6 +404,7 @@ extension EditRecipe {
         if pipelineVersion != previous.pipelineVersion { parts.append(L10n.text("app.developmentVersion", defaultValue: "Development Version")) }
         if sharpening != previous.sharpening { parts.append(L10n.text("app.sharpening", defaultValue: "Sharpening")) }
         if noiseReduction != previous.noiseReduction { parts.append(L10n.text("app.generalNoiseReduction", defaultValue: "General Noise Reduction")) }
+        if defringe != previous.defringe { parts.append(L10n.text("defringe.title", defaultValue: "Manual Defringe")) }
         if rawDetails != previous.rawDetails { parts.append(L10n.text("app.rawNoiseReductionSharpeningAndLensCorrection", defaultValue: "RAW Noise Reduction, Sharpening, and Lens Correction")) }
         return parts.isEmpty ? L10n.text("app.adjustPhoto", defaultValue: "Adjust Photo") : parts.joined(separator: " · ")
     }
@@ -425,6 +432,7 @@ extension EditRecipe {
         value.grain = grain.mixing(toward.grain, amount: t)
         value.sharpening = sharpening.mixing(toward.sharpening, amount: t)
         value.noiseReduction = noiseReduction.mixing(toward.noiseReduction, amount: t)
+        value.manualDefringe = manualDefringe.mixing(toward.manualDefringe, amount: t)
         value.rawDetails = isRaster == toward.isRaster ? rawDetails.mixing(toward.rawDetails, amount: t) : toward.rawDetails
         return value
     }

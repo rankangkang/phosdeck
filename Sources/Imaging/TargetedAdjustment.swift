@@ -2,7 +2,7 @@ import Foundation
 
 /// Interaction choices map to existing native parameters, not Adobe process values.
 enum TargetedAdjustment: Equatable, Sendable {
-    case hue, saturation, luminance, blackWhite, curve(Int)
+    case hue, saturation, luminance, blackWhite, curve(Int), defringePurple, defringeGreen
     var title: String {
         switch self {
         case .hue: L10n.text("app.hue", defaultValue: "Hue")
@@ -10,9 +10,12 @@ enum TargetedAdjustment: Equatable, Sendable {
         case .luminance: L10n.text("app.luminance_1188", defaultValue: "Luminance")
         case .blackWhite: L10n.text("app.blackWhiteMixer", defaultValue: "Black & White Mixer")
         case .curve(let channel): ToneCurves.names[channel]
+        case .defringePurple: L10n.text("defringe.purple", defaultValue: "Purple Fringe")
+        case .defringeGreen: L10n.text("defringe.green", defaultValue: "Green Fringe")
         }
     }
     var isCurve: Bool { if case .curve = self { return true }; return false }
+    var isDefringe: Bool { self == .defringePurple || self == .defringeGreen }
     var step: Double { isCurve ? 0.1 : 1 }
     func available(in recipe: EditRecipe) -> Bool {
         guard recipe.pipelineVersion == 2 else { return false }
@@ -28,6 +31,12 @@ enum TargetedAdjustment: Equatable, Sendable {
     /// do not invalidate this cache. Repairs, RAW settings and geometry still do.
     func referenceRecipe(_ recipe: EditRecipe) -> EditRecipe {
         var r = recipe
+        if isDefringe {
+            // Residual fringe input: decoded WB/exposure, repairs and denoise,
+            // before this operation and all tone/HSL/curve adjustments. Geometry
+            // remains the actual output geometry, avoiding an inverse remapping.
+            r.defringe = nil; r.develop = DevelopAdjustments(); r.contrast = 1
+        }
         r.saturation = 1; r.develop.mixer = Array(repeating: HSLBand(), count: 8)
         if isCurve { r.develop.curves = nil }
         r.develop.blackAndWhite = false; r.develop.blackWhiteMixer = Array(repeating: 0, count: 8)
@@ -39,6 +48,10 @@ enum TargetedAdjustment: Equatable, Sendable {
     func sample(rgb: SIMD3<Double>, recipe: EditRecipe) -> TargetedSample? {
         guard available(in: recipe), (0..<3).allSatisfy({ rgb[$0].isFinite }) else { return nil }
         switch self {
+        case .defringePurple, .defringeGreen:
+            guard let hue = ManualDefringe.sampledHue(rgb, purple: self == .defringePurple) else { return nil }
+            let amount = self == .defringePurple ? recipe.manualDefringe.purpleAmount : recipe.manualDefringe.greenAmount
+            return TargetedSample(target: self, weights: [], curveInput: nil, fringeHue: hue, fringeStartAmount: amount == 0 ? 25 : amount)
         case .curve(let channel):
             // Each channel receives the output of preceding native channels.
             var preceding = recipe.develop.curves ?? ToneCurves()
@@ -78,16 +91,29 @@ struct TargetedSample: Equatable, Sendable {
     let target: TargetedAdjustment
     let weights: [Double]
     let curveInput: Double?
+    var fringeHue: Double? = nil
+    var fringeStartAmount: Double? = nil
     var description: String {
+        if let fringeHue { return String(format: L10n.text("defringe.sampleHue", defaultValue: "Sample hue %.1f° · drag to adjust amount"), fringeHue) }
         if let curveInput { return String(format: L10n.text("app.targetCurveInput", defaultValue: "Input %.1f%%"), curveInput * 100) }
         return weights.enumerated().filter { $0.element > 0.001 }.map { HSLBand.names[$0.offset] + " " + String(format: "%.0f%%", $0.element * 100) }.joined(separator: " · ")
     }
     func applying(delta: Double, to original: EditRecipe) throws -> EditRecipe {
         guard delta.isFinite, target.available(in: original) else { return original }
-        // A click and a drag that returns to its origin must not add a point/history.
-        guard delta != 0 else { return original }
+        // Tonal/color targets keep click-only selection. Defringe also applies a
+        // sampled range and a native starting amount on one click, saved on release.
+        guard delta != 0 || target.isDefringe else { return original }
         var r = original
         switch target {
+        case .defringePurple, .defringeGreen:
+            guard let hue = fringeHue else { return original }
+            var settings = original.manualDefringe
+            let purple = target == .defringePurple
+            let previous = purple ? settings.purpleAmount : settings.greenAmount
+            let amount = min(100, max(0, (fringeStartAmount ?? previous) + delta))
+            settings.setSample(hue, purple: purple)
+            if purple { settings.purpleAmount = amount } else { settings.greenAmount = amount }
+            r.manualDefringe = settings
         case .curve(let channel):
             guard let x = curveInput else { return original }
             var curves = original.develop.curves ?? ToneCurves()

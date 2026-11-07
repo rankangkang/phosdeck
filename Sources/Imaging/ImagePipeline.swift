@@ -298,7 +298,8 @@ actor ImagePipeline {
         try Task.checkCancellation()
         if decodeOnly { return Self.originZero(decoded) }
         let repaired = try repairedLinear(decoded, recipe: recipe, cacheKey: decodeKey)
-        let base = try GeneralDetailPipeline.denoise(repaired,recipe.noiseReduction,sourceSize:sourceSize)
+        let denoised = try GeneralDetailPipeline.denoise(repaired,recipe.noiseReduction,sourceSize:sourceSize)
+        let base = try ManualDefringePipeline.apply(denoised, recipe.manualDefringe, sourceSize: sourceSize)
         if pointReferenceOnly {
             let spatial = try SpatialDevelopPipeline.apply(base,adjustments:recipe.develop,context:developContext)
             var contrastOnly = recipe; contrastOnly.saturation = 1
@@ -573,11 +574,13 @@ actor ImagePipeline {
         let image = try PointColorPipeline.range(reference,samples:samples,selected:selected,context:developContext)
         try Task.checkCancellation(); return image
     }
-    func pointColorReference(_ request:ImageRequest,longEdge:Int = 1024) throws -> PointColorReference {
+    func pointColorReference(_ request:ImageRequest,longEdge:Int = 1024,nativeDecode:Bool = false) throws -> PointColorReference {
         let (lease,url) = try source(request); defer { withExtendedLifetime(lease) {} }
         guard let recipe = request.recipe, recipe.pipelineVersion == 2 else { throw LRCError(L10n.text("app.pointColorRequiresTheCurrentDevelopmentRecipe", defaultValue: "Point Color requires the current development recipe")) }
         var size = CGSize.zero
-        let graph = try graph(request,url:url,orientedSourceSize:&size,previewEdge:longEdge,pointReferenceOnly:true)
+        // Fine fringe sampling must not discard native pixels before a tight
+        // crop. Bound the final readback, after the shared output geometry.
+        let graph = try graph(request,url:url,orientedSourceSize:&size,previewEdge:nativeDecode ? nil : longEdge,pointReferenceOnly:true)
         let image = Self.resized(graph,longEdge:longEdge), extent = image.extent.integral
         let w = Int(extent.width), h = Int(extent.height)
         var values = [Float](repeating:0,count:w*h*4)
@@ -664,6 +667,7 @@ actor ImagePipeline {
         let spatialKey = (try encoder.encode(spatial)).base64EncodedString()
         let repairKey = SpotRepair.cacheToken(recipe.repairs)
         let decodedKey = decodedKey + ":nr:" + (try encoder.encode(recipe.noiseReduction)).base64EncodedString()
+            + ":defringe:" + (try encoder.encode(recipe.defringe)).base64EncodedString()
         let key = repairKey.isEmpty ? decodedKey + ":" + spatialKey : decodedKey + ":" + repairKey + ":" + spatialKey
         let input: CIImage
         if let cached = previewSpatial, cached.key == key { input = cached.image }
