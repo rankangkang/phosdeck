@@ -41,10 +41,21 @@
 - **日志**：构建与测试日志反复出现 `MDB_MAP_FULL`，来源未定位。
 - **验证工具**：CUA 不支持普通指针移动，hover 需人工检查；关闭设置后曾出现持续读取超时，App 主线程采样空闲，从 Dock 重新显示主窗口后恢复。相机诊断的离屏截图偶发漏绘保存按钮文字，双主题实窗显示正常。退出参考模式后照片信息条曾在米白窗口截图中漏绘，用户确认同一窗口实际屏幕上的相机名与拍摄参数完整可见，本次确认是捕捉遗漏；不能仅凭截图缺字修改 App。
 
-## 候选下一步（均需用户决定）
+## 下一步与候选
+
+Lightroom 功能补齐的第一批拟做以下前三项，其余仍为候选。依据为本机 Classic 15.2.1 安装资源、Adobe 公开说明与当前源码的静态核对；尚未逐项实窗对照、同图比较或实现原型，成本与效果待验证。沿用 [已定决策](decisions.md) 中的不做与暂缓范围。
+
+- **第一批 · 匹配总曝光**：参考 [Match Total Exposures](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/develop-module-options.html)，按活动照片及光圈／快门／ISO 计算各目标的曝光修正；已有相对曝光只统一累加同一增量。复用 `PhotoMetadata` 和整批保存／撤销，先核实 RAW 基准、无效元数据与限幅语义。
+- **第一批 · 直方图拖动**：参考 [色调控制](https://helpx.adobe.com/lightroom-classic/desktop/help/tone-control-adjustment.html)，在现有显示／剪切检查上增加分区拖动，联动黑色、阴影、曝光、高光、白色参数；保留剪切灯与数值输入，一次拖动只提交一次。
+- **第一批 · 图上目标调整**：参考 [Targeted Adjustment](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/develop-module-tools.html) 和 [Color Mixer](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/color-mixer.html)，补图上取样、拖动调整 HSL／黑白混色／曲线；现有点颜色与亮度分区取样不等于该工具。取样阶段、色带权重和现有自由点曲线的映射规则须先核实。
+- **文件夹差异预览**：参考 [Synchronize folders](https://helpx.adobe.com/lightroom-classic/desktop/manage-catalogs-and-files/create-folders.html)。已有重新扫描可导入新增照片，单张与整根目录定位也已有；候选为新增／缺失／变更／疑似移动的差异预览及批量确认，保留缺失记录、编辑和虚拟副本，先做手动操作。
+- **自动白平衡／自动色调**：参考 [白平衡与色调](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/image-tone-color.html)。已有拍摄时／自定义白平衡与中性区域取样；图像分析算法和摄影样片验证尚缺，不能只补自动按钮或承诺 Adobe 效果。
+- **手动去紫边／绿边**：参考 [Defringe](https://helpx.adobe.com/ca/lightroom-classic/desktop/process-and-develop-photos/retouch-photos.html)。已有系统 RAW 镜头校正开关，候选为额外的可控去边和取样；先分清解码器已应用的校正，并准备有授权的色边样片。
+- **外部编辑往返**：参考 [外部编辑](https://helpx.adobe.com/lightroom-classic/desktop/work-with-external-editors/open-lightroom-photos-external-applications.html)。复用 TIFF16 导出生成派生文件、交给外部 App，再核验并作为独立来源入库关联；文件生命周期、身份与中断恢复须单独设计。
+- **离线可编辑代理**：参考 [Smart Previews](https://helpx.adobe.com/uk/lightroom-classic/desktop/viewing-photos/lightroom-smart-previews.html)。已有缩略图／预览缓存，原片不可用时仍缺编辑代理；须定义代理格式、来源身份、RAW 基准、重连核验和最终输出规则。
 
 - 智能蒙版：用户体验现有功能后，再决定对象请求队列、跨照片部位缓存和逐人索引持久化。
 - 模型分发：确认训练数据条款对现有 FaceParsing 权重的适用性，或更换授权依据清晰的权重；补齐运行时依赖声明并确定安装方式。
 - 继续编辑工作区细节打磨：尚未覆盖的工具和局部面板长文案。
-- 工作流：快照创建撤销、集合组；内容感知填补、外部编辑往返、物理文件管理为后续大项。
+- 工作流：快照创建撤销、集合组；内容感知填补、物理文件管理为后续大项。
 - 应用分发：验证下载安装与使用体验，核对发行说明和随包许可。
