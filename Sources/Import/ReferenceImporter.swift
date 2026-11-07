@@ -30,13 +30,15 @@ actor ReferenceImporter {
             defer { report.errors += enumerationErrors }
             let outputs = try await catalog.database.read { db in Set(try String.fetchAll(db, sql: "SELECT destination FROM exportItem")) }
             guard let enumerator = FileManager.default.enumerator(at: lease.url,
-                includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey],
+                includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey],
                 options: [.skipsHiddenFiles, .skipsPackageDescendants], errorHandler: { url, error in enumerationErrors.append("\(url.lastPathComponent)：\(error.localizedDescription)"); return true }) else { throw LRCError(L10n.text("app.cannotReadTheFolder", defaultValue: "Cannot read the folder")) }
             while let url = enumerator.nextObject() as? URL {
                 try Task.checkCancellation()
-                if url.lastPathComponent == "ImportRecovery" { enumerator.skipDescendants(); report.ignored += 1; continue }
-                let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey])
-                if values.isSymbolicLink == true || values.isPackage == true || values.isUbiquitousItem == true { enumerator.skipDescendants(); report.ignored += 1; continue }
+                let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey])
+                if url.lastPathComponent == "ImportRecovery" || values.isSymbolicLink == true || values.isPackage == true || values.isUbiquitousItem == true {
+                    if values.isDirectory == true { enumerator.skipDescendants() }
+                    report.ignored += 1; continue
+                }
                 guard values.isRegularFile == true, !outputs.contains(url.path) else { continue }
                 guard ImportPlanner.images.contains(url.pathExtension.lowercased()) else { report.ignored += 1; continue }
                 do {

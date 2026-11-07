@@ -177,15 +177,19 @@ actor ImportPlanner {
         var errors = [String]()
         var options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles, .skipsPackageDescendants]
         if !includeSubfolders { options.insert(.skipsSubdirectoryDescendants) }
-        guard let enumerator = FileManager.default.enumerator(at: source, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey], options: options, errorHandler: { url, error in
+        guard let enumerator = FileManager.default.enumerator(at: source, includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey], options: options, errorHandler: { url, error in
             errors.append("\(url.lastPathComponent)：\(error.localizedDescription)"); return true
         }) else { throw LRCError(L10n.text("app.cannotReadTheSource", defaultValue: "Cannot read the source")) }
         var files = [URL]()
         while let url = enumerator.nextObject() as? URL {
             try Task.checkCancellation()
-            if url.lastPathComponent == "ImportRecovery" { enumerator.skipDescendants(); continue }
-            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey])
-            if values.isSymbolicLink == true || values.isPackage == true || values.isUbiquitousItem == true { enumerator.skipDescendants(); continue }
+            let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey])
+            if url.lastPathComponent == "ImportRecovery" || values.isSymbolicLink == true || values.isPackage == true || values.isUbiquitousItem == true {
+                // Calling skipDescendants on a leaf can skip the next directory
+                // on macOS. A linked file has no descendants to skip.
+                if values.isDirectory == true { enumerator.skipDescendants() }
+                continue
+            }
             if values.isRegularFile == true { files.append(url) }
         }
         guard errors.isEmpty else { throw LRCError(L10n.text("app.incompleteSourceRead", defaultValue: "Incomplete source read: ") + errors.joined(separator: "; ")) }

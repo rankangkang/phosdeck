@@ -50,6 +50,19 @@ final class ImportTests: XCTestCase {
         XCTAssertTrue(duplicate.importedPhotoIDs.isEmpty); XCTAssertEqual(duplicate.indexed, 0)
     }
 
+    func testReferenceScanAndPreviewKeepSubdirectoriesAfterSkippingLinkedFiles() async throws {
+        try FileManager.default.createDirectory(at: source.appendingPathComponent("sub/nested"), withIntermediateDirectories: true)
+        for path in ["keep.jpg", "sub/new.jpg", "sub/nested/deep.jpg"] { try image(source.appendingPathComponent(path)) }
+        try FileManager.default.createSymbolicLink(at: source.appendingPathComponent("sub/link.jpg"), withDestinationURL: source.appendingPathComponent("keep.jpg"))
+        let root = try catalog.addRoot(url: source, bookmark: AccessLease.bookmark(source, readOnly: true))
+        let importer = ReferenceImporter()
+        let candidates = try await importer.preview(source: source, includeSubfolders: true, catalog: catalog)
+        XCTAssertEqual(Set(candidates.map { $0.url.lastPathComponent }), ["keep.jpg", "new.jpg", "deep.jpg"])
+        let report = await importer.scan(root: root, catalog: catalog) { _ in }
+        XCTAssertTrue(report.errors.isEmpty)
+        XCTAssertEqual(Set(try catalog.photos().map(\.relativePath)), ["keep.jpg", "sub/new.jpg", "sub/nested/deep.jpg"])
+    }
+
     @MainActor func testCopyWithNoNewPhotosKeepsLastImportAndReportsZeroNewPhotos() async throws {
         try image(source.appendingPathComponent("A.jpg"))
         let suite = "copy-last-import-" + UUID().uuidString
