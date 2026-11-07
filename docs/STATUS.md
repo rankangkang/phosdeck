@@ -22,6 +22,7 @@
 - **产品官网**：`site/` 中的 Astro 中英双语站点仅在 `master` 推送包含 `site/` 变更时通过 GitHub Actions 发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/)；默认石墨并支持米白，保留合成截图。首屏说明、工作流排版和下载区域已完成设计调整，线上效果待用户验收；开发命令见[贡献指南](../CONTRIBUTING.zh.md#官网开发)。
 - **预览性能**：中央布局定尺寸、Observation 细粒度观察、质量预览调度与局部刷新、画布显示等待移出主线程。遗留见下节。
 - **中英界面与社区语言包**：导入方式和关键词入口使用 `Add`／“添加”操作文案，与已添加状态分开；其他措辞及社区语言包待体验确认。
+- **匹配总曝光**：已接入“调整”菜单，按活动照片的拍摄曝光、原生 RAW 基准与当前曝光计算目标值；复用整批事务及撤销重做，无效目标跳过、限幅单独报告。计算与批量回归已核对，固定 App 交互待本批集成核对；Adobe 精确算法与同图运行对照未验证。
 - **工作流**：最近一次导入跨重启（导航状态存本机偏好，不随备份或换机携带）、普通集合删除撤销（仅当前会话）。新增“调整 → 应用相对曝光…”，按每张照片原值累加，支持 ±⅓／±1 EV、数值输入与整批撤销重做；中文双主题及合成批次保存值已实窗核对。
 - **图库后缀**：新建／恢复统一 `.phoscat`，旧 `.omlcat`／`.omlrcat` 打开时可确认仅改后缀、保持原名或取消。
 - **免证书构建与使用说明**：[源码构建](../README.zh.md#快速上手)尚待其他机器验证；[上手指南](getting-started.md)和中英文[贡献指南](../CONTRIBUTING.zh.md)待用户审核。
@@ -43,9 +44,9 @@
 
 ## 下一步与候选
 
-Lightroom 功能补齐的第一批拟做以下前三项，其余仍为候选。依据为本机 Classic 15.2.1 安装资源、Adobe 公开说明与当前源码的静态核对；尚未逐项实窗对照、同图比较或实现原型，成本与效果待验证。沿用 [已定决策](decisions.md) 中的不做与暂缓范围。
+Lightroom 功能补齐的第一批范围为以下前三项，其余仍为候选。依据为本机 Classic 15.2.1 安装资源、Adobe 公开说明与当前源码的静态核对；尚未逐项实窗对照、同图比较或实现原型，成本与效果待验证。沿用 [已定决策](decisions.md) 中的不做与暂缓范围。
 
-- **第一批 · 匹配总曝光**：参考 [Match Total Exposures](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/develop-module-options.html)，按活动照片及光圈／快门／ISO 计算各目标的曝光修正；已有相对曝光只统一累加同一增量。复用 `PhotoMetadata` 和整批保存／撤销，先核实 RAW 基准、无效元数据与限幅语义。
+- **第一批 · 匹配总曝光**：参考 [Match Total Exposures](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/develop-module-options.html)，按活动照片及光圈／快门／ISO 计算各目标的曝光修正；已有相对曝光只统一累加同一增量。已实现原生参数匹配，见待用户验收；Adobe 未公开 RAW 基准细节，未宣称恢复其算法。
 - **第一批 · 直方图拖动**：参考 [色调控制](https://helpx.adobe.com/lightroom-classic/desktop/help/tone-control-adjustment.html)，在现有显示／剪切检查上增加分区拖动，联动黑色、阴影、曝光、高光、白色参数；保留剪切灯与数值输入，一次拖动只提交一次。
 - **第一批 · 图上目标调整**：参考 [Targeted Adjustment](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/develop-module-tools.html) 和 [Color Mixer](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/color-mixer.html)，补图上取样、拖动调整 HSL／黑白混色／曲线；现有点颜色与亮度分区取样不等于该工具。取样阶段、色带权重和现有自由点曲线的映射规则须先核实。
 - **文件夹差异预览**：参考 [Synchronize folders](https://helpx.adobe.com/lightroom-classic/desktop/manage-catalogs-and-files/create-folders.html)。已有重新扫描可导入新增照片，单张与整根目录定位也已有；候选为新增／缺失／变更／疑似移动的差异预览及批量确认，保留缺失记录、编辑和虚拟副本，先做手动操作。

@@ -309,6 +309,11 @@ struct WorkspaceView: View {
             Button(L10n.text("app.usePreviousAdjustments_282", defaultValue: "Use Previous Adjustments…")) { model.requestAdjustments(.previous) }.disabled(!model.canUsePreviousAdjustments)
             Button(L10n.text("app.syncCurrentPhotoToSelection", defaultValue: "Sync Current Photo to Selection…")) { model.requestAdjustments(.sync) }
                 .disabled(!model.canEdit || model.selection.subtracting(Set([model.activeID].compactMap { $0 })).isEmpty)
+            Button(L10n.text("app.matchTotalExposures", defaultValue: "Match Total Exposures")) {
+                model.matchTotalExposures(ids: model.selection)
+            }
+            .disabled(!model.canEdit || model.activeID.map { !model.selection.contains($0) } != false || model.selection.count < 2)
+            .help(L10n.text("app.matchTotalExposuresHelp", defaultValue: "Match the active photo using aperture, shutter, ISO, and native RAW baseline. Missing capture metadata is skipped; Exposure is limited to ±5 EV."))
             Button(L10n.text("app.applyRelativeExposure", defaultValue: "Apply Relative Exposure…")) {
                 relativeExposureTargets = model.selection
                 relativeExposureDialog = true

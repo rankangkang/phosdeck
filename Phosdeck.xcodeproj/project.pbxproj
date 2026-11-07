@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D42700010000000000000001 /* ExposureMatching.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000001 /* ExposureMatching.swift */; };
 		4C0B38C57003462C59396DE9 /* redlamp-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 21F5D7CEC50F9DD8E6F09743 /* redlamp-LICENSE.txt */; };
 		A6A6287BB2B6932AFDE35052 /* CameraDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14EC3A28953F72C09F416976 /* CameraDiagnosticsTests.swift */; };
 		7210A8A29658FD0074AAEBCB /* UprightTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A715E6F6E099A51F9F2FE8 /* UprightTests.swift */; };
@@ -196,6 +197,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D42700020000000000000001 /* ExposureMatching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExposureMatching.swift; sourceTree = "<group>"; };
 		21F5D7CEC50F9DD8E6F09743 /* redlamp-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "redlamp-LICENSE.txt"; sourceTree = "<group>"; };
 		14EC3A28953F72C09F416976 /* CameraDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CameraDiagnosticsTests.swift"; sourceTree = "<group>"; };
 		B9A715E6F6E099A51F9F2FE8 /* UprightTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UprightTests.swift"; sourceTree = "<group>"; };
@@ -612,6 +614,7 @@
 				3A1657F865558A803EB25884 /* PerceptualColor.swift */,
 				AE45F63BF38454C683F85C3E /* PreviewDiskCache.swift */,
 				7DF22F3194719D2A5BB06690 /* SpatialDevelopPipeline.swift */,
+				D42700020000000000000001 /* ExposureMatching.swift */,
 				F31AE03A5D159654A72C1F2B /* TonalPipeline.swift */,
 				2A1F3C96D7834074AD24F35E /* RasterExposure.swift */,
 				D1A000010000000000000001 /* RasterExposureColour.swift */,
@@ -955,6 +958,7 @@
 				3A555154F615F8D776E1C338 /* LanguagePackSettings.swift in Sources */,
 				69DA587738456AE4A457D753 /* SpatialDevelopPipeline.swift in Sources */,
 				85A5A4FF9BA96F32EDC36229 /* StorageUsage.swift in Sources */,
+				D42700010000000000000001 /* ExposureMatching.swift in Sources */,
 				707CD377191AAB99CFB3CFBF /* TonalPipeline.swift in Sources */,
 				67F1B53C0BAA42498D3B0CCB /* RasterExposure.swift in Sources */,
 				D1A000020000000000000001 /* RasterExposureColour.swift in Sources */,

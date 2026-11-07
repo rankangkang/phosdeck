@@ -530,6 +530,85 @@ final class WorkflowTests: XCTestCase {
         XCTAssertThrowsError(try catalog.saveRecipes([(original[0], a)], title: "stale revision"))
     }
 
+    func testTotalExposureMetadataCalculationBaselineAndLimits() throws {
+        let capture = PhotoMetadata(iso: 100, aperture: 4, exposureTime: 1.0 / 125)
+        var source = recipe(); source.exposure = 0.75; source.baselineExposure = 0.3
+        let match = try TotalExposureMatch(metadata: capture, recipe: source)
+        var target = source; target.baselineExposure = -0.2; target.exposure = -3
+        XCTAssertEqual(try match.exposure(metadata: capture, recipe: target).value, 1.25, accuracy: 1e-10)
+        for metadata in [PhotoMetadata(iso: 100, aperture: 4, exposureTime: 1.0 / 250),
+                         PhotoMetadata(iso: 50, aperture: 4, exposureTime: 1.0 / 125)] {
+            XCTAssertEqual(try match.exposure(metadata: metadata, recipe: target).value, 2.25, accuracy: 1e-10)
+        }
+        XCTAssertEqual(try match.exposure(metadata: PhotoMetadata(iso: 100, aperture: 8, exposureTime: 1.0 / 125), recipe: target).value, 3.25, accuracy: 1e-10)
+        for (time, expected) in [(1e-100, 5.0), (1e100, -5.0)] {
+            let value = try match.exposure(metadata: PhotoMetadata(iso: 100, aperture: 4, exposureTime: time), recipe: target)
+            XCTAssertEqual(value.value, expected); XCTAssertTrue(value.limited)
+        }
+        for invalid in [nil, PhotoMetadata(), PhotoMetadata(iso: 0, aperture: 4, exposureTime: 1),
+                        PhotoMetadata(iso: -100, aperture: 4, exposureTime: 1),
+                        PhotoMetadata(iso: 100, aperture: 0, exposureTime: 1),
+                        PhotoMetadata(iso: 100, aperture: .nan, exposureTime: 1),
+                        PhotoMetadata(iso: 100, aperture: 4, exposureTime: -.infinity),
+                        PhotoMetadata(iso: 100, aperture: 4, exposureTime: 0)] {
+            XCTAssertThrowsError(try TotalExposureMatch(metadata: invalid, recipe: source))
+            XCTAssertThrowsError(try match.exposure(metadata: invalid, recipe: target))
+        }
+        XCTAssertTrue(try TotalExposureMatch.captureStops(PhotoMetadata(iso: Int.max, aperture: .leastNonzeroMagnitude, exposureTime: .greatestFiniteMagnitude)).isFinite)
+    }
+
+    @MainActor func testMatchTotalExposuresBatchSkipClampUndoRedoAndAtomicFailure() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let catalog = try CatalogStore(directory: folder)
+        let root = try catalog.addRoot(url: folder, bookmark: Data())
+        var originals = [String: EditRecipe]()
+        for id in ["a", "b", "c", "missing", "unselected"] {
+            var value = recipe(); value.exposure = id == "a" ? 0.5 : -1
+            value.baselineExposure = id == "a" ? 0.2 : -0.3
+            value.contrast = 1.2; value.develop.shadows = 15
+            var photo = Photo(id: id, rootID: root.id, relativePath: id + ".ARW", identity: Data(), identityKey: id, width: 80, height: 40)
+            photo.recipe = try JSONEncoder().encode(value); photo.recipeRevision = 1
+            if id != "missing" {
+                photo.metadata = try JSONEncoder().encode(PhotoMetadata(iso: 100, aperture: 4, exposureTime: id == "a" ? 1.0 / 125 : id == "c" ? 1e-10 : 1.0 / 250))
+            }
+            try catalog.index(photo); originals[id] = value
+        }
+        let model = AppModel(previewRenderer: { _, _, _ in throw LRCError("synthetic") })
+        model.catalog = catalog; try model.reload(); model.activeID = "a"
+        model.activePhoto = try catalog.photo("a"); model.recipe = originals["a"]; model.canEdit = true
+        model.undo.groupsByEvent = false
+        let selected: Set<String> = ["a", "b", "c", "missing"]
+        func stored(_ id: String) throws -> EditRecipe {
+            try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(catalog.photo(id)?.recipe))
+        }
+        XCTAssertTrue(model.matchTotalExposures(ids: selected)); await model.task?.value
+        XCTAssertEqual(try stored("b").exposure, 2, accuracy: 1e-10)
+        var expected = try XCTUnwrap(originals["b"]); expected.exposure = try stored("b").exposure
+        XCTAssertEqual(try stored("b"), expected)
+        var limited = try XCTUnwrap(originals["c"]); limited.exposure = 5
+        XCTAssertEqual(try stored("c"), limited)
+        XCTAssertEqual(model.reports.count, 4, "Successes plus missing metadata and limiting reports")
+        for id in ["a", "missing", "unselected"] {
+            XCTAssertEqual(try catalog.photo(id)?.recipeRevision, 1)
+            XCTAssertEqual(try stored(id), originals[id])
+        }
+        XCTAssertEqual(try catalog.editHistory(photoID: "b").count, 1)
+        model.undo.undo()
+        XCTAssertEqual(try stored("b"), originals["b"]); XCTAssertEqual(try stored("c"), originals["c"])
+        XCTAssertFalse(model.undo.canUndo, "One undo restores the entire successful subset")
+        model.undo.redo(); XCTAssertEqual(try stored("b"), expected); XCTAssertEqual(try stored("c"), limited)
+        model.undo.undo()
+        try await catalog.database.write { try $0.execute(sql: "CREATE TRIGGER fail_match BEFORE UPDATE OF recipe ON photo WHEN NEW.id='c' BEGIN SELECT RAISE(ABORT,'injected failure'); END") }
+        XCTAssertTrue(model.matchTotalExposures(ids: selected)); await model.task?.value
+        XCTAssertNotNil(model.error)
+        XCTAssertEqual(try stored("b"), originals["b"], "Storage failure rolls back all targets")
+        XCTAssertEqual(try stored("c"), originals["c"])
+        model.error = nil; model.activeID = "missing"; model.recipe = originals["missing"]
+        XCTAssertFalse(model.matchTotalExposures(ids: selected)); XCTAssertNotNil(model.error)
+        XCTAssertEqual(try stored("b"), originals["b"])
+    }
+
     @MainActor func testRelativeExposureBatchAccumulatesPerPhotoBoundsSelectionAndUndoRedo() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

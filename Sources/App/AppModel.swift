@@ -2300,6 +2300,27 @@ final class AppModel {
         let title = title ?? L10n.text("app.relativeExposure", defaultValue: "Relative Exposure")
         guard !busy, canEdit, !ids.isEmpty, delta.isFinite, (-5...5).contains(delta), delta != 0,
               let catalog, commitRecipe() else { return false }
+        return applyExposureBatch(ids: ids, title: title) { _, original in
+            (min(5, max(-5, original.exposure + delta)), false)
+        }
+    }
+
+    @discardableResult func matchTotalExposures(ids: Set<String>) -> Bool {
+        guard !busy, canEdit, let id = activeID, ids.contains(id), ids.count > 1,
+              let catalog, commitRecipe(), let recipe else { return false }
+        do {
+            guard let source = try catalog.photo(id) else { return false }
+            let match = try TotalExposureMatch(metadata: source.details, recipe: recipe)
+            return applyExposureBatch(ids: ids.subtracting([id]),
+                title: L10n.text("app.matchTotalExposures", defaultValue: "Match Total Exposures")) { photo, original in
+                try match.exposure(metadata: photo.details, recipe: original)
+            }
+        } catch { self.error = error.localizedDescription; return false }
+    }
+
+    private func applyExposureBatch(ids: Set<String>, title: String,
+                                    adjustment: @escaping (Photo, EditRecipe) throws -> (value: Double, limited: Bool)) -> Bool {
+        guard let catalog else { return false }
         do {
             let targets = try catalog.photos(ids: ids)
             guard !targets.isEmpty else { return false }
@@ -2322,7 +2343,11 @@ final class AppModel {
                             else { original = try await pipeline.baseline(ImageRequest(photo: photo, root: root, recipe: nil)) }
                             try original.validate(for: photo)
                             var value = original
-                            value.exposure = min(5, max(-5, original.exposure + delta))
+                            let exposure = try adjustment(photo, original)
+                            value.exposure = exposure.value
+                            if exposure.limited {
+                                results.append(L10n.text("app.matchExposureLimited", defaultValue: "\(photo.name): Exposure limited to ±5 EV; total exposure could not be matched"))
+                            }
                             try value.validate(for: photo)
                             guard value != original else {
                                 results.append(L10n.text("app.noChangesNeeded", defaultValue: "No changes needed: \(photo.name)"))

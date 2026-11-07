@@ -26,6 +26,7 @@ targets:
     type: application
     platform: macOS
     sources:
+      # Includes Imaging/ExposureMatching.swift.
       - path: Sources
         excludes: [Imaging/raster-exposure-colour-v4.bin]
       - path: design/logo/wordmark-approved-ivory.svg

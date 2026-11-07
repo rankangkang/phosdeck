@@ -1,6 +1,74 @@
 {
   "sourceLanguage": "en",
   "strings": {
+  "app.matchTotalExposures": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Match Total Exposures"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "匹配总曝光"
+        }
+      }
+    }
+  },
+  "app.matchTotalExposuresHelp": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Match the active photo using aperture, shutter, ISO, and native RAW baseline. Missing capture metadata is skipped; Exposure is limited to ±5 EV."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "根据活动照片的光圈、快门、ISO 与原生 RAW 基准匹配曝光。跳过缺少拍摄元数据的照片；曝光限于 ±5 EV。"
+        }
+      }
+    }
+  },
+  "app.matchExposureMissingMetadata": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Matching requires valid aperture, shutter speed, and ISO"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "匹配曝光需要有效的光圈、快门与 ISO"
+        }
+      }
+    }
+  },
+  "app.matchExposureLimited": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "\\(photo.name): Exposure limited to ±5 EV; total exposure could not be matched"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "\\(photo.name)：曝光已限幅至 ±5 EV，未能完全匹配总曝光"
+        }
+      }
+    }
+  },
     "app.applyRelativeExposure": {
       "extractionState": "manual",
       "localizations": {
