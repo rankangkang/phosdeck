@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D42700010000000000000008 /* TargetedAdjustmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000008 /* TargetedAdjustmentTests.swift */; };
+		D42700010000000000000007 /* TargetedAdjustmentControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000007 /* TargetedAdjustmentControls.swift */; };
+		D42700010000000000000006 /* TargetedEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000006 /* TargetedEditing.swift */; };
+		D42700010000000000000005 /* TargetedAdjustment.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000005 /* TargetedAdjustment.swift */; };
 		D42700010000000000000004 /* DirectAdjustmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000004 /* DirectAdjustmentTests.swift */; };
 		D42700010000000000000003 /* HistogramAdjustment.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000003 /* HistogramAdjustment.swift */; };
 		D42700010000000000000002 /* DirectAdjustments.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000002 /* DirectAdjustments.swift */; };
@@ -200,6 +204,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D42700020000000000000008 /* TargetedAdjustmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetedAdjustmentTests.swift; sourceTree = "<group>"; };
+		D42700020000000000000007 /* TargetedAdjustmentControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetedAdjustmentControls.swift; sourceTree = "<group>"; };
+		D42700020000000000000006 /* TargetedEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetedEditing.swift; sourceTree = "<group>"; };
+		D42700020000000000000005 /* TargetedAdjustment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetedAdjustment.swift; sourceTree = "<group>"; };
 		D42700020000000000000004 /* DirectAdjustmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectAdjustmentTests.swift; sourceTree = "<group>"; };
 		D42700020000000000000003 /* HistogramAdjustment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistogramAdjustment.swift; sourceTree = "<group>"; };
 		D42700020000000000000002 /* DirectAdjustments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectAdjustments.swift; sourceTree = "<group>"; };
@@ -533,6 +541,7 @@
 				D18C00020000000000000001 /* FreeCurveTests.swift */,
 				D18C00020000000000000002 /* BlackWhiteMixerTests.swift */,
 				B47075A9CE33AAE0D607434D /* TonalTests.swift */,
+				D42700020000000000000008 /* TargetedAdjustmentTests.swift */,
 				D42700020000000000000004 /* DirectAdjustmentTests.swift */,
 				D60A24C4208C52F3CAB9048E /* WorkflowTests.swift */,
 				9A239B718941D84CDC85C2F2 /* SmartMaskTests.swift */,
@@ -565,7 +574,9 @@
 				72E013274F6D0034FD1055C6 /* PresetManagement.swift */,
 
 				98D689967F74403A8F94D13E /* PairEditing.swift */,
-				6E3F4C9AF79E4FF39C8360FF /* StackEditing.swift */,				5EA2AA836B41430697BFC16E /* PointColorEditing.swift */,
+				6E3F4C9AF79E4FF39C8360FF /* StackEditing.swift */,
+				D42700020000000000000006 /* TargetedEditing.swift */,
+				5EA2AA836B41430697BFC16E /* PointColorEditing.swift */,
 				C9D7E74E491B5B6820B2A5BF /* AppModel.swift */,
 				D19CCA868344D600A7F11CDD /* InspectionEditing.swift */,
 				751FCC1E508E2CE354177999 /* CollectionOrdering.swift */,
@@ -601,6 +612,7 @@
 				974380F5EBFA586BBD9151E4 /* UprightCorrection.swift */,
 				8D53D3CC77BFC5680ACDE04B /* XMPPresetSettings.swift */,
 				F44788E9D8A7699251A84F46 /* LocalParameterPreset.swift */,
+				D42700020000000000000005 /* TargetedAdjustment.swift */,
 				B27C267D11F949CAA0A2A6D0 /* PointColor.swift */,
 				99DA58B0D79A40DECD113A27 /* CropInteraction.swift */,
 				D18D00020000000000000001 /* PhotoGeometry.swift */,
@@ -644,7 +656,9 @@
 				9D46B0B41920D54E006B4530 /* PresetBrowser.swift */,
 
 				B2E1531B51B5479A9782724E /* PairingSheet.swift */,
-				001B2646B68640B08C6960B5 /* StackControls.swift */,				9A238AD27B804B1EB0A5FDEC /* PointColorPanel.swift */,
+				001B2646B68640B08C6960B5 /* StackControls.swift */,
+				D42700020000000000000007 /* TargetedAdjustmentControls.swift */,
+				9A238AD27B804B1EB0A5FDEC /* PointColorPanel.swift */,
 				8F95F7483DE841A8835A0C52 /* SmartCollectionSheet.swift */,
 				3A5B21C5345EE6589A963C50 /* CopyImportSheet.swift */,
 				D7A1C0DE00000000000000A2 /* DarkroomControls.swift */,
@@ -871,6 +885,7 @@
 
 				C7FC324B59EC4951814F7203 /* RawJpegPairTests.swift in Sources */,
 				7114423C4AE44A259C4C84AE /* StackTests.swift in Sources */,				5C2A6201091B462F9F2F9779 /* VirtualCopyTests.swift in Sources */,
+				D42700010000000000000008 /* TargetedAdjustmentTests.swift in Sources */,
 				D42700010000000000000004 /* DirectAdjustmentTests.swift in Sources */,
 				B954E0DF2619F412432A8C86 /* WorkflowTests.swift in Sources */,
 				FDB12FE8C1C91C4A371A52E6 /* SmartMaskTests.swift in Sources */,
@@ -910,10 +925,15 @@
 				D21100000000000000000002 /* CatalogFile.swift in Sources */,
 
 				686BF4F8F1AB48ACBD3F97E5 /* PairingSheet.swift in Sources */,
-				0838C55F80EF4E44AC9BA3D5 /* StackControls.swift in Sources */,				C33FC304E6984D5AB443D11C /* PointColorPanel.swift in Sources */,
+				0838C55F80EF4E44AC9BA3D5 /* StackControls.swift in Sources */,
+				D42700010000000000000007 /* TargetedAdjustmentControls.swift in Sources */,
+				C33FC304E6984D5AB443D11C /* PointColorPanel.swift in Sources */,
 
 				4B0B281B68714357BA328625 /* PairEditing.swift in Sources */,
-				A8E3A3C3B5BE4F019AC0E715 /* StackEditing.swift in Sources */,				5D926052641D44488BD515BA /* PointColorEditing.swift in Sources */,
+				A8E3A3C3B5BE4F019AC0E715 /* StackEditing.swift in Sources */,
+				D42700010000000000000006 /* TargetedEditing.swift in Sources */,
+				5D926052641D44488BD515BA /* PointColorEditing.swift in Sources */,
+				D42700010000000000000005 /* TargetedAdjustment.swift in Sources */,
 				2FA48BFF2D4F464B912ECCDC /* PointColor.swift in Sources */,
 				68E032B200D04F4C9023C695 /* SmartCollectionSheet.swift in Sources */,
 				09934FD6EE874DB69C2581BE /* SmartCollections.swift in Sources */,

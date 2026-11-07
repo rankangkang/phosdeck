@@ -1,7 +1,7 @@
 import Foundation
 
 struct DirectAdjustmentSession {
-    enum Kind { case histogram(HistogramRegion) }
+    enum Kind { case histogram(HistogramRegion), targeted(TargetedSample) }
     let photoID: String
     let original: EditRecipe
     var latest: EditRecipe
@@ -16,6 +16,7 @@ extension AppModel {
 
     @discardableResult func beginHistogramAdjustment(_ region: HistogramRegion) -> Bool {
         guard canDragHistogram else { return false }
+        cancelTargetedAdjustment()
         cancelDirectAdjustment()
         guard commitRecipe(), let id = activeID, let recipe else { return false }
         directAdjustment = DirectAdjustmentSession(photoID: id, original: recipe, latest: recipe,

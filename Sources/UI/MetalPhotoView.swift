@@ -16,6 +16,12 @@ struct MetalPhotoView: NSViewRepresentable {
     var onClick: ((CGPoint) -> Void)?
     var onPan: ((CGPoint) -> Void)?
     var accessibilityName = L10n.text("app.photoCanvas", defaultValue: "Photo Canvas")
+    var targetedToolID: String?
+    var onTargetBegin: ((CGPoint) -> Bool)?
+    var onTargetChange: ((Double) -> Void)?
+    var onTargetEnd: ((Bool) -> Void)?
+    var onTargetNudge: ((Double) -> Bool)?
+    var onTargetExit: (() -> Void)?
     var onZoneSample: ((CGPoint) -> Void)?
     var maskEditing: MaskCanvasEditing?
     var onMaskPointer: ((CGPoint, MaskPointerPhase, NSEvent.ModifierFlags, MaskEditGesture.Action?) -> Void)?
@@ -42,13 +48,22 @@ struct MetalPhotoView: NSViewRepresentable {
         // pane-aware, disable the readout rather than reporting the After
         // source while the pointer is over the Before half.
         let nextReadoutEnabled = onPixelReadout != nil && splitBefore == nil
-        let cursorChanged = (view.source == nil) != (image == nil) || view.actualPixels != actualPixels || view.fill != fill || view.cropAngle != cropAngle ||
+        let targetChanged = view.targetedToolID != targetedToolID
+        let cursorChanged = targetChanged || (view.source == nil) != (image == nil) || view.actualPixels != actualPixels || view.fill != fill || view.cropAngle != cropAngle ||
             (view.onZoneSample == nil) != (onZoneSample == nil) || (view.maskEditing == nil) != (maskEditing == nil) || (view.spotEditing == nil) != (spotEditing == nil)
         let changed = maskChanged || spotChanged || view.source !== image || view.actualPixels != actualPixels || view.photoID != photoID || view.nativeSize != nativeSize || view.backdrop != backdrop || view.displayCenter != viewport.center || view.zoomScale != zoomScale || view.fill != fill || view.cropAngle != cropAngle
             || view.clipShadows != nextShadows || view.clipHighlights != nextHighlights || view.readoutEnabled != nextReadoutEnabled || view.splitSource !== splitBefore
         view.clipShadows = nextShadows; view.clipHighlights = nextHighlights; view.splitSource = splitBefore
         let zoomChanged = view.actualPixels != actualPixels || view.zoomScale != zoomScale || view.fill != fill
         let resetMotion = view.photoID != photoID || view.cropAngle != cropAngle || image == nil
+        if resetMotion || targetChanged || zoomChanged { view.cancelTargetGesture() }
+        view.targetedToolID = targetedToolID
+        view.onTargetBegin = onTargetBegin; view.onTargetChange = onTargetChange; view.onTargetEnd = onTargetEnd
+        view.onTargetNudge = onTargetNudge; view.onTargetExit = onTargetExit
+        view.setAccessibilityCustomActions(targetedToolID == nil ? [] : [
+            NSAccessibilityCustomAction(name: L10n.text("app.increaseTargetedAdjustment", defaultValue: "Increase Targeted Adjustment")) { [weak view] in view?.onTargetNudge?(1) ?? false },
+            NSAccessibilityCustomAction(name: L10n.text("app.decreaseTargetedAdjustment", defaultValue: "Decrease Targeted Adjustment")) { [weak view] in view?.onTargetNudge?(-1) ?? false }
+        ])
         view.photoID = photoID; view.nativeSize = nativeSize; view.backdrop = backdrop
         view.actualPixels = actualPixels
         view.zoomScale = zoomScale; view.fill = fill; view.cropAngle = cropAngle; view.onClick = onClick
@@ -231,6 +246,9 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
     private static let rotateCursor = NSCursor(image: NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: L10n.text("app.rotate", defaultValue: "Rotate"))!, hotSpot: NSPoint(x: 8, y: 8))
     private var pointerArea: NSTrackingArea?
     private var maskTracking = false
+    private(set) var targetTracking = false
+    private var targetPointerY = 0.0
+    private var targetDelta = 0.0
     private var spotTracking = false
     private var spotAdjusting = false
     private var spotHoverID: UUID?
@@ -244,6 +262,12 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
     var cropAngle: Double? { didSet { if oldValue != cropAngle { renderer?.invalidate() } } }
     var onClick: ((CGPoint) -> Void)?
     var onPan: ((CGPoint) -> Void)?
+    var targetedToolID: String?
+    var onTargetBegin: ((CGPoint) -> Bool)?
+    var onTargetChange: ((Double) -> Void)?
+    var onTargetEnd: ((Bool) -> Void)?
+    var onTargetNudge: ((Double) -> Bool)?
+    var onTargetExit: (() -> Void)?
     var onZoneSample: ((CGPoint) -> Void)?
     var onPixelReadout: ((DisplayPixelSample?) -> Void)?
     private var pixelSampler: DisplayPixelSampler?
@@ -291,7 +315,21 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.acceptsMouseMovedEvents = true
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        if let window {
+            NotificationCenter.default.addObserver(self, selector: #selector(targetWindowLost), name: NSWindow.didResignKeyNotification, object: window)
+        } else { cancelTargetGesture() }
         if window == nil { renderer?.invalidate(); zoomMotion = nil; lastImageRect = nil; isPaused = true; enableSetNeedsDisplay = true }
+    }
+    @objc private func targetWindowLost() { cancelTargetGesture() }
+    deinit { NotificationCenter.default.removeObserver(self) }
+    override func setFrameSize(_ newSize: NSSize) {
+        if newSize != frame.size { cancelTargetGesture() }
+        super.setFrameSize(newSize)
+    }
+    func cancelTargetGesture() {
+        guard targetTracking else { return }
+        targetTracking = false; onTargetEnd?(true); pressPoint = nil; lastDragPoint = nil
     }
     private var renderer: CanvasFrameRenderer?
     private var drawAttempt = 0
@@ -444,8 +482,8 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
     }
     override func resetCursorRects() {
         guard cropAngle == nil, source != nil else { return }
-        if onZoneSample != nil && !spaceHeld { addCursorRect(bounds, cursor: .crosshair); return }
-        if (maskEditing == nil && spotEditing == nil) || spaceHeld { addCursorRect(bounds, cursor: canPan ? .openHand : .zoomIn) }
+        if (onZoneSample != nil || targetedToolID != nil) && !spaceHeld { addCursorRect(bounds, cursor: .crosshair); return }
+        if (maskEditing == nil && spotEditing == nil && targetedToolID == nil) || spaceHeld { addCursorRect(bounds, cursor: canPan ? .openHand : .zoomIn) }
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -653,6 +691,11 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         guard cropAngle == nil, source != nil else { return }
         window?.makeFirstResponder(self)
         pressPoint = convert(event.locationInWindow, from: nil); lastDragPoint = pressPoint; dragged = false
+        if targetedToolID != nil && !spaceHeld {
+            targetPointerY = Double(pressPoint?.y ?? 0); targetDelta = 0
+            targetTracking = onTargetBegin?(maskOutputPoint(event)) ?? false
+            return
+        }
         if spotEditing != nil && !spaceHeld {
             spotHold = nil
             spotTracking = true
@@ -673,6 +716,15 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
     }
     override var acceptsFirstResponder: Bool { true }
     override func accessibilityPerformPress() -> Bool {
+        if source != nil, targetedToolID != nil,
+           let rect = zoomMotion?.rect(at: CACurrentMediaTime()) ?? targetImageRect() {
+            let point = Self.outputPoint(CGPoint(x: drawableSize.width / 2, y: drawableSize.height / 2), in: rect)
+            // AXPress samples without mouseDown. Transfer keyboard ownership too,
+            // otherwise arrows can still edit the previously focused histogram.
+            guard window?.makeFirstResponder(self) == true else { return false }
+            guard onTargetBegin?(point) == true else { return false }
+            onTargetEnd?(false); return true
+        }
         if source != nil, cropAngle == nil, let onZoneSample,
            let rect = zoomMotion?.rect(at: CACurrentMediaTime()) ?? targetImageRect(), rect.width > 0, rect.height > 0 {
             onZoneSample(CGPoint(x: (drawableSize.width / 2 - rect.minX) / rect.width,
@@ -683,6 +735,12 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         return true
     }
     override func mouseDragged(with event: NSEvent) {
+        if targetTracking {
+            let y = convert(event.locationInWindow, from: nil).y
+            targetDelta += (y - targetPointerY) * (isFlipped ? -1 : 1) * (event.modifierFlags.contains(.shift) ? 0.1 : 1)
+            targetPointerY = y; onTargetChange?(targetDelta * 0.5)
+            return
+        }
         if spotTracking {
             onSpotPointer?(maskOutputPoint(event), .drag, 0)
             updateSpotCursor(event)
@@ -693,7 +751,7 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         guard let pressPoint else { return }
         let point = convert(event.locationInWindow, from: nil)
         if hypot(point.x - pressPoint.x, point.y - pressPoint.y) > 3 { dragged = true }
-        if dragged && canPan && (onZoneSample == nil || spaceHeld) {
+        if dragged && canPan && ((onZoneSample == nil && targetedToolID == nil) || spaceHeld) {
             NSCursor.closedHand.set()
             let previous = lastDragPoint ?? pressPoint
             let delta = CGSize(width: point.x - previous.x,
@@ -704,6 +762,11 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         }
     }
     override func mouseUp(with event: NSEvent) {
+        if targetTracking {
+            mouseDragged(with: event); targetTracking = false; onTargetEnd?(false)
+            pressPoint = nil; lastDragPoint = nil; return
+        }
+        if targetedToolID != nil && !spaceHeld { pressPoint = nil; lastDragPoint = nil; return }
         if spotTracking {
             let previous = spotDraft?()
             onSpotPointer?(maskOutputPoint(event), .up, 0)
@@ -721,7 +784,7 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         }
         if maskEditing != nil || spotEditing != nil { pressPoint = nil; lastDragPoint = nil; dragged = false; return }
         defer { pressPoint = nil; lastDragPoint = nil; dragged = false; window?.invalidateCursorRects(for: self) }
-        guard pressPoint != nil, !dragged, let source, cropAngle == nil else { return }
+        guard targetedToolID == nil, pressPoint != nil, !dragged, let source, cropAngle == nil else { return }
         if let onZoneSample {
             if !spaceHeld { onZoneSample(maskOutputPoint(event)) }
             return
@@ -764,6 +827,12 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         let backing = window?.backingScaleFactor ?? 1
         let point = CGPoint(x: p.x * backing, y: (isFlipped ? bounds.height - p.y : p.y) * backing)
         let rect = zoomMotion?.rect(at: CACurrentMediaTime()) ?? targetImageRect() ?? .zero
+        guard rect.width > 0, rect.height > 0 else { return CGPoint(x: CGFloat.nan, y: CGFloat.nan) }
+        return Self.outputPoint(point, in: rect)
+    }
+    /// Same displayed-photo coordinates for sampling, masks and repair tools.
+    /// Outside points remain outside so transparent mats never sample edge pixels.
+    static func outputPoint(_ point: CGPoint, in rect: CGRect) -> CGPoint {
         guard rect.width > 0, rect.height > 0 else { return CGPoint(x: CGFloat.nan, y: CGFloat.nan) }
         return CGPoint(x: (point.x - rect.minX) / rect.width, y: (point.y - rect.minY) / rect.height)
     }
@@ -900,6 +969,18 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         spotSourceLayer.path = displayedHeads
     }
     override func keyDown(with event: NSEvent) {
+        if targetedToolID != nil {
+            if event.keyCode == 53 {
+                if targetTracking { cancelTargetGesture() } else { onTargetExit?() }
+                return
+            }
+            if event.keyCode == 49 { cancelTargetGesture(); spaceHeld = true; window?.invalidateCursorRects(for: self); return }
+            if event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
+                let key = event.charactersIgnoringModifiers
+                if event.keyCode == 126 || key == "+" || key == "=" { _ = onTargetNudge?(1); return }
+                if event.keyCode == 125 || key == "-" { _ = onTargetNudge?(-1); return }
+            }
+        }
         if event.keyCode == 49, maskEditing != nil || spotEditing != nil || onZoneSample != nil { spaceHeld = true; window?.invalidateCursorRects(for: self); return }
         super.keyDown(with: event)
     }
@@ -908,6 +989,7 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         super.keyUp(with: event)
     }
     override func resignFirstResponder() -> Bool {
+        cancelTargetGesture()
         spaceHeld = false
         onPixelReadout?(nil)
         if spotTracking {

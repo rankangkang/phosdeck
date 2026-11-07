@@ -1,6 +1,57 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "app.targetCurveHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sample an input tone on the photo, then drag to change its output. An existing nearby point is reused; otherwise a point is added, up to 16. Escape cancels."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在照片上取样输入色调，拖动调整输出。附近已有控制点时复用，否则新增一个点，最多 16 个；Esc 取消。"
+          }
+        }
+      }
+    },
+    "app.increaseTargetedAdjustment": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Increase Targeted Adjustment"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "增加当前图上调整"
+          }
+        }
+      }
+    },
+    "app.decreaseTargetedAdjustment": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decrease Targeted Adjustment"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "减少当前图上调整"
+          }
+        }
+      }
+    },
     "app.targetedAdjustment": {
       "extractionState": "manual",
       "localizations": {

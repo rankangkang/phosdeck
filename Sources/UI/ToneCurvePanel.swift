@@ -5,6 +5,10 @@ struct ToneCurvePanel: View {
     var curves: ToneCurves
     var change: (ToneCurves, Bool) -> Void
     var commit: () -> Void
+    var onTarget: ((Int) -> Void)?
+    var targetedChannel: Int?
+    var onTargetExit: (() -> Void)?
+    var targetingAvailable = true
     @State private var channel = 0
     @State private var point = 2
     private var selected: Int { min(point, curves.channels[channel].count - 1) }
@@ -17,6 +21,15 @@ struct ToneCurvePanel: View {
     }
     var body: some View {
         VStack(spacing: 0) {
+            if let onTarget {
+                Button(L10n.text("app.targetedAdjustment", defaultValue: "Targeted Adjustment")) { onTarget(channel) }
+                    .buttonStyle(.key(selected: targetedChannel == channel, height: 22, lampInside: true))
+                    .controlUnavailable(!targetingAvailable)
+                    .accessibilityIdentifier("targeted-adjustment-curve")
+                    .accessibilityValue(targetedChannel == channel ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off"))
+                    .help(L10n.text("app.targetCurveHelp", defaultValue: "Sample an input tone on the photo, then drag to change its output. An existing nearby point is reused; otherwise a point is added, up to 16. Escape cancels."))
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 8)
+            }
             KeyRow(title: L10n.text("app.curveChannel", defaultValue: "Curve Channel"), options: (0..<4).map { KeyOption($0, ToneCurves.names[$0]) }, selection: $channel, expand: true, wrappingColumns: 2)
             Bracket().stroke(Theme.textSecondary, lineWidth: 1).frame(height: 12).padding(.horizontal, 2).padding(.bottom, 4)
                 .accessibilityHidden(true)
@@ -63,6 +76,8 @@ struct ToneCurvePanel: View {
                 .font(.caption11).foregroundStyle(Theme.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
         }
+        .onChange(of: channel) { if targetedChannel != nil { onTarget?(channel) } }
+        .onDisappear { if targetedChannel != nil { onTargetExit?() } }
     }
 }
 

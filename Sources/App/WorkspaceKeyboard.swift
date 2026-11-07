@@ -15,6 +15,13 @@ final class WorkspaceKeyboard {
               window.attachedSheet == nil, !(window.firstResponder is NSTextView),
               !(window.firstResponder is NSControl) else { return event }
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if model.targetedAdjustment != nil {
+            if let canvas = window.firstResponder as? PhotoMetalCanvas, canvas.targetedToolID != nil,
+               [49, 53, 125, 126].contains(event.keyCode) || ["+", "=", "-"].contains(event.charactersIgnoringModifiers ?? "") {
+                return event
+            }
+            if event.keyCode == 53 { model.cancelTargetedAdjustment(); return nil }
+        }
         if model.smartMaskSession != nil {
             if event.keyCode == 53 { model.cancelSmartMask(); return nil }
             if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "z" { model.undoSmartPrompt(); return nil }

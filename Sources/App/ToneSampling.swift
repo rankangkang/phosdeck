@@ -11,6 +11,7 @@ extension AppModel {
         if zoneSampling { cancelZoneSampling(); return }
         guard canEdit, commitRecipe(), let photo = active, let recipe,
               let root = roots.first(where: { $0.id == photo.rootID }) else { return }
+        cancelTargetedAdjustment()
         cancelWhiteBalanceSampling()
         cancelPointColorTools()
         cropMode = false; maskMode = false; before = false; editMode = true
@@ -54,6 +55,7 @@ extension AppModel {
     func toggleWhiteBalanceSampling() {
         if whiteBalanceSampling { cancelWhiteBalanceSampling(); return }
         guard canEdit, editMode, commitRecipe(), selectDevelopTool(.adjust) else { return }
+        cancelTargetedAdjustment()
         cancelPointColorTools(); cancelZoneSampling()
         before = false; beforeAfter = .off
         whiteBalanceSampling = true

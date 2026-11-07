@@ -64,6 +64,12 @@ struct PhotoCanvas: View {
                                    zoomScale: model.zoomScale, fill: model.fillView && !model.cropMode,
                                    cropAngle: model.cropMode ? model.recipe?.cropPreviewAngle : nil,
                                    onClick: { model.toggleCanvasZoom(at: $0) },
+                                   targetedToolID: model.targetedAdjustment?.identifier,
+                                   onTargetBegin: { model.beginTargetedAdjustment(at: $0) },
+                                   onTargetChange: { model.updateTargetedAdjustment(delta: $0) },
+                                   onTargetEnd: { cancelled in if cancelled { model.cancelDirectAdjustment() } else { _ = model.finishDirectAdjustment() } },
+                                   onTargetNudge: { model.nudgeTargetedAdjustment($0) },
+                                   onTargetExit: { model.cancelTargetedAdjustment() },
                                    onZoneSample: model.whiteBalanceSampling ? { model.sampleWhiteBalance(at: $0) } : model.pointSampling ? { model.samplePointColor(at:$0) } : model.zoneSampling ? { model.sampleZone(at: $0) } : nil,
                                    maskEditing: maskEditing, onMaskPointer: { model.maskPointer($0, phase: $1, modifiers: $2, action: $3) },
                                    onMaskError: { model.error = $0 },
@@ -74,6 +80,7 @@ struct PhotoCanvas: View {
                                    onPixelReadout: pixelReadout(for: displayImage),
                                    splitBefore: beforeAfter == .split ? model.beforeImage : nil)
                         .allowsHitTesting(model.photoSwitchDisplay == nil)
+                    TargetedCanvasStatus(model: model, mat: mat)
                     if model.photoSwitchDisplay != nil {
                         Text(L10n.text("app.loadingPreviousPhotoShown", defaultValue: "Loading photo… Previous photo shown"))
                             .font(.caption11).foregroundStyle(Color(nsColor: mat.textSecondary))

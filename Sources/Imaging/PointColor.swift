@@ -80,7 +80,7 @@ struct PointColorReference:Sendable {
     let height:Int
     /// Premultiplied floating-point linear sRGB, in displayed geometry.
     let rgba:[Float]
-    func sample(at point:CGPoint) -> PointColor? {
+    func linearRGB(at point: CGPoint) -> SIMD3<Double>? {
         guard MaskPoint(point.x,point.y).valid, width > 0, height > 0, rgba.count == width*height*4 else { return nil }
         let x = PhotoGeometry.pixelIndex(point.x,dimension:width), y = PhotoGeometry.pixelIndex(point.y,dimension:height)
         let center = (y*width+x)*4
@@ -93,7 +93,11 @@ struct PointColorReference:Sendable {
             rgb += SIMD3(p[0],p[1],p[2]); coverage += p[3]
         } }
         guard coverage > 0 else { return nil }
-        let lab = PerceptualColor.lab(rgb / coverage), c = hypot(lab.y,lab.z)
+        return rgb / coverage
+    }
+    func sample(at point:CGPoint) -> PointColor? {
+        guard let rgb = linearRGB(at: point) else { return nil }
+        let lab = PerceptualColor.lab(rgb), c = hypot(lab.y,lab.z)
         var result = PointColor(lightness:lab.x,chroma:c,hue:c < 1e-6 ? 0 : (atan2(lab.z,lab.y)*180 / .pi+360).truncatingRemainder(dividingBy:360))
         if c < 1e-6 { result.chroma = 0 }
         return (try? result.validate()) == nil ? nil : result

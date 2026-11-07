@@ -90,7 +90,9 @@ struct DevelopPanel: View {
             if isVisible(.curves) { PanelSection(L10n.text("app.curves", defaultValue: "Curves"), group: .curves, isExpanded: expansion(4), reset: { change { $0.pipelineVersion = 2; $0.develop.curves = nil } }, modified: isModified(.curves), previewing: previewingGroup == .curves, preview: previewHandler(.curves), previewPulse: previewPulseHandler(.curves)) {
                 ToneCurvePanel(curves: recipe?.develop.curves ?? ToneCurves(), change: { value, save in
                     change({ $0.pipelineVersion = 2; $0.develop.curves = value }, commit: save)
-                }, commit: { model.commitRecipe() }).sectionContent()
+                }, commit: { model.commitRecipe() },
+                onTarget: local ? nil : { model.toggleTargetedAdjustment(.curve($0)) },
+                targetedChannel: { if case .curve(let channel) = model.targetedAdjustment { return channel }; return nil }(), onTargetExit: { model.cancelTargetedAdjustment() }, targetingAvailable: recipe?.pipelineVersion == 2).sectionContent()
             } }
             if isVisible(.zones) { PanelSection(L10n.text("app.zoneLighting", defaultValue: "Zone Lighting"), group: .zones, isExpanded: expansion(5), reset: { change { $0.develop.zones = nil } }, modified: isModified(.zones), previewing: previewingGroup == .zones, preview: previewHandler(.zones), previewPulse: previewPulseHandler(.zones)) { zones.sectionContent() } }
             if isVisible(.mixer) { PanelSection(L10n.text("app.hslMixer", defaultValue: "HSL Mixer"), group: .mixer, isExpanded: expansion(1), reset: { change { $0.develop.mixer = Array(repeating: HSLBand(), count: 8) } }, modified: isModified(.mixer), previewing: previewingGroup == .mixer, preview: previewHandler(.mixer), previewPulse: previewPulseHandler(.mixer)) {
@@ -128,6 +130,10 @@ struct DevelopPanel: View {
         }
         .contextMenu { Toggle(L10n.text("app.expandOneAdjustmentPanelAtATime", defaultValue: "Expand One Adjustment Panel at a Time"), isOn: $solo) }
         .onChange(of: solo) { if solo { basicOpen = true; mixerOpen = false; gradingOpen = false; detailsOpen = false; curvesOpen = false; zonesOpen = false; vignetteOpen = false; grainOpen = false; blackWhiteOpen = false; sharpenOpen = false; noiseOpen = false; pointOpen = false } }
+        .onChange(of: mixerTab) { if let target = model.targetedAdjustment, [.hue, .saturation, .luminance].contains(target) { model.cancelTargetedAdjustment() } }
+        .onChange(of: mixerOpen) { if !mixerOpen, let target = model.targetedAdjustment, [.hue, .saturation, .luminance].contains(target) { model.cancelTargetedAdjustment() } }
+        .onChange(of: curvesOpen) { if !curvesOpen, model.targetedAdjustment?.isCurve == true { model.cancelTargetedAdjustment() } }
+        .onChange(of: blackWhiteOpen) { if !blackWhiteOpen, model.targetedAdjustment == .blackWhite { model.cancelTargetedAdjustment() } }
         .onChange(of: pointOpen) { if !pointOpen && !local { model.cancelPointColorTools() } }
         .onChange(of: zonesOpen) { if !zonesOpen && !local { model.cancelZoneSampling() } }
         .onChange(of: model.cropMode) { if model.cropMode { cropOpen = true; perspectiveOpen = true } }
@@ -226,6 +232,7 @@ struct DevelopPanel: View {
     }
     private var blackWhiteMixer: some View {
         VStack(spacing: 0) {
+            if !local { TargetedAdjustmentKey(model: model, target: .blackWhite) }
             if recipe?.develop.blackAndWhite != true { note(L10n.text("app.availableAfterSelectingBlackWhiteInBasicAdjustmentsValues", defaultValue: "Available after selecting Black & White in Basic Adjustments. Values are retained in color mode.")) }
             ForEach(0..<8, id: \.self) { band in
                 AdjustmentRow(label: HSLBand.names[band], value: recipe?.develop.blackWhiteMixer[band] ?? 0,
@@ -547,6 +554,7 @@ struct DevelopPanel: View {
         VStack(spacing: 0) {
             KeyRow(title: L10n.text("app.hslMode", defaultValue: "HSL Mode"), options: [KeyOption(0, L10n.text("app.hue", defaultValue: "Hue")), KeyOption(1, L10n.text("app.saturation", defaultValue: "Saturation")), KeyOption(2, L10n.text("app.luminance_1188", defaultValue: "Luminance")), KeyOption(3, L10n.text("app.all", defaultValue: "All"))],
                    selection: $mixerTab, expand: true, wrappingColumns: 2).padding(.bottom, 4)
+            if !local { TargetedAdjustmentKey(model: model, target: [.hue, .saturation, .luminance][min(2, mixerTab)], available: mixerTab != 3) }
             ForEach(mixerTab == 3 ? [0, 1, 2] : [mixerTab], id: \.self) { tab in
                 if mixerTab == 3 { SubgroupLabel([L10n.text("app.hue", defaultValue: "Hue"), L10n.text("app.saturation", defaultValue: "Saturation"), L10n.text("app.luminance_1188", defaultValue: "Luminance")][tab]) }
                 ForEach(0..<8, id: \.self) { index in

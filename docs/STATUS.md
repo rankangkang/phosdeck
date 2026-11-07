@@ -6,7 +6,7 @@
 
 - 主线 `master`，仅维护原生 macOS（SwiftUI + Metal + GRDB）。
 - 目录 schema 13（`CatalogStore.schemaVersion`），旧版本目录直接拒绝。
-- 开发机有两台（M4 Pro／macOS 26.6.2，M4／macOS 27.0.1），固定体验基线不能混用。macOS 27 这台已按用户授权重建同路径、同 bundle ID 的体验 App，使用新建 `UnratedReview.phoscat` 和五张合成图；未恢复原图库、公开样片与研究模型。M4 Pro 的既有体验环境未动。
+- 开发机有两台（M4 Pro／macOS 26.6.2，M4／macOS 27.0.1），固定体验基线不能混用。macOS 27 这台已按用户授权重建同路径、同 bundle ID 的体验 App，使用 `UnratedReview.phoscat` 和七张合成图（含带拍摄参数的测试图）；未恢复原图库、公开样片与研究模型。M4 Pro 的既有体验环境未动。
 - 仓库 Debug 默认免证书临时签名；macOS 27 这台已按用户要求通过忽略的 `Config/LocalSigning.xcconfig` 固定开发证书与团队，测试宿主及内部库、内置盘暂存副本均统一签名并保留沙箱与 hardened runtime。固定体验 App 继续保持原路径、身份与开发签名。
 
 ## 待用户验收
@@ -22,8 +22,9 @@
 - **产品官网**：`site/` 中的 Astro 中英双语站点仅在 `master` 推送包含 `site/` 变更时通过 GitHub Actions 发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/)；默认石墨并支持米白，保留合成截图。首屏说明、工作流排版和下载区域已完成设计调整，线上效果待用户验收；开发命令见[贡献指南](../CONTRIBUTING.zh.md#官网开发)。
 - **预览性能**：中央布局定尺寸、Observation 细粒度观察、质量预览调度与局部刷新、画布显示等待移出主线程。遗留见下节。
 - **中英界面与社区语言包**：导入方式和关键词入口使用 `Add`／“添加”操作文案，与已添加状态分开；其他措辞及社区语言包待体验确认。
-- **直方图拖动**：已接入五个非等宽分区、悬停读数、Shift 精调、键盘与辅助功能增减；拖动只提交一次，取消、失焦和换图丢弃草稿。模型与原生事件回归已覆盖，固定 App 的双主题／中英核对留待本批集成；Lightroom 拖动步长与取消时点未运行对照。
-- **匹配总曝光**：已接入“调整”菜单，按活动照片的拍摄曝光、原生 RAW 基准与当前曝光计算目标值；复用整批事务及撤销重做，无效目标跳过、限幅单独报告。计算与批量回归已核对，固定 App 交互待本批集成核对；Adobe 精确算法与同图运行对照未验证。
+- **图上目标调整**：已接入 HSL、黑白混色与当前曲线通道，浮点参考图复用原生显影前缀和实际输出几何；邻带权重读取现有 HSL／黑白模型，曲线新增或复用一个自由点。中英界面、双主题、实窗取样／键盘微调及换图隔离已核对；辅助功能取样会接管画布焦点。提交、取消、晚到取样、透明度和坐标有回归；图上鼠标拖动被 CUA 的 `noWindowsAvailable` 阻断，原生事件检查通过，实际手感待验收。Adobe 精确算法与 Lightroom 同图运行未验证。
+- **直方图拖动**：已接入五个非等宽分区、悬停读数、Shift 精调、键盘与辅助功能增减；拖动只提交一次，取消、失焦和换图丢弃草稿。中英／双主题显示、实窗曝光拖动、辅助功能增量与保存／撤销已核对，原生事件回归覆盖精调和取消；悬停与真实手感、Lightroom 拖动步长和取消时点仍待核对。
+- **匹配总曝光**：已接入“调整”菜单，按活动照片的拍摄曝光、原生 RAW 基准与当前曝光计算目标值；复用整批事务及撤销重做，无效目标跳过、限幅单独报告。计算／批量回归与固定 App 合成拍摄参数的保存、整批撤销重做已核对；公开 RAW 未准备，RAW 实际亮度匹配、跨机型效果及 Adobe 同图运行对照未测。
 - **工作流**：最近一次导入跨重启（导航状态存本机偏好，不随备份或换机携带）、普通集合删除撤销（仅当前会话）。新增“调整 → 应用相对曝光…”，按每张照片原值累加，支持 ±⅓／±1 EV、数值输入与整批撤销重做；中文双主题及合成批次保存值已实窗核对。
 - **图库后缀**：新建／恢复统一 `.phoscat`，旧 `.omlcat`／`.omlrcat` 打开时可确认仅改后缀、保持原名或取消。
 - **免证书构建与使用说明**：[源码构建](../README.zh.md#快速上手)尚待其他机器验证；[上手指南](getting-started.md)和中英文[贡献指南](../CONTRIBUTING.zh.md)待用户审核。
@@ -31,6 +32,7 @@
 ## 已知问题
 
 - **预览**：原一秒卡顿根因未证实（drawable 默认一秒超时只是候选，相关等待已移出主线程）；质量图计算完到发布仍有约 0.1 秒主线程等待。严格同条件前后对照、物理屏幕呈现、长时间拖动帧率、大 RAW 与 Release 实窗都未测。继续时先在无 AX 遍历干扰的交互区间做 CPU 与主线程等待采样。
+- **既有源坐标逆映射**：合成浮点梯度检查显示 `PhotoGeometry`／`MaskGeometry.sourcePoint` 在四分之一旋转为 1 或 3 时，与实际渲染像素的位置不同；未改既有渲染、旋转或蒙版模型。新目标调整直接取同一输出几何的浮点参考图，并以原生输出核对位置；其他工具的逆映射差异待单独定位。
 - **局部参数画布布局**：`ImagingTests.testMaskWorkspaceKeepsCanvasBoundsDuringSliderPreviewAndResize` 的离屏回归在拖动后出现画布高度 600→569 pt，石墨与米白均复现；当前已提交版本也有相同失败。根因待查，尚未在实际屏幕确认。
 - **偶发测试失败**：`ComparisonTests.testAdjustmentReturnEndsEditingAndDoesNotReapplyAnUndoneValue` 多次在首次全量中失败、单跑通过，根因未定位；测试期间切换窗口可能影响焦点。
 - **预设测试的语言假设**：`PresetManagementTests.testUnicodeSearchFavoriteAndMultipleGroupsFilter` 将中文分组顺序写成固定期望，英文环境的收藏排序断言失败、中文通过；筛选和排序实现未改，测试的语言假设待处理。
@@ -45,11 +47,8 @@
 
 ## 下一步与候选
 
-Lightroom 功能补齐的第一批范围为以下前三项，其余仍为候选。依据为本机 Classic 15.2.1 安装资源、Adobe 公开说明与当前源码的静态核对；尚未逐项实窗对照、同图比较或实现原型，成本与效果待验证。沿用 [已定决策](decisions.md) 中的不做与暂缓范围。
+Lightroom 功能补齐第一批（匹配总曝光、直方图拖动、图上目标调整）已实现原生版本，见待用户验收。交互参考本机 Classic 15.2.1 安装资源和 Adobe 公开说明，未恢复 Adobe 算法，尚未完成 Lightroom 逐项实窗及同图运行对照。以下保留后续候选。沿用 [已定决策](decisions.md) 中的不做与暂缓范围。
 
-- **第一批 · 匹配总曝光**：参考 [Match Total Exposures](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/develop-module-options.html)，按活动照片及光圈／快门／ISO 计算各目标的曝光修正；已有相对曝光只统一累加同一增量。已实现原生参数匹配，见待用户验收；Adobe 未公开 RAW 基准细节，未宣称恢复其算法。
-- **第一批 · 直方图拖动**：参考 [色调控制](https://helpx.adobe.com/lightroom-classic/desktop/help/tone-control-adjustment.html)，在现有显示／剪切检查上增加分区拖动，联动黑色、阴影、曝光、高光、白色参数；已实现并保留剪切灯与数值输入，见待用户验收。
-- **第一批 · 图上目标调整**：参考 [Targeted Adjustment](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/develop-module-tools.html) 和 [Color Mixer](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/color-mixer.html)，补图上取样、拖动调整 HSL／黑白混色／曲线；现有点颜色与亮度分区取样不等于该工具。取样阶段、色带权重和现有自由点曲线的映射规则须先核实。
 - **文件夹差异预览**：参考 [Synchronize folders](https://helpx.adobe.com/lightroom-classic/desktop/manage-catalogs-and-files/create-folders.html)。已有重新扫描可导入新增照片，单张与整根目录定位也已有；候选为新增／缺失／变更／疑似移动的差异预览及批量确认，保留缺失记录、编辑和虚拟副本，先做手动操作。
 - **自动白平衡／自动色调**：参考 [白平衡与色调](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/image-tone-color.html)。已有拍摄时／自定义白平衡与中性区域取样；图像分析算法和摄影样片验证尚缺，不能只补自动按钮或承诺 Adobe 效果。
 - **手动去紫边／绿边**：参考 [Defringe](https://helpx.adobe.com/ca/lightroom-classic/desktop/process-and-develop-photos/retouch-photos.html)。已有系统 RAW 镜头校正开关，候选为额外的可控去边和取样；先分清解码器已应用的校正，并准备有授权的色边样片。

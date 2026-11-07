@@ -1,6 +1,7 @@
 import XCTest
 import AppKit
 import CoreImage
+import SwiftUI
 @testable import Phosdeck
 
 final class DirectAdjustmentTests: XCTestCase {
@@ -62,6 +63,24 @@ final class DirectAdjustmentTests: XCTestCase {
         XCTAssertEqual(saved.develop.blacks, 0)
     }
 
+    @MainActor func testHistogramReadoutTracksDraftWithoutACompletedHistogramRender() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = try await makeModel(folder)
+        defer { model.choose([], active: nil) }
+        let host = NSHostingView(rootView: HistogramAdjustment(model: model).frame(width: 200, height: 80))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 200, height: 80), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host; host.layoutSubtreeIfNeeded()
+        defer { window.contentView = nil }
+        func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+        let control = try XCTUnwrap(descendants(host).compactMap { $0 as? HistogramAdjustmentView }.first)
+        XCTAssertTrue(model.beginHistogramAdjustment(.exposure)); model.updateHistogramAdjustment(delta: 1.23)
+        try await waitUntil { control.values[HistogramRegion.exposure.rawValue] == 1.23 }
+        XCTAssertNil(model.histogram, "The readout must observe the live parameter independently of rendered histogram bins")
+        model.cancelDirectAdjustment()
+        try await waitUntil { control.values[HistogramRegion.exposure.rawValue] == 0 }
+    }
+
     @MainActor func testNativeHistogramFineDragEscapePhotoChangeAndDetach() throws {
         let view = HistogramAdjustmentView(frame: NSRect(x: 0, y: 0, width: 100, height: 80))
         let window = NSWindow(contentRect: view.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -103,7 +122,7 @@ final class DirectAdjustmentTests: XCTestCase {
         try await waitUntil { model.canEdit }
         return model
     }
-    @MainActor private func waitUntil(_ condition: @escaping () -> Bool) async throws {
+    @MainActor func waitUntil(_ condition: @escaping () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(10)
         while !condition(), Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertTrue(condition())

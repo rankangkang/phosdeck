@@ -161,7 +161,7 @@ final class AppModel {
     var pageOffset = 0
     var activePhoto: Photo?
     var folders: [String: [FolderNode]] = [:]
-    var cropMode = false { didSet { if !cropMode { finishPerspectiveGuides() }; if cropMode { cancelWhiteBalanceSampling(); cancelPointColorTools(); maskMode = false; spotMode = false; fillView = false; fullResolution = false; beforeAfter = .off; cancelZoneSampling() } } }
+    var cropMode = false { didSet { if !cropMode { finishPerspectiveGuides() }; if cropMode { cancelTargetedAdjustment(); cancelWhiteBalanceSampling(); cancelPointColorTools(); maskMode = false; spotMode = false; fillView = false; fullResolution = false; beforeAfter = .off; cancelZoneSampling() } } }
     var cropGuide = CropGuide.thirds
     var perspectiveGuideTool: PerspectiveGuideTool?
     var perspectiveGuides: [PerspectiveLine] = []
@@ -183,10 +183,11 @@ final class AppModel {
         return try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
     }
     var showCameraDiagnostics = false
-    var maskMode = false { didSet { if maskMode { cancelWhiteBalanceSampling(); cancelPointColorTools(); spotMode = false; beforeAfter = .off; cancelZoneSampling() } else if oldValue { endMaskEffectPreview(); cancelSmartMask() } } }
+    var maskMode = false { didSet { if maskMode { cancelTargetedAdjustment(); cancelWhiteBalanceSampling(); cancelPointColorTools(); spotMode = false; beforeAfter = .off; cancelZoneSampling() } else if oldValue { endMaskEffectPreview(); cancelSmartMask() } } }
     var spotMode = false {
         didSet {
             if spotMode {
+                cancelTargetedAdjustment()
                 cancelWhiteBalanceSampling()
                 cancelPointColorTools()
                 maskMode = false
@@ -204,6 +205,15 @@ final class AppModel {
             }
         }
     }
+    var targetedAdjustment: TargetedAdjustment?
+    var targetedSample: TargetedSample?
+    var targetedReferenceReady = false
+    @ObservationIgnored var targetedReference: PointColorReference?
+    @ObservationIgnored var targetedReferenceKey: TargetedReferenceKey?
+    @ObservationIgnored var targetedReferenceTask: Task<Void, Never>?
+    @ObservationIgnored var targetedReferenceToken = UUID()
+    @ObservationIgnored var targetedReferenceRenderer: (@Sendable (ImageRequest) async throws -> PointColorReference)?
+    let targetedPipeline = ImagePipeline()
     @ObservationIgnored var directAdjustment: DirectAdjustmentSession?
     @ObservationIgnored var applyingDirectAdjustment = false
     var pointSampling = false
@@ -292,7 +302,7 @@ final class AppModel {
     var recentKeywords: [String] = []
     private var recentKeywordCatalog: String?
     var keywordFilter = "" { didSet { if keywordFilter != oldValue { prepareFilterSection(.metadata) } } }
-    var activeID: String? { didSet { if activeID != oldValue { cancelDirectAdjustment(); finishPerspectiveGuides(); perspectiveMessage = ""; cancelSmartMask(); cancelPointColorTools(); selectedPointColorID = nil; cancelSpotSourceRefresh(); rememberViewPosition(leaving: oldValue); cancelWhiteBalanceSampling(); cancelZoneSampling(); selectedZone = nil; sampledZoneEV = nil } } }
+    var activeID: String? { didSet { if activeID != oldValue { cancelTargetedAdjustment(clearReference: true); cancelDirectAdjustment(); finishPerspectiveGuides(); perspectiveMessage = ""; cancelSmartMask(); cancelPointColorTools(); selectedPointColorID = nil; cancelSpotSourceRefresh(); rememberViewPosition(leaving: oldValue); cancelWhiteBalanceSampling(); cancelZoneSampling(); selectedZone = nil; sampledZoneEV = nil } } }
     var scope = "all"
     var search = "" { didSet { if search != oldValue { prepareFilterSection(.text) } } }
     var ratingComparison = RatingComparison.atLeast { didSet { if ratingComparison != oldValue { prepareFilterSection(.attribute) } } }
@@ -324,7 +334,7 @@ final class AppModel {
     private var lastAppliedHold = false
     var isViewingImport: Bool { lastImport.map { scope == $0.scope } ?? false }
     private var librarySingleView = false
-    var editMode = false { didSet { if !editMode { cancelDirectAdjustment(); cancelSmartMask(); cancelWhiteBalanceSampling(); endAdjustmentPreview(); endDevelopReference(); cancelPointColorTools(); cancelZoneSampling(); if !singleView { beforeAfter = .off } } else { endComparison(); endSurvey() } } }
+    var editMode = false { didSet { if !editMode { cancelTargetedAdjustment(); cancelDirectAdjustment(); cancelSmartMask(); cancelWhiteBalanceSampling(); endAdjustmentPreview(); endDevelopReference(); cancelPointColorTools(); cancelZoneSampling(); if !singleView { beforeAfter = .off } } else { endComparison(); endSurvey() } } }
     var singleView = false { didSet { if !singleView { endComparison(); endSurvey(); if !editMode { beforeAfter = .off } } } }
     var comparison: PhotoComparison?
     var survey: PhotoSurvey?
@@ -339,9 +349,9 @@ final class AppModel {
     static let zoomScales: [Double] = [0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16]
     var zoomLabel: String { Self.zoomLabel(zoomScale) }
     static func zoomLabel(_ scale: Double) -> String { String(format: "%g%%", scale * 100) }
-    var before = false { didSet { if before { cancelDirectAdjustment(); cancelWhiteBalanceSampling(); endAdjustmentPreview(redraw: false); endDevelopReference(); cancelPointColorTools(); cancelZoneSampling() } } }
+    var before = false { didSet { if before { cancelTargetedAdjustment(); cancelDirectAdjustment(); cancelWhiteBalanceSampling(); endAdjustmentPreview(redraw: false); endDevelopReference(); cancelPointColorTools(); cancelZoneSampling() } } }
     var beforeAfter = BeforeAfterLayout.off {
-        didSet { if beforeAfter != oldValue { if beforeAfter != .off { endDevelopReference(); cancelZoneSampling() }; refreshBeforeImage() } }
+        didSet { if beforeAfter != oldValue { if beforeAfter != .off { cancelTargetedAdjustment(); endDevelopReference(); cancelZoneSampling() }; refreshBeforeImage() } }
     }
     var beforeImage: CGImage?
     var beforeStatus = ""
@@ -399,6 +409,7 @@ final class AppModel {
                 } else { finishPerspectiveGuides() }
             }
             if let session = smartMaskSession, recipe.map({ !session.acceptsRecipe($0) }) ?? true { cancelSmartMask() }
+            if changed, !applyingDirectAdjustment { cancelTargetedAdjustment() }
             if changed { cancelSpotSourceRefresh(); cancelWhiteBalanceSampling(keepTool: true); endAdjustmentPreview(redraw: false); cancelZoneSampling(); refreshPointColorTools() }
             if oldValue?.quarterTurns != recipe?.quarterTurns || oldValue?.straightenDegrees != recipe?.straightenDegrees ||
                 oldValue?.crop != recipe?.crop || oldValue?.flipHorizontal != recipe?.flipHorizontal || oldValue?.flipVertical != recipe?.flipVertical ||
@@ -538,6 +549,7 @@ final class AppModel {
     /// Tools share one exit path so keyboard, toolbar and module changes preserve the same draft.
     @discardableResult func selectDevelopTool(_ tool: DevelopTool) -> Bool {
         guard workspaceAvailable, editMode, tool == .adjust || canEdit else { return false }
+        cancelTargetedAdjustment()
         cancelWhiteBalanceSampling()
         clearSavedEditPreview()
         endAdjustmentPreview()
@@ -2416,6 +2428,7 @@ final class AppModel {
         viewport.restore(next)
     }
     func selectZoom(_ factor: Double?, fill: Bool = false) {
+        cancelDirectAdjustment()
         guard !cropMode else { return }
         if let factor {
             guard Self.zoomScales.contains(factor) else { return }
@@ -2435,7 +2448,7 @@ final class AppModel {
             viewport.focusOnNextGeometry(point)
         }
     }
-    var canShowBeforeAfter: Bool { photoSwitchDisplay == nil && !editorUsesPreviousPhoto && !isPreviewingAdjustment && !whiteBalanceSampling && !pointSampling && !showPointColorRange && hasRecipe && !cropMode && !maskMode && !spotMode && comparison == nil }
+    var canShowBeforeAfter: Bool { photoSwitchDisplay == nil && !editorUsesPreviousPhoto && !isPreviewingAdjustment && !whiteBalanceSampling && targetedAdjustment == nil && !pointSampling && !showPointColorRange && hasRecipe && !cropMode && !maskMode && !spotMode && comparison == nil }
     /// `\`: the whole canvas shows the untoned, uncropped original.
     func toggleBefore() {
         guard recipe != nil, !cropMode else { return }
@@ -3112,6 +3125,7 @@ extension AppModel {
         previewTask?.cancel(); previewGeneration = UUID(); pendingPreview = nil; pendingQualityPreview = nil
         qualityWorker?.cancel(); qualityRender?.cancel(); maskReferenceTask?.cancel(); maskReferenceToken = UUID()
         undo.removeAllActions(); scrollPositions = [:]; scrollActiveIDs = [:]
+        cancelTargetedAdjustment(clearReference: true)
         cancelPointColorTools(); selectedPointColorID = nil
         cancelWhiteBalanceSampling()
         catalog = next; error = nil
