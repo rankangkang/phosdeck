@@ -75,7 +75,16 @@ final class WorkspaceKeyboard {
             if key == "j" { model.showClipping.toggle(); return nil }
         }
         if model.editMode, model.perspectiveGuideTool != nil, [53, 36, 76].contains(event.keyCode) {
-            model.finishPerspectiveGuides(); return nil
+            if event.keyCode == 53 { model.cancelPerspectiveGuideInteraction() }
+            else if model.endPerspectiveGuideDrag() { model.finishPerspectiveGuides() }
+            return nil
+        }
+        // Delete is owned by the guided-geometry tool while it is active. It
+        // must be consumed even when no line is selected so it cannot fall
+        // through to photo culling or another editor tool.
+        if model.editMode, model.perspectiveGuideTool != nil, modifiers.isEmpty, (event.keyCode == 51 || event.keyCode == 117) {
+            if !event.isARepeat { _ = model.deleteSelectedPerspectiveGuide() }
+            return nil
         }
         if model.editMode, event.keyCode == 53, model.whiteBalanceSampling { model.cancelWhiteBalanceSampling(); return nil }
         // Delete belongs to the active local tool, even when nothing is selected.

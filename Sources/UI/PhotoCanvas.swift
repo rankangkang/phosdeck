@@ -143,7 +143,8 @@ struct PhotoCanvas: View {
                     .help(L10n.text("app.dragTheSelectionToMoveOrItsCornersTo", defaultValue: "Drag the selection to move or its corners to resize. Drag outside it to create a new region"))
                     .allowsHitTesting(model.perspectiveGuideTool == nil)
                 }
-                if model.cropMode, model.perspectiveGuideTool != nil, model.canvasCoordinatesCurrent, let image = displayImage {
+                if model.cropMode, model.perspectiveGuideTool != nil,
+                   (model.canvasCoordinatesCurrent || model.perspectiveGuideDragOriginal != nil), let image = displayImage {
                     PerspectiveGuides(model: model, imageSize: CGSize(width: image.width, height: image.height), canvas: geometry.size)
                 }
             }.frame(width: geometry.size.width, height: geometry.size.height)

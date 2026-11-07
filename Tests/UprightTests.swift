@@ -2,6 +2,7 @@ import XCTest
 import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
+import SwiftUI
 @testable import Phosdeck
 
 final class UprightTests: XCTestCase {
@@ -153,6 +154,235 @@ final class UprightTests: XCTestCase {
         XCTAssertNil(model.perspectiveGuideTool)
         model.undo.redo()
         XCTAssertEqual(try XCTUnwrap(model.recipe).perspective.vertical,-20,accuracy: 0.2)
+    }
+
+    func testGuideClassificationIsStableWhenEndpointsAreReversed() throws {
+        let forward = try XCTUnwrap(UprightCorrection.classified(start: MaskPoint(0.2, 0.2), end: MaskPoint(0.2, 0.8), size: size, recipe: recipe()))
+        let reversed = try XCTUnwrap(UprightCorrection.classified(start: MaskPoint(0.2, 0.8), end: MaskPoint(0.2, 0.2), size: size, recipe: recipe()))
+        XCTAssertTrue(forward.vertical)
+        XCTAssertTrue(reversed.vertical)
+        XCTAssertNil(UprightCorrection.classified(start: MaskPoint(0.2, 0.2), end: MaskPoint(0.2, 0.2), size: size, recipe: recipe()))
+    }
+
+    @MainActor func testInvalidGuideEndpointMovePreservesRecipeAndDeleteRemovesOnlySelectedGuide() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = try await model(in: folder)
+        defer { model.finishPerspectiveGuides(); model.activeID = nil; model.catalog = nil }
+        let base = try XCTUnwrap(model.recipe)
+        var truth = base; truth.perspective.vertical = -20
+        let guides = try lines(truth, verticalOnly: true)
+        model.beginPerspectiveGuides(.perspective)
+        model.addPerspectiveGuide(start: guides[0].start, end: guides[0].end)
+        model.undo.beginUndoGrouping()
+        model.addPerspectiveGuide(start: guides[2].start, end: guides[2].end)
+        model.undo.endUndoGrouping()
+        let solved = try XCTUnwrap(model.recipe)
+        XCTAssertTrue(model.beginPerspectiveGuideDrag(index: 0, endpoint: .start))
+        XCTAssertFalse(model.updatePerspectiveGuide(index: 0, endpoint: .start, point: MaskPoint(.nan, .nan)))
+        XCTAssertEqual(model.recipe, solved)
+        XCTAssertEqual(model.perspectiveGuides.count, 2)
+        XCTAssertTrue(model.endPerspectiveGuideDrag())
+        XCTAssertTrue(model.selectPerspectiveGuide(index: 0))
+        model.undo.beginUndoGrouping()
+        XCTAssertTrue(model.deleteSelectedPerspectiveGuide())
+        model.undo.endUndoGrouping()
+        XCTAssertEqual(model.perspectiveGuides.count, 1)
+        XCTAssertEqual(try XCTUnwrap(model.recipe).perspective, base.perspective)
+        XCTAssertEqual(try XCTUnwrap(model.recipe).straightenDegrees, base.straightenDegrees)
+        XCTAssertNil(model.selectedPerspectiveGuideIndex)
+    }
+
+    @MainActor func testGuideEndpointMoveCommitsOnceAndUndoRedoRestoresIt() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = try await model(in: folder)
+        defer { model.finishPerspectiveGuides(); model.activeID = nil; model.catalog = nil }
+        let base = try XCTUnwrap(model.recipe)
+        var truth = base; truth.perspective.vertical = -20
+        let guides = try lines(truth, verticalOnly: true)
+        model.beginPerspectiveGuides(.perspective)
+        model.addPerspectiveGuide(start: guides[0].start, end: guides[0].end)
+        model.undo.beginUndoGrouping()
+        model.addPerspectiveGuide(start: guides[2].start, end: guides[2].end)
+        model.undo.endUndoGrouping()
+        let before = try XCTUnwrap(model.recipe), historyBefore = model.editHistory.count
+        let moved = MaskPoint(guides[0].start.x + 0.002, guides[0].start.y)
+        XCTAssertTrue(model.beginPerspectiveGuideDrag(index: 0, endpoint: .start))
+        XCTAssertTrue(model.updatePerspectiveGuide(index: 0, endpoint: .start, point: moved))
+        model.undo.beginUndoGrouping()
+        XCTAssertTrue(model.endPerspectiveGuideDrag())
+        model.undo.endUndoGrouping()
+        XCTAssertEqual(model.editHistory.count, historyBefore + 1)
+        let after = try XCTUnwrap(model.recipe)
+        XCTAssertNotEqual(after, before)
+        model.undo.undo()
+        XCTAssertEqual(model.recipe, before)
+        model.undo.redo()
+        XCTAssertEqual(model.recipe, after)
+    }
+
+    @MainActor func testEscapeCancelsGuideEndpointDragAndPhotoSwitchDiscardsIt() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = try await model(in: folder)
+        defer { model.finishPerspectiveGuides(); model.activeID = nil; model.catalog = nil }
+        let base = try XCTUnwrap(model.recipe)
+        var truth = base; truth.perspective.vertical = -20
+        let guides = try lines(truth, verticalOnly: true)
+        model.beginPerspectiveGuides(.perspective)
+        model.addPerspectiveGuide(start: guides[0].start, end: guides[0].end)
+        model.undo.beginUndoGrouping()
+        model.addPerspectiveGuide(start: guides[2].start, end: guides[2].end)
+        model.undo.endUndoGrouping()
+        var committed = try XCTUnwrap(model.recipe)
+        let moved = MaskPoint(guides[0].start.x + 0.002, guides[0].start.y)
+        XCTAssertTrue(model.beginPerspectiveGuideDrag(index: 0, endpoint: .start))
+        XCTAssertTrue(model.updatePerspectiveGuide(index: 0, endpoint: .start, point: moved))
+        model.changeRecipe({ $0.exposure = 0.6 }, commit: false)
+        committed.exposure = 0.6
+        model.cancelPerspectiveGuideInteraction()
+        XCTAssertEqual(model.recipe, committed)
+        XCTAssertTrue(model.dirty, "Cancelling a geometric drag preserves an unrelated exposure draft")
+        XCTAssertNil(model.perspectiveGuideTool)
+
+        for _ in 0..<500 {
+            if model.canvasCoordinatesCurrent && model.previewCurrent { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(model.canvasCoordinatesCurrent)
+        model.undo.beginUndoGrouping()
+        model.beginPerspectiveGuides(.perspective)
+        model.undo.endUndoGrouping()
+        model.addPerspectiveGuide(start: guides[0].start, end: guides[0].end)
+        XCTAssertTrue(model.beginPerspectiveGuideDrag(index: 0, endpoint: .start))
+        XCTAssertTrue(model.updatePerspectiveGuide(index: 0, endpoint: .start, point: moved))
+        XCTAssertEqual(model.recipe, committed, "A single perspective guide can be edited before the second guide is drawn")
+        model.activeID = "another-photo"
+        XCTAssertNil(model.perspectiveGuideTool)
+        XCTAssertFalse(model.updatePerspectiveGuide(index: 0, endpoint: .start, point: moved))
+        XCTAssertEqual(model.recipe, committed)
+    }
+
+    @MainActor func testReturnPreservesGuideDragAfterSaveFailure() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = try await model(in: folder)
+        defer { model.finishPerspectiveGuides(); model.activeID = nil; model.catalog = nil }
+        let base = try XCTUnwrap(model.recipe)
+        var truth = base; truth.perspective.vertical = -20
+        let guides = try lines(truth, verticalOnly: true)
+        model.beginPerspectiveGuides(.perspective)
+        model.addPerspectiveGuide(start: guides[0].start, end: guides[0].end)
+        model.undo.beginUndoGrouping()
+        model.addPerspectiveGuide(start: guides[2].start, end: guides[2].end)
+        model.undo.endUndoGrouping()
+        let committed = try XCTUnwrap(model.recipe)
+        XCTAssertTrue(model.beginPerspectiveGuideDrag(index: 0, endpoint: .start))
+        XCTAssertTrue(model.updatePerspectiveGuide(index: 0, endpoint: .start, point: MaskPoint(guides[0].start.x + 0.002, guides[0].start.y)))
+        let draft = model.recipe
+        let catalog = try XCTUnwrap(model.catalog)
+        try await catalog.database.write { try $0.execute(sql: "CREATE TRIGGER fail_guide_save BEFORE UPDATE ON photo BEGIN SELECT RAISE(ABORT,'injected storage failure'); END") }
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
+        window.title = "Synthetic — Phosdeck"
+        defer { window.orderOut(nil); window.contentView = nil }
+        let key = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        XCTAssertNil(WorkspaceKeyboard.handle(key, model: model))
+        XCTAssertNotNil(model.perspectiveGuideTool)
+        XCTAssertNotNil(model.perspectiveGuideDragOriginal)
+        XCTAssertEqual(model.recipe, draft)
+        XCTAssertTrue(model.dirty)
+        model.cancelPerspectiveGuideInteraction()
+        XCTAssertEqual(model.recipe, committed)
+        XCTAssertFalse(model.dirty)
+    }
+
+    @MainActor func testDeleteGuideKeyIsConsumedButTextFocusStillReceivesIt() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = try await model(in: folder)
+        defer { model.finishPerspectiveGuides(); model.activeID = nil; model.catalog = nil }
+        let base = try XCTUnwrap(model.recipe)
+        let line = try XCTUnwrap(UprightCorrection.classified(start: MaskPoint(0.2, 0.2), end: MaskPoint(0.2, 0.8), size: size, recipe: base))
+        model.perspectiveGuideTool = .perspective; model.perspectiveGuideBase = base; model.perspectiveGuides = [line]; model.selectedPerspectiveGuideIndex = 0
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
+        window.title = "Synthetic — Phosdeck"
+        defer { window.orderOut(nil); window.contentView = nil }
+        let key = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 51))
+        XCTAssertNil(WorkspaceKeyboard.handle(key, model: model))
+        XCTAssertTrue(model.perspectiveGuides.isEmpty)
+        model.perspectiveGuideTool = .perspective; model.perspectiveGuideBase = base; model.perspectiveGuides = [line]; model.selectedPerspectiveGuideIndex = 0
+        let editor = NSTextView(frame: CGRect(x: 0, y: 0, width: 200, height: 80))
+        window.contentView = editor; window.makeFirstResponder(editor)
+        XCTAssertNotNil(WorkspaceKeyboard.handle(key, model: model))
+        XCTAssertEqual(model.perspectiveGuides.count, 1)
+    }
+
+    @MainActor func testPerspectiveGuideCanvasStaysMountedDuringEndpointPreviewUpdate() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = try await model(in: folder)
+        defer { model.finishPerspectiveGuides(); model.activeID = nil; model.catalog = nil }
+        let base = try XCTUnwrap(model.recipe)
+        var truth = base; truth.perspective.vertical = -20
+        let guides = try lines(truth, verticalOnly: true)
+        model.beginPerspectiveGuides(.perspective)
+        model.addPerspectiveGuide(start: guides[0].start, end: guides[0].end)
+        model.undo.beginUndoGrouping()
+        model.addPerspectiveGuide(start: guides[2].start, end: guides[2].end)
+        model.undo.endUndoGrouping()
+        for _ in 0..<500 {
+            if model.canvasCoordinatesCurrent && model.previewCurrent { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(model.canvasCoordinatesCurrent)
+
+        let host = NSHostingView(rootView: PhotoCanvas(model: model))
+        host.frame = CGRect(x: 0, y: 0, width: 900, height: 600)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil); window.contentView = nil }
+        let context = CIContext()
+        func selectedGuidePixels(_ name: String) throws -> Int {
+            host.layoutSubtreeIfNeeded()
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let attachment = XCTAttachment(data: try XCTUnwrap(bitmap.representation(using: .png, properties: [:])), uniformTypeIdentifier: "public.png")
+            attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+            let image = try XCTUnwrap(bitmap.cgImage)
+            var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            context.render(CIImage(cgImage: image), toBitmap: &bytes, rowBytes: image.width * 4,
+                           bounds: CGRect(x: 0, y: 0, width: image.width, height: image.height),
+                           format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
+            // The synthetic photo, mat and crop marks are neutral. Only the
+            // selected guide contributes orange pixels to the rendered view.
+            return stride(from: 0, to: bytes.count, by: 4).reduce(0) { count, index in
+                let red = Int(bytes[index]), green = Int(bytes[index + 1]), blue = Int(bytes[index + 2])
+                return count + (red > 100 && red > green + 30 && green > blue + 20 ? 1 : 0)
+            }
+        }
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertGreaterThan(try selectedGuidePixels("guides-before-drag"), 0)
+
+        let moved = MaskPoint(guides[0].start.x + 0.002, guides[0].start.y)
+        XCTAssertTrue(model.beginPerspectiveGuideDrag(index: 0, endpoint: .start))
+        XCTAssertTrue(model.updatePerspectiveGuide(index: 0, endpoint: .start, point: moved))
+        XCTAssertFalse(model.canvasCoordinatesCurrent, "The interactive recipe changes before its new preview is published")
+        // Keep this turn on MainActor so the queued preview cannot publish
+        // before the mounted canvas has consumed the changed recipe.
+        host.rootView = PhotoCanvas(model: model)
+        XCTAssertGreaterThan(try selectedGuidePixels("guides-during-stale-preview"), 0,
+                             "The guide must remain visible while its endpoint drag owns a frozen frame")
+        XCTAssertNotNil(model.perspectiveGuideDragOriginal)
+        model.undo.beginUndoGrouping()
+        XCTAssertTrue(model.endPerspectiveGuideDrag())
+        model.undo.endUndoGrouping()
+        model.finishPerspectiveGuides()
+        host.rootView = PhotoCanvas(model: model)
+        XCTAssertEqual(try selectedGuidePixels("guides-after-finish"), 0,
+                       "Leaving the perspective tool still removes its guides")
     }
 
     private actor Gate {

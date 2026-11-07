@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 private enum ViewMode: Hashable { case grid, single, compare, survey }
 
@@ -32,6 +33,8 @@ struct WorkspaceView: View {
     @State private var snapshotName = ""
     @State private var snapshotRenameID: String?
     @State private var pasteDialog = false
+    @State private var relativeExposureDialog = false
+    @State private var relativeExposureTargets: Set<String> = []
     @State private var pasteOptions = RecipePasteOptions()
     @State private var adjustmentAction = AdjustmentAction.paste
     @State private var adjustmentSource: EditRecipe?
@@ -56,7 +59,7 @@ struct WorkspaceView: View {
     @State private var reports = false
     @StateObject private var clippingPreview = ClippingPreviewSession()
     private var utilityOpen: Bool {
-        smartDraft != nil || versionRename || collectionDialog || snapshotDialog || pasteDialog || presetRenameDialog || reports
+        smartDraft != nil || versionRename || collectionDialog || snapshotDialog || pasteDialog || relativeExposureDialog || presetRenameDialog || reports
     }
     var body: some View { presentations(workspace) }
     // Bound each expression for Xcode 26.6 without adding an Observation boundary.
@@ -230,6 +233,9 @@ struct WorkspaceView: View {
                     action: adjustmentAction, presetID: adjustmentPresetID, options: $pasteOptions, presented: $pasteDialog)
             }
         }
+        .sheet(isPresented: $relativeExposureDialog) {
+            RelativeExposureSheet(model: model, targets: relativeExposureTargets, presented: $relativeExposureDialog)
+        }
         .alert(L10n.text("app.renamePreset", defaultValue: "Rename Preset"), isPresented: $presetRenameDialog) {
             TextField(L10n.text("app.presetName", defaultValue: "Preset Name"), text: $renamePresetName)
             Button(L10n.text("app.cancel", defaultValue: "Cancel"), role: .cancel) {}
@@ -303,6 +309,11 @@ struct WorkspaceView: View {
             Button(L10n.text("app.usePreviousAdjustments_282", defaultValue: "Use Previous Adjustments…")) { model.requestAdjustments(.previous) }.disabled(!model.canUsePreviousAdjustments)
             Button(L10n.text("app.syncCurrentPhotoToSelection", defaultValue: "Sync Current Photo to Selection…")) { model.requestAdjustments(.sync) }
                 .disabled(!model.canEdit || model.selection.subtracting(Set([model.activeID].compactMap { $0 })).isEmpty)
+            Button(L10n.text("app.applyRelativeExposure", defaultValue: "Apply Relative Exposure…")) {
+                relativeExposureTargets = model.selection
+                relativeExposureDialog = true
+            }
+                .disabled(!model.canEdit || model.selection.isEmpty)
             Divider()
             Button(L10n.text("app.saveCurrentAdjustmentsAsPreset", defaultValue: "Save Current Adjustments as Preset…")) { openAdjustments(.save) }.disabled(!model.canEdit)
             Menu(L10n.text("app.applyPreset", defaultValue: "Apply Preset")) {
@@ -1789,6 +1800,145 @@ private struct AdjustmentPhotoPreview: View {
                 guard let root = model.roots.first(where: { $0.id == photo.rootID }) else { image = nil; return }
                 image = try? await model.thumbnails.image(photo: photo, root: root, edge: 160)
             }
+    }
+}
+
+struct RelativeExposureSheet: View {
+    @Bindable var model: AppModel
+    let targets: Set<String>
+    @Binding var presented: Bool
+    @State private var delta = 0.0
+    @State private var draft: String?
+    @State private var invalid = false
+    @FocusState private var editing: Bool
+
+    private let range = -5.0...5.0
+    private let smallStep = 1.0 / 3.0
+
+    private var parsedDraft: Double? {
+        guard let draft else { return delta }
+        // AppKit can echo the displayed text when the focused field is
+        // updated by a fader or step button. Preserve its full precision.
+        if draft == format(delta) { return delta }
+        let cleaned = draft.replacingOccurrences(of: "−", with: "-")
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = Double(cleaned), value.isFinite, range.contains(value) else { return nil }
+        return value
+    }
+
+    private var canApply: Bool {
+        !model.busy && !targets.isEmpty && !invalid && parsedDraft.map { $0 != 0 } == true
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L10n.text("app.relativeExposure", defaultValue: "Relative Exposure")).font(.headline)
+            Text(L10n.text("app.relativeExposureDescription", defaultValue: "Apply the same exposure change to each selected photo. Values are clamped to ±5 EV."))
+                .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Text(L10n.text("app.selectedPhotos", defaultValue: "\(targets.count) selected photos"))
+                .font(.caption11).foregroundStyle(Theme.textSecondary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: Metrics.gap) {
+                    Text(L10n.text("app.exposureChange", defaultValue: "Exposure Change"))
+                        .frame(width: Metrics.rowLabel, alignment: .leading)
+                    GradientAdjustmentSlider(value: delta, range: range, step: smallStep, neutral: 0,
+                                             track: .tonal,
+                                             label: L10n.text("app.exposureChange", defaultValue: "Exposure Change"),
+                                             change: { value in setDelta(value) }, commit: {})
+                        .frame(height: 28)
+                    HStack(spacing: 3) {
+                        TextField(L10n.text("app.exposureChange", defaultValue: "Exposure Change"), text: Binding(get: { draft ?? format(delta) }, set: { draft = $0; invalid = false }))
+                            .textFieldStyle(.plain).font(.value).multilineTextAlignment(.trailing)
+                            .foregroundStyle(Theme.text).padding(.horizontal, 3).frame(height: 20)
+                            .background {
+                                if editing || invalid {
+                                    RoundedRectangle(cornerRadius: Metrics.inputRadius).fill(Theme.raised)
+                                        .overlay(RoundedRectangle(cornerRadius: Metrics.inputRadius)
+                                            .strokeBorder(invalid ? Theme.error : Theme.focusRing, lineWidth: invalid ? 1.5 : 1))
+                                }
+                            }
+                            .focused($editing)
+                            .onSubmit { validateDraft(); if !invalid { editing = false } }
+                            .onExitCommand { resetDraft(); editing = false }
+                            .onChange(of: editing) { if !editing, draft != nil { validateDraft() } }
+                            .accessibilityLabel(L10n.text("app.exposureChangeValue", defaultValue: "Exposure change value"))
+                            .opacity(!editing && !invalid ? 0 : 1)
+                            .overlay(alignment: .trailing) {
+                                if !editing && !invalid {
+                                    ParameterReadout(text: format(delta), lit: true, interactive: true, activate: { editing = true })
+                                        .padding(.horizontal, 3).accessibilityHidden(true)
+                                }
+                            }
+                        Text("EV").font(.caption11).foregroundStyle(Theme.textSecondary)
+                            .frame(width: Metrics.rowUnit, alignment: .leading)
+                    }.frame(width: Metrics.rowValue, alignment: .trailing)
+                }.frame(minHeight: Metrics.row)
+                if invalid {
+                    Label(L10n.text("app.invalidExposureDelta", defaultValue: "Enter a finite value between −5 and +5 EV. Press Esc to cancel."), systemImage: "exclamationmark.circle")
+                        .font(.caption11).foregroundStyle(Theme.error)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, Metrics.rowLabel + Metrics.gap)
+                }
+            }
+
+            HStack(spacing: -1) {
+                nudgeButton("−1 EV", delta: -1, label: L10n.text("app.decreaseExposureByOneEV", defaultValue: "Decrease exposure by one EV"), position: .leading)
+                nudgeButton("−⅓ EV", delta: -smallStep, label: L10n.text("app.decreaseExposureByOneThirdEV", defaultValue: "Decrease exposure by one third EV"), position: KeyPosition(index: 1, count: 4))
+                nudgeButton("+⅓ EV", delta: smallStep, label: L10n.text("app.increaseExposureByOneThirdEV", defaultValue: "Increase exposure by one third EV"), position: KeyPosition(index: 2, count: 4))
+                nudgeButton("+1 EV", delta: 1, label: L10n.text("app.increaseExposureByOneEV", defaultValue: "Increase exposure by one EV"), position: .trailing)
+            }
+
+            Text(L10n.text("app.relativeExposurePreservesOtherAdjustments", defaultValue: "Only Exposure changes. Each photo keeps its own baseline and all other adjustments."))
+                .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Seam()
+            HStack {
+                Spacer()
+                Button(L10n.text("app.cancel", defaultValue: "Cancel")) { presented = false }.keyboardShortcut(.cancelAction)
+                Button(L10n.text("app.apply", defaultValue: "Apply")) {
+                    guard validateDraft(), canApply else { return }
+                    if model.applyRelativeExposure(delta: delta, ids: targets) { presented = false }
+                }.keyboardShortcut(.defaultAction).disabled(!canApply)
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+        .instrumentForm()
+    }
+
+    @ViewBuilder private func nudgeButton(_ title: String, delta amount: Double, label: String, position: KeyPosition) -> some View {
+        Button(title) { setDelta(delta + amount) }
+            .buttonStyle(.key(position: position, height: 24, padding: 8))
+            .disabled(!range.contains(delta + amount))
+            .accessibilityLabel(label)
+    }
+
+    private func format(_ value: Double) -> String { AdjustmentRow.display(value, digits: 3, signed: true) }
+
+    private func setDelta(_ value: Double) {
+        delta = min(range.upperBound, max(range.lowerBound, value))
+        draft = nil
+        invalid = false
+    }
+
+    @discardableResult private func validateDraft() -> Bool {
+        guard let value = parsedDraft else {
+            invalid = true
+            if let app = NSApp {
+                NSAccessibility.post(element: app, notification: .announcementRequested,
+                                     userInfo: [.announcement: L10n.text("app.invalidExposureDelta", defaultValue: "Enter a finite value between −5 and +5 EV. Press Esc to cancel."),
+                                                .priority: NSAccessibilityPriorityLevel.high.rawValue])
+            }
+            return false
+        }
+        setDelta(value)
+        return true
+    }
+
+    private func resetDraft() {
+        draft = nil
+        invalid = false
     }
 }
 

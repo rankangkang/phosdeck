@@ -1,6 +1,193 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "app.applyRelativeExposure": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply Relative Exposure…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用相对曝光…"
+          }
+        }
+      }
+    },
+    "app.relativeExposure": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relative Exposure"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相对曝光"
+          }
+        }
+      }
+    },
+    "app.relativeExposureDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply the same exposure change to each selected photo. Values are clamped to ±5 EV."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对每张选中照片应用相同的曝光变化，结果限制在 ±5 EV。"
+          }
+        }
+      }
+    },
+    "app.exposureChange": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exposure Change"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "曝光变化"
+          }
+        }
+      }
+    },
+    "app.exposureChangeValue": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exposure change value"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "曝光变化值"
+          }
+        }
+      }
+    },
+    "app.invalidExposureDelta": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a finite value between −5 and +5 EV. Press Esc to cancel."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入 −5 到 +5 EV 之间的有限数值。按 Esc 取消。"
+          }
+        }
+      }
+    },
+    "app.decreaseExposureByOneEV": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decrease exposure by one EV"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "曝光减少 1 EV"
+          }
+        }
+      }
+    },
+    "app.decreaseExposureByOneThirdEV": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decrease exposure by one third EV"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "曝光减少 ⅓ EV"
+          }
+        }
+      }
+    },
+    "app.increaseExposureByOneThirdEV": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Increase exposure by one third EV"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "曝光增加 ⅓ EV"
+          }
+        }
+      }
+    },
+    "app.increaseExposureByOneEV": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Increase exposure by one EV"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "曝光增加 1 EV"
+          }
+        }
+      }
+    },
+    "app.relativeExposurePreservesOtherAdjustments": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only Exposure changes. Each photo keeps its own baseline and all other adjustments."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只改变曝光。每张照片保留自己的基准和其他调整。"
+          }
+        }
+      }
+    },
     "app.clippingKeyHelp": {
       "extractionState": "manual",
       "localizations": {
@@ -1384,13 +1571,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Draw one edge to straighten, or two to four edges for perspective. Enter or Esc finishes the guides."
+            "value": "Draw one edge to straighten, or two to four edges for perspective. Select a guide to adjust an endpoint; Delete removes it. Enter finishes; Esc cancels an endpoint drag or finishes the guides."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "拉直只需一条线；透视需两至四条线。Enter 或 Esc 完成参考线。"
+            "value": "拉直需一条线，透视需两至四条。选中参考线可调整端点，Delete 删除该线。Enter 完成；Esc 取消端点拖动，未拖动时退出参考线。"
           }
         }
       }
@@ -44049,6 +44236,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "保持原名打开"
+          }
+        }
+      }
+    },
+    "geometry.deleteGuide": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Guide"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除参考线"
           }
         }
       }

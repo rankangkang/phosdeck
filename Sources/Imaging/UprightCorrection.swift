@@ -91,6 +91,10 @@ enum UprightCorrection {
     }
 
     static func classified(start: MaskPoint, end: MaskPoint, weight: Double = 1, size: CGSize, recipe: EditRecipe) -> PerspectiveLine? {
+        guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0,
+              [start.x, start.y, end.x, end.y].allSatisfy({ $0.isFinite && (0...1).contains($0) }),
+              weight.isFinite, weight > 0,
+              hypot(end.x - start.x, end.y - start.y) > 1e-9 else { return nil }
         var source = recipe; source.crop = Crop(); source.perspective.constrainCrop = false
         guard let geometry = try? PhotoGeometry(size: size, recipe: source),
               let a = geometry.transform.point(CGPoint(x: start.x * size.width, y: start.y * size.height)),

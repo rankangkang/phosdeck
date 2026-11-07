@@ -136,7 +136,7 @@ struct AdjustmentRow: View {
     }
 }
 
-private struct ParameterReadout: NSViewRepresentable {
+struct ParameterReadout: NSViewRepresentable {
     let text: String
     let lit: Bool
     let interactive: Bool

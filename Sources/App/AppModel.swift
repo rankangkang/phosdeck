@@ -166,11 +166,14 @@ final class AppModel {
     var perspectiveGuideTool: PerspectiveGuideTool?
     var perspectiveGuides: [PerspectiveLine] = []
     var perspectiveGuideBase: EditRecipe?
+    var selectedPerspectiveGuideIndex: Int?
+    var selectedPerspectiveGuideEndpoint: PerspectiveGuideEndpoint?
     var perspectiveMessage = ""
     var uprightAnalyzing = false
     var uprightGeneration = UUID()
     @ObservationIgnored var uprightTask: Task<Void, Never>?
     @ObservationIgnored var applyingPerspective = false
+    @ObservationIgnored var perspectiveGuideDragOriginal: (recipe: EditRecipe, lines: [PerspectiveLine], dirty: Bool)?
     @ObservationIgnored var detectPerspectiveLines: @Sendable (ImageRequest) async throws -> [PerspectiveLine] = { request in
         let worker = Task.detached(priority: .userInitiated) {
             let input = try await ImagePipeline().smartMaskInput(request, longEdge: 1024)
@@ -2285,6 +2288,75 @@ final class AppModel {
             return true
         } catch { self.error = error.localizedDescription; return false }
     }
+
+    /// Apply one exposure delta to every selected photo while preserving each
+    /// photo's own baseline and all other recipe settings.
+    ///
+    /// This is deliberately separate from `applyAdjustments`: ordinary paste
+    /// and sync copy the source recipe's absolute exposure, whereas Lightroom's
+    /// multi-photo Quick Develop exposure control applies the same relative EV
+    /// change to each target.
+    @discardableResult func applyRelativeExposure(delta: Double, ids: Set<String>, title: String? = nil) -> Bool {
+        let title = title ?? L10n.text("app.relativeExposure", defaultValue: "Relative Exposure")
+        guard !busy, canEdit, !ids.isEmpty, delta.isFinite, (-5...5).contains(delta), delta != 0,
+              let catalog, commitRecipe() else { return false }
+        do {
+            let targets = try catalog.photos(ids: ids)
+            guard !targets.isEmpty else { return false }
+            busy = true; applyingAdjustments = true; reports = []
+            task = Task {
+                defer { busy = false; applyingAdjustments = false; taskProgress = nil }
+                var changes = [(photo: Photo, recipe: EditRecipe)]()
+                var results = [String]()
+                var published = false
+                do {
+                    for (index, photo) in targets.enumerated() {
+                        try Task.checkCancellation()
+                        taskProgress = TaskProgress(title: title, done: index, total: targets.count)
+                        status = L10n.text("app.checking", defaultValue: "\(title) · Checking \(index + 1)/\(targets.count) · \(photo.name)")
+                        do {
+                            guard photo.supportsEditing else { throw LRCError(L10n.text("app.editingThisFormatIsNotYetSupported", defaultValue: "Editing this format is not yet supported")) }
+                            guard let root = roots.first(where: { $0.id == photo.rootID }) else { throw LRCError(L10n.text("app.theOriginalPhotoRootFolderIsMissing", defaultValue: "The original photo root folder is missing")) }
+                            let original: EditRecipe
+                            if let data = photo.recipe { original = try JSONDecoder().decode(EditRecipe.self, from: data) }
+                            else { original = try await pipeline.baseline(ImageRequest(photo: photo, root: root, recipe: nil)) }
+                            try original.validate(for: photo)
+                            var value = original
+                            value.exposure = min(5, max(-5, original.exposure + delta))
+                            try value.validate(for: photo)
+                            guard value != original else {
+                                results.append(L10n.text("app.noChangesNeeded", defaultValue: "No changes needed: \(photo.name)"))
+                                continue
+                            }
+                            changes.append((photo, value))
+                        } catch is CancellationError { throw CancellationError() }
+                        catch { results.append(L10n.text("app.skipped", defaultValue: "Skipped \(photo.name): \(error.localizedDescription)")) }
+                    }
+                    try Task.checkCancellation()
+                    if !changes.isEmpty {
+                        try catalog.saveRecipes(changes, title: title)
+                        published = true
+                        let old = changes.map(\.photo)
+                        undo.beginUndoGrouping()
+                        undo.registerUndo(withTarget: self) { $0.restoreRecipeBatch(old, title: title) }
+                        undo.setActionName(title); undo.endUndoGrouping()
+                        try refreshAfterBatch(ids: Set(old.map(\.id)))
+                    }
+                    reports = changes.map { L10n.text("app.succeeded", defaultValue: "Succeeded: \($0.photo.name)") } + results
+                    status = L10n.text("app.completeUpdatedPhotos", defaultValue: "\(title) complete · Updated \(changes.count)/\(targets.count) photos") + (changes.isEmpty ? "" : L10n.text("app.undoTheEntireBatch", defaultValue: " · Undo the entire batch"))
+                } catch is CancellationError {
+                    reports = [L10n.text("app.cancelledBatchAdjustmentsWereNotSaved", defaultValue: "Cancelled. Batch adjustments were not saved")] + results
+                    status = L10n.text("app.cancelled_115", defaultValue: "Cancelled \(title)")
+                } catch {
+                    let message = published ? L10n.text("app.adjustmentsSavedButTheInterfaceCouldNotRefresh", defaultValue: "Adjustments saved, but the interface could not refresh") : L10n.text("app.batchAdjustmentsWereNotSaved", defaultValue: "Batch adjustments were not saved")
+                    reports = ["\(message)：\(error.localizedDescription)"] + results
+                    self.error = error.localizedDescription; status = message
+                }
+            }
+            return true
+        } catch { self.error = error.localizedDescription; return false }
+    }
+
     private func refreshAfterBatch(ids: Set<String>) throws {
         try reloadPhotos(); try reloadEditContext()
         if let activeID, ids.contains(activeID) {

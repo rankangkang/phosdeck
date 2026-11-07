@@ -510,11 +510,13 @@ struct DevelopPanel: View {
             if model.perspectiveGuideTool != nil {
                 HStack {
                     Button(L10n.text("geometry.clearGuides", defaultValue: "Clear Guides")) {
-                        model.perspectiveGuides = []; model.perspectiveGuideBase = model.recipe; model.perspectiveMessage = ""
+                        model.clearPerspectiveGuides()
                     }.buttonStyle(.key).controlUnavailable(model.perspectiveGuides.isEmpty)
-                    Button(L10n.text("app.done", defaultValue: "Done")) { model.finishPerspectiveGuides() }.buttonStyle(.key)
+                    Button(L10n.text("app.done", defaultValue: "Done")) {
+                        if model.endPerspectiveGuideDrag() { model.finishPerspectiveGuides() }
+                    }.buttonStyle(.key)
                 }.padding(.vertical, 4)
-                note(L10n.text("geometry.guideHelp", defaultValue: "Draw one edge to straighten, or two to four edges for perspective. Enter or Esc finishes the guides."))
+                note(L10n.text("geometry.guideHelp", defaultValue: "Draw one edge to straighten, or two to four edges for perspective. Select a guide to adjust an endpoint; Delete removes it. Enter finishes; Esc cancels an endpoint drag or finishes the guides."))
             }
             if !model.perspectiveMessage.isEmpty { note(model.perspectiveMessage) }
             row(L10n.text("app.horizontalPerspective", defaultValue: "Horizontal Perspective"), \.perspective.horizontal, step: 0.1, digits: 1)

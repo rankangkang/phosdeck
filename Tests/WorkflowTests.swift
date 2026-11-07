@@ -530,6 +530,205 @@ final class WorkflowTests: XCTestCase {
         XCTAssertThrowsError(try catalog.saveRecipes([(original[0], a)], title: "stale revision"))
     }
 
+    @MainActor func testRelativeExposureBatchAccumulatesPerPhotoBoundsSelectionAndUndoRedo() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let catalog = try CatalogStore(directory: folder)
+        let root = try catalog.addRoot(url: folder.appendingPathComponent("source"), bookmark: Data())
+        let initialValues: [(String, Double)] = [("a", -1), ("b", 0.25), ("c", 4.8), ("d", -4.8)]
+        var originals = [String: EditRecipe]()
+        for (id, exposure) in initialValues {
+            var value = recipe()
+            value.exposure = exposure
+            value.baselineExposure = id == "b" ? 0.3 : id == "c" ? -0.2 : 0
+            value.baselineTemperature = id == "b" ? 4800 : 5500
+            value.baselineTint = id == "b" ? 4 : 0
+            value.temperature = value.baselineTemperature
+            value.tint = value.baselineTint
+            value.contrast = 1.2
+            value.saturation = 0.8
+            originals[id] = value
+            var photo = Photo(id: id, rootID: root.id, relativePath: id + ".ARW", identity: Data(), identityKey: id, width: 80, height: 40)
+            photo.recipe = try JSONEncoder().encode(value)
+            photo.recipeRevision = 1
+            try catalog.index(photo)
+        }
+
+        let model = AppModel(previewRenderer: { _, _, _ in throw LRCError("synthetic") })
+        model.catalog = catalog
+        try model.reload()
+        model.canEdit = true
+        model.undo.groupsByEvent = false
+        let selected: Set<String> = ["a", "b", "c"]
+        model.selection = selected
+        let thirdEV = 1.0 / 3.0
+
+        XCTAssertTrue(model.applyRelativeExposure(delta: thirdEV, ids: selected))
+        await model.task?.value
+        XCTAssertFalse(model.busy)
+        XCTAssertNil(model.error)
+
+        func storedRecipe(_ id: String) throws -> EditRecipe {
+            try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(catalog.photo(id)?.recipe))
+        }
+        var afterFirst = originals
+        afterFirst["a"]?.exposure = -1 + thirdEV
+        afterFirst["b"]?.exposure = 0.25 + thirdEV
+        afterFirst["c"]?.exposure = 5
+        for id in ["a", "b", "c", "d"] {
+            let expected = id == "d" ? try XCTUnwrap(originals[id]) : try XCTUnwrap(afterFirst[id])
+            XCTAssertEqual(try storedRecipe(id), expected, "First relative exposure pass preserves per-photo settings")
+        }
+        XCTAssertEqual(try catalog.photo("d")?.recipeRevision, 1, "An unselected photo is not rewritten")
+
+        XCTAssertTrue(model.applyRelativeExposure(delta: thirdEV, ids: selected))
+        await model.task?.value
+        var afterSecond = afterFirst
+        afterSecond["a"]?.exposure = (afterFirst["a"]?.exposure ?? 0) + thirdEV
+        afterSecond["b"]?.exposure = (afterFirst["b"]?.exposure ?? 0) + thirdEV
+        afterSecond["c"]?.exposure = 5
+        for id in ["a", "b", "c", "d"] {
+            let expected = id == "d" ? try XCTUnwrap(originals[id]) : try XCTUnwrap(afterSecond[id])
+            XCTAssertEqual(try storedRecipe(id), expected, "A second relative pass accumulates on each target")
+        }
+
+        model.undo.undo()
+        XCTAssertEqual(try storedRecipe("a"), try XCTUnwrap(afterFirst["a"]))
+        XCTAssertEqual(try storedRecipe("b"), try XCTUnwrap(afterFirst["b"]))
+        XCTAssertEqual(try storedRecipe("c"), try XCTUnwrap(afterFirst["c"]))
+        XCTAssertEqual(try storedRecipe("d"), try XCTUnwrap(originals["d"]))
+        XCTAssertTrue(model.undo.canUndo, "One undo restores one whole relative batch and leaves the first batch undoable")
+        model.undo.redo()
+        XCTAssertEqual(try storedRecipe("a"), try XCTUnwrap(afterSecond["a"]))
+        XCTAssertEqual(try storedRecipe("b"), try XCTUnwrap(afterSecond["b"]))
+        XCTAssertEqual(try storedRecipe("c"), try XCTUnwrap(afterSecond["c"]))
+        XCTAssertEqual(try storedRecipe("d"), try XCTUnwrap(originals["d"]))
+
+        var beforeInvalid = [String: (Int, Data?, Int)]()
+        for photo in try catalog.photos() {
+            beforeInvalid[photo.id] = (photo.recipeRevision, photo.recipe, try catalog.editHistory(photoID: photo.id).count)
+        }
+        for invalid in [Double.nan, Double.infinity, -Double.infinity, 5.001, -5.001, 0] {
+            XCTAssertFalse(model.applyRelativeExposure(delta: invalid, ids: selected), "Invalid relative delta must be rejected")
+        }
+        for photo in try catalog.photos() {
+            let before = try XCTUnwrap(beforeInvalid[photo.id])
+            XCTAssertEqual(photo.recipeRevision, before.0)
+            XCTAssertEqual(photo.recipe, before.1)
+            XCTAssertEqual(try catalog.editHistory(photoID: photo.id).count, before.2)
+        }
+
+        XCTAssertTrue(model.applyRelativeExposure(delta: -1, ids: ["d"]))
+        await model.task?.value
+        var expectedLowerBound = try XCTUnwrap(originals["d"])
+        expectedLowerBound.exposure = -5
+        XCTAssertEqual(try storedRecipe("d"), expectedLowerBound, "A negative relative pass clamps the lower bound to -5 EV")
+        for id in ["a", "b", "c"] {
+            XCTAssertEqual(try storedRecipe(id), try XCTUnwrap(afterSecond[id]), "A single-photo relative pass leaves the other photos unchanged")
+        }
+    }
+
+    @MainActor func testRelativeExposureSheetNativeSliderApplyPrecisionAndValidation() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let catalog = try CatalogStore(directory: folder)
+        let root = try catalog.addRoot(url: folder.appendingPathComponent("source"), bookmark: Data())
+        let initial = recipe()
+        var photo = Photo(id: "a", rootID: root.id, relativePath: "a.ARW", identity: Data(), identityKey: "a", width: 80, height: 40)
+        photo.recipe = try JSONEncoder().encode(initial)
+        photo.recipeRevision = 1
+        try catalog.index(photo)
+        let model = AppModel(previewRenderer: { _, _, _ in throw LRCError("synthetic") })
+        model.catalog = catalog
+        try model.reload()
+        model.canEdit = true
+        model.undo.groupsByEvent = false
+
+        final class Presentation { var isPresented = true }
+        func descendants<T: NSView>(_ root: NSView, _ type: T.Type) -> [T] {
+            (root as? T).map { [$0] } ?? root.subviews.flatMap { descendants($0, type) }
+        }
+        func hostSheet(_ presentation: Presentation) -> (NSHostingView<RelativeExposureSheet>, NSWindow) {
+            let host = NSHostingView(rootView: RelativeExposureSheet(model: model, targets: ["a"],
+                presented: Binding(get: { presentation.isPresented }, set: { presentation.isPresented = $0 })))
+            host.frame = CGRect(x: 0, y: 0, width: 520, height: 320)
+            let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = host
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            host.layoutSubtreeIfNeeded()
+            return (host, window)
+        }
+        func editableField(_ host: NSView) -> NSTextField? {
+            descendants(host, NSTextField.self).first { $0.isEditable }
+        }
+        func pump() {
+            let deadline = Date().addingTimeInterval(0.08)
+            while Date() < deadline { RunLoop.current.run(mode: .default, before: deadline) }
+        }
+        func closeSheet(_ sheet: (NSHostingView<RelativeExposureSheet>, NSWindow)) {
+            sheet.1.makeFirstResponder(nil)
+            sheet.1.orderOut(nil)
+            sheet.1.contentView = nil
+        }
+        func pressApply(_ sheet: (NSHostingView<RelativeExposureSheet>, NSWindow)) throws -> Bool {
+            // Hosted SwiftUI AX children can be empty. Exercise its registered
+            // default action through AppKit and assert the actual saved recipe.
+            sheet.1.makeFirstResponder(sheet.0)
+            pump()
+            let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: sheet.1.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+            return sheet.0.performKeyEquivalent(with: event)
+        }
+
+        do {
+            let presentation = Presentation()
+            let first = hostSheet(presentation); defer { closeSheet(first) }
+            try await waitUntil { editableField(first.0) != nil }
+            let field = try XCTUnwrap(editableField(first.0))
+            first.1.makeFirstResponder(field); field.selectText(nil)
+            let slider = try XCTUnwrap(descendants(first.0, AdjustmentNSSlider.self).first { $0.accessibilityLabel() == L10n.text("app.exposureChange", defaultValue: "Exposure Change") })
+            XCTAssertTrue(slider.accessibilityPerformIncrement())
+            XCTAssertEqual(slider.doubleValue, 1.0 / 3.0, accuracy: 1e-12)
+            pump()
+            XCTAssertTrue(try pressApply(first), "The valid sheet must handle its native default-action shortcut")
+            XCTAssertFalse(presentation.isPresented)
+            await model.task?.value
+        }
+        let afterSlider = try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(catalog.photo("a")?.recipe))
+        XCTAssertEqual(afterSlider.exposure, 1.0 / 3.0, accuracy: 1e-12, "Native slider + Apply must preserve one-third EV precision")
+
+        do {
+            let presentation = Presentation(), invalidSheet = hostSheet(presentation)
+            defer { closeSheet(invalidSheet) }
+            try await waitUntil { editableField(invalidSheet.0) != nil }
+            let field = try XCTUnwrap(editableField(invalidSheet.0))
+            invalidSheet.1.makeFirstResponder(field); field.selectText(nil)
+            let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
+            editor.insertText("NaN", replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+            pump(); editor.insertNewline(nil); pump()
+            _ = try pressApply(invalidSheet)
+            pump()
+            XCTAssertTrue(presentation.isPresented, "Invalid input must not dismiss the sheet")
+            XCTAssertEqual(try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(catalog.photo("a")?.recipe)).exposure, afterSlider.exposure, accuracy: 1e-12, "Invalid input must not write, including through the default-action shortcut")
+        }
+        do {
+            let presentation = Presentation(), validSheet = hostSheet(presentation)
+            defer { closeSheet(validSheet) }
+            try await waitUntil { editableField(validSheet.0) != nil }
+            let field = try XCTUnwrap(editableField(validSheet.0))
+            validSheet.1.makeFirstResponder(field); field.selectText(nil)
+            let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
+            editor.insertText("0.5", replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+            pump(); editor.insertNewline(nil); pump()
+            XCTAssertTrue(try pressApply(validSheet))
+            XCTAssertFalse(presentation.isPresented)
+            await model.task?.value
+        }
+        let afterText = try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(catalog.photo("a")?.recipe))
+        XCTAssertEqual(afterText.exposure, afterSlider.exposure + 0.5, accuracy: 1e-12, "A valid entered EV applies through the native sheet")
+    }
+
     func testPresetSelectionBackupAndDetailValidation() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
