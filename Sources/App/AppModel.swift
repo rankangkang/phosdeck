@@ -204,6 +204,8 @@ final class AppModel {
             }
         }
     }
+    @ObservationIgnored var directAdjustment: DirectAdjustmentSession?
+    @ObservationIgnored var applyingDirectAdjustment = false
     var pointSampling = false
     var selectedPointColorID:UUID? { didSet { if oldValue != selectedPointColorID { refreshPointColorTools() } } }
     var showPointColorRange = false { didSet { if oldValue != showPointColorRange { refreshPointColorTools() } } }
@@ -290,7 +292,7 @@ final class AppModel {
     var recentKeywords: [String] = []
     private var recentKeywordCatalog: String?
     var keywordFilter = "" { didSet { if keywordFilter != oldValue { prepareFilterSection(.metadata) } } }
-    var activeID: String? { didSet { if activeID != oldValue { finishPerspectiveGuides(); perspectiveMessage = ""; cancelSmartMask(); cancelPointColorTools(); selectedPointColorID = nil; cancelSpotSourceRefresh(); rememberViewPosition(leaving: oldValue); cancelWhiteBalanceSampling(); cancelZoneSampling(); selectedZone = nil; sampledZoneEV = nil } } }
+    var activeID: String? { didSet { if activeID != oldValue { cancelDirectAdjustment(); finishPerspectiveGuides(); perspectiveMessage = ""; cancelSmartMask(); cancelPointColorTools(); selectedPointColorID = nil; cancelSpotSourceRefresh(); rememberViewPosition(leaving: oldValue); cancelWhiteBalanceSampling(); cancelZoneSampling(); selectedZone = nil; sampledZoneEV = nil } } }
     var scope = "all"
     var search = "" { didSet { if search != oldValue { prepareFilterSection(.text) } } }
     var ratingComparison = RatingComparison.atLeast { didSet { if ratingComparison != oldValue { prepareFilterSection(.attribute) } } }
@@ -322,7 +324,7 @@ final class AppModel {
     private var lastAppliedHold = false
     var isViewingImport: Bool { lastImport.map { scope == $0.scope } ?? false }
     private var librarySingleView = false
-    var editMode = false { didSet { if !editMode { cancelSmartMask(); cancelWhiteBalanceSampling(); endAdjustmentPreview(); endDevelopReference(); cancelPointColorTools(); cancelZoneSampling(); if !singleView { beforeAfter = .off } } else { endComparison(); endSurvey() } } }
+    var editMode = false { didSet { if !editMode { cancelDirectAdjustment(); cancelSmartMask(); cancelWhiteBalanceSampling(); endAdjustmentPreview(); endDevelopReference(); cancelPointColorTools(); cancelZoneSampling(); if !singleView { beforeAfter = .off } } else { endComparison(); endSurvey() } } }
     var singleView = false { didSet { if !singleView { endComparison(); endSurvey(); if !editMode { beforeAfter = .off } } } }
     var comparison: PhotoComparison?
     var survey: PhotoSurvey?
@@ -337,7 +339,7 @@ final class AppModel {
     static let zoomScales: [Double] = [0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16]
     var zoomLabel: String { Self.zoomLabel(zoomScale) }
     static func zoomLabel(_ scale: Double) -> String { String(format: "%g%%", scale * 100) }
-    var before = false { didSet { if before { cancelWhiteBalanceSampling(); endAdjustmentPreview(redraw: false); endDevelopReference(); cancelPointColorTools(); cancelZoneSampling() } } }
+    var before = false { didSet { if before { cancelDirectAdjustment(); cancelWhiteBalanceSampling(); endAdjustmentPreview(redraw: false); endDevelopReference(); cancelPointColorTools(); cancelZoneSampling() } } }
     var beforeAfter = BeforeAfterLayout.off {
         didSet { if beforeAfter != oldValue { if beforeAfter != .off { endDevelopReference(); cancelZoneSampling() }; refreshBeforeImage() } }
     }
@@ -1868,6 +1870,7 @@ final class AppModel {
         }
     }
     func changeRecipe(_ mutation: (inout EditRecipe) -> Void, commit: Bool = true, title: String? = nil, preview: Bool = true) {
+        if !applyingDirectAdjustment { cancelDirectAdjustment() }
         guard canEdit, !applyingAdjustments, var value = recipe else { return }
         let started = CFAbsoluteTimeGetCurrent()
         mutation(&value)
@@ -1891,6 +1894,7 @@ final class AppModel {
         } else if preview { requestPreview(interactive: true) }
     }
     @discardableResult func commitRecipe(title: String? = nil) -> Bool {
+        cancelDirectAdjustment()
         endAdjustmentPreview(redraw: false)
         guard dirty else { return true }
         guard let catalog, let id = activeID, let value = recipe else { return false }
@@ -1911,6 +1915,7 @@ final class AppModel {
         } catch { self.error = L10n.text("app.saveFailedYourDraftWasPreserved", defaultValue: "Save failed. Your draft was preserved: \(error.localizedDescription)"); return false }
     }
     private func restoreRecipe(_ value: EditRecipe, id: String) {
+        cancelDirectAdjustment()
         guard !applyingAdjustments, let catalog else { return }
         perform {
             guard let photo = try catalog.photo(id), let data = photo.recipe else { return }
@@ -3101,6 +3106,7 @@ extension AppModel {
         lastExportResult = nil; exportRecordIDs = nil; exportRecordsUnfinishedOnly = false
         if let id = heldResultsID { try catalog?.releaseResults(id) }; heldResultsID = nil
         comparison?.cancel(); comparison = nil; survey?.cancel(); survey = nil
+        cancelDirectAdjustment()
         clearSavedEditPreview(); endAdjustmentPreview(redraw: false); presetListFocused = false; displayPixelReadout = nil; beforeReference = nil; endMaskEffectPreview(redraw: false)
         endDevelopReference(); pinnedDevelopPhoto = nil
         previewTask?.cancel(); previewGeneration = UUID(); pendingPreview = nil; pendingQualityPreview = nil

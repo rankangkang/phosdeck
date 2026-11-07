@@ -27,3 +27,43 @@ struct ImageHistogram {
         return Self(channels: values)
     }
 }
+
+/// Public Lightroom interaction zones; parameter response remains native.
+enum HistogramRegion: Int, CaseIterable {
+    case blacks, shadows, exposure, highlights, whites
+    static let boundaries: [Double] = [0, 0.1, 0.3, 0.7, 0.9, 1]
+    var fractions: ClosedRange<Double> { Self.boundaries[rawValue]...Self.boundaries[rawValue + 1] }
+    static func at(_ x: Double) -> Self {
+        guard x.isFinite else { return .exposure }
+        return allCases.last(where: { x >= $0.fractions.lowerBound }) ?? .blacks
+    }
+    var title: String {
+        switch self {
+        case .blacks: L10n.text("app.blacks", defaultValue: "Blacks")
+        case .shadows: L10n.text("app.shadows", defaultValue: "Shadows")
+        case .exposure: L10n.text("app.exposure", defaultValue: "Exposure")
+        case .highlights: L10n.text("app.highlights", defaultValue: "Highlights")
+        case .whites: L10n.text("app.whites", defaultValue: "Whites")
+        }
+    }
+    var range: ClosedRange<Double> { self == .exposure ? -5...5 : -100...100 }
+    var step: Double { self == .exposure ? 0.01 : 1 }
+    func value(in recipe: EditRecipe) -> Double {
+        switch self {
+        case .blacks: recipe.develop.blacks
+        case .shadows: recipe.develop.shadows
+        case .exposure: recipe.exposure
+        case .highlights: recipe.develop.highlights
+        case .whites: recipe.develop.whites
+        }
+    }
+    func set(_ value: Double, in recipe: inout EditRecipe) {
+        switch self {
+        case .blacks: recipe.develop.blacks = value
+        case .shadows: recipe.develop.shadows = value
+        case .exposure: recipe.exposure = value
+        case .highlights: recipe.develop.highlights = value
+        case .whites: recipe.develop.whites = value
+        }
+    }
+}

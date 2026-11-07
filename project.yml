@@ -26,7 +26,7 @@ targets:
     type: application
     platform: macOS
     sources:
-      # Includes Imaging/ExposureMatching.swift.
+      # Includes Imaging/ExposureMatching.swift, App/DirectAdjustments.swift and UI/HistogramAdjustment.swift.
       - path: Sources
         excludes: [Imaging/raster-exposure-colour-v4.bin]
       - path: design/logo/wordmark-approved-ivory.svg
@@ -97,6 +97,7 @@ targets:
     type: bundle.unit-test
     platform: macOS
     sources:
+      # Includes DirectAdjustmentTests.swift.
       - path: Tests
         excludes: [test_calibration_paths.py]
     dependencies:

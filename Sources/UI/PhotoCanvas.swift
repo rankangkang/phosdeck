@@ -203,6 +203,7 @@ struct HistogramScope: View {
     var pulseClipping: ((_ shadows: Bool) -> Void)?
     var pixelReadout: DisplayPixelSample?
     var compact = false
+    var adjustmentModel: AppModel?
     var interactionID: String?
     /// Share of samples in the end bin of any channel that counts as clipping.
     static let clipShare = 0.001
@@ -255,6 +256,10 @@ struct HistogramScope: View {
                                 context.fill(path, with: .color(Theme.traceRGB[index].opacity(0.55)))
                             }
                         }
+                        if let adjustmentModel, !compact, histogram != nil {
+                            HistogramAdjustment(model: adjustmentModel)
+                                .help(L10n.text("app.histogramDragHelp", defaultValue: "Drag left or right to adjust Blacks, Shadows, Exposure, Highlights, or Whites. Shift fine-tunes; Escape cancels. Arrow keys select a region and adjust it."))
+                        }
                         if compact {
                             clippingControls(clip: clip, shadowShown: shadowShown, highlightShown: highlightShown).padding(6)
                         }
@@ -282,6 +287,12 @@ struct HistogramScope: View {
                                                                shadowShown ? L10n.text("app.showShadowClippingOnPhoto", defaultValue: "Show Shadow Clipping on Photo") : nil,
                                                                highlightShown ? L10n.text("app.showHighlightClippingOnPhoto", defaultValue: "Show Highlight Clipping on Photo") : nil].compactMap { $0 } + readout).joined(separator: "，"))
         .accessibilityActions {
+            if let adjustmentModel, adjustmentModel.canDragHistogram, !compact {
+                ForEach(HistogramRegion.allCases, id: \.rawValue) { region in
+                    Button(L10n.text("app.increaseHistogramRegion", defaultValue: "Increase \(region.title)")) { adjustmentModel.nudgeHistogram(region, direction: 1) }
+                    Button(L10n.text("app.decreaseHistogramRegion", defaultValue: "Decrease \(region.title)")) { adjustmentModel.nudgeHistogram(region, direction: -1) }
+                }
+            }
             if let toggle = toggleShadowClipping ?? toggleClipping {
                 Button(shadowShown ? L10n.text("app.hideShadowClipping", defaultValue: "Hide Shadow Clipping") : L10n.text("app.showShadowClipping", defaultValue: "Show Shadow Clipping"), action: toggle)
             }

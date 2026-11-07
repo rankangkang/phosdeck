@@ -1,74 +1,261 @@
 {
   "sourceLanguage": "en",
   "strings": {
-  "app.matchTotalExposures": {
-    "extractionState": "manual",
-    "localizations": {
-      "en": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "Match Total Exposures"
-        }
-      },
-      "zh-Hans": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "匹配总曝光"
-        }
-      }
-    }
-  },
-  "app.matchTotalExposuresHelp": {
-    "extractionState": "manual",
-    "localizations": {
-      "en": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "Match the active photo using aperture, shutter, ISO, and native RAW baseline. Missing capture metadata is skipped; Exposure is limited to ±5 EV."
-        }
-      },
-      "zh-Hans": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "根据活动照片的光圈、快门、ISO 与原生 RAW 基准匹配曝光。跳过缺少拍摄元数据的照片；曝光限于 ±5 EV。"
+    "app.targetedAdjustment": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Targeted Adjustment"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图上目标调整"
+          }
         }
       }
-    }
-  },
-  "app.matchExposureMissingMetadata": {
-    "extractionState": "manual",
-    "localizations": {
-      "en": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "Matching requires valid aperture, shutter speed, and ISO"
-        }
-      },
-      "zh-Hans": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "匹配曝光需要有效的光圈、快门与 ISO"
-        }
-      }
-    }
-  },
-  "app.matchExposureLimited": {
-    "extractionState": "manual",
-    "localizations": {
-      "en": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "\\(photo.name): Exposure limited to ±5 EV; total exposure could not be matched"
-        }
-      },
-      "zh-Hans": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "\\(photo.name)：曝光已限幅至 ±5 EV，未能完全匹配总曝光"
+    },
+    "app.targetedAdjustmentHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sample the photo, then drag up/down or use Up/Down keys. Shift fine-tunes; Escape cancels a drag, then exits. Hold Space to pan."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在照片上取样后上下拖动，或用上下方向键调整。Shift 精调；Esc 先取消拖动，再退出工具；按住空格可平移。"
+          }
         }
       }
-    }
-  },
+    },
+    "app.preparingTargetSample": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing sampling reference…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备取样参考…"
+          }
+        }
+      }
+    },
+    "app.clickPhotoToSelectTarget": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click the photo to select a target"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点击照片选择调整目标"
+          }
+        }
+      }
+    },
+    "app.targetNoSample": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No target at this point: transparent area or no adjustable color"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此处没有可调整的目标：透明区域或没有可调整的颜色"
+          }
+        }
+      }
+    },
+    "app.targetedAdjustmentTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Targeted Adjustment · %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图上目标调整 · %@"
+          }
+        }
+      }
+    },
+    "app.targetCurveInput": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Input %.1f%%"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入 %.1f%%"
+          }
+        }
+      }
+    },
+    "app.targetCurveFull": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This curve already has 16 points. Remove a point or sample near an existing point."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前曲线已有 16 个控制点，请删除一个点，或在现有点附近取样。"
+          }
+        }
+      }
+    },
+    "app.matchTotalExposures": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Match Total Exposures"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配总曝光"
+          }
+        }
+      }
+    },
+    "app.matchTotalExposuresHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Match the active photo using aperture, shutter, ISO, and native RAW baseline. Missing capture metadata is skipped; Exposure is limited to ±5 EV."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "根据活动照片的光圈、快门、ISO 与原生 RAW 基准匹配曝光。跳过缺少拍摄元数据的照片；曝光限于 ±5 EV。"
+          }
+        }
+      }
+    },
+    "app.matchExposureMissingMetadata": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Matching requires valid aperture, shutter speed, and ISO"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配曝光需要有效的光圈、快门与 ISO"
+          }
+        }
+      }
+    },
+    "app.matchExposureLimited": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: Exposure limited to ±5 EV; total exposure could not be matched"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@：曝光已限幅至 ±5 EV，未能完全匹配总曝光"
+          }
+        }
+      }
+    },
+    "app.histogramDragHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag left or right to adjust Blacks, Shadows, Exposure, Highlights, or Whites. Shift fine-tunes; Escape cancels. Arrow keys select a region and adjust it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "左右拖动调整黑色、阴影、曝光、高光或白色。Shift 精调，Esc 取消；左右方向键选分区，上下方向键调整。"
+          }
+        }
+      }
+    },
+    "app.increaseHistogramRegion": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Increase %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "增加%@"
+          }
+        }
+      }
+    },
+    "app.decreaseHistogramRegion": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decrease %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "减少%@"
+          }
+        }
+      }
+    },
     "app.applyRelativeExposure": {
       "extractionState": "manual",
       "localizations": {

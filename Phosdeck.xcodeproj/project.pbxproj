@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D42700010000000000000004 /* DirectAdjustmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000004 /* DirectAdjustmentTests.swift */; };
+		D42700010000000000000003 /* HistogramAdjustment.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000003 /* HistogramAdjustment.swift */; };
+		D42700010000000000000002 /* DirectAdjustments.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000002 /* DirectAdjustments.swift */; };
 		D42700010000000000000001 /* ExposureMatching.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000001 /* ExposureMatching.swift */; };
 		4C0B38C57003462C59396DE9 /* redlamp-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 21F5D7CEC50F9DD8E6F09743 /* redlamp-LICENSE.txt */; };
 		A6A6287BB2B6932AFDE35052 /* CameraDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14EC3A28953F72C09F416976 /* CameraDiagnosticsTests.swift */; };
@@ -197,6 +200,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D42700020000000000000004 /* DirectAdjustmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectAdjustmentTests.swift; sourceTree = "<group>"; };
+		D42700020000000000000003 /* HistogramAdjustment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistogramAdjustment.swift; sourceTree = "<group>"; };
+		D42700020000000000000002 /* DirectAdjustments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectAdjustments.swift; sourceTree = "<group>"; };
 		D42700020000000000000001 /* ExposureMatching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExposureMatching.swift; sourceTree = "<group>"; };
 		21F5D7CEC50F9DD8E6F09743 /* redlamp-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "redlamp-LICENSE.txt"; sourceTree = "<group>"; };
 		14EC3A28953F72C09F416976 /* CameraDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CameraDiagnosticsTests.swift"; sourceTree = "<group>"; };
@@ -527,6 +533,7 @@
 				D18C00020000000000000001 /* FreeCurveTests.swift */,
 				D18C00020000000000000002 /* BlackWhiteMixerTests.swift */,
 				B47075A9CE33AAE0D607434D /* TonalTests.swift */,
+				D42700020000000000000004 /* DirectAdjustmentTests.swift */,
 				D60A24C4208C52F3CAB9048E /* WorkflowTests.swift */,
 				9A239B718941D84CDC85C2F2 /* SmartMaskTests.swift */,
 			);
@@ -569,6 +576,7 @@
 				C9A5E13D6F4150C2D8E30B27 /* SpotEditing.swift */,
 				2266F5F2FBCF3400C3C2BBBC /* Phosdeck.entitlements */,
 				F8F1FD523D1681280A515F8F /* PhosdeckApp.swift */,
+				D42700020000000000000002 /* DirectAdjustments.swift */,
 				9BC49DA04965D4D2B674E126 /* ToneSampling.swift */,
 				7CD6585FB59FBC276DDDCC1D /* WorkspaceKeyboard.swift */,
 				73D1F224E6E8A6FABDE1CF22 /* SmartMaskEditing.swift */,
@@ -654,6 +662,7 @@
 				E1C7035F816372E4FA052D49 /* SpotPanel.swift */,
 				C6706E8AD314D941CCE31854 /* MetalPhotoView.swift */,
 				D7A1C0DE00000000000000A3 /* ParameterRow.swift */,
+				D42700020000000000000003 /* HistogramAdjustment.swift */,
 				00C8F7372EACBFA43F19D953 /* PhotoCanvas.swift */,
 				3BFC62F44052CFA3BB5F66CC /* PhotoComparison.swift */,
 				B2CAF3E4A2FE2850AABA51A1 /* PhotoGrid.swift */,
@@ -862,6 +871,7 @@
 
 				C7FC324B59EC4951814F7203 /* RawJpegPairTests.swift in Sources */,
 				7114423C4AE44A259C4C84AE /* StackTests.swift in Sources */,				5C2A6201091B462F9F2F9779 /* VirtualCopyTests.swift in Sources */,
+				D42700010000000000000004 /* DirectAdjustmentTests.swift in Sources */,
 				B954E0DF2619F412432A8C86 /* WorkflowTests.swift in Sources */,
 				FDB12FE8C1C91C4A371A52E6 /* SmartMaskTests.swift in Sources */,
 			);
@@ -947,6 +957,7 @@
 				6EF877AAEED65D9580278315 /* Models.swift in Sources */,
 				56DE769A278724ED492AF7D1 /* PhosdeckApp.swift in Sources */,
 				5239E2CB58FBB3D87F69784A /* PerceptualColor.swift in Sources */,
+				D42700010000000000000003 /* HistogramAdjustment.swift in Sources */,
 				AA0F8EB414B1CA168E4EBA78 /* PhotoCanvas.swift in Sources */,
 				8C7E42B896427FF9776FFC84 /* PhotoComparison.swift in Sources */,
 				4506E94AC0006E4939CD0A52 /* PhotoGrid.swift in Sources */,
@@ -963,6 +974,7 @@
 				67F1B53C0BAA42498D3B0CCB /* RasterExposure.swift in Sources */,
 				D1A000020000000000000001 /* RasterExposureColour.swift in Sources */,
 				A265017B4066DAECE7ED9FFC /* ToneCurvePanel.swift in Sources */,
+				D42700010000000000000002 /* DirectAdjustments.swift in Sources */,
 				B008C831C8598D4967C8EB31 /* ToneSampling.swift in Sources */,
 				AB3E191E9D7F5FC72849EB96 /* WorkspaceKeyboard.swift in Sources */,
 				D7A1C0DE00000000000000B1 /* DarkroomTheme.swift in Sources */,

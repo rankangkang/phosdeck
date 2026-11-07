@@ -1167,7 +1167,7 @@ struct WorkspaceView: View {
                                pulseClipping: canInspectClipping ? { shadows in
                                    clippingPreview.pulse(current: fixedClipping, preview: ClippingVisibility(shadows: shadows, highlights: !shadows))
                                } : nil,
-                               pixelReadout: model.displayPixelReadout, compact: compactMasks, interactionID: model.activeID).padding(compactMasks ? 6 : 12)
+                               pixelReadout: model.displayPixelReadout, compact: compactMasks, adjustmentModel: model, interactionID: model.activeID).padding(compactMasks ? 6 : 12)
             }
             if let photo = model.active {
                 if model.editMode {
