@@ -7,7 +7,7 @@
 - 主线 `master`，仅维护原生 macOS（SwiftUI + Metal + GRDB）。
 - 目录 schema 13（`CatalogStore.schemaVersion`），旧版本目录直接拒绝。
 - 开发机有两台（M4 Pro／macOS 26.6.2，M4／macOS 27.0.1），固定体验基线不能混用。macOS 27 这台已按用户授权重建同路径、同 bundle ID 的体验 App，使用新建 `UnratedReview.phoscat` 和五张合成图；未恢复原图库、公开样片与研究模型。M4 Pro 的既有体验环境未动。
-- 默认 Debug 用本机临时签名（用户选择“免证书直接构建，注明限制”）；固定体验 App 更新后使用有效开发证书重签，保留沙箱与 hardened runtime。
+- 仓库 Debug 默认免证书临时签名；macOS 27 这台已按用户要求通过忽略的 `Config/LocalSigning.xcconfig` 固定开发证书与团队，测试宿主及内部库、内置盘暂存副本均统一签名并保留沙箱与 hardened runtime。固定体验 App 继续保持原路径、身份与开发签名。
 
 ## 待用户验收
 
@@ -35,7 +35,7 @@
 - **偶发测试失败**：`ComparisonTests.testAdjustmentReturnEndsEditingAndDoesNotReapplyAnUndoneValue` 多次在首次全量中失败、单跑通过，根因未定位；测试期间切换窗口可能影响焦点。
 - **预设测试的语言假设**：`PresetManagementTests.testUnicodeSearchFavoriteAndMultipleGroupsFilter` 将中文分组顺序写成固定期望，英文环境的收藏排序断言失败、中文通过；筛选和排序实现未改，测试的语言假设待处理。
 - **模型资源复制测试**：`SmartMaskTests.testOptionalModelCapabilitiesAndPartialBundleCopies` 在全量和单跑中均因测试宿主沙箱拒绝 `ditto` 的 `.BC.T_*` 临时文件而失败，具体触发机制未定位；对应脚本与测试未改动，不能以跳过断言替代修复。
-- **临时签名**：hardened runtime 关闭；强制开启会因动态库 Team ID 不一致导致 XCTest 宿主无法启动。外置卷上的测试宿主及失败符号化曾停在 `__open`；内置盘测试副本可运行，需直接读取外置源码／fixture 的两项检查尚未重跑。
+- **测试环境**：免证书临时签名仍有权限身份随构建变化及 hardened runtime 关闭的限制；本机已统一稳定开发签名，后续实际测试是否仍有授权弹窗待观察。外置卷上的测试宿主及失败符号化曾停在 `__open`；内置盘暂存继续沿用同一路径，需直接读取外置源码／fixture 的两项检查尚未重跑。
 - **应用分发**：本机已配置 Developer ID Application 证书；[`0.1.0-alpha.1`](https://github.com/rankangkang/phosdeck/releases/tag/v0.1.0-alpha.1) 已作为预发布公开，签名、公证、票据、`spctl` 评估及下载 ZIP 已核验。独立环境中的安装、启动与使用体验尚未验证。
 - **智能蒙版模型**：FaceParsing 权重标注 MIT，训练数据条款对权重分发的适用性尚不明确；LiteRT 预编译包的完整依赖清单与正式模型安装／分发方案仍待核对，见 [模型说明](smart-mask-models.md)。
 - **普通图像曝光响应表**：按用户决定保留现有表、显影行为与对照资料。[Adobe 通用条款第 17 节](https://www.adobe.com/legal/terms.html)限制为重建软件而跟踪输入与输出；当前表由 Lightroom 输出拟合，具体合同与法律适用尚未判定。数值对照见[现行 TIFF 比较](references/lightroom-exposure-v4-comparisons.json)与[JPEG 分区表](references/lightroom-exposure-v4-jpeg-regions.csv)，来源资料和公开使用依据仍须核对。

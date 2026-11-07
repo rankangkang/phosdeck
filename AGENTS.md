@@ -79,6 +79,7 @@ Not tested: reduced motion, small windows.
 - 固定体验 App：`build/unrated-stars-review/oh my lrc Star Review.app`；固定 bundle ID：`dev.cmkk.oh-my-lrc.unratedstars20261021`。继续使用其中现有合成 `UnratedReview.omlrcat`。路径和 ID 虽沿用历史命名，后续不随日期或任务更换。
 - 正常构建入口：`xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -configuration Debug -derivedDataPath build -destination 'platform=macOS' build`。产物为 `build/Build/Products/Debug/Phosdeck.app`；只覆盖固定体验 App 的程序包，不覆盖其目录、原片和偏好。保持现有沙箱／hardened runtime 与源 entitlements，核对当前有效开发签名。
 - 不通过全局 `PRODUCT_NAME`／`CONFIGURATION_BUILD_DIR` 重定向所有依赖目标（会破坏 GRDB 资源包名称）。不要为普通体验切换工程的 bundle ID。测试继续使用合成／已授权样本，不自动打开正常产物身份可能恢复的私人最近目录。
+- 本机有开发证书且已选择稳定签名时，通过已忽略的 `Config/LocalSigning.xcconfig` 固定证书和团队。测试宿主、XCTest 包、Debug／预览及 LiteRT 等嵌套动态库使用同一身份；暂存或去除调试映射后由内向外重签，保留各自 entitlements 与 hardened runtime，不用 `--sign -` 覆盖稳定身份。其他机器仍可沿用默认免证书构建及其权限限制。
 - 复用 `build/` 增量缓存；历史结果和其他副本的清理单独核对归属，不把整个 `build/`、用户目录或照片当作可随意删除的缓存。
 
 ## 常用命令
