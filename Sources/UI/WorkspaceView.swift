@@ -251,6 +251,9 @@ struct WorkspaceView: View {
             ImportConflictSheet(model: model, conflict: conflict).id(conflict.id).interactiveDismissDisabled()
         }
         .sheet(isPresented: $model.showImport) { ImportSheet(model: model) }
+        .sheet(item: $model.folderReview) { scope in
+            if let catalog = model.catalog { FolderReviewSheet(model: model, catalog: catalog, scope: scope) }
+        }
         .sheet(isPresented: $model.showXMPPresetImport) {
             if let catalog = model.catalog { XMPPresetImportSheet(model: model, catalog: catalog) }
         }
@@ -534,10 +537,17 @@ struct WorkspaceView: View {
                         ForEach(model.roots) { root in
                             Button { model.setScope(root.id) } label: { ListRowLabel(title: root.label, icon: "folder", selected: model.scope == root.id) }
                                 .buttonStyle(.plain)
-                                .contextMenu { Button(L10n.text("app.rescan", defaultValue: "Rescan")) { model.scan(root) }; Button(L10n.text("app.reauthorizeLocate", defaultValue: "Reauthorize / Locate…")) { model.relocate(root) } }
+                                .contextMenu {
+                                    Button(L10n.text("folderReview.menu", defaultValue: "Review Folder Changes…")) { model.reviewFolder(root) }
+                                    Button(L10n.text("app.rescan", defaultValue: "Rescan")) { model.scan(root) }
+                                    Button(L10n.text("app.reauthorizeLocate", defaultValue: "Reauthorize / Locate…")) { model.relocate(root) }
+                                }
                             OutlineGroup(model.folders[root.id] ?? [], children: \.children) { node in
                                 Button { model.setScope(node.id) } label: { ListRowLabel(title: node.name, icon: "folder", selected: model.scope == node.id) }
                                     .buttonStyle(.plain)
+                                    .contextMenu {
+                                        Button(L10n.text("folderReview.menu", defaultValue: "Review Folder Changes…")) { model.reviewFolder(root, directory: node.relativePath) }
+                                    }
                             }.padding(.leading, 12)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 6)

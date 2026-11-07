@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D42800010000000000000003 /* FolderReviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42800020000000000000003 /* FolderReviewTests.swift */; };
+		D42800010000000000000002 /* FolderReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42800020000000000000002 /* FolderReviewSheet.swift */; };
+		D42800010000000000000001 /* FolderReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42800020000000000000001 /* FolderReview.swift */; };
 		D42700010000000000000008 /* TargetedAdjustmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000008 /* TargetedAdjustmentTests.swift */; };
 		D42700010000000000000007 /* TargetedAdjustmentControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000007 /* TargetedAdjustmentControls.swift */; };
 		D42700010000000000000006 /* TargetedEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42700020000000000000006 /* TargetedEditing.swift */; };
@@ -204,6 +207,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D42800020000000000000003 /* FolderReviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderReviewTests.swift; sourceTree = "<group>"; };
+		D42800020000000000000002 /* FolderReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderReviewSheet.swift; sourceTree = "<group>"; };
+		D42800020000000000000001 /* FolderReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderReview.swift; sourceTree = "<group>"; };
 		D42700020000000000000008 /* TargetedAdjustmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetedAdjustmentTests.swift; sourceTree = "<group>"; };
 		D42700020000000000000007 /* TargetedAdjustmentControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetedAdjustmentControls.swift; sourceTree = "<group>"; };
 		D42700020000000000000006 /* TargetedEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetedEditing.swift; sourceTree = "<group>"; };
@@ -479,6 +485,7 @@
 				B14D20029DE4CCA812F22ED0 /* CopyImporter.swift */,
 				5EE64A30FC6BCE98D0AE3EED /* ImportPlanner.swift */,
 				3EBE4EE996A4C6B183C214B8 /* ReferenceImporter.swift */,
+				D42800020000000000000001 /* FolderReview.swift */,
 			);
 			path = Import;
 			sourceTree = "<group>";
@@ -527,6 +534,7 @@
 				D21100000000000000000003 /* CatalogFileTests.swift */,
 				92E011EA10F84D58646D426A /* ImagingTests.swift */,
 				9D29031A4109AE4DE8738DC4 /* ImportTests.swift */,
+				D42800020000000000000003 /* FolderReviewTests.swift */,
 				57C4D9A738840CD7C3ED455C /* KeywordTests.swift */,
 				57B63A199C70B3187165A415 /* MaskingTests.swift */,
 				1E5C8A39D02B47F4C6A9B3D2 /* CreativeVignetteTests.swift */,
@@ -671,6 +679,7 @@
 				49D31EDF4DE88089168B0CF3 /* FolderTree.swift */,
 				B1F63E2535D10EE6E4FBB4A4 /* ImportRecoverySheet.swift */,
 				494FCB93588637CA96FBB7BB /* ImportSheet.swift */,
+				D42800020000000000000002 /* FolderReviewSheet.swift */,
 				F19C08479EBC473398707FF1 /* KeywordEditor.swift */,
 				C02E6C12B1D0C2DEED7CE74E /* MaskPanel.swift */,
 				E1C7035F816372E4FA052D49 /* SpotPanel.swift */,
@@ -866,6 +875,7 @@
 				D21100000000000000000004 /* CatalogFileTests.swift in Sources */,
 				8EC306108B156312ED8B0C15 /* ImagingTests.swift in Sources */,
 				CEC431965B5747D16FE00693 /* ImportTests.swift in Sources */,
+				D42800010000000000000003 /* FolderReviewTests.swift in Sources */,
 				33B7016C130759D12B66A7C2 /* KeywordTests.swift in Sources */,
 				31BBE7AD3C02C95CC60B0657 /* MaskingTests.swift in Sources */,
 				14FA3682A496A5B72D38507C /* SpotRepairTests.swift in Sources */,
@@ -962,6 +972,7 @@
 				2D1AD4390B30DFEE30FC8851 /* ImportPlanner.swift in Sources */,
 				1EFFA155B4E1DC28F66EE1C5 /* ImportRecoverySheet.swift in Sources */,
 				7FCF0C0BF032F323E6404952 /* ImportSheet.swift in Sources */,
+				D42800010000000000000002 /* FolderReviewSheet.swift in Sources */,
 				3CF78037540AF1EC1F8C87AD /* KeywordEditor.swift in Sources */,
 				AD5F81AE69DE64A6DE8EBECF /* MaskEditing.swift in Sources */,
 				D0B6F24E705261D3E9F41C38 /* SpotEditing.swift in Sources */,
@@ -983,6 +994,7 @@
 				4506E94AC0006E4939CD0A52 /* PhotoGrid.swift in Sources */,
 				8701029D1A2B67CB5AE5D340 /* PreviewDiskCache.swift in Sources */,
 				AED295502F55C29C6C3CFD22 /* ReferenceImporter.swift in Sources */,
+				D42800010000000000000001 /* FolderReview.swift in Sources */,
 				A4853007425A5B671C3F1323 /* RootRelocator.swift in Sources */,
 				473E1F7A288537F9DDE47C7C /* SafeFileWriter.swift in Sources */,
 				7EFC07668E5A6FA948609B5C /* SettingsSheet.swift in Sources */,

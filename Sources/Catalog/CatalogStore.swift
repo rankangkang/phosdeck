@@ -165,24 +165,26 @@ final class CatalogStore: @unchecked Sendable {
     }
     /// Returns true only when this call creates a new catalog version.
     @discardableResult func index(_ photo: Photo) throws -> Bool {
-        try database.write { db in
-            if let old = try Photo.fetchOne(db, sql: "SELECT * FROM photo WHERE rootID = ? AND relativePath = ?", arguments: [photo.rootID, photo.relativePath]) {
-                let oldIdentity = try? JSONDecoder().decode(FileIdentity.self, from: old.identity)
-                let newIdentity = try? JSONDecoder().decode(FileIdentity.self, from: photo.identity)
-                let sameIdentity = old.identity == photo.identity || (oldIdentity != nil && oldIdentity == newIdentity)
-                if !sameIdentity {
-                    try db.execute(sql: "UPDATE photo SET availability = 'changed' WHERE id = ?", arguments: [old.id])
-                } else if let metadata = photo.metadata {
-                    try db.execute(sql: "UPDATE photo SET metadata=? WHERE id=?", arguments: [metadata, old.id])
-                }
-                return false
-            } else if try Photo.filter(Column("identityKey") == photo.identityKey).fetchCount(db) > 0 {
-                // Existing file identity (including hard links) already belongs to the catalog.
-                return false
-            } else {
-                try photo.insert(db)
-                return true
+        try database.write { try Self.index(photo, in: $0) }
+    }
+    /// Shared by explicit folder confirmation so a selected batch publishes atomically.
+    @discardableResult static func index(_ photo: Photo, in db: Database) throws -> Bool {
+        if let old = try Photo.fetchOne(db, sql: "SELECT * FROM photo WHERE rootID = ? AND relativePath = ?", arguments: [photo.rootID, photo.relativePath]) {
+            let oldIdentity = try? JSONDecoder().decode(FileIdentity.self, from: old.identity)
+            let newIdentity = try? JSONDecoder().decode(FileIdentity.self, from: photo.identity)
+            let sameIdentity = old.identity == photo.identity || (oldIdentity != nil && oldIdentity == newIdentity)
+            if !sameIdentity {
+                try db.execute(sql: "UPDATE photo SET availability = 'changed' WHERE id = ?", arguments: [old.id])
+            } else if let metadata = photo.metadata {
+                try db.execute(sql: "UPDATE photo SET metadata=? WHERE id=?", arguments: [metadata, old.id])
             }
+            return false
+        } else if try Photo.filter(Column("identityKey") == photo.identityKey).fetchCount(db) > 0 {
+            // Existing file identity (including hard links) already belongs to the catalog.
+            return false
+        } else {
+            try photo.insert(db)
+            return true
         }
     }
     func protectedPaths() throws -> Set<String> {

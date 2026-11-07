@@ -6,7 +6,7 @@
 
 - 主线 `master`，仅维护原生 macOS（SwiftUI + Metal + GRDB）。
 - 目录 schema 13（`CatalogStore.schemaVersion`），旧版本目录直接拒绝。
-- 开发机有两台（M4 Pro／macOS 26.6.2，M4／macOS 27.0.1），固定体验基线不能混用。macOS 27 这台已按用户授权重建同路径、同 bundle ID 的体验 App，使用 `UnratedReview.phoscat` 和七张合成图（含带拍摄参数的测试图）；未恢复原图库、公开样片与研究模型。M4 Pro 的既有体验环境未动。
+- 开发机有两台（M4 Pro／macOS 26.6.2，M4／macOS 27.0.1），固定体验基线不能混用。macOS 27 这台已按用户授权重建同路径、同 bundle ID 的体验 App，使用 `UnratedReview.phoscat` 和十一张合成图（含拍摄参数与文件夹差异测试图）；未恢复原图库、公开样片与研究模型。M4 Pro 的既有体验环境未动。
 - 仓库 Debug 默认免证书临时签名；macOS 27 这台已按用户要求通过忽略的 `Config/LocalSigning.xcconfig` 固定开发证书与团队，测试宿主及内部库、内置盘暂存副本均统一签名并保留沙箱与 hardened runtime。固定体验 App 继续保持原路径、身份与开发签名。
 
 ## 待用户验收
@@ -22,6 +22,7 @@
 - **产品官网**：`site/` 中的 Astro 中英双语站点仅在 `master` 推送包含 `site/` 变更时通过 GitHub Actions 发布到 [GitHub Pages](https://rankangkang.github.io/phosdeck/)；默认石墨并支持米白，保留合成截图。首屏说明、工作流排版和下载区域已完成设计调整，线上效果待用户验收；开发命令见[贡献指南](../CONTRIBUTING.zh.md#官网开发)。
 - **预览性能**：中央布局定尺寸、Observation 细粒度观察、质量预览调度与局部刷新、画布显示等待移出主线程。遗留见下节。
 - **中英界面与社区语言包**：导入方式和关键词入口使用 `Add`／“添加”操作文案，与已添加状态分开；其他措辞及社区语言包待体验确认。
+- **文件夹差异预览**：根／子文件夹与“文件”菜单已接入新增、缺失、变更、疑似移动及问题分类，默认未选；确认前重新核验并整批原子写入，保留来源身份、缺失记录、编辑、虚拟副本与冻结输出。中英、米白／石墨实窗已核对新增、范围开关、预览取消、确认及原片恢复核验；回归覆盖过期结果、冲突、数据库失败、取消、全部版本与同照片刷新时的编辑锁定。Lightroom 逐项运行、实际跨卷、离线卷、权限撤销与大目录未实测，待用户验收。
 - **图上目标调整**：已接入 HSL、黑白混色与当前曲线通道，浮点参考图复用原生显影前缀和实际输出几何；邻带权重读取现有 HSL／黑白模型，曲线新增或复用一个自由点。中英界面、双主题、实窗取样／键盘微调及换图隔离已核对；辅助功能取样会接管画布焦点。提交、取消、晚到取样、透明度和坐标有回归；图上鼠标拖动被 CUA 的 `noWindowsAvailable` 阻断，原生事件检查通过，实际手感待验收。Adobe 精确算法与 Lightroom 同图运行未验证。
 - **直方图拖动**：已接入五个非等宽分区、悬停读数、Shift 精调、键盘与辅助功能增减；拖动只提交一次，取消、失焦和换图丢弃草稿。中英／双主题显示、实窗曝光拖动、辅助功能增量与保存／撤销已核对，原生事件回归覆盖精调和取消；悬停与真实手感、Lightroom 拖动步长和取消时点仍待核对。
 - **匹配总曝光**：已接入“调整”菜单，按活动照片的拍摄曝光、原生 RAW 基准与当前曝光计算目标值；复用整批事务及撤销重做，无效目标跳过、限幅单独报告。计算／批量回归与固定 App 合成拍摄参数的保存、整批撤销重做已核对；公开 RAW 未准备，RAW 实际亮度匹配、跨机型效果及 Adobe 同图运行对照未测。
@@ -37,19 +38,18 @@
 - **偶发测试失败**：`ComparisonTests.testAdjustmentReturnEndsEditingAndDoesNotReapplyAnUndoneValue` 多次在首次全量中失败、单跑通过，根因未定位；测试期间切换窗口可能影响焦点。
 - **预设测试的语言假设**：`PresetManagementTests.testUnicodeSearchFavoriteAndMultipleGroupsFilter` 将中文分组顺序写成固定期望，英文环境的收藏排序断言失败、中文通过；筛选和排序实现未改，测试的语言假设待处理。
 - **模型资源复制测试**：`SmartMaskTests.testOptionalModelCapabilitiesAndPartialBundleCopies` 在全量和单跑中均因测试宿主沙箱拒绝 `ditto` 的 `.BC.T_*` 临时文件而失败，具体触发机制未定位；对应脚本与测试未改动，不能以跳过断言替代修复。
-- **测试环境**：免证书临时签名仍有权限身份随构建变化及 hardened runtime 关闭的限制；本机已统一稳定开发签名，后续实际测试是否仍有授权弹窗待观察。外置卷上的测试宿主及失败符号化曾停在 `__open`；内置盘暂存继续沿用同一路径，需直接读取外置源码／fixture 的两项检查尚未重跑。
+- **测试环境**：免证书临时签名仍有权限身份随构建变化及 hardened runtime 关闭的限制；本机已统一稳定开发签名，后续实际测试是否仍有授权弹窗待观察。外置卷上的测试宿主及失败符号化曾停在 `__open`；内置盘暂存继续沿用同一路径，已能执行未过滤标识的全量原生检查；外置宿主路径仍待单独核对。
 - **应用分发**：本机已配置 Developer ID Application 证书；[`0.1.0-alpha.1`](https://github.com/rankangkang/phosdeck/releases/tag/v0.1.0-alpha.1) 已作为预发布公开，签名、公证、票据、`spctl` 评估及下载 ZIP 已核验。独立环境中的安装、启动与使用体验尚未验证。
 - **智能蒙版模型**：FaceParsing 权重标注 MIT，训练数据条款对权重分发的适用性尚不明确；LiteRT 预编译包的完整依赖清单与正式模型安装／分发方案仍待核对，见 [模型说明](smart-mask-models.md)。
 - **普通图像曝光响应表**：按用户决定保留现有表、显影行为与对照资料。[Adobe 通用条款第 17 节](https://www.adobe.com/legal/terms.html)限制为重建软件而跟踪输入与输出；当前表由 Lightroom 输出拟合，具体合同与法律适用尚未判定。数值对照见[现行 TIFF 比较](references/lightroom-exposure-v4-comparisons.json)与[JPEG 分区表](references/lightroom-exposure-v4-jpeg-regions.csv)，来源资料和公开使用依据仍须核对。
 - **JPEG 对照**：JPEG 导入、编辑及导出已有支持，大曝光下与 Lightroom 的差异仍未解决。静态调查只确认 CameraRaw 内部的 JPEG→CGImage 桥接，未连到最终显影／导出与曝光 stage；完整 Ghidra 分析超时，不能据此改响应表或推断最终管线。
 - **日志**：构建与测试日志反复出现 `MDB_MAP_FULL`，来源未定位。
-- **验证工具**：CUA 不支持普通指针移动，hover 需人工检查；关闭设置后曾出现持续读取超时，App 主线程采样空闲，从 Dock 重新显示主窗口后恢复。相机诊断的离屏截图偶发漏绘保存按钮文字，双主题实窗显示正常。退出参考模式后照片信息条曾在米白窗口截图中漏绘，用户确认同一窗口实际屏幕上的相机名与拍摄参数完整可见，本次确认是捕捉遗漏；不能仅凭截图缺字修改 App。
+- **验证工具**：系统设置中体验 App 的临时英文覆盖移除按钮出现 AX 句柄失效，重启设置窗口后仍失败，坐标点击报 `noWindowsAvailable`；待用户手动移除并重启。目前体验界面临时为英文／石墨，原设为语言、主题均跟随系统。CUA 不支持普通指针移动，hover 需人工检查；关闭设置后曾出现持续读取超时，App 主线程采样空闲，从 Dock 重新显示主窗口后恢复。相机诊断的离屏截图偶发漏绘保存按钮文字，双主题实窗显示正常。退出参考模式后照片信息条曾在米白窗口截图中漏绘，用户确认同一窗口实际屏幕上的相机名与拍摄参数完整可见，本次确认是捕捉遗漏；不能仅凭截图缺字修改 App。
 
 ## 下一步与候选
 
-Lightroom 功能补齐第一批（匹配总曝光、直方图拖动、图上目标调整）已实现原生版本，见待用户验收。交互参考本机 Classic 15.2.1 安装资源和 Adobe 公开说明，未恢复 Adobe 算法，尚未完成 Lightroom 逐项实窗及同图运行对照。以下保留后续候选。沿用 [已定决策](decisions.md) 中的不做与暂缓范围。
+Lightroom 功能补齐第一批（匹配总曝光、直方图拖动、图上目标调整）和第二批文件夹差异预览已实现原生版本，见待用户验收。交互参考本机 Classic 15.2.1 安装资源和 Adobe 公开说明，未恢复 Adobe 算法，尚未完成 Lightroom 逐项实窗及同图运行对照。以下保留后续候选。沿用 [已定决策](decisions.md) 中的不做与暂缓范围。
 
-- **文件夹差异预览**：参考 [Synchronize folders](https://helpx.adobe.com/lightroom-classic/desktop/manage-catalogs-and-files/create-folders.html)。已有重新扫描可导入新增照片，单张与整根目录定位也已有；候选为新增／缺失／变更／疑似移动的差异预览及批量确认，保留缺失记录、编辑和虚拟副本，先做手动操作。
 - **自动白平衡／自动色调**：参考 [白平衡与色调](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/image-tone-color.html)。已有拍摄时／自定义白平衡与中性区域取样；图像分析算法和摄影样片验证尚缺，不能只补自动按钮或承诺 Adobe 效果。
 - **手动去紫边／绿边**：参考 [Defringe](https://helpx.adobe.com/ca/lightroom-classic/desktop/process-and-develop-photos/retouch-photos.html)。已有系统 RAW 镜头校正开关，候选为额外的可控去边和取样；先分清解码器已应用的校正，并准备有授权的色边样片。
 - **外部编辑往返**：参考 [外部编辑](https://helpx.adobe.com/lightroom-classic/desktop/work-with-external-editors/open-lightroom-photos-external-applications.html)。复用 TIFF16 导出生成派生文件、交给外部 App，再核验并作为独立来源入库关联；文件生命周期、身份与中断恢复须单独设计。

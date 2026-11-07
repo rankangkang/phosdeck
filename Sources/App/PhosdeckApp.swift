@@ -128,6 +128,8 @@ struct WorkspaceCommands: Commands {
             Divider()
             Button(L10n.text("app.importPhotos", defaultValue: "Import Photos…"), action: model.importReference).keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(!workspace || !model.canImportPhotos)
+            Button(L10n.text("folderReview.menu", defaultValue: "Review Folder Changes…"), action: model.reviewCurrentFolder)
+                .disabled(!workspace || model.currentFolderReviewScope == nil)
             Button(L10n.text("app.importLightroomXMPPresets", defaultValue: "Import Lightroom XMP Presets…"), action: model.requestXMPPresetImport)
                 .disabled(!workspace || model.catalog == nil)
             Button(L10n.text("app.exportSelectedPhotos", defaultValue: "Export Selected Photos…")) { model.requestExport() }.keyboardShortcut("e", modifiers: [.command, .shift])

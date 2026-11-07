@@ -93,6 +93,17 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testFolderReviewFormatsCountsAndPathsInBothOfficialLanguages() {
+        let english = Localization(language: "en"), chinese = Localization(language: "zh-Hans")
+        let added = 2, locations = 3, marked = 4, title = "Possible Moves", path = "Synthetic/50% photo.jpg"
+        XCTAssertEqual(english.text("folderReview.result", defaultValue: "Folder changes applied · Added \(added) · Verified locations \(locations) · Marked unavailable \(marked)"),
+            "Folder changes applied · Added 2 · Verified locations 3 · Marked unavailable 4")
+        XCTAssertEqual(chinese.text("folderReview.result", defaultValue: "Folder changes applied · Added \(added) · Verified locations \(locations) · Marked unavailable \(marked)"),
+            "文件夹差异已应用 · 新增 2 张 · 核验位置 3 项 · 标记不可用 4 项")
+        XCTAssertEqual(english.text("folderReview.countLabel", defaultValue: "\(title) (\(added))"), "Possible Moves (2)")
+        XCTAssertEqual(chinese.text("folderReview.actionForPath", defaultValue: "\(title) · \(path)"), "Possible Moves · Synthetic/50% photo.jpg")
+    }
+
     func testAllAppTextKeysHaveBothOfficialTranslations() throws {
         func keys(_ language: String) throws -> Set<String> {
             var keys = Set<String>()

@@ -26,7 +26,7 @@ targets:
     type: application
     platform: macOS
     sources:
-      # Includes ExposureMatching, DirectAdjustments, HistogramAdjustment and TargetedAdjustment/TargetedEditing/TargetedAdjustmentControls.
+      # Includes folder comparison (Import/FolderReview.swift, UI/FolderReviewSheet.swift) and native direct adjustments.
       - path: Sources
         excludes: [Imaging/raster-exposure-colour-v4.bin]
       - path: design/logo/wordmark-approved-ivory.svg
@@ -97,7 +97,7 @@ targets:
     type: bundle.unit-test
     platform: macOS
     sources:
-      # Includes DirectAdjustmentTests.swift and TargetedAdjustmentTests.swift.
+      # Includes FolderReviewTests.swift, DirectAdjustmentTests.swift and TargetedAdjustmentTests.swift.
       - path: Tests
         excludes: [test_calibration_paths.py]
     dependencies:

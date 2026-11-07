@@ -474,6 +474,7 @@ final class AppModel {
     var importConflict: ImportConflict?
     private var conflictContinuation: CheckedContinuation<ImportConflictDecision?, Never>?
     var showImport = false
+    var folderReview: FolderReviewScope?
     var showXMPPresetImport = false
     var recentCatalogs: [RecentCatalog] = []
     private var startupCatalogOpen: CatalogOpenRequest?
@@ -489,7 +490,7 @@ final class AppModel {
     var catalog: CatalogStore?
     var catalogName: String { catalog?.fileURL.deletingPathExtension().lastPathComponent ?? L10n.text("app.noCatalogOpen", defaultValue: "No catalog open") }
     /// Menu-bar commands stay reachable while a sheet is up, so they must not stack a second sheet.
-    var presentingSheet: Bool { showCameraDiagnostics || showImport || showXMPPresetImport || showExport || showNewCatalog || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
+    var presentingSheet: Bool { showCameraDiagnostics || showImport || folderReview != nil || showXMPPresetImport || showExport || showNewCatalog || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
     var canSwitchCatalog: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var workspaceAvailable: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var canLocateOriginal: Bool { catalog != nil && active != nil && workspaceAvailable && comparison == nil && survey == nil }
@@ -1471,6 +1472,33 @@ final class AppModel {
             busy = false
         }
     }
+    var currentFolderReviewScope: FolderReviewScope? {
+        if let root = roots.first(where: { $0.id == scope }) { return FolderReviewScope(root: root) }
+        if scope.hasPrefix("folder:") {
+            let parts = scope.split(separator: ":", maxSplits: 2).map(String.init)
+            if parts.count == 3, let root = roots.first(where: { $0.id == parts[1] }) {
+                return FolderReviewScope(root: root, directory: parts[2])
+            }
+        }
+        return active.flatMap { photo in roots.first(where: { $0.id == photo.rootID }).map { FolderReviewScope(root: $0) } }
+    }
+    func reviewCurrentFolder() {
+        guard let scope = currentFolderReviewScope else { return }
+        reviewFolder(scope.root, directory: scope.directory)
+    }
+    func reviewFolder(_ root: StorageRoot, directory: String = "") {
+        guard workspaceAvailable, catalog != nil, commitRecipe() else { return }
+        cancelTargetedAdjustment(); cancelWhiteBalanceSampling(); cancelPointColorTools(); cancelZoneSampling()
+        folderReview = FolderReviewScope(root: root, directory: directory)
+    }
+    func completedFolderReview(_ result: FolderReviewResult, catalog expected: CatalogStore) throws {
+        guard catalog === expected else { return }
+        folderPhotoCount = -1
+        try reload()
+        if !result.importedPhotoIDs.isEmpty { try completeImport(ids: result.importedPhotoIDs, cancelled: false) }
+        loadActive()
+        status = result.summary
+    }
     /// `advance` moves on to the next photo unless the filter already hid the marked one and chose its neighbour.
     func organize(rating: Int? = nil, flag: Int? = nil, colorLabel: Int? = nil, advance: Bool? = nil) {
         updateOrganization(advance: advance ?? autoAdvance) { catalog, old in
@@ -1853,7 +1881,7 @@ final class AppModel {
     }
     private func loadActive() {
         previewTask?.cancel(); previewGeneration = UUID(); pendingPreview = nil; pendingQualityPreview = nil; qualityRender?.cancel()
-        interactivePreview = false; previewCurrent = false
+        interactivePreview = false; previewCurrent = false; canEdit = false
         loadingPhoto = false
         guard comparison == nil, survey == nil else { photoSwitchDisplay = nil; return }
         let token = previewGeneration

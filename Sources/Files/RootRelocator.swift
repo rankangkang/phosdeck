@@ -52,20 +52,24 @@ actor RootRelocator {
     func commit(_ proposal: SourceRelocation, catalog: CatalogStore) throws {
         try verify(proposal)
         try Task.checkCancellation()
-        try catalog.database.write { db in
-            try Task.checkCancellation()
-            try Self.checkCatalog(db, proposal)
-            if try StorageRoot.fetchOne(db, key: proposal.root.id) == nil { try proposal.root.insert(db) }
-            let oldIdentity = try JSONDecoder().decode(FileIdentity.self, from: proposal.source.identity)
-            let identity = oldIdentity == proposal.identity ? proposal.source.identity : try JSONEncoder().encode(proposal.identity)
-            // The existing trigger projects this mapping to every version, including
-            // retained/deleted versions. All per-version organization and edits stay put.
-            try db.execute(sql: "UPDATE photoSource SET rootID=?,relativePath=?,identity=?,identityKey=?,availability='available' WHERE id=?",
-                           arguments: [proposal.root.id, proposal.relativePath, identity, proposal.identity.key, proposal.source.id])
-        }
+        try catalog.database.write { try Self.publish(proposal, in: $0) }
     }
 
-    private func verify(_ proposal: SourceRelocation) throws {
+    /// File verification stays outside the database transaction. The folder review
+    /// reuses this publication step inside its one selected-batch transaction.
+    static func publish(_ proposal: SourceRelocation, in db: Database) throws {
+        try Task.checkCancellation()
+        try Self.checkCatalog(db, proposal)
+        if try StorageRoot.fetchOne(db, key: proposal.root.id) == nil { try proposal.root.insert(db) }
+        let oldIdentity = try JSONDecoder().decode(FileIdentity.self, from: proposal.source.identity)
+        let identity = oldIdentity == proposal.identity ? proposal.source.identity : try JSONEncoder().encode(proposal.identity)
+        // The existing trigger projects this mapping to every version, including
+        // retained/deleted versions. All per-version organization and edits stay put.
+        try db.execute(sql: "UPDATE photoSource SET rootID=?,relativePath=?,identity=?,identityKey=?,availability='available' WHERE id=?",
+                       arguments: [proposal.root.id, proposal.relativePath, identity, proposal.identity.key, proposal.source.id])
+    }
+
+    func verify(_ proposal: SourceRelocation) throws {
         try Task.checkCancellation()
         let lease = try AccessLease(bookmark: proposal.root.bookmark)
         defer { withExtendedLifetime(lease) {} }
