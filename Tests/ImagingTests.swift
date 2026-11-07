@@ -1430,8 +1430,30 @@ final class ImagingTests: XCTestCase {
             print("NATIVE_PERF workspace-update theme=\(theme.rawValue) ms=\(Array(updateTimes.dropFirst()))")
             model.recipe = recipe
             host.layoutSubtreeIfNeeded()
-            let slider = try XCTUnwrap(descendants(host, AdjustmentNSSlider.self).first { $0.accessibilityLabel() == "曝光度" })
+            let slider = try XCTUnwrap(descendants(host, AdjustmentNSSlider.self).first { $0.accessibilityLabel() == L10n.text("app.exposure", defaultValue: "Exposure") })
             let canvas = try XCTUnwrap(descendants(host, PhotoMetalCanvas.self).first)
+            // Status-only publication and new pixel dimensions independently keep the
+            // toolbar branch stable, including widths near its two-row transition.
+            let originalImage = model.image
+            for width in [1770, 1440, 1280, 1000] {
+                window.setContentSize(CGSize(width: width, height: 850))
+                model.interactivePreview = false; model.imageStatus = ""
+                try await Task.sleep(for: .milliseconds(30)); host.layoutSubtreeIfNeeded()
+                let bounds = canvas.convert(canvas.bounds, to: host)
+                for state in 0..<3 {
+                    model.interactivePreview = state == 0
+                    model.imageStatus = state == 1 ? L10n.text("app.inProgress", defaultValue: "In Progress") : ""
+                    try await Task.sleep(for: .milliseconds(30)); host.layoutSubtreeIfNeeded()
+                    XCTAssertEqual(canvas.convert(canvas.bounds, to: host), bounds, "Status \(state), width \(width), theme \(theme.rawValue)")
+                }
+                model.image = CIContext().createCGImage(CIImage(color: .gray), from: CGRect(x: 0, y: 0, width: 10, height: 5))
+                try await Task.sleep(for: .milliseconds(30)); host.layoutSubtreeIfNeeded()
+                XCTAssertEqual(canvas.convert(canvas.bounds, to: host), bounds, "Image dimensions must not select a toolbar layout")
+                model.image = originalImage
+            }
+            window.setContentSize(CGSize(width: 1770, height: 850))
+            model.interactivePreview = false; model.imageStatus = ""
+            try await Task.sleep(for: .milliseconds(30)); host.layoutSubtreeIfNeeded()
             let initialBounds = canvas.convert(canvas.bounds, to: host)
             func event(_ type: NSEvent.EventType, fraction: CGFloat) throws -> NSEvent {
                 let point = slider.convert(CGPoint(x: slider.bounds.width * fraction, y: slider.bounds.midY), to: nil)

@@ -35,7 +35,7 @@
 
 - **预览**：原一秒卡顿根因未证实（drawable 默认一秒超时只是候选，相关等待已移出主线程）；质量图计算完到发布仍有约 0.1 秒主线程等待。严格同条件前后对照、物理屏幕呈现、长时间拖动帧率、大 RAW 与 Release 实窗都未测。继续时先在无 AX 遍历干扰的交互区间做 CPU 与主线程等待采样。
 - **既有源坐标逆映射**：合成浮点梯度检查显示 `PhotoGeometry`／`MaskGeometry.sourcePoint` 在四分之一旋转为 1 或 3 时，与实际渲染像素的位置不同；未改既有渲染、旋转或蒙版模型。新目标调整直接取同一输出几何的浮点参考图，并以原生输出核对位置；其他工具的逆映射差异待单独定位。
-- **局部参数画布布局**：`ImagingTests.testMaskWorkspaceKeepsCanvasBoundsDuringSliderPreviewAndResize` 的离屏回归在拖动后出现画布高度 600→569 pt，石墨与米白均复现；当前已提交版本也有相同失败。根因待查，尚未在实际屏幕确认。
+- **局部参数画布布局**：已确认预览状态文字变宽会令底栏由一行换为两行，画布高度减少 31 pt；仅改预览图尺寸不触发。已为本地化状态预留稳定宽度，保留窄窗换行、完整提示和辅助功能读数；中英、双主题及四档窗口的离屏回归已核对。固定 App 米白蒙版窗口捕捉已核对，坐标拖动再次报 `noWindowsAvailable`，屏幕上的连续拖动与英文／石墨实窗待补。
 - **偶发测试失败**：`ComparisonTests.testAdjustmentReturnEndsEditingAndDoesNotReapplyAnUndoneValue` 多次在首次全量中失败、单跑通过，根因未定位；测试期间切换窗口可能影响焦点。
 - **预设测试的语言假设**：`PresetManagementTests.testUnicodeSearchFavoriteAndMultipleGroupsFilter` 将中文分组顺序写成固定期望，英文环境的收藏排序断言失败、中文通过；筛选和排序实现未改，测试的语言假设待处理。
 - **模型资源复制测试**：`SmartMaskTests.testOptionalModelCapabilitiesAndPartialBundleCopies` 在全量和单跑中均因测试宿主沙箱拒绝 `ditto` 的 `.BC.T_*` 临时文件而失败，具体触发机制未定位；对应脚本与测试未改动，不能以跳过断言替代修复。

@@ -931,9 +931,23 @@ struct WorkspaceView: View {
         return HStack(spacing: 6) {
             if !compact { SilkText(L10n.text("app.preview_2115", defaultValue: "Preview")).foregroundStyle(Theme.textSecondary) }
             Lamp(on: model.previewCurrent)
-            if !compact { Text(text).font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize() }
+            if !compact {
+                // Reserve the same localized status width while pixels arrive. Otherwise
+                // ViewThatFits can switch the whole toolbar to two rows during a drag.
+                ZStack(alignment: .leading) {
+                    ForEach([
+                        L10n.text("app.qualityCurrent", defaultValue: "Quality · Current"),
+                        L10n.text("app.noPreview", defaultValue: "No Preview"),
+                        L10n.text("app.draftGenerating", defaultValue: "Draft · Generating"),
+                        L10n.text("app.generating", defaultValue: "Generating"),
+                        L10n.text("app.outdated", defaultValue: "Outdated")
+                    ], id: \.self) { Text($0).hidden() }
+                }
+                .fixedSize().overlay(alignment: .leading) { Text(text).lineLimit(1) }
+                .font(.caption11).foregroundStyle(Theme.textSecondary)
+            }
         }
-        .help(compact ? L10n.text("app.preview_2116", defaultValue: "Preview: \(text) · \(model.imageStatus)") : model.imageStatus)
+        .help(L10n.text("app.preview_2116", defaultValue: "Preview: \(text) · \(model.imageStatus)"))
         .accessibilityElement(children: .ignore).accessibilityLabel(L10n.text("app.preview_2115", defaultValue: "Preview")).accessibilityValue(text)
     }
     private var beforeAfterMenu: some View {
