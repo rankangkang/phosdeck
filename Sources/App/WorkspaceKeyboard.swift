@@ -93,6 +93,7 @@ final class WorkspaceKeyboard {
             if !event.isARepeat { _ = model.deleteSelectedPerspectiveGuide() }
             return nil
         }
+        if model.editMode, event.keyCode == 53, model.automaticAdjustmentKind != nil { model.cancelAutomaticAdjustment(); return nil }
         if model.editMode, event.keyCode == 53, model.whiteBalanceSampling { model.cancelWhiteBalanceSampling(); return nil }
         // Delete belongs to the active local tool, even when nothing is selected.
         if model.editMode, modifiers.isEmpty, event.keyCode == 51 || event.keyCode == 117 {

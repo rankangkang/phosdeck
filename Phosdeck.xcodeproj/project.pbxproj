@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D60700010000000000000003 /* AutomaticAdjustmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60700020000000000000003 /* AutomaticAdjustmentTests.swift */; };
+		D60700010000000000000002 /* AutomaticAdjustmentEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60700020000000000000002 /* AutomaticAdjustmentEditing.swift */; };
+		D60700010000000000000001 /* AutomaticAdjustments.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60700020000000000000001 /* AutomaticAdjustments.swift */; };
 		D42800010000000000000003 /* FolderReviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42800020000000000000003 /* FolderReviewTests.swift */; };
 		D42800010000000000000002 /* FolderReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42800020000000000000002 /* FolderReviewSheet.swift */; };
 		D42800010000000000000001 /* FolderReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42800020000000000000001 /* FolderReview.swift */; };
@@ -207,6 +210,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D60700020000000000000003 /* AutomaticAdjustmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticAdjustmentTests.swift; sourceTree = "<group>"; };
+		D60700020000000000000002 /* AutomaticAdjustmentEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticAdjustmentEditing.swift; sourceTree = "<group>"; };
+		D60700020000000000000001 /* AutomaticAdjustments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticAdjustments.swift; sourceTree = "<group>"; };
 		D42800020000000000000003 /* FolderReviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderReviewTests.swift; sourceTree = "<group>"; };
 		D42800020000000000000002 /* FolderReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderReviewSheet.swift; sourceTree = "<group>"; };
 		D42800020000000000000001 /* FolderReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderReview.swift; sourceTree = "<group>"; };
@@ -550,6 +556,7 @@
 				D18C00020000000000000002 /* BlackWhiteMixerTests.swift */,
 				B47075A9CE33AAE0D607434D /* TonalTests.swift */,
 				D42700020000000000000008 /* TargetedAdjustmentTests.swift */,
+				D60700020000000000000003 /* AutomaticAdjustmentTests.swift */,
 				D42700020000000000000004 /* DirectAdjustmentTests.swift */,
 				D60A24C4208C52F3CAB9048E /* WorkflowTests.swift */,
 				9A239B718941D84CDC85C2F2 /* SmartMaskTests.swift */,
@@ -596,6 +603,7 @@
 				2266F5F2FBCF3400C3C2BBBC /* Phosdeck.entitlements */,
 				F8F1FD523D1681280A515F8F /* PhosdeckApp.swift */,
 				D42700020000000000000002 /* DirectAdjustments.swift */,
+				D60700020000000000000002 /* AutomaticAdjustmentEditing.swift */,
 				9BC49DA04965D4D2B674E126 /* ToneSampling.swift */,
 				7CD6585FB59FBC276DDDCC1D /* WorkspaceKeyboard.swift */,
 				73D1F224E6E8A6FABDE1CF22 /* SmartMaskEditing.swift */,
@@ -620,6 +628,7 @@
 				974380F5EBFA586BBD9151E4 /* UprightCorrection.swift */,
 				8D53D3CC77BFC5680ACDE04B /* XMPPresetSettings.swift */,
 				F44788E9D8A7699251A84F46 /* LocalParameterPreset.swift */,
+				D60700020000000000000001 /* AutomaticAdjustments.swift */,
 				D42700020000000000000005 /* TargetedAdjustment.swift */,
 				B27C267D11F949CAA0A2A6D0 /* PointColor.swift */,
 				99DA58B0D79A40DECD113A27 /* CropInteraction.swift */,
@@ -896,6 +905,7 @@
 				C7FC324B59EC4951814F7203 /* RawJpegPairTests.swift in Sources */,
 				7114423C4AE44A259C4C84AE /* StackTests.swift in Sources */,				5C2A6201091B462F9F2F9779 /* VirtualCopyTests.swift in Sources */,
 				D42700010000000000000008 /* TargetedAdjustmentTests.swift in Sources */,
+				D60700010000000000000003 /* AutomaticAdjustmentTests.swift in Sources */,
 				D42700010000000000000004 /* DirectAdjustmentTests.swift in Sources */,
 				B954E0DF2619F412432A8C86 /* WorkflowTests.swift in Sources */,
 				FDB12FE8C1C91C4A371A52E6 /* SmartMaskTests.swift in Sources */,
@@ -943,6 +953,7 @@
 				A8E3A3C3B5BE4F019AC0E715 /* StackEditing.swift in Sources */,
 				D42700010000000000000006 /* TargetedEditing.swift in Sources */,
 				5D926052641D44488BD515BA /* PointColorEditing.swift in Sources */,
+				D60700010000000000000001 /* AutomaticAdjustments.swift in Sources */,
 				D42700010000000000000005 /* TargetedAdjustment.swift in Sources */,
 				2FA48BFF2D4F464B912ECCDC /* PointColor.swift in Sources */,
 				68E032B200D04F4C9023C695 /* SmartCollectionSheet.swift in Sources */,
@@ -1007,6 +1018,7 @@
 				D1A000020000000000000001 /* RasterExposureColour.swift in Sources */,
 				A265017B4066DAECE7ED9FFC /* ToneCurvePanel.swift in Sources */,
 				D42700010000000000000002 /* DirectAdjustments.swift in Sources */,
+				D60700010000000000000002 /* AutomaticAdjustmentEditing.swift in Sources */,
 				B008C831C8598D4967C8EB31 /* ToneSampling.swift in Sources */,
 				AB3E191E9D7F5FC72849EB96 /* WorkspaceKeyboard.swift in Sources */,
 				D7A1C0DE00000000000000B1 /* DarkroomTheme.swift in Sources */,

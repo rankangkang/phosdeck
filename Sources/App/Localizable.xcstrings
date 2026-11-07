@@ -1,6 +1,142 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "app.autoWhiteBalance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto White Balance"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动白平衡"
+          }
+        }
+      }
+    },
+    "app.autoTone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto Tone"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动色调"
+          }
+        }
+      }
+    },
+    "app.autoAdjustment": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动"
+          }
+        }
+      }
+    },
+    "app.analyzingAutomaticAdjustment": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analyzing image…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在分析图像…"
+          }
+        }
+      }
+    },
+    "app.cancelAnalysis": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel Analysis"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消分析"
+          }
+        }
+      }
+    },
+    "app.autoAnalysisInsufficient": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not enough reliable image information for automatic adjustment. Use the manual controls or sample a neutral area."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图像信息不足，无法可靠地自动调整。请使用手动参数或取样中性区域。"
+          }
+        }
+      }
+    },
+    "app.autoWhiteBalanceHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estimate neutral color from the current crop. For single-color scenes or mixed lighting, sample a neutral area instead."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "根据当前裁剪区域估计中性色。单色场景或混合光线请取样中性区域。"
+          }
+        }
+      }
+    },
+    "app.autoToneHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set exposure, contrast, highlights, shadows, whites and blacks from the current crop. Fine-tune for high-key or low-key scenes."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "根据当前裁剪区域设置曝光、对比度、高光、阴影、白色与黑色。高调或低调场景请继续微调。"
+          }
+        }
+      }
+    },
     "app.targetCurveHelp": {
       "extractionState": "manual",
       "localizations": {

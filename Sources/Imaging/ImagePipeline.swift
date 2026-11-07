@@ -67,6 +67,8 @@ extension RAWDetailSettings {
 
 /// One serialized image lane. Preview and export share the same graph and sRGB conversion.
 actor ImagePipeline {
+    /// Shared serialized analysis lane, separate from interactive previews.
+    static let automaticAnalysis = ImagePipeline()
     private let context: CIContext
     private let developContext: CIContext
     static let outputSpace = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -420,6 +422,92 @@ actor ImagePipeline {
         let image = try graph(request, url: url, orientedSourceSize: &size, previewEdge: longEdge, decodeOnly: true)
         try Task.checkCancellation()
         return try SpotRepairPipeline.buffer(image, context: developContext)
+    }
+
+    /// Analyze a bounded float decode, before repairs and all develop operations.
+    /// Geometry uses the rendering transform itself, including crop, perspective
+    /// and transparent invalid regions; no inverse-coordinate approximation.
+    func automaticAdjustment(_ request: ImageRequest, kind: AutomaticAdjustmentKind) throws -> AutomaticAdjustmentResult {
+        try Task.checkCancellation()
+        let (lease, url) = try source(request)
+        defer { withExtendedLifetime(lease) {} }
+        try Task.checkCancellation()
+        guard request.photo.supportsEditing, let recipe = request.recipe, recipe.pipelineVersion == 2 else { throw AutomaticAdjustmentPixels.insufficient }
+        let raw: CIRAWFilter?
+        let rasterBase: CIImage?
+        let size: CGSize
+        if request.photo.isRAW {
+            let filter = try PhotoFileType.rawFilter(url)
+            let version = CIRAWDecoderVersion(rawValue: recipe.decoderVersion)
+            guard filter.supportedDecoderVersions.contains(version) else { throw LRCError(L10n.text("app.theRecipeSOriginalDecoderIsUnavailable", defaultValue: "The recipe's original decoder is unavailable")) }
+            filter.decoderVersion = version
+            try recipe.rawDetails.apply(to: filter, defaults: RAWDetailSettings(raw: filter))
+            filter.scaleFactor = Float(min(1, 512 / max(filter.nativeSize.width, filter.nativeSize.height)))
+            filter.isDraftModeEnabled = false; filter.extendedDynamicRangeAmount = 0
+            filter.baselineExposure = Float(recipe.baselineExposure)
+            size = filter.orientation.rawValue >= 5 ? CGSize(width: filter.nativeSize.height, height: filter.nativeSize.width) : filter.nativeSize
+            raw = filter; rasterBase = nil
+        } else {
+            let decoded = try raster(url)
+            size = decoded.extent.size; rasterBase = decoded; raw = nil
+        }
+        let initial = WhiteBalanceValue(temperature: recipe.baselineTemperature, tint: recipe.baselineTint)
+        let current = recipe.asShotWhiteBalance ? initial : WhiteBalanceValue(temperature: recipe.temperature, tint: recipe.tint)
+        func decode(_ wb: WhiteBalanceValue, exposure: Double = 0) throws -> CIImage {
+            try Task.checkCancellation()
+            let image: CIImage
+            if let raw {
+                raw.exposure = Float(exposure)
+                raw.neutralTemperature = Float(wb.temperature); raw.neutralTint = Float(wb.tint)
+                guard let output = raw.outputImage else { throw LRCError(L10n.text("app.rawDecodingFailed", defaultValue: "RAW decoding failed")) }
+                image = Self.originZero(output)
+            } else if let rasterBase {
+                var balanced = rasterBase
+                if wb.temperature != 5500 || wb.tint != 0 {
+                    balanced = balanced.applyingFilter("CITemperatureAndTint", parameters: [
+                        "inputNeutral": CIVector(x: wb.temperature, y: wb.tint), "inputTargetNeutral": CIVector(x: 5500, y: 0)])
+                }
+                // Preserve the source-size raster exposure semantics. Analysis
+                // never edits or substitutes the existing response table.
+                image = try RasterExposure.apply(balanced, ev: exposure)
+            } else { throw AutomaticAdjustmentPixels.insufficient }
+            return Self.resized(image, longEdge: 512)
+        }
+        func pixels(_ image: CIImage) throws -> AutomaticAdjustmentPixels {
+            let visible = try Self.geometry(image, recipe: recipe, referenceSize: size)
+            return AutomaticAdjustmentPixels(image: visible, context: developContext)
+        }
+        let result: AutomaticAdjustmentResult
+        switch kind {
+        case .whiteBalance:
+            let selected = try pixels(decode(initial)).whiteBalanceIndices()
+            let value = try WhiteBalanceSampling.solve(initial: initial) { wb in
+                try pixels(decode(wb)).illuminant(at: selected)
+            }
+            result = .whiteBalance(value)
+        case .tone:
+            // Cache only the bounded exposed prefix. Tone trials reuse it and
+            // run the same native spatial/contrast operators as preview/export.
+            var exposed: [Double: CIImage] = [:]
+            result = .tone(try AutomaticToneAnalysis.solve { value in
+                let input: CIImage
+                if let cached = exposed[value.exposure] { input = cached }
+                else {
+                    let decoded = try decode(current, exposure: value.exposure)
+                    guard let cg = developContext.createCGImage(decoded, from: decoded.extent, format: .RGBAf,
+                        colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!, deferred: false) else { throw AutomaticAdjustmentPixels.insufficient }
+                    input = CIImage(cgImage: cg); exposed[value.exposure] = input
+                }
+                var toneRecipe = recipe
+                toneRecipe.develop = DevelopAdjustments(); toneRecipe.saturation = 1
+                value.apply(to: &toneRecipe)
+                let spatial = try SpatialDevelopPipeline.beforeZones(input, adjustments: toneRecipe.develop, context: developContext)
+                return try pixels(Self.colorControls(spatial, recipe: toneRecipe)).toneQuantiles()
+            })
+        }
+        try Task.checkCancellation()
+        guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: request.photo.identity) else { throw LRCError(L10n.text("app.theSourceChangedDuringSampling", defaultValue: "The source changed during sampling")) }
+        return result
     }
 
     /// Sample before repairs, tone/color/local adjustments, and output geometry.

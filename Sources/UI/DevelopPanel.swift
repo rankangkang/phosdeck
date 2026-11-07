@@ -399,6 +399,7 @@ struct DevelopPanel: View {
             HStack(spacing: Metrics.gap) {
                 SubgroupLabel(L10n.text("app.whiteBalance", defaultValue: "White Balance"))
                 if !local {
+                    automaticButton(.whiteBalance)
                     Button { model.toggleWhiteBalanceSampling() } label: {
                         Image(systemName: "eyedropper")
                     }.buttonStyle(.key(selected: model.whiteBalanceSampling, height: 24, padding: 8, lampInside: true))
@@ -421,7 +422,19 @@ struct DevelopPanel: View {
             row(L10n.text("app.temperature", defaultValue: "Temperature"), \.temperature, range: 2000...50000, step: 50, reset: recipe?.baselineTemperature ?? 5500, unit: "K")
             row(L10n.text("app.tint", defaultValue: "Tint"), \.tint, range: -150...150, reset: recipe?.baselineTint ?? 0)
             if local || recipe?.isRaster == true { note(L10n.text("app.5500K0IsNeutralAdjustmentsApplyOverThe", defaultValue: "5500 K / 0 is neutral. Adjustments apply over the current photo colors.")) }
-            SubgroupLabel(L10n.text("app.tone", defaultValue: "Tone")).padding(.top, Metrics.gap)
+            HStack(spacing: Metrics.gap) {
+                SubgroupLabel(L10n.text("app.tone", defaultValue: "Tone"))
+                if !local { automaticButton(.tone) }
+            }.padding(.top, Metrics.gap)
+            if !local, model.automaticAdjustmentKind != nil {
+                HStack(spacing: Metrics.gap) {
+                    Text(L10n.text("app.analyzingAutomaticAdjustment", defaultValue: "Analyzing image…"))
+                        .font(.caption11).foregroundStyle(Theme.textSecondary)
+                    Spacer(minLength: 0)
+                    Button(L10n.text("app.cancelAnalysis", defaultValue: "Cancel Analysis")) { model.cancelAutomaticAdjustment() }
+                        .buttonStyle(.key(height: 22, padding: 8))
+                }
+            }
             row(L10n.text("app.exposure", defaultValue: "Exposure"), \.exposure, range: -5...5, step: 0.05, digits: 2, unit: "EV")
             row(L10n.text("app.contrast", defaultValue: "Contrast"), \.contrast, scale: 100, offset: -100)
             row(L10n.text("app.highlights", defaultValue: "Highlights"), \.develop.highlights)
@@ -435,6 +448,15 @@ struct DevelopPanel: View {
             row(L10n.text("app.vibrance", defaultValue: "Vibrance"), \.develop.vibrance)
             row(L10n.text("app.saturation", defaultValue: "Saturation"), \.saturation, scale: 100, offset: -100)
         }
+    }
+    private func automaticButton(_ kind: AutomaticAdjustmentKind) -> some View {
+        Button(L10n.text("app.autoAdjustment", defaultValue: "Auto")) { model.applyAutomaticAdjustment(kind) }
+            .buttonStyle(.key(selected: model.automaticAdjustmentKind == kind, height: 24, padding: 8, lampInside: true))
+            .editingDisabled(!model.canEdit || model.automaticAdjustmentKind != nil, temporarilyLocked: model.editorUsesPreviousPhoto)
+            .accessibilityLabel(kind.title)
+            .help(kind == .whiteBalance
+                ? L10n.text("app.autoWhiteBalanceHelp", defaultValue: "Estimate neutral color from the current crop. For single-color scenes or mixed lighting, sample a neutral area instead.")
+                : L10n.text("app.autoToneHelp", defaultValue: "Set exposure, contrast, highlights, shadows, whites and blacks from the current crop. Fine-tune for high-key or low-key scenes."))
     }
     private var crop: some View {
         VStack(alignment: .leading, spacing: 8) {

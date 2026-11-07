@@ -10,6 +10,7 @@ extension AppModel {
     func togglePointColorSampling() {
         if pointSampling { cancelPointColorTools(); return }
         guard canEdit, commitRecipe(), let recipe, !recipe.develop.blackAndWhite, recipe.develop.pointColors.count < 8 else { return }
+        cancelAutomaticAdjustment()
         cancelTargetedAdjustment()
         cancelWhiteBalanceSampling()
         cropMode = false; maskMode = false; spotMode = false; before = false; beforeAfter = .off
@@ -24,6 +25,7 @@ extension AppModel {
         guard canEdit, let photo = active, let recipe, !recipe.develop.blackAndWhite,
               let root = roots.first(where:{$0.id == photo.rootID}) else { cancelPointColorTools(); return }
         if showPointColorRange {
+            cancelAutomaticAdjustment()
             cancelTargetedAdjustment()
             guard let selected = recipe.develop.pointColors.first(where:{$0.id == selectedPointColorID}) ?? recipe.develop.pointColors.first else { showPointColorRange = false; return }
             // A reopened version or an undo can restore samples while the panel
