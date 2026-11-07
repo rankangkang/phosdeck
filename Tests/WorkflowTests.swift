@@ -557,6 +557,54 @@ final class WorkflowTests: XCTestCase {
         XCTAssertTrue(try TotalExposureMatch.captureStops(PhotoMetadata(iso: Int.max, aperture: .leastNonzeroMagnitude, exposureTime: .greatestFiniteMagnitude)).isFinite)
     }
 
+    func testPublicRAWBaselineCompensationMatchesNativeForwardPixels() async throws {
+        // Same-source controlled baseline experiment. This verifies the native
+        // EV composition used by matching, not physical brackets or cameras.
+        let pipeline = ImagePipeline()
+        for name in ["a7iii_12bit_compressed.ARW", "leica_m8_8bit_uncompressed.DNG"] {
+            let source = try MoreRAWTests.request(name)
+            var reference = try await pipeline.baseline(source)
+            let digest = reference.sourceDigest
+            reference.exposure = 0.75
+            let metadata: PhotoMetadata
+            if name == "leica_m8_8bit_uncompressed.DNG" {
+                // This public fixture has no usable aperture. Production matching
+                // must reject it; equal synthetic capture terms below isolate EV
+                // composition without claiming its missing metadata was recovered.
+                XCTAssertThrowsError(try TotalExposureMatch(metadata: source.photo.details, recipe: reference))
+                metadata = PhotoMetadata(iso: 100, aperture: 4, exposureTime: 1.0 / 125)
+                print("RAW_BASELINE_MATCH file=\(name) capture=controlled-equal-terms actual-metadata=rejected")
+            } else {
+                metadata = try XCTUnwrap(source.photo.details)
+            }
+            let match = try TotalExposureMatch(metadata: metadata, recipe: reference)
+            let expected = try await pipeline.linearRank(ImageRequest(photo: source.photo, root: source.root, recipe: reference), longEdge: 768)
+            for offset in [-0.5, 0.5] {
+                var target = reference
+                target.baselineExposure += offset; target.exposure = -2
+                let result = try match.exposure(metadata: metadata, recipe: target)
+                XCTAssertFalse(result.limited)
+                XCTAssertEqual(result.value, 0.75 - offset, accuracy: 1e-10)
+                target.exposure = result.value
+                let actual = try await pipeline.linearRank(ImageRequest(photo: source.photo, root: source.root, recipe: target), longEdge: 768)
+                XCTAssertEqual(actual.width, expected.width); XCTAssertEqual(actual.height, expected.height)
+                XCTAssertEqual(actual.alpha, expected.alpha)
+                var differences = [Double]()
+                for (a, b) in zip(expected.pixels, actual.pixels) {
+                    let y = Double(a.x) * 0.2126 + Double(a.y) * 0.7152 + Double(a.z) * 0.0722
+                    let z = Double(b.x) * 0.2126 + Double(b.y) * 0.7152 + Double(b.z) * 0.0722
+                    if y > 0.01, y < 0.9, z > 0.01, z < 0.9 { differences.append(abs(log2(y / z))) }
+                }
+                differences.sort()
+                XCTAssertGreaterThan(differences.count, 1000)
+                let p99 = differences.isEmpty ? Double.infinity : differences[Int(Double(differences.count - 1) * 0.99)]
+                XCTAssertLessThan(p99, 0.0001, "Equal total native EV should agree within float/half readback precision")
+                print("RAW_BASELINE_MATCH file=\(name) offset=\(offset) exposure=\(result.value) pixels=\(differences.count) p99_abs_ev=\(p99)")
+            }
+            XCTAssertEqual(try SafeFileWriter.sha256(MoreRAWTests.sample(name)), digest)
+        }
+    }
+
     @MainActor func testMatchTotalExposuresBatchSkipClampUndoRedoAndAtomicFailure() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
