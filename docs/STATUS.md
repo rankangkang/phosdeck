@@ -6,8 +6,8 @@
 
 - 主线 `master`，仅维护原生 macOS（SwiftUI + Metal + GRDB）。
 - 目录 schema 13（`CatalogStore.schemaVersion`），旧版本目录直接拒绝。
-- 开发机有两台（M4 Pro／macOS 26.6.2，M4／macOS 27.0.1），固定体验基线不能混用。macOS 27 这台已按用户授权重建同路径、同 bundle ID 的体验 App，使用 `UnratedReview.phoscat` 和十二张合成图（含拍摄参数、文件夹差异与去边测试图）；未恢复原图库与研究模型；已准备清单中的 Sony A7 III ARW 和 Leica M8 DNG 两份 CC0 样片。M4 Pro 的既有体验环境未动。
-- 仓库 Debug 默认免证书临时签名；macOS 27 这台已按用户要求通过忽略的 `Config/LocalSigning.xcconfig` 固定开发证书与团队，测试宿主及内部库、内置盘暂存副本均统一签名并保留沙箱与 hardened runtime。固定体验 App 继续保持原路径、身份与开发签名。
+- 开发机有两台（M4 Pro／macOS 26.6.2，M4／macOS 27.0.1），固定体验基线不能混用。macOS 27 这台的体验 App 已更名为 Phosdeck Preview，保留原 bundle ID 和 `UnratedReview.phoscat`；合成图库含拍摄参数、文件夹差异与去边测试图，未恢复原图库与研究模型；已准备清单中的 Sony A7 III ARW 和 Leica M8 DNG 两份 CC0 样片。M4 Pro 的既有体验环境未改名或移动。
+- 仓库 Debug 默认免证书临时签名；macOS 27 这台已按用户要求通过忽略的 `Config/LocalSigning.xcconfig` 固定开发证书与团队，测试宿主及内部库、内置盘暂存副本均统一签名并保留沙箱与 hardened runtime。固定体验 App 继续保持原身份与开发签名。
 
 ## 待用户验收
 

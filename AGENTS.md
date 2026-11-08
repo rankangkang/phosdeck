@@ -76,8 +76,8 @@ Not tested: reduced motion, small windows.
 ## 原生 App 构建与体验
 
 - 普通开发与流程审查固定复用同一份体验 App，不再按轮次复制新 App、建立新 bundle ID 或新建测试目录。先正常退出该 App，再用标准 Xcode Debug 增量构建；构建成功后覆盖更新固定 App、保持原身份并重新签名，随后打开同一路径。
-- 固定体验 App：`build/unrated-stars-review/oh my lrc Star Review.app`；固定 bundle ID：`dev.cmkk.oh-my-lrc.unratedstars20261021`。继续使用其中现有合成 `UnratedReview.omlrcat`。路径和 ID 虽沿用历史命名，后续不随日期或任务更换。
-- 正常构建入口：`xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -configuration Debug -derivedDataPath build -destination 'platform=macOS' build`。产物为 `build/Build/Products/Debug/Phosdeck.app`；只覆盖固定体验 App 的程序包，不覆盖其目录、原片和偏好。保持现有沙箱／hardened runtime 与源 entitlements，核对当前有效开发签名。
+- 固定体验 App：`build/unrated-stars-review/Phosdeck Preview.app`；固定 bundle ID：`dev.cmkk.oh-my-lrc.unratedstars20261021`。继续使用各机现有合成图库和偏好。若某台机器仍是旧文件名 `oh my lrc Star Review.app`，先正常退出并核对目标无冲突，再同目录无覆盖更名，设置体验包名称并使用原开发身份重新签名；不替换图库和偏好。
+- 正常构建入口：`xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -configuration Debug -derivedDataPath build -destination 'platform=macOS' build`。产物为 `build/Build/Products/Debug/Phosdeck.app`；只覆盖固定体验 App 的程序包，不覆盖其目录、原片和偏好。覆盖后仅将体验包的 `CFBundleName` 和 `CFBundleDisplayName` 设为 `Phosdeck Preview`，恢复固定 bundle ID 后重新签名；正式产物仍叫 `Phosdeck`。保持现有沙箱／hardened runtime 与源 entitlements，核对当前有效开发签名。
 - 不通过全局 `PRODUCT_NAME`／`CONFIGURATION_BUILD_DIR` 重定向所有依赖目标（会破坏 GRDB 资源包名称）。不要为普通体验切换工程的 bundle ID。测试继续使用合成／已授权样本，不自动打开正常产物身份可能恢复的私人最近目录。
 - 本机有开发证书且已选择稳定签名时，通过已忽略的 `Config/LocalSigning.xcconfig` 固定证书和团队。测试宿主、XCTest 包、Debug／预览及 LiteRT 等嵌套动态库使用同一身份；暂存或去除调试映射后由内向外重签，保留各自 entitlements 与 hardened runtime，不用 `--sign -` 覆盖稳定身份。其他机器仍可沿用默认免证书构建及其权限限制。
 - 复用 `build/` 增量缓存；历史结果和其他副本的清理单独核对归属，不把整个 `build/`、用户目录或照片当作可随意删除的缓存。
