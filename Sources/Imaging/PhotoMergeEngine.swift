@@ -176,7 +176,7 @@ actor PhotoMergeEngine {
                 let merged = try fuseSmall(group)
                 let reference = group.frames[group.reference]
                 groups.append(group)
-                hdrFrames.append(MergeFrame(image:merged,clip:max(1,merged.pixels.map(MergeImage.peak).max() ?? 1),sourceIndex:groups.count-1,focal35mm:reference.focal35mm,nativeWidth:reference.fullWidth,nativeHeight:reference.fullHeight))
+                hdrFrames.append(MergeFrame(image:merged,clip:max(1,merged.pixels.map(MergeImage.peak).max() ?? 1),sourceIndex:groups.count-1,focal35mm:reference.focal35mm,nativeWidth:reference.fullWidth,nativeHeight:reference.fullHeight,registrationImage:reference.image,focalLength:reference.focalLength,cameraModel:reference.cameraModel))
             }
             return .hdrPanorama(groups,try MergePanoramaPlan.prepare(hdrFrames,options:options))
         default: return .fusion(try MergeFusionPlan.prepare(frames,options:options))

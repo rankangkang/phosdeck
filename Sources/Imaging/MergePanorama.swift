@@ -1,8 +1,8 @@
 // Feature graph, focal estimation, projections and centre-weighted multiband fusion
 // reference LightCraft b3b49987d4b2c99f582b80ae91b2ec42ab24d14e (2026-11-08),
 // crates/merge/src/pano.rs and pano/{camera,project,blend}.rs, MIT option.
-// This native implementation keeps projective registrations; it does not port the
-// upstream rotation bundle adjustment, boundary warp or generative edge filling.
+// Rotating cameras receive a bounded rotation/focal bundle adjustment; planar
+// scans keep their homographies. No boundary warp or generative edge filling.
 import Foundation
 import simd
 
@@ -48,7 +48,7 @@ struct MergePanoramaPlan {
 
     static func prepare(_ frames: [MergeFrame],options: PhotoMergeOptions) throws -> Self {
         guard frames.count >= 2 else { throw alignmentError }
-        let features = try frames.map { try MergeRegistration.features($0.image.grey()) }
+        let features = try frames.map { try MergeRegistration.features(($0.registrationImage ?? $0.image).grey(),maximum:1200) }
         var edges = [Edge]()
         let n = frames.count
         // Neighbours first, then bridge disconnected components. Every selected frame must connect.
@@ -99,9 +99,10 @@ struct MergePanoramaPlan {
         let f = frames[reference].focal35mm.map { diagonal*$0/hypot(36,24) }
             ?? (estimates.isEmpty ? Double(max(ref.width,ref.height))*0.9 : estimates[estimates.count/2])
         let k = MergeMatrix([f,0,Double(ref.width-1)/2,0,f,Double(ref.height-1)/2,0,0,1])
-        let cameras = homographies.map { k.followed(by:$0!) }
+        let refined = try MergeCameraRefinement.refine(frames,homographies:homographies.map { $0! },edges:edges,reference:reference,focal:f)
+        let cameras = refined?.cameras ?? homographies.map { k.followed(by:$0!) }
         let scale = Double(frames[reference].fullWidth)/Double(ref.width)
-        let focal = f*scale
+        let focal = (refined?.focal ?? f)*scale
         var lo = SIMD2<Double>(repeating:.infinity), hi = SIMD2<Double>(repeating:-.infinity)
         for (index,camera) in cameras.enumerated() {
             let inverse = camera.m.inverse, image = frames[index].image

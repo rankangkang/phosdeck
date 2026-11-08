@@ -50,6 +50,8 @@ You can also run a test class affected by your change, for example:
 xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -derivedDataPath build -destination 'platform=macOS' -only-testing:PhosdeckTests/FoundationTests test
 ```
 
+Optional real merge sequences are listed in [`Tests/Fixtures/public-merge-samples.json`](Tests/Fixtures/public-merge-samples.json), with sources, usage scope and file hashes. Place local files in `Samples/public-merge/<id>/`. Test builds stage only complete, hash-verified sequences and skip absent ones; they never download them. Photographs, reference programs and generated results are not distributed with the app or repository.
+
 Test preparation uses the `python3` standard library, with no extra Python packages. Some tests skip when public RAW samples, smart-mask resources, or required access are unavailable. Report the actual tests run, skips, and failures separately. Interface changes also need checks in the app's actual window using permitted samples.
 
 Ordinary development does not require smart-mask weights. The research preparation script downloads a complete set of experimental resources, including face weights. See the [model guide (Chinese)](docs/smart-mask-models.md) for restrictions, model versions, and behavior when models are missing.

@@ -84,7 +84,11 @@ enum MergeRegistration {
                 let a = xx.values[i], b = yy.values[i], c = xy.values[i]
                 return (a*b-c*c)/max(a+b,1e-12)
             }
-            let threshold = max(1e-8,(response.max() ?? 0)*0.001)
+            // A single sharp highlight must not suppress the low-contrast corners
+            // in sky/mountain overlaps. Use the same robust upper percentile as
+            // MOPS in LightCraft, rather than the strongest response alone.
+            let strengths = stride(from:0,to:response.count,by:7).map { response[$0] }.sorted(by:>)
+            let threshold = max(1e-8,strengths[strengths.count/200]*0.01)
             let orientation = image.blurred(4.5), descriptor = image.blurred(2.5)
             for y in 22..<h-22 {
                 if y.isMultiple(of:32) { try Task.checkCancellation() }
@@ -97,13 +101,19 @@ enum MergeRegistration {
                         if other > v || (other == v && (dy < 0 || (dy == 0 && dx < 0))) { isMaximum = false }
                     } }
                     guard isMaximum else { continue }
+                    func offset(_ a: Float,_ b: Float,_ c: Float) -> Double {
+                        let d = a-2*b+c
+                        return abs(d) > 1e-12 ? Double(max(-0.5,min(0.5,0.5*(a-c)/d))) : 0
+                    }
+                    let px = Double(x)+offset(response[y*w+x-1],v,response[y*w+x+1])
+                    let py = Double(y)+offset(response[(y-1)*w+x],v,response[(y+1)*w+x])
                     let angle = atan2(orientation.at(x,y+1)-orientation.at(x,y-1),orientation.at(x+1,y)-orientation.at(x-1,y))
                     let cosine = Double(cos(angle)), sine = Double(sin(angle))
                     var d = [Float](); d.reserveCapacity(64)
                     var valid = true
                     for j in 0..<8 { for i in 0..<8 {
                         let u = (Double(i)-3.5)*5, v = (Double(j)-3.5)*5
-                        let sx = Double(x)+cosine*u-sine*v, sy = Double(y)+sine*u+cosine*v
+                        let sx = px+cosine*u-sine*v, sy = py+sine*u+cosine*v
                         if sx < 0 || sy < 0 || sx > Double(w-1) || sy > Double(h-1) { valid = false }
                         d.append(descriptor.sample(sx,sy))
                     } }
@@ -111,7 +121,7 @@ enum MergeRegistration {
                     let mean = d.reduce(0,+)/64, variance = d.reduce(Float(0)) { $0+($1-mean)*($1-mean) }/64
                     guard variance > 1e-10 else { continue }
                     let scale = Double(1 << level)
-                    all.append(MergeFeature(p:SIMD2((Double(x)+0.5)*scale-0.5,(Double(y)+0.5)*scale-0.5),strength:v,descriptor:d.map { ($0-mean)/sqrt(variance) }))
+                    all.append(MergeFeature(p:SIMD2((px+0.5)*scale-0.5,(py+0.5)*scale-0.5),strength:v,descriptor:d.map { ($0-mean)/sqrt(variance) }))
                 }
             }
         }

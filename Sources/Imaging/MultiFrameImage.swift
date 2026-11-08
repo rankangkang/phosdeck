@@ -3,6 +3,7 @@ import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
 import simd
+import Accelerate
 
 enum PhotoMergeKind: String, Codable, CaseIterable, Identifiable {
     case panorama, hdr, hdrPanorama, focus, average, median, additive, lighten, darken, screen
@@ -161,6 +162,10 @@ struct MergePlane {
         let raw = (-radius...radius).map { exp(-Float($0*$0)/(2*sigma*sigma)) }, sum = raw.reduce(0,+)
         let kernel = raw.map { $0/sum }
         var temp = Self(width:width,height:height), result = temp
+        // The same separable float kernel and replicated borders. Real 1000px
+        // sequences otherwise spend minutes in scalar Gaussian loops in Debug.
+        let horizontal = Self.convolve(values,into:&temp.values,width:width,height:height,kernel:kernel,vertical:false)
+        if horizontal,Self.convolve(temp.values,into:&result.values,width:width,height:height,kernel:kernel,vertical:true) { return result }
         for y in 0..<height { for x in 0..<width {
             var value: Float = 0
             for k in -radius...radius { value += at(x+k,y)*kernel[k+radius] }
@@ -172,6 +177,17 @@ struct MergePlane {
             result.values[y*width+x] = value
         } }
         return result
+    }
+    private static func convolve(_ input: [Float],into output: inout [Float],width: Int,height: Int,kernel: [Float],vertical: Bool) -> Bool {
+        input.withUnsafeBufferPointer { source in
+            output.withUnsafeMutableBufferPointer { destination in
+                kernel.withUnsafeBufferPointer { coefficients in
+                    var a = vImage_Buffer(data:UnsafeMutableRawPointer(mutating:source.baseAddress!),height:vImagePixelCount(height),width:vImagePixelCount(width),rowBytes:width*4)
+                    var b = vImage_Buffer(data:destination.baseAddress!,height:vImagePixelCount(height),width:vImagePixelCount(width),rowBytes:width*4)
+                    return vImageConvolve_PlanarF(&a,&b,nil,0,0,coefficients.baseAddress!,vertical ? UInt32(kernel.count) : 1,vertical ? 1 : UInt32(kernel.count),0,vImage_Flags(kvImageEdgeExtend)) == kvImageNoError
+                }
+            }
+        }
     }
     func resized(_ w: Int,_ h: Int) -> Self {
         var out = Self(width:w,height:h)
@@ -190,6 +206,13 @@ struct MergeFrame {
     var focal35mm: Double?
     var nativeWidth: Int?
     var nativeHeight: Int?
+    /// HDR bracket reference, on the same grid as the fused image. Registration
+    /// uses the captured detail; gains and blending still use float radiance.
+    var registrationImage: MergeImage?
+    var raw = false
+    var focalLength: Double?
+    var cameraModel: String?
+    var exposureFloor: Float { raw ? 0.01 : 0.04 }
     var fullWidth: Int { nativeWidth ?? image.width }
     var fullHeight: Int { nativeHeight ?? image.height }
 }

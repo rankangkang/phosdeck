@@ -1,0 +1,200 @@
+{
+  "datasets": [
+    {
+      "id": "kimo",
+      "author": "Captain Kimo / Kimo Media LLC",
+      "source": "https://captainkimo.com/panoramic-hdr-photography-tutorial-how-to-make-hdr-panoramas/",
+      "usage": "Tutorial explicitly offers these nine photographs for following the HDR panorama lesson; evaluation only, no redistribution of originals.",
+      "files": [
+        {
+          "file": "IMG_6763.jpg",
+          "sha256": "6ff0cb01418a8c6b71e6ac29bc11f0cf5149664d1238dfa1550c1d458b5a51f1"
+        },
+        {
+          "file": "IMG_6764.jpg",
+          "sha256": "f8eaad93d9d999f83fcedf8be25a7c50fa4b8fb754b71b6add48a1f3cadbb851"
+        },
+        {
+          "file": "IMG_6765.jpg",
+          "sha256": "673821286e9ec16ec9ce3eef384613bea66caeb8ef3d86ec91cd016f6b789d68"
+        },
+        {
+          "file": "IMG_6766.jpg",
+          "sha256": "8d9c5c291fd5dff7b91b71aeb986830535d90b8c1a40031e35516b2517f1ab95"
+        },
+        {
+          "file": "IMG_6767.jpg",
+          "sha256": "534d560420c79689bfa1cac956a626523935ed3a0b6045a5c883be9893c2dea3"
+        },
+        {
+          "file": "IMG_6768.jpg",
+          "sha256": "1ea1cbe3f0b76d7d9740ea33365354dcbb853a54bb2a5112bc90f8fcc9ec6845"
+        },
+        {
+          "file": "IMG_6769.jpg",
+          "sha256": "e989c4e11101e2058274bd6a38f0623454192212bf188f7b50d7975a4325e1d6"
+        },
+        {
+          "file": "IMG_6770.jpg",
+          "sha256": "0d3a86c67f5a27559d2f9cf7cce4558b98afe608bfc0df737e602b4542990007"
+        },
+        {
+          "file": "IMG_6771.jpg",
+          "sha256": "c1db1c7c0c44d46cfb84b03453ed8a486f593db2c12dc68fb86ac60989a90b0b"
+        }
+      ]
+    },
+    {
+      "id": "focus-pcb",
+      "author": "Petteri Aimonen",
+      "source": "https://github.com/PetteriAimonen/focus-stack/tree/0cd289e224fe24aead5b146faeaa46950775f346/examples/pcb",
+      "usage": "MIT repository LICENSE.md; no separate image licence; internal evaluation, originals not distributed.",
+      "files": [
+        {
+          "file": "pcb_001.jpg",
+          "sha256": "0c5fc542eec9058ec0d7bce315732f6d3867731fdcdf05ca536f2025979d991d"
+        },
+        {
+          "file": "pcb_002.jpg",
+          "sha256": "5589326d77b6cbc4cf4adecdf2da969bdd4245d0cb97a4a6553c28bd78ff7869"
+        },
+        {
+          "file": "pcb_003.jpg",
+          "sha256": "4d1bbb9cb6a09641db151bad3d0b9d8f5e156c0d5c857e8f2366cd861a4bd6f6"
+        },
+        {
+          "file": "pcb_004.jpg",
+          "sha256": "1c101e35e9e7ff3867fd6b0e22618cac00116c2800d092106f2449dfdaed4de3"
+        },
+        {
+          "file": "pcb_005.jpg",
+          "sha256": "dec186fc4a5173994a14bbcf84b297c10563cc5e4b80e54f053c766381636541"
+        },
+        {
+          "file": "pcb_006.jpg",
+          "sha256": "f9c7df70264e1e35afacd5f37d5681c28427478b4329af03fc910d14f9162a00"
+        },
+        {
+          "file": "pcb_007.jpg",
+          "sha256": "d5d075bc94c6414acae8600166e7c091e97b93cebda80bac174150352629993c"
+        }
+      ]
+    },
+    {
+      "id": "focus-depth",
+      "author": "Petteri Aimonen",
+      "source": "https://github.com/PetteriAimonen/focus-stack/tree/0cd289e224fe24aead5b146faeaa46950775f346/examples/depthmap",
+      "usage": "MIT repository LICENSE.md; no separate image licence; internal evaluation, originals not distributed.",
+      "files": [
+        {
+          "file": "pcb_000.JPG",
+          "sha256": "897e0e068bf7149b6cb1ce4d823e491c3eab7046536881812d5c03f327d5be26"
+        },
+        {
+          "file": "pcb_001.JPG",
+          "sha256": "331af7e39fe2bd59263074f31e781a9bb44e9ad6656fb756a98f0d5d08bd4b49"
+        },
+        {
+          "file": "pcb_002.JPG",
+          "sha256": "24895955f8279fdffdf1af4a02a5a04baa3cb52313e34d9bc64757926e3086d7"
+        },
+        {
+          "file": "pcb_003.JPG",
+          "sha256": "245fc29004b32781329e5a687174739f4b31aa47d7a8dad964d170a1ac43a44d"
+        },
+        {
+          "file": "pcb_004.JPG",
+          "sha256": "24c5e5082cfbc71fcbfd0a0026f1a80311eb7bb91d3c4e021b60c0ec790b6d3e"
+        },
+        {
+          "file": "pcb_005.JPG",
+          "sha256": "ec0251f1b8d8bfbda82f85452fa95c7f8c8c6ac2558be9334e64fa6c66ed65e0"
+        },
+        {
+          "file": "pcb_006.JPG",
+          "sha256": "87e7aa091b992309b1aef9e62a7f2cf5b46af56853f95e80d53914b612985b59"
+        },
+        {
+          "file": "pcb_007.JPG",
+          "sha256": "a9e4b1c991973d1686f419af24cfeb95110bad4c85b86435f0da5ff883cb2d55"
+        },
+        {
+          "file": "pcb_008.JPG",
+          "sha256": "00639b58df430460273a2b4a1c7193cb395bae9fdac1a30cdd2ef1391ea16ce2"
+        },
+        {
+          "file": "pcb_009.JPG",
+          "sha256": "81eb6877188ea635c01398e960fa510bb1ff1ad253db66eca13cebd2b9cebb07"
+        }
+      ]
+    },
+    {
+      "id": "boat",
+      "author": "OpenCV extra test data contributors",
+      "source": "https://github.com/opencv/opencv_extra/tree/c9608cf1253af28797bca7550846d13c7db81de7/testdata/stitching",
+      "usage": "Public upstream test photographs; no standalone photo licence found, internal evaluation only, no redistribution.",
+      "files": [
+        {
+          "file": "boat1.jpg",
+          "sha256": "c084dab5e87d0c7a018fc6ab75e847621f0809b20a968c42bfb5d58b81303f2e"
+        },
+        {
+          "file": "boat2.jpg",
+          "sha256": "3bb4e222a5879d2555c3f1109e6b77284b418f378db02e6e86cc414f46fb33ad"
+        },
+        {
+          "file": "boat3.jpg",
+          "sha256": "dd3c5c15bff43782039aeeff19361251ab9d60b3fb6d1195df6b7dc357e33e65"
+        },
+        {
+          "file": "boat4.jpg",
+          "sha256": "be8392f53a624426de2ce918dd803e55236e79cf7bb573338d7b684ba950848f"
+        },
+        {
+          "file": "boat5.jpg",
+          "sha256": "076fcf028c3078e9f7b612c380a6c75d6e08109e74835ac5147a5a1960e5fc68"
+        },
+        {
+          "file": "boat6.jpg",
+          "sha256": "48f20d18f28c9156bf516e7f8726fe3ea60ac378fa1b198c71bc2d4edf5c4e34"
+        }
+      ]
+    },
+    {
+      "id": "memorial",
+      "author": "Paul Debevec",
+      "source": "https://www.pauldebevec.com/Research/HDR/",
+      "usage": "Public research/test sequence attributed by upstream readme.txt; internal evaluation only, no redistribution.",
+      "files": [
+        {
+          "file": "memorial02.png",
+          "sha256": "0f1cd478fe0a0e7df520ad70bbf3f610a4e39857a1b6814737cf18ec5562948b"
+        },
+        {
+          "file": "memorial04.png",
+          "sha256": "326384a5efbddd0c38708f3bd93fe319d1c9c164251fd3f4ca102a0e931bbfdb"
+        },
+        {
+          "file": "memorial06.png",
+          "sha256": "cbe3efe537fb38443ceac20dcf86e238094efc970e0f7102a598111cd182d59a"
+        },
+        {
+          "file": "memorial08.png",
+          "sha256": "f2c68b354e1e9eac1fbda2abbeac11632f03e7137e632c0a67cf38ee80d48cfd"
+        },
+        {
+          "file": "memorial10.png",
+          "sha256": "568c1794c787a543134764f4edf23bd04ff88cee63ffec7e776c6f78083d0755"
+        },
+        {
+          "file": "memorial12.png",
+          "sha256": "0387b3922096d337f169fd1582ec3f622c3d2b32f3efd6694d62ed5e9dc48cce"
+        },
+        {
+          "file": "memorial14.png",
+          "sha256": "0311d0bc7b1d2ce5f5618373dd7badf04b7a66c43ca48d7eef7ab66fb1a3f99f"
+        }
+      ]
+    }
+  ]
+}

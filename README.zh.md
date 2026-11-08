@@ -138,7 +138,7 @@ Phosdeck 参考了 Lightroom Classic 的工作流，也使用了以下开源项�
 |---|---|
 | [Adobe Lightroom Classic](https://www.adobe.com/products/photoshop-lightroom-classic.html) | 照片管理、选片、显影、局部调整与批量输出的工作流参考。普通图像曝光响应表使用了合成图的 Lightroom 输出作为对照，公开使用依据仍待核对，见[已知问题](docs/STATUS.md#已知问题)。 |
 | [Lightcraft](https://github.com/storytold/lightcraft) | 功能组织与交互参考；部分算法和实现按 MIT 许可移植、适配为 Swift／Metal，包括预设强度、蒙版、暗角、颗粒、点颜色、堆叠、HDR 与全景合成。 |
-| [Redlamp](https://github.com/pdcgomes/redlamp) | 直线检测、对焦堆栈的 CPU 对齐与深度求解按 MPL-2.0 适配；几何求解的线约束与保守回退、相机诊断的证据组织方式作为参考，其余为原生自有实现。 |
+| [Redlamp](https://github.com/pdcgomes/redlamp) | 直线检测、对焦堆栈的 CPU 对齐、深度求解与细节融合按 MPL-2.0 适配；几何求解的线约束与保守回退、相机诊断的证据组织方式作为参考，其余为原生自有实现。 |
 | [PhotoCraft](https://github.com/storytold/photocraft) | 经 Lightcraft 引入的测试用 PatchMatch 原型来源，按 MIT 许可适配；该原型不属于当前 App 的修复管线。 |
 | [Oklab — Björn Ottosson](https://bottosson.github.io/posts/oklab/) | 感知色彩处理使用其转换矩阵与参考实现，保留 MIT 许可及归属。 |
 

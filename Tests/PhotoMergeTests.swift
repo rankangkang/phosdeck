@@ -231,6 +231,112 @@ final class PhotoMergeTests: XCTestCase {
         let depth = try XCTUnwrap(plan.depth)
         XCTAssertGreaterThan(depth.depth[(depth.height/2)*depth.width+45],0.7)
     }
+    func testFocusFusionKeepsFineDetailWhenDepthFallsBetweenFrames() throws {
+        let w = 128,h = 96
+        let soft = constant(SIMD4(0.4,0.4,0.4,1),w:w,h:h)
+        var sharp = soft
+        for y in 0..<h { for x in 0..<w {
+            let v: Float = (x+y).isMultiple(of:2) ? 0.55 : 0.25
+            sharp.pixels[y*w+x] = SIMD4(v,v,v,1)
+        } }
+        let depth = StackDepthMap(width:32,height:24,depth:.init(repeating:0.5,count:768),confident:.init(repeating:false,count:768))
+        let fusion = FocusStackFusion(width:w,height:h,depth:depth,reference:0)
+        let valid = MergePlane(width:w,height:h,values:.init(repeating:1,count:w*h))
+        try fusion.add(soft,validity:valid,index:0);try fusion.add(sharp,validity:valid,index:1)
+        let output = try fusion.finish(coverage:valid.values)
+        // Averaging the two image-domain/Gaussian masks halves this contrast.
+        var contrast: Float = 0
+        for y in 16..<h-16 { for x in 16..<w-17 { contrast += abs(output.pixels[y*w+x].x-output.pixels[y*w+x+1].x) } }
+        XCTAssertGreaterThan(contrast/Float((h-32)*(w-33)),0.27)
+        XCTAssertTrue(output.pixels.allSatisfy { $0.w == 1 && $0.x.isFinite })
+    }
+    func testFloatGaussianMatchesSeparableReplicatedBordersWithoutClipping() {
+        for (w,h) in [(1,1),(2,7),(31,25)] {
+            let image = MergePlane(width:w,height:h,values:(0..<w*h).map { Float(($0*37)%41)/4-2 })
+            let sigma: Float = 2,radius = 6
+            let raw = (-radius...radius).map { exp(-Float($0*$0)/(2*sigma*sigma)) },sum = raw.reduce(0,+),kernel = raw.map { $0/sum }
+            var temp = MergePlane(width:w,height:h),expected = temp
+            for y in 0..<h { for x in 0..<w { for k in -radius...radius { temp.values[y*w+x] += image.at(x+k,y)*kernel[k+radius] } } }
+            for y in 0..<h { for x in 0..<w { for k in -radius...radius { expected.values[y*w+x] += temp.at(x,y+k)*kernel[k+radius] } } }
+            let actual = image.blurred(sigma)
+            for p in actual.values.indices { XCTAssertEqual(actual.values[p],expected.values[p],accuracy:3e-6) }
+        }
+    }
+    func testHDRDeghostRetainsShortestCaptureWhenEveryExposureClips() throws {
+        let w = 192,h = 128,scene = texture(w:w,h:h)
+        let frames = [Float(0.25),1,4].enumerated().map { index,factor in
+            var image = scene
+            for p in image.pixels.indices { let v = image.pixels[p]*factor;image.pixels[p] = SIMD4(min(1,v.x),min(1,v.y),min(1,v.z),1) }
+            for y in 40..<90 { for x in 60..<130 { image.pixels[y*w+x] = SIMD4(1,1,1,1) } }
+            return MergeFrame(image:image,exposure:log2(Double(factor)),sourceIndex:index)
+        }
+        var options = PhotoMergeOptions();options.kind = .hdr;options.align = false;options.deghost = 3
+        let plan = try MergeFusionPlan.prepare(frames,options:options)
+        let fusion = try MergeFusionAccumulator(plan:plan,width:w,height:h)
+        for i in frames.indices { try fusion.add(frames[i].image,index:i) }
+        let output = try fusion.finish(),center = 65*w+95
+        XCTAssertLessThan(plan.ghosts[0].values[center],1e-5)
+        XCTAssertGreaterThan(output.pixels[center].x,3.9)
+        XCTAssertEqual(output.pixels[center].x,output.pixels[center].z,accuracy:1e-5)
+    }
+    func testHDRExposureRatioIgnoresBakedRasterShadowPedestal() throws {
+        var a = constant(SIMD4(0.006,0.006,0.006,1),w:128,h:96),b = a
+        for y in 20..<50 { for x in 30..<70 {
+            let v = Float(x-30)/40
+            a.pixels[y*128+x] = SIMD4(0.6+v*0.1,0.4+v*0.1,0.2+v*0.1,1)
+            b.pixels[y*128+x] = a.pixels[y*128+x]*0.25;b.pixels[y*128+x].w = 1
+        } }
+        XCTAssertEqual(try XCTUnwrap(MergeFusionPlan.logRatio(a,b,clips:(1,1))),log(0.25),accuracy:1e-6)
+    }
+    func testPanoramaFindsLowContrastOverlapBesideSharpHighlights() throws {
+        var world = texture(w:800,h:240)
+        for p in world.pixels.indices { world.pixels[p] *= 0.004;world.pixels[p].w = 1 }
+        for y in 45..<75 { for x in 45..<75 { world.pixels[y*800+x] = SIMD4(1,1,1,1) } }
+        for y in 160..<190 { for x in 720..<750 { world.pixels[y*800+x] = SIMD4(1,1,1,1) } }
+        let a = crop(world,x:0,w:520),b = crop(world,x:280,w:520)
+        var options = PhotoMergeOptions();options.kind = .panorama;options.projection = .perspective
+        let plan = try MergePanoramaPlan.prepare([MergeFrame(image:a),MergeFrame(image:b)],options:options)
+        XCTAssertEqual(plan.frames.count,2);XCTAssertGreaterThan(plan.width,790)
+    }
+    func testHDRPanoramaUsesCapturedRegistrationDetailWithoutChangingRadiance() throws {
+        let world = texture(w:520,h:192),a = crop(world,x:0,w:320),b = crop(world,x:200,w:320)
+        let flat = constant(SIMD4(3,2,1,1),w:320,h:192)
+        var options = PhotoMergeOptions();options.kind = .hdrPanorama;options.projection = .perspective;options.autoCrop = true
+        let frames = [MergeFrame(image:flat,registrationImage:a),MergeFrame(image:flat,registrationImage:b)]
+        let plan = try MergePanoramaPlan.prepare(frames,options:options),fusion = MergePanoramaAccumulator(plan)
+        try fusion.add(flat,index:0);try fusion.add(flat,index:1)
+        let output = try fusion.finish()
+        XCTAssertGreaterThan(output.width,510)
+        XCTAssertEqual(output.pixels[output.width*output.height/2].x,3,accuracy:1e-4)
+    }
+    func testCameraRefinementRemovesProjectiveStretchBeyondMatchedStrip() throws {
+        let w = 320,h = 200,f = 420.0
+        let k = MergeMatrix([f,0,159.5,0,f,99.5,0,0,1])
+        let trueCameras = [-0.15,0,0.15].map { angle in
+            MergeMatrix(m:k.m*simd_double3x3(simd_quatd(angle:angle,axis:SIMD3(0,1,0))))
+        }
+        let frames = (0..<3).map { _ in MergeFrame(image:constant(SIMD4(0.2,0.2,0.2,1),w:w,h:h),focal35mm:f*hypot(36,24)/hypot(Double(w),Double(h))) }
+        var edges = [MergePanoramaPlan.Edge]()
+        for i in 0..<2 {
+            var pairs = [MergeRegistration.Match]()
+            for y in stride(from:70.0,through:130,by:15) { for x in stride(from:110.0,through:210,by:20) {
+                let ray = k.inverse.m*SIMD3(x,y,1)
+                let a = trueCameras[i].m*ray,b = trueCameras[i+1].m*ray
+                pairs.append(.init(a:SIMD2(a.x/a.z,a.y/a.z),b:SIMD2(b.x/b.z,b.y/b.z)))
+            } }
+            let transform = MergeMatrix(m:trueCameras[i+1].m*trueCameras[i].m.inverse)
+            edges.append(.init(i:i,j:i+1,fit:.init(transform:transform,matches:pairs,rms:0)))
+        }
+        let stretch = MergeMatrix([1,0,0,0,1.08,-8,0,0.00015,1])
+        let initial = trueCameras.enumerated().map { i,c in i == 1 ? MergeMatrix.identity : MergeMatrix(m:c.m*k.m.inverse).followed(by:stretch) }
+        let result = try XCTUnwrap(MergeCameraRefinement.refine(frames,homographies:initial,edges:edges,reference:1,focal:f*1.15))
+        XCTAssertLessThan(result.rms,0.01)
+        for i in [0,2] { for p in [SIMD2(20.0,20),SIMD2(290.0,180)] {
+            let expected = try XCTUnwrap(MergeMatrix(m:trueCameras[i].m*k.m.inverse).point(p.x,p.y))
+            let actual = try XCTUnwrap(MergeMatrix(m:result.cameras[i].m*result.cameras[1].m.inverse).point(p.x,p.y))
+            XCTAssertLessThan(simd_distance(actual,expected),0.15)
+        } }
+    }
     func testECCRecoversSmallMotionAndHandlesSinglePixelInput() throws {
         let image = texture(w:192,h:128),transform = MergeMatrix.translation(-2,1)
         let shifted = try MergeRegistration.warp(image,to:(192,128),transform:transform)
@@ -366,6 +472,120 @@ final class PhotoMergeTests: XCTestCase {
         let ordinary = try await pipeline.renderInteractive(request,longEdge:256),fresh = try await ImagePipeline().renderInteractive(request,longEdge:256)
         XCTAssertEqual(ordinary.image.dataProvider?.data as Data?,fresh.image.dataProvider?.data as Data?)
         XCTAssertEqual(try SafeFileWriter.sha256(MoreRAWTests.sample(name)),recipe.sourceDigest)
+    }
+    func testMergeDecodePreservesRasterOrientationProfileAndFloatSamples() async throws {
+        let image = texture(w:128,h:96),ci = image.ciImage()
+        let cg = try XCTUnwrap(context.createCGImage(ci,from:ci.extent,format:.RGBA8,colorSpace:CGColorSpace(name:CGColorSpace.displayP3)!))
+        let url = directory.appendingPathComponent("oriented.jpg")
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL,UTType.jpeg.identifier as CFString,1,nil))
+        let properties: [CFString:Any] = [kCGImagePropertyOrientation:6,kCGImageDestinationLossyCompressionQuality:0.95]
+        CGImageDestinationAddImage(destination,cg,properties as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let pipeline = ImagePipeline(),request = try PNGFixture.request(url),wb = WhiteBalanceValue(temperature:5500,tint:0)
+        XCTAssertEqual(request.photo.details?.orientation,6)
+        let decoded = try await pipeline.mergeDecode(request,longEdge:nil,whiteBalance:wb)
+        XCTAssertEqual(decoded.image.width,96);XCTAssertEqual(decoded.image.height,128)
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL,nil))
+        let bitmap = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source,0,nil))
+        let expected = try MergeImage.read(CIImage(cgImage:bitmap).oriented(forExifOrientation:6),context:context)
+        for p in stride(from:0,to:expected.pixels.count,by:37) { XCTAssertLessThan(simd_distance(decoded.image.pixels[p],expected.pixels[p]),2e-4) }
+        let resized = try await pipeline.mergeDecode(request,longEdge:57,whiteBalance:wb)
+        XCTAssertEqual(resized.image.width,43);XCTAssertEqual(resized.image.height,57)
+        XCTAssertTrue(resized.image.pixels.allSatisfy { $0.w > 0.99999 })
+
+        let float = constant(SIMD4(-0.1,0.8,3.5,0.25),w:32,h:24),floatURL = try writeSource(float,name:"float-input")
+        let floatDecoded = try await pipeline.mergeDecode(PNGFixture.request(floatURL),longEdge:nil,whiteBalance:wb)
+        for c in 0..<4 { XCTAssertEqual(floatDecoded.image.pixels[0][c],float.pixels[0][c],accuracy:2e-5) }
+    }
+
+    private struct PublicMergeManifest: Decodable {
+        struct Dataset: Decodable {
+            struct File: Decodable { let file: String;let sha256: String }
+            let id: String;let files: [File]
+        }
+        let datasets: [Dataset]
+    }
+    private func publicMergeFiles(_ id: String) throws -> [URL] {
+        let root = try XCTUnwrap(Bundle(for:Self.self).resourceURL).appendingPathComponent("PublicMergeFixtures")
+        guard let data = try? Data(contentsOf:root.appendingPathComponent("manifest.json")),
+              let dataset = try JSONDecoder().decode(PublicMergeManifest.self,from:data).datasets.first(where:{ $0.id == id }) else {
+            throw XCTSkip("Optional public merge sequence not prepared: \(id); see Tests/Fixtures/public-merge-samples.json")
+        }
+        return try dataset.files.map { item in
+            let url = root.appendingPathComponent(id).appendingPathComponent(item.file)
+            XCTAssertEqual(try SafeFileWriter.sha256(url),item.sha256)
+            return url
+        }
+    }
+    private func publicMerge(_ files: [URL],kind: PhotoMergeKind,sourceLongEdge: Int = 0) async throws -> (MergeImage,MergeProvenance) {
+        let originalDigests = try Dictionary(uniqueKeysWithValues:files.map { ($0.path,try SafeFileWriter.sha256($0)) })
+        let catalog = try CatalogStore(directory:directory.appendingPathComponent("catalog"))
+        let sourceDirectory = files[0].deletingLastPathComponent()
+        let root = try catalog.addRoot(url:sourceDirectory,bookmark:AccessLease.bookmark(sourceDirectory,readOnly:true))
+        for url in files { try catalog.index(ReferenceImporter.inspect(url:url,root:root,rootURL:sourceDirectory)) }
+        let engine = PhotoMergeEngine(),inputs = try await engine.loadInputs(catalog:catalog,ids:Set(try catalog.photos().map(\.id)))
+        var options = PhotoMergeOptions();options.kind = kind;options.autoCrop = kind != .focus;options.sourceLongEdge = sourceLongEdge
+        let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
+        let saved = try await engine.save(preview.id,to:AccessLease.bookmark(directory,readOnly:false),filename:"real-\(kind.rawValue).tif",catalog:catalog,progress:{ _,_ in })
+        let output = try MergeMasterCodec.read(saved.url,context:context)
+        XCTAssertEqual(output.provenance.sources.count,files.count)
+        XCTAssertEqual(try catalog.photoCount(),files.count+1)
+        XCTAssertTrue(output.image.pixels.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite && $0.w.isFinite })
+        for request in inputs {
+            let url = sourceDirectory.appendingPathComponent(request.photo.relativePath)
+            XCTAssertEqual(try SafeFileWriter.sha256(url),originalDigests[url.path])
+        }
+        return (output.image,output.provenance)
+    }
+    func testPublicRiverPanoramaKeepsAllSixCaptures() async throws {
+        let (image,_) = try await publicMerge(publicMergeFiles("boat"),kind:.panorama,sourceLongEdge:2000)
+        XCTAssertGreaterThan(image.width,4500);XCTAssertGreaterThan(image.height,900)
+        XCTAssertTrue(image.pixels.allSatisfy { $0.w > 0.99 })
+    }
+    func testPublicSunrisePanoramaConnectsLowContrastOverlaps() async throws {
+        let files = try publicMergeFiles("kimo").filter { ["IMG_6763.jpg","IMG_6766.jpg","IMG_6769.jpg"].contains($0.lastPathComponent) }
+        let (image,_) = try await publicMerge(files,kind:.panorama)
+        XCTAssertGreaterThan(image.width,2000);XCTAssertGreaterThan(image.height,600)
+    }
+    func testPublicSunriseHDRPanoramaKeepsAllThreeBracketsAndHeadroom() async throws {
+        let (image,provenance) = try await publicMerge(publicMergeFiles("kimo"),kind:.hdrPanorama)
+        XCTAssertGreaterThan(image.width,2000);XCTAssertGreaterThan(image.height,600)
+        XCTAssertGreaterThan(image.pixels.map(MergeImage.peak).max() ?? 0,2)
+        XCTAssertEqual(provenance.options.bracketSize,3)
+    }
+    func testPublicMemorialHDRKeepsWindowRadiance() async throws {
+        let (image,_) = try await publicMerge(publicMergeFiles("memorial"),kind:.hdr)
+        XCTAssertEqual(image.width,484);XCTAssertEqual(image.height,714)
+        XCTAssertGreaterThan(image.pixels.map(MergeImage.peak).max() ?? 0,2)
+    }
+    func testPublicSevenFrameFocusMacroDecodesAndFusesAtOriginalSize() async throws {
+        let files = try publicMergeFiles("focus-pcb")
+        let (image,_) = try await publicMerge(files,kind:.focus)
+        XCTAssertEqual(image.width,2048);XCTAssertEqual(image.height,1536)
+        try await assertFocusBrightness(image,reference:files[0])
+    }
+    func testPublicTenFrameFocusMacroDecodesAndFusesAtOriginalSize() async throws {
+        let files = try publicMergeFiles("focus-depth")
+        let (image,_) = try await publicMerge(files,kind:.focus)
+        XCTAssertEqual(image.width,2048);XCTAssertEqual(image.height,1536)
+        try await assertFocusBrightness(image,reference:files[9])
+    }
+    private func assertFocusBrightness(_ image: MergeImage,reference: URL) async throws {
+        let input = try PNGFixture.request(reference)
+        // Use the app's explicit sRGB interpretation for untagged JPEGs, rather
+        // than ImageIO's inferred Generic RGB profile in an independent reader.
+        let sourceImage = try await ImagePipeline().mergeDecode(input,longEdge:nil,whiteBalance:WhiteBalanceValue(temperature:5500,tint:0)).image
+        let captured = sourceImage.medianLuma()
+        func mean(_ image: MergeImage) -> Double {
+            var sum = 0.0,weight = 0.0
+            for p in image.pixels { sum += Double(MergeImage.luma(p)*p.w);weight += Double(p.w) }
+            return sum/max(weight,1e-9)
+        }
+        print("PUBLIC_FOCUS_BRIGHTNESS",reference.lastPathComponent,"sourceMean",mean(sourceImage),"mergedMean",mean(image),"sourceMedian",captured,"mergedMedian",image.medianLuma())
+        // Sharp speculars occupy less area than blurred ones, changing the
+        // median without an exposure shift. Check mean captured light instead.
+        XCTAssertGreaterThan(mean(image),mean(sourceImage)*0.95)
+        XCTAssertLessThan(mean(image),mean(sourceImage)*1.05)
     }
     @MainActor func testSessionBlocksCatalogChangesAndDrainsCancellation() async throws {
         let catalog = try CatalogStore(directory:directory.appendingPathComponent("catalog"))

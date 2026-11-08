@@ -28,7 +28,7 @@ targets:
     sources:
       # Includes automatic image analysis (Imaging/AutomaticAdjustments.swift, App/AutomaticAdjustmentEditing.swift) and folder comparison (Import/FolderReview.swift, UI/FolderReviewSheet.swift) and native direct adjustments.
       # Includes Imaging/ManualDefringe.swift.
-      # Includes native multiframe merge registration, fusion, float masters and UI.
+      # Includes native multiframe merge registration, MergeCameraRefinement, depth-gated FocusStackFusion, float masters and UI.
       - path: Sources
         excludes: [Imaging/raster-exposure-colour-v4.bin]
       - path: design/logo/wordmark-approved-ivory.svg
@@ -106,8 +106,10 @@ targets:
     dependencies:
       - target: Phosdeck
     postBuildScripts:
-      - name: Prepare optional CC0 RAW fixtures
-        script: python3 "$SRCROOT/scripts/prepare-public-raw-test-resources.py"
+      - name: Prepare optional public photo fixtures
+        script: |
+          python3 "$SRCROOT/scripts/prepare-public-raw-test-resources.py"
+          python3 "$SRCROOT/scripts/prepare-public-merge-test-resources.py"
         basedOnDependencyAnalysis: false
     settings:
       base:

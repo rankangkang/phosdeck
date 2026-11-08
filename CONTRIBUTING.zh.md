@@ -50,6 +50,8 @@ README 和贡献指南各有中英文版本，修改公共说明时请同步两�
 xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -derivedDataPath build -destination 'platform=macOS' -only-testing:PhosdeckTests/FoundationTests test
 ```
 
+可选的真实合成序列列在 [`Tests/Fixtures/public-merge-samples.json`](Tests/Fixtures/public-merge-samples.json)，包含来源、使用范围及逐文件摘要。本地素材按清单放入 `Samples/public-merge/<id>/`；测试构建只复制完整且摘要相符的序列，缺少时跳过，不自动下载。原片、参考软件及生成结果不随 App 或仓库分发。
+
 测试准备阶段使用 `python3` 标准库，不需要额外 Python 包。缺少公开 RAW、智能蒙版素材或相应授权环境时，部分检查会跳过；请分别报告本次执行、跳过和失败的结果。界面交互修改还需要用允许的素材检查实际窗口和操作。
 
 普通开发无需下载智能蒙版权重。研究准备脚本会获取含人脸权重在内的整套实验资源，其授权限制、模型版本和缺失时的行为见[智能蒙版说明](docs/smart-mask-models.md)。

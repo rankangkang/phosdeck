@@ -196,12 +196,20 @@ actor ImagePipeline {
                 guard let output = raw.outputImage else { throw LRCError(L10n.text("app.rawDecodingFailed", defaultValue:"RAW decoding failed")) }
                 image = Self.originZero(output)
             } else {
-                var decoded = try raster(url)
+                var decoded = try raster(url,materializeSource:true)
                 native = decoded.extent.size
                 if whiteBalance.temperature != 5500 || whiteBalance.tint != 0 {
                     decoded = decoded.applyingFilter("CITemperatureAndTint",parameters:["inputNeutral":CIVector(x:whiteBalance.temperature,y:whiteBalance.tint),"inputTargetNeutral":CIVector(x:5500,y:0)])
                 }
-                image = Self.resized(decoded,longEdge:longEdge)
+                if let edge = longEdge,edge > 0,max(native.width,native.height) > Double(edge) {
+                    let scale = Double(edge)/max(native.width,native.height)
+                    let w = max(1,(native.width*scale).rounded()),h = max(1,(native.height*scale).rounded())
+                    // A fractional affine extent rounded outward by readback
+                    // otherwise adds a translucent row to an opaque original.
+                    // Replicate source edges inside the exact integer canvas.
+                    image = decoded.clampedToExtent().transformed(by:CGAffineTransform(scaleX:w/native.width,y:h/native.height))
+                        .cropped(to:CGRect(x:0,y:0,width:w,height:h))
+                } else { image = decoded }
             }
             try Task.checkCancellation()
             let pixels = try MergeImage.read(image,context:developContext)
@@ -211,7 +219,7 @@ actor ImagePipeline {
             if let t = metadata?.exposureTime,let f = metadata?.aperture,let iso = metadata?.iso,t > 0,f > 0,iso > 0 {
                 exposure = log2(t*Double(iso)/(100*f*f))
             }
-            return MergeFrame(image:pixels,exposure:exposure,focal35mm:metadata?.focal35mm,nativeWidth:Int(native.width.rounded()),nativeHeight:Int(native.height.rounded()))
+            return MergeFrame(image:pixels,exposure:exposure,focal35mm:metadata?.focal35mm,nativeWidth:Int(native.width.rounded()),nativeHeight:Int(native.height.rounded()),raw:request.photo.isRAW,focalLength:metadata?.focalLength,cameraModel:request.photo.camera)
         }
     }
     func verifyMergeSource(_ request: ImageRequest) throws {
@@ -325,7 +333,7 @@ actor ImagePipeline {
         return image
     }
 
-    private func raster(_ url: URL) throws -> CIImage {
+    private func raster(_ url: URL,materializeSource: Bool = false) throws -> CIImage {
         var options: [CIImageOption: Any] = [.applyOrientationProperty: true]
         let inspected = try PhotoFileType.inspectSource(url), source = inspected.source
         guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else { throw LRCError(L10n.text("app.cannotDecodeImageMetadata", defaultValue: "Cannot decode image metadata")) }
@@ -333,7 +341,23 @@ actor ImagePipeline {
         if inspected.pngICC == false || (inspected.pngICC == nil && properties[kCGImagePropertyProfileName as String] == nil) {
             options[.colorSpace] = Self.outputSpace
         }
-        guard let decoded = CIImage(contentsOf: url, options: options) else { throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue: "Cannot decode the image or color profile")) }
+        let decoded: CIImage
+        if materializeSource {
+            // Full-size JPEG -> RGBAf readback can take Core Image's direct file
+            // conversion path, which overruns a decoder buffer on macOS 27 with
+            // real 2048px macro JPEGs. ImageIO's decoded bitmap avoids that path;
+            // allow float sources and keep their profile, alpha and orientation.
+            guard let bitmap = CGImageSourceCreateImageAtIndex(source,0,[kCGImageSourceShouldAllowFloat:true,kCGImageSourceShouldCacheImmediately:true] as CFDictionary) else {
+                throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue:"Cannot decode the image or color profile"))
+            }
+            let orientation = (properties[kCGImagePropertyOrientation as String] as? NSNumber)?.int32Value ?? 1
+            var bitmapOptions = options
+            bitmapOptions.removeValue(forKey:.applyOrientationProperty)
+            decoded = CIImage(cgImage:bitmap,options:bitmapOptions).oriented(forExifOrientation:orientation)
+        } else {
+            guard let image = CIImage(contentsOf:url,options:options) else { throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue:"Cannot decode the image or color profile")) }
+            decoded = image
+        }
         if properties[kCGImagePropertyHasAlpha as String] as? Bool == true, Self.hasTransparency(decoded,context:developContext) {
             // The file decoder can fuse affine sampling in straight/encoded
             // storage, leaking hidden RGB across transparent edges. Establish a

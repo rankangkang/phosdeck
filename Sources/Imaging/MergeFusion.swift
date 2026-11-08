@@ -50,21 +50,31 @@ struct MergeFusionPlan {
             }
         } else if options.align {
             let features = try frames.map { try MergeRegistration.features($0.image.grey()) }
-            for index in frames.indices where index != reference {
+            var links = [(Int,Int)]()
+            if options.kind == .hdr {
+                // Adjacent exposures retain common texture even when the
+                // shortest and longest captures differ by many stops.
+                let middle = order.firstIndex(of:reference)!
+                for position in stride(from:middle-1,through:0,by:-1) { links.append((order[position+1],order[position])) }
+                for position in middle+1..<n { links.append((order[position-1],order[position])) }
+            } else { links = frames.indices.filter { $0 != reference }.map { (reference,$0) } }
+            for (anchor,index) in links {
                 try Task.checkCancellation()
-                let matches = try MergeRegistration.matches(features[reference],features[index])
+                let matches = try MergeRegistration.matches(features[anchor],features[index])
+                let local: MergeMatrix
                 if let fitted = try MergeRegistration.ransac(matches,similarity:true) {
-                    transforms[index] = fitted.transform
+                    local = fitted.transform
                 } else {
-                    let a = frames[reference].image.grey(), b = frames[index].image.grey()
+                    let a = frames[anchor].image.grey(), b = frames[index].image.grey()
                     let fit = ECCAligner.align(template:LumaImage(width:a.width,height:a.height,pixels:a.values),image:LumaImage(width:b.width,height:b.height,pixels:b.values),iterations:35)
                     guard fit.correlation >= 0.55, fit.transform.scale.isFinite, (0.85...1.18).contains(fit.transform.scale),
                           abs(fit.transform.tx) < Float(size.width)*0.25, abs(fit.transform.ty) < Float(size.height)*0.25 else {
                         throw LRCError(L10n.text("merge.alignmentFailed", defaultValue:"The photos could not be aligned reliably"))
                     }
                     let t = fit.transform
-                    transforms[index] = MergeMatrix([Double(t.a),Double(-t.b),Double(t.tx),Double(t.b),Double(t.a),Double(t.ty),0,0,1])
+                    local = MergeMatrix([Double(t.a),Double(-t.b),Double(t.tx),Double(t.b),Double(t.a),Double(t.ty),0,0,1])
                 }
+                transforms[index] = transforms[anchor].followed(by:local)
             }
         }
         let aligned = try frames.indices.map { i in try MergeRegistration.warp(frames[i].image,to:(size.width,size.height),transform:transforms[i]) }
@@ -75,12 +85,12 @@ struct MergeFusionPlan {
             var logs = [Double](repeating:0,count:n)
             for position in 1..<n {
                 let a = order[position-1], b = order[position]
-                let ratio = logRatio(aligned[a],aligned[b],clips:(frames[a].clip,frames[b].clip))
+                let ratio = logRatio(aligned[a],aligned[b],clips:(frames[a].clip,frames[b].clip),floors:(frames[a].exposureFloor,frames[b].exposureFloor))
                     ?? (allExif ? (brightness[b]-brightness[a])*log(2) : log(Double(medians[b]/medians[a])))
                 logs[b] = logs[a]+ratio
             }
             ratios = logs.map { Float(exp(max(-16,min(16,$0-logs[reference])))) }
-            if options.deghost > 0 { ghosts = try ghostMaps(aligned,clips:frames.map(\.clip),ratios:ratios,reference:reference,order:order,strength:options.deghost) }
+            if options.deghost > 0 { ghosts = try ghostMaps(aligned,clips:frames.map(\.clip),floors:frames.map(\.exposureFloor),ratios:ratios,reference:reference,order:order,strength:options.deghost) }
         } else if options.kind == .focus {
             let w = max(2,size.width/2), h = max(2,size.height/2)
             var lumas = [LumaImage](), volume = [[Float]](), validities = [[Float]]()
@@ -119,32 +129,47 @@ struct MergeFusionPlan {
         return Self(options:options,frames:frames,reference:reference,order:order,transforms:transforms,gains:gains,exposureRatios:ratios,ghosts:ghosts,depth:depth)
     }
 
-    static func logRatio(_ a: MergeImage,_ b: MergeImage,clips: (Float,Float)) -> Double? {
+    static func logRatio(_ a: MergeImage,_ b: MergeImage,clips: (Float,Float),floors: (Float,Float) = (0.04,0.04)) -> Double? {
         var values = [Float]()
+        var low = SIMD2<Float>(repeating:.infinity),high = SIMD2<Float>(repeating:-.infinity)
         for i in stride(from:0,to:a.pixels.count,by:max(1,a.pixels.count/100000)) {
             let p = a.pixels[i], q = b.pixels[i]
-            if p.w > 0.99, q.w > 0.99, p.y > 0.005*clips.0, q.y > 0.005*clips.1,
-               MergeImage.peak(p) < clips.0*0.8, MergeImage.peak(q) < clips.1*0.8 { values.append(log(q.y/p.y)) }
+            if p.w > 0.99, q.w > 0.99, p.y > floors.0*clips.0, q.y > floors.1*clips.1,
+               MergeImage.peak(p) < clips.0*0.8, MergeImage.peak(q) < clips.1*0.8 {
+                values.append(log(q.y/p.y));low = simd_min(low,SIMD2(p.y,q.y));high = simd_max(high,SIMD2(p.y,q.y))
+            }
         }
-        guard values.count >= 32 else { return nil }; values.sort()
+        // One flat admitted patch can be a moving object, with the static
+        // background below the noise floor. It cannot constrain an exposure
+        // estimate; retain the EXIF/whole-frame fallback in that case.
+        guard values.count >= 32,high.x-low.x > clips.0*1e-4,high.y-low.y > clips.1*1e-4 else { return nil };values.sort()
         return Double(values[values.count/2])
     }
     static func smooth(_ a: Float,_ b: Float,_ x: Float) -> Float {
         let t = min(1,max(0,(x-a)/(b-a))); return t*t*(3-2*t)
     }
-    static func ghostMaps(_ frames: [MergeImage],clips: [Float],ratios: [Float],reference: Int,order: [Int],strength: Int) throws -> [MergePlane] {
+    static func ghostMaps(_ frames: [MergeImage],clips: [Float],floors: [Float],ratios: [Float],reference: Int,order: [Int],strength: Int) throws -> [MergePlane] {
         let thresholds: [Float] = [1,1,0.6,0.35], threshold = thresholds[strength]
         let w = frames[0].width,h = frames[0].height
         var prediction = frames[reference].pixels
         for p in prediction.indices {
             if p.isMultiple(of:65536) { try Task.checkCancellation() }
             let ref = prediction[p], peak = MergeImage.peak(ref)
-            if peak >= clips[reference]*0.8 || peak <= clips[reference]*0.001 || ref.w < 0.99 {
+            if peak >= clips[reference]*0.8 || peak <= clips[reference]*floors[reference]*0.1 || ref.w < 0.99 {
                 let candidates = order.filter { i in
                     let value = frames[i].pixels[p]
-                    return value.w > 0.99 && MergeImage.peak(value) < clips[i]*0.8 && MergeImage.peak(value) > clips[i]*0.01
+                    return value.w > 0.99 && MergeImage.peak(value) < clips[i]*0.8 && MergeImage.peak(value) > clips[i]*floors[i]
                 }
-                if let best = candidates.min(by:{ abs($0-reference) < abs($1-reference) }) {
+                let referencePosition = order.firstIndex(of:reference)!
+                let bright = peak >= clips[reference]*0.8
+                let preferred = bright ? Array(order[..<referencePosition].reversed()) : Array(order.dropFirst(referencePosition+1))
+                // When even the shortest capture clips, it still supplies the
+                // best lower bound on radiance. Predicting from the clipped
+                // middle exposure instead marks that bound as a moving object
+                // and makes an artificial grey patch inside the brightest sky.
+                let best = preferred.first(where:candidates.contains)
+                    ?? (bright ? order.first(where:{ frames[$0].pixels[p].w > 0.99 }) : nil)
+                if let best {
                     let value = frames[best].pixels[p]/ratios[best]
                     prediction[p] = SIMD4(value.x,value.y,value.z,frames[best].pixels[p].w)
                 }
@@ -155,7 +180,7 @@ struct MergeFusionPlan {
             var map = MergePlane(width:w,height:h)
             guard index != reference else { return map }
             for p in map.values.indices where frames[index].pixels[p].w > 0.5 {
-                let seen = frames[index].pixels[p], predicted = prediction[p]*ratios[index], floor = clips[index]*0.01
+                let seen = frames[index].pixels[p], predicted = prediction[p]*ratios[index], floor = clips[index]*(floors[index] == 0.01 ? 0.01 : 0.03)
                 var difference: Float = 0
                 for channel in 0..<3 {
                     difference = max(difference,abs(log((max(0,min(seen[channel],clips[index]))+floor)/(max(0,min(predicted[channel],clips[index]))+floor))))
@@ -183,17 +208,17 @@ final class MergeFusionAccumulator {
     private var sum: MergeImage
     private var weight: [Float]
     private var coverage: [Float]
-    private let pyramid: MergePyramid?
+    private let focusFusion: FocusStackFusion?
     private var medianFrames: [MergeImage] = []
     init(plan: MergeFusionPlan,width: Int,height: Int) throws {
         self.plan = plan; self.width = width; self.height = height
         try PhotoGeometry.checkSize(CGSize(width:width,height:height))
-        let bytesPerPixel = plan.options.kind == .median ? 32+plan.frames.count*16 : plan.options.kind == .focus ? 112 : 64
+        let bytesPerPixel = plan.options.kind == .median ? 32+plan.frames.count*16 : plan.options.kind == .focus ? 192 : 64
         guard UInt64(width)*UInt64(height)*UInt64(bytesPerPixel) <= ProcessInfo.processInfo.physicalMemory/3 else {
             throw LRCError(L10n.text("merge.memoryBudget", defaultValue:"The full-size merge exceeds the memory budget. Choose a smaller source size"))
         }
         sum = MergeImage(width:width,height:height); weight = .init(repeating:0,count:width*height); coverage = weight
-        pyramid = plan.options.kind == .focus ? MergePyramid(width:width,height:height,levels:4) : nil
+        focusFusion = plan.depth.map { FocusStackFusion(width:width,height:height,depth:$0,reference:plan.reference) }
     }
     func add(_ frame: MergeImage,index: Int) throws {
         let r = plan.frames[plan.reference].image, s = plan.frames[index].image
@@ -202,7 +227,6 @@ final class MergeFusionAccumulator {
         let transform = toSmall.followed(by:plan.transforms[index]).followed(by:toFull)
         var image = try MergeRegistration.warp(frame,to:(width,height),transform:transform)
         let kind = plan.options.kind
-        let depthPlane = plan.depth.map { MergePlane(width:$0.width,height:$0.height,values:$0.depth) }
         var mask = MergePlane(width:width,height:height)
         let clip = plan.frames[index].clip, ratio = plan.exposureRatios[index]
         for y in 0..<height {
@@ -228,12 +252,9 @@ final class MergeFusionAccumulator {
                     if index == plan.order[0] { w += 1e-10 }
                     w *= value.w
                     sum.pixels[p] += SIMD4(value.x/ratio,value.y/ratio,value.z/ratio,0)*w; weight[p] += w
-                } else if kind == .focus, let plane = depthPlane {
-                    let depth = plan.depth!
-                    let label = plane.sample((Double(x)+0.5)*Double(depth.width)/Double(width)-0.5,(Double(y)+0.5)*Double(depth.height)/Double(height)-0.5)
-                    let distance = Float(index)-label
+                } else if kind == .focus {
                     let valid = max(0.001,1-MergeFusionPlan.smooth(clip*0.9,clip*0.99,MergeImage.peak(value)))
-                    mask.values[p] = exp(-distance*distance/0.5)*value.w*valid
+                    mask.values[p] = value.w*valid
                     let gain = plan.gains[index]
                     image.pixels[p] = SIMD4(value.x*gain.x,value.y*gain.y,value.z*gain.z,value.w)
                 } else {
@@ -258,10 +279,10 @@ final class MergeFusionAccumulator {
             }
         }
         if kind == .median { medianFrames.append(image) }
-        if let pyramid { try pyramid.add(image,mask:mask) }
+        if let focusFusion { try focusFusion.add(image,validity:mask,index:index) }
     }
     func finish() throws -> MergeImage {
-        if let pyramid { return try pyramid.finish(coverage:coverage) }
+        if let focusFusion { return try focusFusion.finish(coverage:coverage) }
         for i in sum.pixels.indices {
             if i.isMultiple(of:65536) { try Task.checkCancellation() }
             switch plan.options.kind {
