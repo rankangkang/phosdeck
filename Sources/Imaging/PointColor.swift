@@ -79,10 +79,13 @@ struct PointColorReference:Sendable {
     let width:Int
     let height:Int
     /// Premultiplied floating-point linear sRGB, in displayed geometry.
+    /// CIContext bitmap readback stores the upper row first; canvas points use
+    /// a bottom-left origin. Keep the bitmap unchanged for CIImage/range output.
     let rgba:[Float]
     func linearRGB(at point: CGPoint, radius: Int = 1) -> SIMD3<Double>? {
         guard (0...1).contains(radius), MaskPoint(point.x,point.y).valid, width > 0, height > 0, rgba.count == width*height*4 else { return nil }
-        let x = PhotoGeometry.pixelIndex(point.x,dimension:width), y = PhotoGeometry.pixelIndex(point.y,dimension:height)
+        let x = PhotoGeometry.pixelIndex(point.x,dimension:width)
+        let y = height - 1 - PhotoGeometry.pixelIndex(point.y,dimension:height)
         let center = (y*width+x)*4
         guard rgba[center..<(center+4)].allSatisfy(\.isFinite), rgba[center+3] > 0 else { return nil }
         var rgb = SIMD3<Double>.zero, coverage = 0.0

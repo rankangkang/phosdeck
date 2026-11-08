@@ -121,13 +121,62 @@ final class TargetedAdjustmentTests: XCTestCase {
             // independently reconstructed inverse rotation. The existing source
             // inverse differs at odd quarter-turns (recorded in STATUS).
             let rendered = try await pipeline.render(ImageRequest(photo: photo, root: root, recipe: input), longEdge: nil, pixelFormat: .RGBAf)
-            var pixels = [Float](repeating: 0, count: rendered.image.width * rendered.image.height * 4)
-            CIContext(options: [.workingFormat: CIFormat.RGBAf]).render(CIImage(cgImage: rendered.image), toBitmap: &pixels,
-                rowBytes: rendered.image.width * 16, bounds: CGRect(x: 0, y: 0, width: rendered.image.width, height: rendered.image.height), format: .RGBAf, colorSpace: space)
-            let displayed = PointColorReference(width: rendered.image.width, height: rendered.image.height, rgba: pixels)
             for point in [CGPoint(x: 0.35, y: 0.4), CGPoint(x: 0.65, y: 0.6)] {
-                let expected = try XCTUnwrap(displayed.linearRGB(at: point)), rgb = try XCTUnwrap(reference.linearRGB(at: point))
+                // Read a small CI-coordinate rectangle independently of the
+                // full-bitmap sampler, so a shared row-order bug cannot agree
+                // with itself on both sides of the comparison.
+                let x = PhotoGeometry.pixelIndex(point.x, dimension: rendered.image.width)
+                let y = PhotoGeometry.pixelIndex(point.y, dimension: rendered.image.height)
+                var pixels = [Float](repeating: 0, count: 3 * 3 * 4)
+                CIContext(options: [.workingFormat: CIFormat.RGBAf]).render(CIImage(cgImage: rendered.image), toBitmap: &pixels,
+                    rowBytes: 3 * 16, bounds: CGRect(x: x - 1, y: y - 1, width: 3, height: 3), format: .RGBAf, colorSpace: space)
+                var expected = SIMD3<Double>.zero, coverage = 0.0
+                for i in stride(from: 0, to: pixels.count, by: 4) {
+                    expected += SIMD3(Double(pixels[i]), Double(pixels[i+1]), Double(pixels[i+2])); coverage += Double(pixels[i+3])
+                }
+                expected /= coverage
+                let rgb = try XCTUnwrap(reference.linearRGB(at: point))
                 for channel in 0..<3 { XCTAssertEqual(rgb[channel], expected[channel], accuracy: 0.003, "Reference matches displayed crop/perspective/rotation/flip at turn \(turn)") }
+            }
+        }
+    }
+
+    @MainActor func testNativeCanvasSamplesVisibleUpperAndLowerColorsInFitZoomAndPan() throws {
+        let space = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
+        let purple = SIMD3<Double>(0.5, 0.15, 0.6), green = SIMD3<Double>(0.1, 0.5, 0.1)
+        func block(_ rgb: SIMD3<Double>, _ y: Double) -> CIImage {
+            CIImage(color: CIColor(red: rgb.x, green: rgb.y, blue: rgb.z, alpha: 1, colorSpace: space)!)
+                .cropped(to: CGRect(x: 0, y: y, width: 96, height: 32))
+        }
+        let image = block(purple, 32).composited(over: block(green, 0)), context = CIContext(options: [.workingFormat: CIFormat.RGBAf])
+        let cg = try XCTUnwrap(context.createCGImage(image, from: image.extent, format: .RGBAf, colorSpace: space))
+        var pixels = [Float](repeating: 0, count: 96 * 64 * 4)
+        context.render(image, toBitmap: &pixels, rowBytes: 96 * 16, bounds: image.extent, format: .RGBAf, colorSpace: space)
+        let reference = PointColorReference(width: 96, height: 64, rgba: pixels)
+        let view = PhotoMetalCanvas(); view.frame = CGRect(x: 0, y: 0, width: 300, height: 200)
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view; defer { window.contentView = nil }
+        view.source = cg
+        func event(_ type: NSEvent.EventType, _ fractionY: Double) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.mouseEvent(with: type, location: view.convert(CGPoint(x: 150, y: 200 * fractionY), to: nil),
+                modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        }
+        for targeted in [true, false] {
+            view.targetedToolID = targeted ? "defringe-purple" : nil
+            var sampled: SIMD3<Double>?
+            // Target adjustment and the existing point-color picker share this
+            // floating reference; the canvas must deliver the same coordinates.
+            view.onTargetBegin = { sampled = reference.linearRGB(at: $0, radius: 0); return true }
+            view.onZoneSample = { sampled = reference.linearRGB(at: $0, radius: 0) }
+            for zoomed in [false, true] {
+                view.actualPixels = zoomed; view.nativeSize = CGSize(width: 600, height: 400); view.zoomScale = 2
+                for upper in [true, false] {
+                    view.displayCenter = CGPoint(x: 0.5, y: upper ? 0.25 : 0.75)
+                    let fractionY = zoomed ? 0.5 : upper ? 0.75 : 0.25
+                    view.mouseDown(with: try event(.leftMouseDown, fractionY)); view.mouseUp(with: try event(.leftMouseUp, fractionY))
+                    let rgb = try XCTUnwrap(sampled), expected = upper ? purple : green
+                    for channel in 0..<3 { XCTAssertEqual(rgb[channel], expected[channel], accuracy: 1e-6) }
+                }
             }
         }
     }
@@ -138,6 +187,12 @@ final class TargetedAdjustmentTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(ref.linearRGB(at: CGPoint(x: 0.5, y: 0.5))), SIMD3(1, 0, 0))
         XCTAssertNil(ref.linearRGB(at: CGPoint(x: 1, y: 0.5)))
         XCTAssertNil(ref.linearRGB(at: CGPoint(x: -0.01, y: 0.5)))
+        let rows = PointColorReference(width: 1, height: 2, rgba: [0.5,0,0,0.5, 0,1,0,1])
+        XCTAssertEqual(rows.linearRGB(at: CGPoint(x: 0.5, y: 0), radius: 0), SIMD3(0, 1, 0))
+        XCTAssertEqual(rows.linearRGB(at: CGPoint(x: 0.5, y: 0.5), radius: 0), SIMD3(1, 0, 0))
+        XCTAssertEqual(rows.linearRGB(at: CGPoint(x: 0.5, y: 1 - Double.ulpOfOne), radius: 0), SIMD3(1, 0, 0))
+        let transparentTop = PointColorReference(width: 1, height: 2, rgba: [0,0,0,0, 0,1,0,1])
+        XCTAssertNil(transparentTop.linearRGB(at: CGPoint(x: 0.5, y: 0.75)), "A transparent upper center must not borrow a lower color")
     }
 }
 
