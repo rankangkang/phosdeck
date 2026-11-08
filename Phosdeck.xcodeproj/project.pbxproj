@@ -7,6 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7853D22BD78931FEA6691CF5 /* PhotoMerging.swift in Sources */ = {isa = PBXBuildFile; fileRef = C92A0D2DBD79D5F8A1D1524E /* PhotoMerging.swift */; };
+		4CEFE7CAB72708F07D41744E /* MergedPhotos.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A783FB7DCFD2C6230655C0 /* MergedPhotos.swift */; };
+		04B155382A483AE7086637B8 /* FocusStackAlignment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 752F5BA81E5C1F88CF14038F /* FocusStackAlignment.swift */; };
+		248C55AEE583227D3C9971B8 /* FocusStackAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4FA5B7FD5CF77DCEF5D582 /* FocusStackAnalysis.swift */; };
+		C9EF6B4866E8FC05F0E28A9C /* FocusStackDepth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00CBEB07378E00E9DD291DEF /* FocusStackDepth.swift */; };
+		9C6096AD3D2ACE1208F2BF3D /* MergeFusion.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC1BB5ABA7B92005E3FDE28E /* MergeFusion.swift */; };
+		D3A94D65BD7EF3663299D935 /* MergeMasterCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75BFD8D7316B96185ADB2770 /* MergeMasterCodec.swift */; };
+		1E9CA434D5306AF6F9DE1E7F /* MergePanorama.swift in Sources */ = {isa = PBXBuildFile; fileRef = B67D606E48B699F0228C61CB /* MergePanorama.swift */; };
+		84BCAA51D4EAA11E4B4AADC2 /* MergePyramid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71E5D464F10D3CDC86C83166 /* MergePyramid.swift */; };
+		83741DA2F56B121E62F18015 /* MergeRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FA62E03113294547A89DD28 /* MergeRegistration.swift */; };
+		0AEEB37A0EB6D589DB7FE8D1 /* MultiFrameImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8995A523240DA4B276D73FFE /* MultiFrameImage.swift */; };
+		732C3BD9732104B9046B3EFF /* PhotoMergeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D8435B9B607696D321D0B1 /* PhotoMergeEngine.swift */; };
+		551CFD04000E31F776B26934 /* PhotoMergeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70D5331A274CD8ED36FA5AC9 /* PhotoMergeSheet.swift */; };
+		F5A10126BCAE8BCAAAF3BEA1 /* PhotoMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AFE0CC31D16CD293AB1C6B /* PhotoMergeTests.swift */; };
 		D60700010000000000000003 /* AutomaticAdjustmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60700020000000000000003 /* AutomaticAdjustmentTests.swift */; };
 		D60700010000000000000002 /* AutomaticAdjustmentEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60700020000000000000002 /* AutomaticAdjustmentEditing.swift */; };
 		D60700010000000000000001 /* AutomaticAdjustments.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60700020000000000000001 /* AutomaticAdjustments.swift */; };
@@ -212,6 +226,20 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C92A0D2DBD79D5F8A1D1524E /* PhotoMerging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMerging.swift; sourceTree = "<group>"; };
+		14A783FB7DCFD2C6230655C0 /* MergedPhotos.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergedPhotos.swift; sourceTree = "<group>"; };
+		752F5BA81E5C1F88CF14038F /* FocusStackAlignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusStackAlignment.swift; sourceTree = "<group>"; };
+		6D4FA5B7FD5CF77DCEF5D582 /* FocusStackAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusStackAnalysis.swift; sourceTree = "<group>"; };
+		00CBEB07378E00E9DD291DEF /* FocusStackDepth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusStackDepth.swift; sourceTree = "<group>"; };
+		BC1BB5ABA7B92005E3FDE28E /* MergeFusion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeFusion.swift; sourceTree = "<group>"; };
+		75BFD8D7316B96185ADB2770 /* MergeMasterCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeMasterCodec.swift; sourceTree = "<group>"; };
+		B67D606E48B699F0228C61CB /* MergePanorama.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergePanorama.swift; sourceTree = "<group>"; };
+		71E5D464F10D3CDC86C83166 /* MergePyramid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergePyramid.swift; sourceTree = "<group>"; };
+		0FA62E03113294547A89DD28 /* MergeRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeRegistration.swift; sourceTree = "<group>"; };
+		8995A523240DA4B276D73FFE /* MultiFrameImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiFrameImage.swift; sourceTree = "<group>"; };
+		C8D8435B9B607696D321D0B1 /* PhotoMergeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMergeEngine.swift; sourceTree = "<group>"; };
+		70D5331A274CD8ED36FA5AC9 /* PhotoMergeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMergeSheet.swift; sourceTree = "<group>"; };
+		A1AFE0CC31D16CD293AB1C6B /* PhotoMergeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMergeTests.swift; sourceTree = "<group>"; };
 		D60700020000000000000003 /* AutomaticAdjustmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticAdjustmentTests.swift; sourceTree = "<group>"; };
 		D60700020000000000000002 /* AutomaticAdjustmentEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticAdjustmentEditing.swift; sourceTree = "<group>"; };
 		D60700020000000000000001 /* AutomaticAdjustments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticAdjustments.swift; sourceTree = "<group>"; };
@@ -463,6 +491,7 @@
 		58E353172BD287BB333BFB47 /* Catalog */ = {
 			isa = PBXGroup;
 			children = (
+				14A783FB7DCFD2C6230655C0 /* MergedPhotos.swift */,
 				644791AB009AEA051AD95C92 /* CatalogLocalPresets.swift */,
 				D3081C0529DF423DA92F3722 /* SmartCollections.swift */,
 				83D25AFD547CA509B8FF758B /* CatalogKeywords.swift */,
@@ -503,6 +532,7 @@
 		B274E2A30A0290015302BDBD /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				A1AFE0CC31D16CD293AB1C6B /* PhotoMergeTests.swift */,
 				14EC3A28953F72C09F416976 /* CameraDiagnosticsTests.swift */,
 				B9A715E6F6E099A51F9F2FE8 /* UprightTests.swift */,
 				B4FE28784DA7DEE0BA3D66BA /* LocalizationTests.swift */,
@@ -586,6 +616,7 @@
 		D4A5E980B763E5EA3AB2C4DB /* App */ = {
 			isa = PBXGroup;
 			children = (
+				C92A0D2DBD79D5F8A1D1524E /* PhotoMerging.swift */,
 				8CEA153F5198722E2FB01653 /* PerspectiveEditing.swift */,
 				37388F095F97F9A1A884022D /* InfoPlist.xcstrings */,
 				823069D53EBEA6FC1C67AC9E /* Localizable.xcstrings */,
@@ -628,6 +659,16 @@
 		E13AA38654469C7AE7ADC909 /* Imaging */ = {
 			isa = PBXGroup;
 			children = (
+				752F5BA81E5C1F88CF14038F /* FocusStackAlignment.swift */,
+				6D4FA5B7FD5CF77DCEF5D582 /* FocusStackAnalysis.swift */,
+				00CBEB07378E00E9DD291DEF /* FocusStackDepth.swift */,
+				BC1BB5ABA7B92005E3FDE28E /* MergeFusion.swift */,
+				75BFD8D7316B96185ADB2770 /* MergeMasterCodec.swift */,
+				B67D606E48B699F0228C61CB /* MergePanorama.swift */,
+				71E5D464F10D3CDC86C83166 /* MergePyramid.swift */,
+				0FA62E03113294547A89DD28 /* MergeRegistration.swift */,
+				8995A523240DA4B276D73FFE /* MultiFrameImage.swift */,
+				C8D8435B9B607696D321D0B1 /* PhotoMergeEngine.swift */,
 				58399C60CDC7BE1AD2BED947 /* CameraDiagnostics.swift */,
 				923D00D2D9A47E43B39CC567 /* UprightLineDetector.swift */,
 				974380F5EBFA586BBD9151E4 /* UprightCorrection.swift */,
@@ -672,6 +713,7 @@
 		F35CCDB0AF953A2A5FC6872C /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				70D5331A274CD8ED36FA5AC9 /* PhotoMergeSheet.swift */,
 				B8564E1CB8872537018DA81C /* CameraDiagnosticsView.swift */,
 				AC668E6AA888E9E161ECF22A /* PerspectiveGuides.swift */,
 				1AE0EE456E9FC2842A71E298 /* XMPPresetImportSheet.swift */,
@@ -854,6 +896,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F5A10126BCAE8BCAAAF3BEA1 /* PhotoMergeTests.swift in Sources */,
 				A6A6287BB2B6932AFDE35052 /* CameraDiagnosticsTests.swift in Sources */,
 				7210A8A29658FD0074AAEBCB /* UprightTests.swift in Sources */,
 				FA9542299C4A4DCDDFCDEA21 /* LocalizationTests.swift in Sources */,
@@ -923,6 +966,19 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7853D22BD78931FEA6691CF5 /* PhotoMerging.swift in Sources */,
+				4CEFE7CAB72708F07D41744E /* MergedPhotos.swift in Sources */,
+				04B155382A483AE7086637B8 /* FocusStackAlignment.swift in Sources */,
+				248C55AEE583227D3C9971B8 /* FocusStackAnalysis.swift in Sources */,
+				C9EF6B4866E8FC05F0E28A9C /* FocusStackDepth.swift in Sources */,
+				9C6096AD3D2ACE1208F2BF3D /* MergeFusion.swift in Sources */,
+				D3A94D65BD7EF3663299D935 /* MergeMasterCodec.swift in Sources */,
+				1E9CA434D5306AF6F9DE1E7F /* MergePanorama.swift in Sources */,
+				84BCAA51D4EAA11E4B4AADC2 /* MergePyramid.swift in Sources */,
+				83741DA2F56B121E62F18015 /* MergeRegistration.swift in Sources */,
+				0AEEB37A0EB6D589DB7FE8D1 /* MultiFrameImage.swift in Sources */,
+				732C3BD9732104B9046B3EFF /* PhotoMergeEngine.swift in Sources */,
+				551CFD04000E31F776B26934 /* PhotoMergeSheet.swift in Sources */,
 				B3C9E17B4A01206F174B01CC /* CameraDiagnosticsView.swift in Sources */,
 				9E896E2E24DD4845778D7BC5 /* PerspectiveGuides.swift in Sources */,
 				AFDDBC156179E2D2753AB7DD /* PerspectiveEditing.swift in Sources */,

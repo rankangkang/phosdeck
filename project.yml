@@ -28,6 +28,7 @@ targets:
     sources:
       # Includes automatic image analysis (Imaging/AutomaticAdjustments.swift, App/AutomaticAdjustmentEditing.swift) and folder comparison (Import/FolderReview.swift, UI/FolderReviewSheet.swift) and native direct adjustments.
       # Includes Imaging/ManualDefringe.swift.
+      # Includes native multiframe merge registration, fusion, float masters and UI.
       - path: Sources
         excludes: [Imaging/raster-exposure-colour-v4.bin]
       - path: design/logo/wordmark-approved-ivory.svg
@@ -99,6 +100,7 @@ targets:
     platform: macOS
     sources:
       # Includes ManualDefringeTests.swift, AutomaticAdjustmentTests.swift, FolderReviewTests.swift, DirectAdjustmentTests.swift and TargetedAdjustmentTests.swift.
+      # Includes PhotoMergeTests.swift for merge algorithms, float masters and safe publication.
       - path: Tests
         excludes: [test_calibration_paths.py]
     dependencies:

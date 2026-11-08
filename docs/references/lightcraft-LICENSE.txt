@@ -1,5 +1,19 @@
 Lightcraft is licensed under MIT or Apache-2.0. This project uses the MIT option.
 
+Native multiframe registration and fusion in Sources/Imaging/MergeRegistration.swift,
+MergeFusion.swift, MergePanorama.swift and MergePyramid.swift adapt the Harris/MOPS
+features, mutual ratio matching, RANSAC, HDR exposure ratios/saturation/deghosting,
+panorama graph/focal/projection/gain compensation and binomial/Laplacian blending
+from crates/merge/src/{features,align,ransac,hdr,pano,linalg}.rs and
+pano/{camera,project,blend}.rs at b3b49987d4b2c99f582b80ae91b2ec42ab24d14e,
+checked 2026-11-08. Callers/tests reviewed: crates/engine/src/merge.rs,
+crates/merge/tests/it/{hdr,pano}.rs. The MIT option applies to these adaptations.
+The homography solver, linear-sRGB/alpha integration, source-size conjugation,
+bounded native worker, safe TIFF32 master codec, catalog publication and SwiftUI
+workflow are native work. Upstream rotation bundle adjustment, log-space blend,
+boundary warp, edge filling, camera-RGB/DNG writing and Rust dependencies are not
+included. No Lightroom code is included.
+
 The sparse CRS preset field mapping and unmapped-field reports in
 Sources/Imaging/XMPPresetSettings.swift and Sources/Import/XMPPresetReader.swift
 adapt crates/engine/src/crs.rs and preset_import.rs at

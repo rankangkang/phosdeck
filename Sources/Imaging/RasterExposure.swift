@@ -158,9 +158,10 @@ enum RasterExposure {
         let e = SIMD3(encoded(input.x), encoded(input.y), encoded(input.z))
         return try baseTransform(input, ev: ev) + RasterExposureColour.correction(e, ev: ev)
     }
-    static func apply(_ input: CIImage, ev: Double) throws -> CIImage {
+    static func apply(_ input: CIImage, ev: Double, linear: Bool = false) throws -> CIImage {
         guard ev.isFinite, (-5...5).contains(ev) else { throw LRCError(L10n.text("app.invalidExposureParameters", defaultValue: "Invalid exposure parameters")) }
         guard ev != 0 else { return input }
+        if linear { return input.applyingFilter("CIExposureAdjust",parameters:["inputEV":ev]) }
         let values = response(ev)
         let packed = (0..<17).map { block in
             let i = block*4

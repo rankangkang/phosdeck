@@ -63,6 +63,8 @@ struct PhotoMetadata: Codable, Equatable {
     var focalLength: Double?
     var orientation: Int?
     var profile: String?
+    var focal35mm: Double? = nil
+    var composite: MergeProvenance? = nil
     var exposureText: String? {
         guard let value = exposureTime, value > 0 else { return nil }
         return value < 1 ? L10n.text("app.1S", defaultValue: "1/\(Int((1 / value).rounded())) s") : String(format: L10n.text("app.1fS", defaultValue: "%.1f s"), value)

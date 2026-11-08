@@ -41,6 +41,7 @@ Themes affect the interface only. They do not change photo pixels or exported im
 | Global adjustments | Exposure, white balance, point curves, HSL, B&W mixing, point color, manual defringe, sharpening, noise reduction, grain, and vignette; presets, history, and snapshots |
 | Local adjustments | Brushes, linear and radial gradients, color and luminance range masks, person selection, and spot repair |
 | Geometry | Crop, line-based straightening, flip, and guided or automatic perspective correction |
+| Photo merging | Panorama, HDR, HDR panorama and focus stacking; average, median, additive, lighten, darken and screen modes; separate editable 32-bit float TIFF masters |
 | Camera checks | Local RAW decoding and pipeline consistency checks with JSON reports |
 | Export | JPEG, PNG, and 16-bit TIFF; naming templates, export presets, multiple output specifications, and optional metadata; existing files are never overwritten |
 
@@ -136,8 +137,8 @@ Phosdeck draws on Lightroom Classic's workflow and uses algorithms and implement
 | Source | Use in Phosdeck |
 |---|---|
 | [Adobe Lightroom Classic](https://www.adobe.com/products/photoshop-lightroom-classic.html) | Workflow reference for photo organization, culling, developing, local adjustments, and batch export. The exposure response tables for raster images use Lightroom output from synthetic images as reference; the basis for public use still needs review. See [known issues (Chinese)](docs/STATUS.md#已知问题). |
-| [Lightcraft](https://github.com/storytold/lightcraft) | Feature and interaction reference. Selected algorithms and implementations, including preset strength, masks, vignette, grain, point color, and stacks, were ported or adapted to Swift/Metal under MIT. |
-| [Redlamp](https://github.com/pdcgomes/redlamp) | Line detection adapted under MPL-2.0; line constraints, conservative geometry fallback and camera-evidence organization inform native implementations. |
+| [Lightcraft](https://github.com/storytold/lightcraft) | Feature and interaction reference. Selected algorithms and implementations, including preset strength, masks, vignette, grain, point color, stacks, HDR and panorama merging, were ported or adapted to Swift/Metal under MIT. |
+| [Redlamp](https://github.com/pdcgomes/redlamp) | Line detection and CPU focus-stack alignment/depth adapted under MPL-2.0; line constraints, conservative geometry fallback and camera-evidence organization inform native implementations. |
 | [PhotoCraft](https://github.com/storytold/photocraft) | Source of the test-only PatchMatch prototype through Lightcraft, adapted under MIT. The prototype is not part of the app's current repair pipeline. |
 | [Oklab — Björn Ottosson](https://bottosson.github.io/posts/oklab/) | Conversion matrices and reference implementation for perceptual color processing, with MIT attribution retained. |
 

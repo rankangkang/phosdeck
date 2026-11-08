@@ -43,6 +43,7 @@ enum PhotoFileType {
         if ["tif", "tiff"].contains(ext), props[kCGImagePropertyColorModel as String] as? String != "RGB" {
             throw LRCError(L10n.text("app.onlyStandardRGBSinglePageTIFFFilesAreSupported", defaultValue: "Only standard RGB single-page TIFF files are supported"))
         }
+        _ = try MergeProvenance.read(props)
         var pngICC: Bool?
         if ext == "png" {
             pngICC = try PNGValidation.validate(url)

@@ -141,7 +141,9 @@ actor ReferenceImporter {
             exposureTime: exif?[kCGImagePropertyExifExposureTime as String] as? Double,
             focalLength: exif?[kCGImagePropertyExifFocalLength as String] as? Double,
             orientation: props[kCGImagePropertyOrientation as String] as? Int,
-            profile: inspected.pngICC == false ? nil : props[kCGImagePropertyProfileName as String] as? String)
+            profile: inspected.pngICC == false ? nil : props[kCGImagePropertyProfileName as String] as? String,
+            focal35mm: (exif?[kCGImagePropertyExifFocalLenIn35mmFilm as String] as? NSNumber)?.doubleValue,
+            composite: try MergeProvenance.read(props))
         var captured = exif?[kCGImagePropertyExifDateTimeOriginal as String] as? String
         if let original = captured {
             var precise = original

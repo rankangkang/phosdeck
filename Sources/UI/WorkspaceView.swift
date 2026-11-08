@@ -204,6 +204,7 @@ struct WorkspaceView: View {
         } message: { Text(model.error ?? "") }
         .sheet(isPresented:$model.showPairing) { PairingSheet(model:model) }
         .sheet(isPresented:$model.showAutoStacks) { AutoStackSheet(model:model) }
+        .sheet(item:$model.mergeSession) { PhotoMergeSheet(session:$0,completed:model.completePhotoMerge) }
         .sheet(item:$smartDraft) { SmartCollectionSheet(model:model,collection:$0) }
         .sheet(isPresented: $collectionDialog) {
             VStack(alignment: .leading, spacing: 16) {
@@ -299,6 +300,7 @@ struct WorkspaceView: View {
             Button(L10n.text("app.locateCurrentOriginal", defaultValue: "Locate Current Original…"), action: model.locateOriginal).disabled(!model.canLocateOriginal)
             Divider()
             Menu(L10n.text("app.stacking", defaultValue: "Stacking")) { StackMenu(model:model) }
+            Menu(L10n.text("merge.title", defaultValue:"Merge Photos")) { PhotoMergeMenu(model:model) }.disabled(!model.canMergePhotos)
             Menu(L10n.text("app.rawJPEGPairing", defaultValue: "RAW/JPEG Pairing")) { PairMenu(model:model) }
             Divider()
             Button(L10n.text("app.createVirtualCopiesOfSelection", defaultValue: "Create Virtual Copies of Selection"),action:model.createVirtualCopies).disabled(model.selection.isEmpty)
@@ -847,6 +849,7 @@ struct WorkspaceView: View {
             Menu {
                 if narrow { Menu(L10n.text("app.sort", defaultValue: "Sort")) { resultSort }; Divider() }
                 Menu(L10n.text("app.stacking", defaultValue: "Stacking")) { StackMenu(model:model) }
+                Menu(L10n.text("merge.title", defaultValue:"Merge Photos")) { PhotoMergeMenu(model:model) }.disabled(!model.canMergePhotos)
                 Menu(L10n.text("app.rawJPEGPairing", defaultValue: "RAW/JPEG Pairing")) { PairMenu(model:model) }
                 Divider()
                 Button(L10n.text("app.createVirtualCopiesOfSelection", defaultValue: "Create Virtual Copies of Selection"),action:model.createVirtualCopies).disabled(model.selection.isEmpty)
@@ -1263,6 +1266,11 @@ struct WorkspaceView: View {
                             Text(photo.camera ?? L10n.text("app.noCameraInformationProvided", defaultValue: "No camera information provided"))
                             Text(photo.captureDate ?? L10n.text("app.noCaptureDateProvided", defaultValue: "No capture date provided"))
                             if let info = photo.details {
+                                if let composite = info.composite {
+                                    SubgroupLabel(L10n.text("merge.title", defaultValue:"Merge Photos"))
+                                    Text(composite.options.kind.title)
+                                    Text(L10n.text("merge.masterInfo", defaultValue:"32-bit float · linear sRGB · \(composite.sources.count) sources")).font(.caption11).foregroundStyle(Theme.textSecondary)
+                                }
                                 if let lens = info.lens { Text(lens) }
                                 if let iso = info.iso { Text("ISO \(iso)") }
                                 if let aperture = info.aperture { Text(String(format: "ƒ/%.1f", aperture)) }

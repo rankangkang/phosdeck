@@ -479,6 +479,7 @@ final class AppModel {
     private var conflictContinuation: CheckedContinuation<ImportConflictDecision?, Never>?
     var showImport = false
     var folderReview: FolderReviewScope?
+    var mergeSession: PhotoMergeSession?
     var showXMPPresetImport = false
     var recentCatalogs: [RecentCatalog] = []
     private var startupCatalogOpen: CatalogOpenRequest?
@@ -494,7 +495,7 @@ final class AppModel {
     var catalog: CatalogStore?
     var catalogName: String { catalog?.fileURL.deletingPathExtension().lastPathComponent ?? L10n.text("app.noCatalogOpen", defaultValue: "No catalog open") }
     /// Menu-bar commands stay reachable while a sheet is up, so they must not stack a second sheet.
-    var presentingSheet: Bool { showCameraDiagnostics || showImport || folderReview != nil || showXMPPresetImport || showExport || showNewCatalog || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
+    var presentingSheet: Bool { showCameraDiagnostics || showImport || folderReview != nil || mergeSession != nil || showXMPPresetImport || showExport || showNewCatalog || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
     var canSwitchCatalog: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var workspaceAvailable: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var canLocateOriginal: Bool { catalog != nil && active != nil && workspaceAvailable && comparison == nil && survey == nil }

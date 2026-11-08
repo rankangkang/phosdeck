@@ -6,10 +6,21 @@ import Observation
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
     var keyboard: WorkspaceKeyboard?
+    private var waitingForMergeTermination = false
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
         if model.changingCatalogExtension { return .terminateCancel }
         if !model.commitRecipe() { return .terminateCancel }
+        if waitingForMergeTermination { return .terminateLater }
+        if let session = model.mergeSession,session.working {
+            waitingForMergeTermination = true
+            Task { @MainActor in
+                await session.cancelAndWait()
+                waitingForMergeTermination = false
+                sender.reply(toApplicationShouldTerminate:session.error == nil)
+            }
+            return .terminateLater
+        }
         return .terminateNow
     }
 }
@@ -183,6 +194,7 @@ struct WorkspaceCommands: Commands {
             Button(L10n.text("app.locateCurrentOriginal", defaultValue: "Locate Current Original…"), action: model.locateOriginal).disabled(!model.canLocateOriginal)
             Button(L10n.text("app.createVirtualCopy", defaultValue: "Create Virtual Copy"), action: model.createVirtualCopies).disabled(!photoSelected)
             Menu(L10n.text("app.stacking", defaultValue: "Stacking")) { StackMenu(model: model) }.disabled(!workspace || model.catalog == nil)
+            Menu(L10n.text("merge.title", defaultValue:"Merge Photos")) { PhotoMergeMenu(model:model) }.disabled(!model.canMergePhotos)
             Menu(L10n.text("app.rawJPEGPairing", defaultValue: "RAW/JPEG Pairing")) { PairMenu(model: model) }.disabled(!workspace || model.catalog == nil)
             Divider()
             Menu(L10n.text("app.transferAdjustments", defaultValue: "Transfer Adjustments")) {

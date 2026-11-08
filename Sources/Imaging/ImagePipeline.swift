@@ -134,7 +134,7 @@ actor ImagePipeline {
                 }
                 _ = try raster(url)
                 guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: request.photo.identity) else { throw LRCError(L10n.text("app.theSourceChangedWhileCreatingItsBaseline", defaultValue: "The source changed while creating its baseline")) }
-                var recipe = EditRecipe(sourceDigest: digest, decoderVersion: EditRecipe.rasterDecoderVersion,
+                var recipe = EditRecipe(sourceDigest: digest, decoderVersion: request.photo.details?.composite == nil ? EditRecipe.rasterDecoderVersion : EditRecipe.linearCompositeDecoderVersion,
                     baselineExposure: 0, baselineTemperature: 5500, baselineTint: 0, temperature: 5500, tint: 0)
                 recipe.grain.ensureSeed()
                 return recipe
@@ -164,6 +164,59 @@ actor ImagePipeline {
         let defaults = RAWDetailSettings(raw: raw)
         try request.recipe?.rawDetails.checkSupport(defaults)
         return defaults
+    }
+
+    /// Independent full-float lane for merging originals. No geometry, creative edits,
+    /// raster response LUT, global RAW look or preview cache enters the master.
+    func mergeDecode(_ request: ImageRequest,longEdge: Int?,whiteBalance: WhiteBalanceValue) throws -> MergeFrame {
+        try autoreleasepool {
+            let (lease,url) = try source(request)
+            defer { withExtendedLifetime(lease) {} }
+            let image: CIImage
+            let native: CGSize
+            if request.photo.isRAW {
+                let raw = try PhotoFileType.rawFilter(url)
+                if let recipe = request.recipe {
+                    let version = CIRAWDecoderVersion(rawValue:recipe.decoderVersion)
+                    guard raw.supportedDecoderVersions.contains(version) else { throw LRCError(L10n.text("app.theRecipeSOriginalDecoderIsUnavailable", defaultValue:"The recipe's original decoder is unavailable")) }
+                    raw.decoderVersion = version
+                    // Lens geometry belongs to the source decode. Creative RAW detail settings do not.
+                    if let lens = recipe.rawDetails.lensCorrection,raw.isLensCorrectionSupported { raw.isLensCorrectionEnabled = lens }
+                }
+                native = raw.orientation.rawValue >= 5 ? CGSize(width:raw.nativeSize.height,height:raw.nativeSize.width) : raw.nativeSize
+                raw.scaleFactor = longEdge.map { Float(min(1,Double($0)/max(native.width,native.height))) } ?? 1
+                raw.isDraftModeEnabled = false; raw.exposure = 0; raw.baselineExposure = 0
+                raw.boostAmount = 0; raw.boostShadowAmount = 0; raw.extendedDynamicRangeAmount = 2
+                raw.isGamutMappingEnabled = false
+                if raw.isLocalToneMapSupported { raw.localToneMapAmount = 0 }
+                raw.neutralTemperature = Float(whiteBalance.temperature); raw.neutralTint = Float(whiteBalance.tint)
+                if raw.isLuminanceNoiseReductionSupported { raw.luminanceNoiseReductionAmount = 0 }
+                if raw.isColorNoiseReductionSupported { raw.colorNoiseReductionAmount = 0 }
+                if raw.isSharpnessSupported { raw.sharpnessAmount = 0 }
+                guard let output = raw.outputImage else { throw LRCError(L10n.text("app.rawDecodingFailed", defaultValue:"RAW decoding failed")) }
+                image = Self.originZero(output)
+            } else {
+                var decoded = try raster(url)
+                native = decoded.extent.size
+                if whiteBalance.temperature != 5500 || whiteBalance.tint != 0 {
+                    decoded = decoded.applyingFilter("CITemperatureAndTint",parameters:["inputNeutral":CIVector(x:whiteBalance.temperature,y:whiteBalance.tint),"inputTargetNeutral":CIVector(x:5500,y:0)])
+                }
+                image = Self.resized(decoded,longEdge:longEdge)
+            }
+            try Task.checkCancellation()
+            let pixels = try MergeImage.read(image,context:developContext)
+            guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self,from:request.photo.identity) else { throw LRCError(L10n.text("merge.sourceChanged", defaultValue:"A source changed during the merge. Reopen the merge window")) }
+            let metadata = request.photo.details
+            var exposure: Double?
+            if let t = metadata?.exposureTime,let f = metadata?.aperture,let iso = metadata?.iso,t > 0,f > 0,iso > 0 {
+                exposure = log2(t*Double(iso)/(100*f*f))
+            }
+            return MergeFrame(image:pixels,exposure:exposure,focal35mm:metadata?.focal35mm,nativeWidth:Int(native.width.rounded()),nativeHeight:Int(native.height.rounded()))
+        }
+    }
+    func verifyMergeSource(_ request: ImageRequest) throws {
+        let (lease,_) = try source(request)
+        withExtendedLifetime(lease) {}
     }
 
     private func graph(_ request: ImageRequest, url: URL, orientedSourceSize: inout CGSize, previewEdge: Int? = nil, zoneReferenceOnly: Bool = false, pointReferenceOnly: Bool = false, decodeOnly: Bool = false, reuseDecoded: Bool = false) throws -> CIImage {
@@ -263,9 +316,9 @@ actor ImagePipeline {
                     "inputNeutral": CIVector(x: recipe.temperature, y: recipe.tint),
                     "inputTargetNeutral": CIVector(x: 5500, y: 0)])
             }
-            base = try RasterExposure.apply(base, ev: recipe.exposure)
+            base = try RasterExposure.apply(base, ev: recipe.exposure, linear:recipe.isLinearComposite)
             base = Self.resized(base, longEdge: previewEdge)
-            let decodeKey = "\(url.path):\(request.photo.identity.base64EncodedString()):\(recipe.sourceDigest):raster:\(previewEdge ?? 0):\(recipe.exposure):\(recipe.asShotWhiteBalance):\(recipe.temperature):\(recipe.tint)"
+            let decodeKey = "\(url.path):\(request.photo.identity.base64EncodedString()):\(recipe.sourceDigest):\(recipe.decoderVersion):\(previewEdge ?? 0):\(recipe.exposure):\(recipe.asShotWhiteBalance):\(recipe.temperature):\(recipe.tint)"
             image = try processDecoded(base, request: request, url: url, recipe: recipe, decodeKey: decodeKey,
                 previewEdge: previewEdge, zoneReferenceOnly: zoneReferenceOnly, pointReferenceOnly:pointReferenceOnly, decodeOnly: decodeOnly, sourceSize: orientedSourceSize)
         }
@@ -470,7 +523,7 @@ actor ImagePipeline {
                 }
                 // Preserve the source-size raster exposure semantics. Analysis
                 // never edits or substitutes the existing response table.
-                image = try RasterExposure.apply(balanced, ev: exposure)
+                image = try RasterExposure.apply(balanced, ev: exposure, linear:recipe.isLinearComposite)
             } else { throw AutomaticAdjustmentPixels.insufficient }
             return Self.resized(image, longEdge: 512)
         }

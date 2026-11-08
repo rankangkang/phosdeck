@@ -38,7 +38,9 @@ struct Crop: Codable, Equatable {
 /// and perceptual color editing. Never silently reinterpret a saved version.
 struct EditRecipe: Codable, Equatable {
     static let rasterDecoderVersion = "imageio-raster-response-v4"
-    var isRaster: Bool { decoderVersion == Self.rasterDecoderVersion }
+    static let linearCompositeDecoderVersion = "imageio-linear-composite-v1"
+    var isLinearComposite: Bool { decoderVersion == Self.linearCompositeDecoderVersion }
+    var isRaster: Bool { decoderVersion == Self.rasterDecoderVersion || isLinearComposite }
     /// Inactive grain may have a saved random seed. It does not change the neutral pixels.
     var isUnadjustedRaster: Bool {
         var neutral = baseline()
@@ -51,7 +53,7 @@ struct EditRecipe: Codable, Equatable {
         if perspective.isNeutral { neutral.perspective = perspective }
         if !sharpening.isActive { neutral.sharpening = sharpening }
         if !manualDefringe.isActive { neutral.defringe = defringe }
-        return isRaster && !grain.isActive && self == neutral
+        return isRaster && !isLinearComposite && !grain.isActive && self == neutral
     }
     var schemaVersion = 2
     var pipelineVersion = 2
@@ -185,7 +187,7 @@ struct EditRecipe: Codable, Equatable {
     }
     func validate(for photo: Photo) throws {
         try validate()
-        guard photo.supportsEditing, isRaster == !photo.isRAW else { throw LRCError(L10n.text("app.theRecipeDoesNotMatchTheSourceFileType", defaultValue: "The recipe does not match the source file type")) }
+        guard photo.supportsEditing, isRaster == !photo.isRAW, isLinearComposite == (photo.details?.composite != nil) else { throw LRCError(L10n.text("app.theRecipeDoesNotMatchTheSourceFileType", defaultValue: "The recipe does not match the source file type")) }
     }
     func resetForCurrentPipeline() -> Self {
         var value = baseline()
