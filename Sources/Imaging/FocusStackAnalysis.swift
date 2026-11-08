@@ -163,3 +163,28 @@ enum StackAligner {
 enum FocusStackWork {
     static func map<T>(_ count: Int, _ body: (Int) throws -> T) rethrows -> [T] { try (0..<max(0,count)).map(body) }
 }
+
+// Saturation suppression from Redlamp FocusStacker+Merge.swift (same revision
+// and MPL-2.0 attribution above), with native float clipping and cancellation.
+extension MergeFusionPlan {
+    /// Remove focus responses in a small neighbourhood of clipped pixels before
+    /// depth solving. The threshold follows Redlamp's balanced-green guard
+    /// (0.9 of the frame clip); the native adaptation uses the decoded linear-sRGB
+    /// green channel already on the analysis grid.
+    static let focusClipLevel: Float = 0.9
+    static func ignoreClippedFocus(_ focus: inout LumaImage,clipPlane: MergePlane,clip: Float,radius: Int) throws {
+        guard clip.isFinite,clip > 0,radius >= 0 else { return }
+        let threshold = clip*focusClipLevel
+        let width = min(focus.width,clipPlane.width),height = min(focus.height,clipPlane.height)
+        for y in 0..<height {
+            if y.isMultiple(of:32) { try Task.checkCancellation() }
+            for x in 0..<width where clipPlane.values[y*clipPlane.width+x] >= threshold {
+                for dy in max(0,y-radius)...min(focus.height-1,y+radius) {
+                    for dx in max(0,x-radius)...min(focus.width-1,x+radius) {
+                        focus.pixels[dy*focus.width+dx] = 0
+                    }
+                }
+            }
+        }
+    }
+}

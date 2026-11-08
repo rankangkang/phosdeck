@@ -162,6 +162,63 @@ final class PhotoMergeTests: XCTestCase {
             }
         }
     }
+    func testPanoramaLaplacianCannotReverseTheChannelOrderOfEverySource() throws {
+        let w = 64,h = 48
+        var a = constant(SIMD4(0.4,0.4,0.1,1),w:w,h:h)
+        let b = a
+        var left = MergePlane(width:w,height:h),right = left
+        for y in 0..<h { for x in 0..<w {
+            let i = y*w+x
+            if (16..<48).contains(x),(12..<36).contains(y) { a.pixels[i].x = 0.9 }
+            left.values[i] = Float(x+1)/Float(w+1);right.values[i] = 1-left.values[i]
+        } }
+        let pyramid = MergePyramid(width:w,height:h)
+        try pyramid.add(a,mask:left);try pyramid.add(b,mask:right)
+        let image = try pyramid.finish(coverage:.init(repeating:1,count:w*h))
+        // Both captures have R >= G >= B everywhere. The unguarded Laplacian
+        // invents G > R outside the red patch (minimum R-G is about -0.0066).
+        XCTAssertTrue(image.pixels.allSatisfy { $0.x+1e-6 >= $0.y && $0.y+1e-6 >= $0.z })
+    }
+    func testPanoramaChannelConsensusIsSymmetricAndPreservesLuminance() {
+        for channels in [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]] {
+            var source = SIMD4<Float>(0,0,0,1),value = SIMD4<Float>(0,0,0,0.25)
+            for (index,channel) in channels.enumerated() {
+                source[channel] = [Float(4),2,1][index]
+                value[channel] = [Float(0.1),1.2,-0.3][index]
+            }
+            let order = MergePyramid.channelOrder(source)
+            let projected = MergePyramid.preservingChannelOrder(value,order:order)
+            XCTAssertGreaterThanOrEqual(projected[channels[0]],projected[channels[1]])
+            XCTAssertGreaterThanOrEqual(projected[channels[1]],projected[channels[2]])
+            XCTAssertEqual(MergeImage.luma(projected),MergeImage.luma(value),accuracy:2e-7)
+            XCTAssertEqual(projected.w,value.w)
+        }
+        let order = MergePyramid.channelOrder(SIMD4(3,2,1,1))
+        let signed = MergePyramid.preservingChannelOrder(SIMD4(-0.5,0.2,-0.1,1),order:order)
+        XCTAssertLessThan(signed.z,0)
+        let hdr = MergePyramid.preservingChannelOrder(SIMD4(2,5,1,1),order:order)
+        XCTAssertGreaterThan(hdr.x,4)
+    }
+    func testPanoramaChannelConsensusAllowsPartialOrdersAndDifferentSourceHues() {
+        let partial = MergePyramid.channelOrder(SIMD4(2,1,3,1)) & MergePyramid.channelOrder(SIMD4(3,2,1,1))
+        let value = SIMD4<Float>(1,3,0,0.4)
+        let projected = MergePyramid.preservingChannelOrder(value,order:partial)
+        XCTAssertEqual(projected.x,projected.y)
+        XCTAssertEqual(projected.z,value.z)
+        XCTAssertEqual(MergeImage.luma(projected),MergeImage.luma(value),accuracy:2e-7)
+        let mixed = MergePyramid.channelOrder(SIMD4(3,2,1,1)) & MergePyramid.channelOrder(SIMD4(1,2,3,1))
+        XCTAssertEqual(mixed,0)
+        XCTAssertEqual(MergePyramid.preservingChannelOrder(value,order:mixed),value)
+    }
+    func testSingleSourcePanoramaKeepsSignedHighlightsAndOpacity() throws {
+        let source = constant(SIMD4(-0.125,2,4,0.25),w:32,h:24)
+        let pyramid = MergePyramid(width:source.width,height:source.height)
+        try pyramid.add(source,mask:MergePlane(width:source.width,height:source.height,values:.init(repeating:0.25,count:source.pixels.count)))
+        let output = try pyramid.finish(coverage:.init(repeating:0.25,count:source.pixels.count))
+        for pixel in output.pixels { for channel in 0..<4 {
+            XCTAssertEqual(pixel[channel],source.pixels[0][channel],accuracy:1e-6)
+        } }
+    }
     func testPanoramaRejectsDisconnectedPhotosAndInvalidGrouping() throws {
         var options = PhotoMergeOptions(); options.kind = .panorama
         XCTAssertThrowsError(try MergePanoramaPlan.prepare([MergeFrame(image:constant(SIMD4(0.2,0.2,0.2,1))),MergeFrame(image:constant(SIMD4(0.7,0.7,0.7,1)))],options:options))
@@ -557,6 +614,22 @@ final class PhotoMergeTests: XCTestCase {
         let (image,_) = try await publicMerge(publicMergeFiles("memorial"),kind:.hdr)
         XCTAssertEqual(image.width,484);XCTAssertEqual(image.height,714)
         XCTAssertGreaterThan(image.pixels.map(MergeImage.peak).max() ?? 0,2)
+    }
+    func testPublicNEFBracketSavesFloatRadianceAndSourceProvenance() async throws {
+        let files = try publicMergeFiles("fairchild-kitchen")
+        XCTAssertEqual(files.count,9)
+        for file in files {
+            let source = try PNGFixture.request(file)
+            XCTAssertTrue(source.photo.isRAW)
+            XCTAssertEqual(source.photo.details?.iso,100)
+            XCTAssertEqual(source.photo.details?.aperture,8)
+        }
+        let (image,provenance) = try await publicMerge(files,kind:.hdr,sourceLongEdge:2000)
+        XCTAssertGreaterThan(image.width,1900);XCTAssertGreaterThan(image.height,1200)
+        XCTAssertLessThanOrEqual(image.width,2000)
+        XCTAssertGreaterThan(image.pixels.map(MergeImage.peak).max() ?? 0,4)
+        XCTAssertEqual(provenance.options.kind,.hdr)
+        XCTAssertEqual(provenance.sources.count,9)
     }
     func testPublicSevenFrameFocusMacroDecodesAndFusesAtOriginalSize() async throws {
         let files = try publicMergeFiles("focus-pcb")

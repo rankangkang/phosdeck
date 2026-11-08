@@ -119,7 +119,7 @@ struct MergePanoramaPlan {
         let origin = SIMD2(floor(lo.x),floor(lo.y))
         let w = Int(ceil(hi.x)-origin.x)+1, h = Int(ceil(hi.y)-origin.y)+1
         try PhotoGeometry.checkSize(CGSize(width:w,height:h))
-        guard UInt64(w)*UInt64(h)*128 <= ProcessInfo.processInfo.physicalMemory/3 else {
+        guard UInt64(w)*UInt64(h)*UInt64(128+MergePyramid.consensusBytesPerPixel) <= ProcessInfo.processInfo.physicalMemory/3 else {
             throw LRCError(L10n.text("merge.memoryBudget", defaultValue:"The full-size merge exceeds the memory budget. Choose a smaller source size"))
         }
         let gains = exposureGains(frames,edges:edges,reference:reference)

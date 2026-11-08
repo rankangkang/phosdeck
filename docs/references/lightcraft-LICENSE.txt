@@ -11,7 +11,8 @@ pano/{camera,project,blend}.rs at b3b49987d4b2c99f582b80ae91b2ec42ab24d14e,
 checked 2026-11-08. Callers/tests reviewed: crates/engine/src/merge.rs,
 crates/merge/tests/it/{hdr,pano}.rs. The MIT option applies to these adaptations.
 The homography solver, linear-sRGB/alpha integration, source-size conjugation,
-bounded native worker, safe TIFF32 master codec, catalog publication and SwiftUI
+bounded native worker, luminance-preserving reconstruction constraints from local
+source channel-order consensus, safe TIFF32 master codec, catalog publication and SwiftUI
 workflow are native work. The camera solver retains the reference orientation,
 bounds focal lengths and shares the focal variable when matching EXIF supports it.
 Upstream automatic horizon straightening, log-space blend,

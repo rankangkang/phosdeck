@@ -101,7 +101,14 @@ struct MergeFusionPlan {
                 var luma = LumaImage(width:w,height:h,pixels:grey.values.map { $0*sqrt(max(0,gain)) })
                 var sharp = LumaImage(width:w,height:h,pixels:StackDepthSolver.sumModifiedLaplacian(luma,radius:1))
                 let peak = MergePlane(width:size.width,height:size.height,values:frames[index].image.pixels.map { $0.w > 0.99 ? MergeImage.peak($0) : frames[index].clip }).resized(w,h)
+                let green = MergePlane(width:size.width,height:size.height,values:frames[index].image.pixels.map { $0.w > 0.99 ? $0.y : frames[index].clip }).resized(w,h)
                 var validity = LumaImage(width:w,height:h,pixels:.init(repeating:0,count:w*h))
+                // A saturated highlight has a hard, exposure-dependent edge. Its
+                // Laplacian is not evidence of focus and can otherwise win the
+                // depth label, producing a coloured halo around the highlight.
+                // Redlamp's Auto path applies the same guard before solving the
+                // depth volume (FocusStacker+Merge.swift, MPL-2.0).
+                try Self.ignoreClippedFocus(&sharp,clipPlane:green,clip:frames[index].clip,radius:StackDepthSolver.Settings().focusRadius+1)
                 for y in 0..<h { for x in 0..<w {
                     var brightest: Float = 0
                     for dy in -1...1 { for dx in -1...1 { brightest = max(brightest,peak.at(x+dx,y+dy)) } }

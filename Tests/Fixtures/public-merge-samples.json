@@ -195,6 +195,51 @@
           "sha256": "0311d0bc7b1d2ce5f5618373dd7badf04b7a66c43ca48d7eef7ab66fb1a3f99f"
         }
       ]
+    },
+    {
+      "id": "fairchild-kitchen",
+      "author": "Mark D. Fairchild / HDR Photographic Survey",
+      "source": "https://markfairchild.org/HDRPS/Scenes/HancockKitchenInside.html",
+      "archive": "https://markfairchild.org/files/HDRPS_Raws.zip",
+      "usage": "Copyright Mark D. Fairchild, 2006–2007. Publicly available for research and non-commercial research publication with acknowledgement of Mark Fairchild's HDR Photographic Survey. Commercial publication prohibited; local evaluation only, originals and derived photographs not distributed.",
+      "files": [
+        {
+          "file": "_MDF0001.NEF",
+          "sha256": "d63e49809d7601ce10ca71a8cc1442dc435f25deed081cee8eb67a0d8ed42e11"
+        },
+        {
+          "file": "_MDF0002.NEF",
+          "sha256": "a0df32437a9d2f5a202fe40c5786ba0a2595cc00398fda8ab3b265cf1751e04a"
+        },
+        {
+          "file": "_MDF0003.NEF",
+          "sha256": "6e75932b004c0617309c12628ec5b3ebe4a7e0dc30b207f95ab085fb2010e723"
+        },
+        {
+          "file": "_MDF0004.NEF",
+          "sha256": "dfef57ace8e05eb950d3ece482e1bb414095afa0a245f97c8e0ea13d1f367f16"
+        },
+        {
+          "file": "_MDF0005.NEF",
+          "sha256": "7a39ed439a33379551cba8bce40a000afc49eb1e72d3fa6fad166e50a9d1e8ff"
+        },
+        {
+          "file": "_MDF0006.NEF",
+          "sha256": "c67976945a0cb4484c2a9d12409083d2f649aadfac7e4dc9c8d6bd140325d12b"
+        },
+        {
+          "file": "_MDF0007.NEF",
+          "sha256": "5217aef2c0d28ec085da7c4c729fc0e1aeae7bf3b0845ff06e7eb6091fcc59ce"
+        },
+        {
+          "file": "_MDF0008.NEF",
+          "sha256": "a8e067e108f9df29160773a5c80fd57a2c42f581572fe040168a8d3f512db007"
+        },
+        {
+          "file": "_MDF0009.NEF",
+          "sha256": "c35ae2f868bc0170a8ca9159256c76cb004870938c024e05a7ffb9192cfe5deb"
+        }
+      ]
     }
   ]
 }

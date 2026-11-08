@@ -7,17 +7,19 @@ Sources/Imaging/FocusStackFusion.swift adapts its Auto pyramid coefficient
 selection and robust detail-noise threshold to the native float32 CPU pipeline.
 Upstream revision: 9fa9d915540782ce600ee6e4854dc3f2ccd15250, 2026-11-05.
 Paths: packages/RedlampEngine/Sources/FocusStack/{StackAlignment,StackAligner,
-StackDepth,Parallel,FusionPyramid}.swift and
+StackDepth,Parallel,FusionPyramid,FocusStacker+Merge}.swift and
 packages/RedlampKernels/Sources/Shaders/FocusStack.metal.
 Callers/tests reviewed: FocusStacker+Merge.swift and packages/RedlampEngine/Tests/{FocusStackTests,
 FocusStackFusionTests}.swift.
 Adaptations: Rec.709 luminance in linear sRGB, standard SIMD arrays, serial
 background analysis, cancellation/finite guards, one-pixel sampler bounds and
-stable flat-region guided filtering. Fusion retains negative samples, HDR
+stable flat-region guided filtering. Focus analysis suppresses clipped-green
+neighbourhood responses before solving depth, using decoded linear-sRGB green,
+native clip levels and cancellation. Fusion retains negative samples, HDR
 headroom and separate coverage/clipping validity. These four modified files remain under
 MPL-2.0, with source at:
 https://github.com/rankangkang/phosdeck/tree/master/Sources/Imaging
-The general streaming float pyramid, clipping suppression, master format, catalog and
+The general streaming float pyramid, fusion coverage weighting, master format, catalog and
 native UI integration are separate native implementations. Redlamp's Metal
 backend, RAW decoder and .redlampstack format are not included.
 

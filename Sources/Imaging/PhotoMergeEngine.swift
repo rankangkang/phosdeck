@@ -120,7 +120,8 @@ actor PhotoMergeEngine {
         try catalog.validateMergeInputs(value.requests)
         let maxSource = value.frames.map { UInt64($0.fullWidth)*UInt64($0.fullHeight) }.max() ?? 0
         let canvas = UInt64(value.plan.size.0)*UInt64(value.plan.size.1)
-        guard maxSource*64+canvas*160 <= ProcessInfo.processInfo.physicalMemory/3 else {
+        let consensusBytes = value.options.kind.isPanorama ? MergePyramid.consensusBytesPerPixel : 0
+        guard maxSource*64+canvas*UInt64(160+consensusBytes) <= ProcessInfo.processInfo.physicalMemory/3 else {
             throw LRCError(L10n.text("merge.memoryBudget", defaultValue:"The full-size merge exceeds the memory budget. Choose a smaller source size"))
         }
         try SafeFileWriter.requireCapacity(in:directory,bytes:Int64(canvas)*16+1_048_576)

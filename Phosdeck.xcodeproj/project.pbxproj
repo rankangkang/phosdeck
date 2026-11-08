@@ -23,6 +23,7 @@
 		732C3BD9732104B9046B3EFF /* PhotoMergeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D8435B9B607696D321D0B1 /* PhotoMergeEngine.swift */; };
 		551CFD04000E31F776B26934 /* PhotoMergeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70D5331A274CD8ED36FA5AC9 /* PhotoMergeSheet.swift */; };
 		F5A10126BCAE8BCAAAF3BEA1 /* PhotoMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AFE0CC31D16CD293AB1C6B /* PhotoMergeTests.swift */; };
+		7F18F92F0412296E592EAD7C /* FocusStackRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDAED02877AD1B941ED415CF /* FocusStackRegressionTests.swift */; };
 		D60700010000000000000003 /* AutomaticAdjustmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60700020000000000000003 /* AutomaticAdjustmentTests.swift */; };
 		D60700010000000000000002 /* AutomaticAdjustmentEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60700020000000000000002 /* AutomaticAdjustmentEditing.swift */; };
 		D60700010000000000000001 /* AutomaticAdjustments.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60700020000000000000001 /* AutomaticAdjustments.swift */; };
@@ -244,6 +245,7 @@
 		C8D8435B9B607696D321D0B1 /* PhotoMergeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMergeEngine.swift; sourceTree = "<group>"; };
 		70D5331A274CD8ED36FA5AC9 /* PhotoMergeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMergeSheet.swift; sourceTree = "<group>"; };
 		A1AFE0CC31D16CD293AB1C6B /* PhotoMergeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMergeTests.swift; sourceTree = "<group>"; };
+		BDAED02877AD1B941ED415CF /* FocusStackRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusStackRegressionTests.swift; sourceTree = "<group>"; };
 		D60700020000000000000003 /* AutomaticAdjustmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticAdjustmentTests.swift; sourceTree = "<group>"; };
 		D60700020000000000000002 /* AutomaticAdjustmentEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticAdjustmentEditing.swift; sourceTree = "<group>"; };
 		D60700020000000000000001 /* AutomaticAdjustments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticAdjustments.swift; sourceTree = "<group>"; };
@@ -537,6 +539,7 @@
 			isa = PBXGroup;
 			children = (
 				A1AFE0CC31D16CD293AB1C6B /* PhotoMergeTests.swift */,
+				BDAED02877AD1B941ED415CF /* FocusStackRegressionTests.swift */,
 				14EC3A28953F72C09F416976 /* CameraDiagnosticsTests.swift */,
 				B9A715E6F6E099A51F9F2FE8 /* UprightTests.swift */,
 				B4FE28784DA7DEE0BA3D66BA /* LocalizationTests.swift */,
@@ -903,6 +906,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F5A10126BCAE8BCAAAF3BEA1 /* PhotoMergeTests.swift in Sources */,
+				7F18F92F0412296E592EAD7C /* FocusStackRegressionTests.swift in Sources */,
 				A6A6287BB2B6932AFDE35052 /* CameraDiagnosticsTests.swift in Sources */,
 				7210A8A29658FD0074AAEBCB /* UprightTests.swift in Sources */,
 				FA9542299C4A4DCDDFCDEA21 /* LocalizationTests.swift in Sources */,

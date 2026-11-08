@@ -100,7 +100,7 @@ targets:
     platform: macOS
     sources:
       # Includes ManualDefringeTests.swift, AutomaticAdjustmentTests.swift, FolderReviewTests.swift, DirectAdjustmentTests.swift and TargetedAdjustmentTests.swift.
-      # Includes PhotoMergeTests.swift for merge algorithms, float masters and safe publication.
+      # Includes PhotoMergeTests.swift and FocusStackRegressionTests.swift for merge algorithms, float masters, safe publication and clipped focus selection.
       - path: Tests
         excludes: [test_calibration_paths.py]
     dependencies:

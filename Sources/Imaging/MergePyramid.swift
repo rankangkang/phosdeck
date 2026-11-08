@@ -7,8 +7,17 @@ import simd
 final class MergePyramid {
     private var sums: [MergeImage] = []
     private var weights: [MergePlane] = []
+    // Native reconstruction guard: a Laplacian blend is not a convex RGB
+    // combination. At a clipped highlight it can reverse a channel relation
+    // shared by every overlapping capture and introduce a new colour fringe.
+    // Keep only that local consensus, using two bytes per full-size pixel.
+    private var sourceCounts: [UInt8]
+    private var channelOrders: [UInt8]
+    static let consensusBytesPerPixel = 2
     let levels: Int
     init(width: Int,height: Int,levels requested: Int = 5) {
+        sourceCounts = .init(repeating:0,count:width*height)
+        channelOrders = .init(repeating:0x3f,count:width*height)
         var w = width, h = height, level = 0
         repeat {
             sums.append(MergeImage(width:w,height:h)); weights.append(MergePlane(width:w,height:h))
@@ -52,6 +61,12 @@ final class MergePyramid {
         return out
     }
     func add(_ image: MergeImage,mask: MergePlane) throws {
+        for i in image.pixels.indices {
+            if i.isMultiple(of:65536) { try Task.checkCancellation() }
+            guard image.pixels[i].w > 0,mask.values[i] > 1e-10 else { continue }
+            sourceCounts[i] = min(2,sourceCounts[i]+1)
+            channelOrders[i] &= Self.channelOrder(image.pixels[i])
+        }
         var g = try Self.extendColors(image), m = mask
         for level in 0...levels {
             try Task.checkCancellation()
@@ -117,9 +132,48 @@ final class MergePyramid {
         }
         var image = result!
         for i in image.pixels.indices {
+            if i.isMultiple(of:65536) { try Task.checkCancellation() }
+            if sourceCounts[i] >= 2 {
+                image.pixels[i] = Self.preservingChannelOrder(image.pixels[i],order:channelOrders[i])
+            }
             image.pixels[i].w = coverage[i]
             if coverage[i] == 0 { image.pixels[i] = .zero }
         }
         return image
+    }
+
+    /// Six directed channel comparisons. Intersecting them across captures
+    /// retains partial orders too, without favouring a particular scene hue.
+    static func channelOrder(_ p: SIMD4<Float>) -> UInt8 {
+        var order: UInt8 = 0
+        if p.x >= p.y { order |= 1 }; if p.y >= p.x { order |= 2 }
+        if p.x >= p.z { order |= 4 }; if p.z >= p.x { order |= 8 }
+        if p.y >= p.z { order |= 16 }; if p.z >= p.y { order |= 32 }
+        return order
+    }
+    /// Weighted least-squares projection onto the shared channel comparisons.
+    /// In three channels an active boundary pools either a pair or all three.
+    /// Every candidate preserves Rec.709 luminance, including negative values
+    /// and extended highlights; there is no clipping or tone mapping.
+    static func preservingChannelOrder(_ p: SIMD4<Float>,order: UInt8) -> SIMD4<Float> {
+        guard order != 0,channelOrder(p)&order != order else { return p }
+        let coefficients = SIMD3<Double>(0.2126,0.7152,0.0722)
+        let original = SIMD3<Double>(Double(p.x),Double(p.y),Double(p.z))
+        let mean = simd_dot(original,coefficients)/(coefficients.x+coefficients.y+coefficients.z)
+        var best = SIMD4<Float>(Float(mean),Float(mean),Float(mean),p.w)
+        func distance(_ value: SIMD4<Float>) -> Double {
+            let delta = SIMD3<Double>(Double(value.x),Double(value.y),Double(value.z))-original
+            return simd_dot(delta*delta,coefficients)
+        }
+        var error = distance(best)
+        for (a,b) in [(0,1),(0,2),(1,2)] {
+            var candidate = p
+            let pooled = Float((original[a]*coefficients[a]+original[b]*coefficients[b])/(coefficients[a]+coefficients[b]))
+            candidate[a] = pooled;candidate[b] = pooled
+            guard channelOrder(candidate)&order == order else { continue }
+            let cost = distance(candidate)
+            if cost < error { best = candidate;error = cost }
+        }
+        return best
     }
 }
