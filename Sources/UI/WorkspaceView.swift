@@ -90,7 +90,9 @@ struct WorkspaceView: View {
                         WorkspaceRegion { filmstripBar }
                         if !model.filtered.isEmpty {
                             WorkspaceResizeHandle(value: $filmHeight, range: Metrics.filmstrip.range, initial: Metrics.filmstrip.initial, horizontal: false, direction: -1, label: L10n.text("app.filmstripHeight", defaultValue: "Filmstrip Height"))
-                            PhotoGrid(model: model, film: true, filmHeight: filmHeight, mat: mat, ordering: model.collectionOrdering).frame(height: filmHeight).disabled(model.applyingAdjustments)
+                            PhotoDisplayFrame {
+                                PhotoGrid(model: model, film: true, filmHeight: filmHeight, mat: mat, ordering: model.collectionOrdering)
+                            }.frame(height: filmHeight).disabled(model.applyingAdjustments)
                         }
                     }
                     Seam(axis: .vertical)
@@ -668,7 +670,9 @@ struct WorkspaceView: View {
                     }
                 }
             }
-        } else { PhotoGrid(model: model, mat: mat, ordering: model.collectionOrdering) }
+        } else {
+            PhotoDisplayFrame { PhotoGrid(model: model, mat: mat, ordering: model.collectionOrdering) }
+        }
     }
     private var emptyLibraryState: some View {
         VStack(spacing: 14) {

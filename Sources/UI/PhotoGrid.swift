@@ -166,7 +166,7 @@ struct PhotoGrid: NSViewRepresentable {
         func filmItemSize(viewportHeight: CGFloat) -> NSSize {
             // A persistent horizontal scrollbar consumes space inside the thumbnail band.
             let available = viewportHeight > 0 ? Double(viewportHeight) : filmHeight
-            let height = max(1, min(filmHeight, available) - 9)
+            let height = max(1, min(filmHeight, available) - Double(2 * Metrics.filmCell.inset + 1))
             return NSSize(width: max(104, (filmHeight - 8) * 1.25), height: height)
         }
         func gridItemSize(viewportWidth: CGFloat) -> NSSize {

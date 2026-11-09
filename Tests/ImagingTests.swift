@@ -1331,12 +1331,27 @@ final class ImagingTests: XCTestCase {
         }
     }
 
+    @MainActor func testPhotoDisplayFrameKeepsViewportBackgroundVisible() throws {
+        let size = CGSize(width: 60, height: 40)
+        let host = NSHostingView(rootView: PhotoDisplayFrame { Color.clear }
+            .background(Color(red: 0.8, green: 0.1, blue: 0.1)).frame(width: size.width, height: size.height))
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let center = try XCTUnwrap(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.deviceRGB))
+        XCTAssertGreaterThan(center.redComponent, 0.6, "Transparent scrollbar areas must reveal the original viewport background")
+        XCTAssertLessThan(center.greenComponent, 0.3)
+    }
+
     @MainActor func testFilmstripCellsFitWhenSystemScrollbarsAreAlwaysVisible() async throws {
         let model = AppModel()
         model.photos = (0..<20).map { Photo(id: "film-\($0)", rootID: "test", relativePath: "\($0).jpg", identity: Data(), identityKey: "film-\($0)", width: 100, height: 80) }
         func find(_ view: NSView) -> NSScrollView? { (view as? NSScrollView) ?? view.subviews.compactMap(find).first }
         for height in [Metrics.filmstrip.range.lowerBound, Metrics.filmstrip.initial, Metrics.filmstrip.range.upperBound] {
-            let host = NSHostingView(rootView: PhotoGrid(model: model, film: true, filmHeight: height).frame(height: height))
+            let host = NSHostingView(rootView: PhotoDisplayFrame { PhotoGrid(model: model, film: true, filmHeight: height) }.frame(height: height))
             let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 500, height: height), styleMask: [.borderless], backing: .buffered, defer: false)
             window.contentView = host
             defer { window.contentView = nil }
@@ -1346,9 +1361,17 @@ final class ImagingTests: XCTestCase {
             let collection = try XCTUnwrap(scroll.documentView as? NSCollectionView)
             let delegate = try XCTUnwrap(collection.delegate as? NSCollectionViewDelegateFlowLayout)
             let layout = try XCTUnwrap(collection.collectionViewLayout as? NSCollectionViewFlowLayout)
+            let viewport = scroll.convert(scroll.bounds, to: host)
+            XCTAssertEqual(viewport.minX, 3, accuracy: 0.1)
+            XCTAssertEqual(viewport.width, 494, accuracy: 0.1)
+            XCTAssertEqual(viewport.height, height - 6, accuracy: 0.1)
+            XCTAssertEqual(viewport.minX + layout.sectionInset.left, 4, accuracy: 0.1,
+                           "The bezel replaces the original filmstrip inset")
             layout.invalidateLayout(); collection.layoutSubtreeIfNeeded()
             let size = try XCTUnwrap(delegate.collectionView?(collection, layout: layout, sizeForItemAt: IndexPath(item: 0, section: 0)))
             XCTAssertGreaterThan(size.height, 0)
+            XCTAssertEqual(size.height, scroll.contentSize.height + 6 - 9, accuracy: 0.1,
+                           "The bezel must not shrink filmstrip cells")
             XCTAssertLessThan(size.height + layout.sectionInset.top + layout.sectionInset.bottom, scroll.contentSize.height,
                               "胶片带 \(height) pt 必须容纳系统滚动条和上下边距")
             let item = try XCTUnwrap(collection.item(at: IndexPath(item: 0, section: 0)))
@@ -1440,7 +1463,7 @@ final class ImagingTests: XCTestCase {
     @MainActor func testPhotoGridReflowsIntoAlignedCellsWithoutHorizontalOverflow() async throws {
         let model = AppModel()
         model.photos = (0..<24).map { Photo(id: "cell-\($0)", rootID: "synthetic", relativePath: "\($0).jpg", identity: Data(), identityKey: "cell-\($0)", width: 80, height: 40) }
-        let host = NSHostingView(rootView: PhotoGrid(model: model))
+        let host = NSHostingView(rootView: PhotoDisplayFrame { PhotoGrid(model: model) })
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 640, height: 500), styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = host
         defer { window.contentView = nil }
@@ -1454,6 +1477,12 @@ final class ImagingTests: XCTestCase {
                 try await Task.sleep(for: .milliseconds(30)); host.layoutSubtreeIfNeeded()
                 layout.invalidateLayout(); collection.layoutSubtreeIfNeeded()
                 let frames = try (0..<12).map { try XCTUnwrap(collection.layoutAttributesForItem(at: IndexPath(item: $0, section: 0))).frame }
+                let viewport = scroll.convert(scroll.bounds, to: host)
+                let availableBeforeBezel = scroll.contentSize.width + 6 - 16
+                let columns = max(1, floor(availableBeforeBezel / model.thumbnailSize))
+                XCTAssertEqual(viewport.minX + frames[0].minX, 8, accuracy: 0.5)
+                XCTAssertEqual(frames[0].width, availableBeforeBezel / columns, accuracy: 0.5,
+                               "The bezel must preserve grid columns and cell width")
                 XCTAssertEqual(frames[0].height, frames[1].height)
                 if let neighbor = frames.first(where: { $0.minY == frames[0].minY && $0.minX > frames[0].minX }) {
                     XCTAssertEqual(frames[0].maxX, neighbor.minX, accuracy: 0.01, "No extra gutter may widen the shared seam")

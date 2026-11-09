@@ -367,6 +367,13 @@
       "rowHeight": 32,
       "selectionEnabledOverlayStatesIndependent": true
     },
+    "photoDisplayFrame": {
+      "width": 3,
+      "innerEdgeWidth": 1,
+      "outerCornerRadius": 4,
+      "areas": ["libraryGrid", "filmstrip"],
+      "policy": "Recessed screen edge occupies existing section inset; do not clip photos or scrollbars or intercept input"
+    },
     "thumbnail": {
       "selectedOutlineWidth": 2,
       "outlineMustStayOutsidePhoto": true,
@@ -374,7 +381,7 @@
       "sharedSeamWidthPt": 1,
       "positionLeadingZeroes": false,
       "grid": {
-        "sectionInset": 8,
+        "sectionInset": 5,
         "cellSpacing": 0,
         "imageInset": 12,
         "headerHeight": 24,
@@ -384,7 +391,7 @@
         "imageMetadataGap": 10
       },
       "filmstrip": {
-        "sectionInset": 4,
+        "sectionInset": 1,
         "cellSpacing": 0,
         "minimumCellWidth": 104,
         "imageInset": 8,
