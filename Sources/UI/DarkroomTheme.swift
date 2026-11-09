@@ -152,6 +152,7 @@ enum Metrics {
     static let filmstrip = (initial: 96.0, range: 54.0...134.0)
     static let thumbnailCell = (inset: CGFloat(8), imageInset: CGFloat(12), header: CGFloat(24), footer: CGFloat(28), imageGap: CGFloat(10), seamWidth: CGFloat(1))
     static let filmCell = (inset: CGFloat(4), imageInset: CGFloat(8), footer: CGFloat(18))
+    static let thumbnailStack = (handleHeight: CGFloat(32), markHeight: CGFloat(18), countHeight: CGFloat(18), minWidth: CGFloat(18), maxWidth: CGFloat(52))
     static let leftPanel = (initial: 232.0, range: 200.0...280.0)
     static let rightPanel = (initial: 336.0, range: 304.0...400.0)
     static let photoMinWidth: CGFloat = 480

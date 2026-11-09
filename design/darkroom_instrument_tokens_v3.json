@@ -378,7 +378,9 @@
         "cellSpacing": 0,
         "imageInset": 12,
         "headerHeight": 24,
+        "headerContent": ["filenameStem", "fileType"],
         "metadataHeight": 28,
+        "metadataContent": ["stackCount", "organization", "listPosition"],
         "imageMetadataGap": 10
       },
       "filmstrip": {
@@ -389,6 +391,25 @@
         "imageTopInset": 4,
         "metadataHeight": 18,
         "imageMetadataGap": 2
+      },
+      "stackControls": {
+        "handleHeight": 32,
+        "handleHeightLimitedByImageWell": true,
+        "markHeight": 18,
+        "markWidth": 1,
+        "countHeight": 18,
+        "minimumCountWidth": 18,
+        "maximumCountWidth": 52,
+        "countFontSize": 10,
+        "countPolicy": "one compact count on the first visible page member; matching/total only when incomplete",
+        "edgePolicy": "leading edge on first page member, trailing edge on last page member; click toggles once, including double click",
+        "placement": "handles inside existing image margins, count in metadata footer; never overlay photo pixels"
+      },
+      "fileType": {
+        "fontSize": 9,
+        "fontWeight": "semibold",
+        "height": 14,
+        "fillOpacity": 0.06
       },
       "neutralMatMarks": {
         "idleCellOpacity": 0.025,

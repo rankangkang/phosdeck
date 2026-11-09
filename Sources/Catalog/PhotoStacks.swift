@@ -15,7 +15,7 @@ struct StackBadge: Equatable {
     var count: Int
     var matching: Int
     var collapsed: Bool
-    var text: String { "\(collapsed ? "▸" : "▾") \(matching)/\(count)" }
+    var text: String { matching == count ? String(count) : "\(matching)/\(count)" }
     var scopeNotice: String? {
         guard matching < count else { return nil }
         return L10n.text("app.stackMembersHiddenByScope", defaultValue: "Hidden by the current source or filters: \(count - matching)")

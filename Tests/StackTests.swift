@@ -198,23 +198,23 @@ final class StackTests: XCTestCase {
         model.showLastImport()
         model.choose(["0001"], active: "0001")
         let query = model.query
-        XCTAssertEqual(model.stackBadges["0001"]?.text, "▸ 1/3")
+        XCTAssertEqual(model.stackBadges["0001"]?.text, "1/3")
         let message = try XCTUnwrap(model.stackBadges["0001"]?.scopeNotice)
         model.toggleStack("0001")
         XCTAssertEqual(model.query, query)
         XCTAssertEqual(model.photos.map(\.id), ["0001"])
-        XCTAssertEqual(model.stackBadges["0001"]?.text, "▾ 1/3")
+        XCTAssertEqual(model.stackBadges["0001"]?.text, "1/3")
         XCTAssertTrue(model.status.hasPrefix(message))
         XCTAssertEqual(model.notice?.text, message)
         XCTAssertTrue(try XCTUnwrap(model.stackBadges["0001"]?.description).contains(message))
         XCTAssertFalse(try XCTUnwrap(catalog.stacks().first).collapsed)
         model.toggleActiveStack(); model.toggleActiveStack()
         XCTAssertEqual(model.query, query, "Keyboard expansion must keep the same source and filters")
-        XCTAssertEqual(model.stackBadges["0001"]?.text, "▾ 1/3")
+        XCTAssertEqual(model.stackBadges["0001"]?.text, "1/3")
         XCTAssertTrue(model.status.hasPrefix(message))
         model.setScope("all")
         XCTAssertNil(model.stackBadges["0001"]?.scopeNotice)
-        XCTAssertEqual(model.stackBadges["0001"]?.text, "▾ 3/3")
+        XCTAssertEqual(model.stackBadges["0001"]?.text, "3")
         XCTAssertEqual(model.photos.count, 8)
         model.choose([], active: nil); model.catalog = nil
     }
@@ -254,7 +254,10 @@ final class StackTests: XCTestCase {
                     return ids.prefix(3).allSatisfy { id in
                         guard let index = coordinator.photos.firstIndex(where: { $0.id == id }),
                               let item = grid.item(at: IndexPath(item: index, section: 0)) as? PhotoItem else { return false }
-                        return item.displayedImage != nil && grid.visibleItems().contains(item) && item.view.bounds.height > 0
+                        let buttons = item.view.subviews.compactMap { $0 as? NSButton }
+                        let visible = Set(buttons.filter { !$0.isHidden }.compactMap { $0.identifier?.rawValue })
+                        let expected: Set<String> = id == ids[0] ? ["stack-count", "stack-leading"] : id == ids[2] ? ["stack-trailing"] : []
+                        return item.displayedImage != nil && grid.visibleItems().contains(item) && item.view.bounds.height > 0 && visible == expected
                     }
                 }
             }
@@ -272,6 +275,41 @@ final class StackTests: XCTestCase {
         let until = Date().addingTimeInterval(seconds)
         while Date() < until { try await Task.sleep(for:.milliseconds(200)) }
         m.showAutoStacks = false
+    }
+
+    @MainActor func testCompactStackControlsFollowPageEdgesAndReusedPhotoIdentity() throws {
+        let model = AppModel()
+        model.photos = (0..<4).map { Photo(id: "\($0)", rootID: "r", relativePath: "\($0).jpg", identity: Data(), identityKey: "\($0)", width: 80, height: 40) }
+        for index in 0..<3 { model.stackBadges["\(index)"] = StackBadge(stackID: "s", position: index, count: 3, matching: 3, collapsed: false) }
+        let coordinator = PhotoGrid.Coordinator(model: model, film: false, ordering: nil)
+        coordinator.photos = model.photos
+        let item = PhotoItem(), service = ThumbnailService()
+        var toggled: [String] = []
+        for index in 0..<4 {
+            let photo = model.photos[index], edges = coordinator.stackEdges(at: index)
+            item.configure(photo: photo, root: nil, service: service, film: false, badge: model.stackBadges[photo.id],
+                           stackStart: edges.first, stackEnd: edges.last, toggleStack: { [id = photo.id] in toggled.append(id) })
+            let buttons = item.view.subviews.compactMap { $0 as? NSButton }.filter { !$0.isHidden }
+            let expected: Set<String> = index == 0 ? ["stack-count", "stack-leading"] : index == 2 ? ["stack-trailing"] : []
+            XCTAssertEqual(Set(buttons.compactMap { $0.identifier?.rawValue }), expected)
+            for button in buttons {
+                button.performClick(nil)
+                XCTAssertEqual(toggled.last, photo.id, "A reused edge must act on its current photo")
+                let count = toggled.count
+                let double = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+                    windowNumber: 0, context: nil, eventNumber: 0, clickCount: 2, pressure: 1))
+                button.mouseDown(with: double)
+                XCTAssertEqual(toggled.count, count, "The second click must not reverse the toggle")
+            }
+        }
+        coordinator.photos = Array(model.photos[1...2])
+        XCTAssertTrue(coordinator.stackEdges(at: 0).first, "A stack continued on this page still has an entry")
+        XCTAssertFalse(coordinator.stackEdges(at: 0).last)
+        XCTAssertFalse(coordinator.stackEdges(at: 1).first)
+        XCTAssertTrue(coordinator.stackEdges(at: 1).last)
+        XCTAssertFalse(coordinator.stackEdges(at: -1).first)
+        XCTAssertEqual(model.stackBadges["0"]?.text, "3", "A complete stack needs only one number")
+        item.prepareForReuse()
     }
     func testThousandsOfRecordsCountingPagingNoRecipeDecodes() throws {
         let (c,dir) = try fixture(5000); defer { try? FileManager.default.removeItem(at:dir) }

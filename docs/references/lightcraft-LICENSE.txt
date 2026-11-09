@@ -1,5 +1,14 @@
 Lightcraft is licensed under MIT or Apache-2.0. This project uses the MIT option.
 
+The filename-stem / separate-type header in Sources/UI/PhotoGrid.swift takes
+layout inspiration from crates/ui-egui/src/panels/grid.rs::paint_cell_caption
+at d73c849ed11c5672cb89a999dd4bd57b6345eb6c (2026-11-08), checked 2026-11-09.
+Related callers/tests reviewed: grid.rs::paint_cell, docking.rs, grid/header_tests.rs
+and grid.rs::tests::the_badge_band_stays_on_the_photo. The native AppKit layout,
+page-boundary stack handles, compact counts and event handling are original work.
+No egui painting, image-overlay badge band, rejection dimming or per-member stack
+badge is copied. Photo pixels and viewing-mat semantics retain the native rules.
+
 Native multiframe registration and fusion in Sources/Imaging/MergeRegistration.swift,
 MergeFusion.swift, MergePanorama.swift, MergeCameraRefinement.swift and
 MergePyramid.swift adapt the Harris/MOPS

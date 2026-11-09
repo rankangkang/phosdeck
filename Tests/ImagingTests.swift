@@ -1333,7 +1333,8 @@ final class ImagingTests: XCTestCase {
                         item.view.layoutSubtreeIfNeeded()
                         try await waitUntil { item.displayedImage != nil }
                         let image = try XCTUnwrap(item.view.subviews.compactMap { $0 as? NSImageView }.first)
-                        let button = try XCTUnwrap(item.view.subviews.compactMap { $0 as? NSButton }.first)
+                        let buttons = item.view.subviews.compactMap { $0 as? NSButton }
+                        let button = try XCTUnwrap(buttons.first { $0.identifier?.rawValue == "stack-count" })
                         let labels = item.view.subviews.compactMap { $0 as? NSTextField }.filter { !$0.isHidden }
                         XCTAssertGreaterThan(image.bounds.height, 0)
                         XCTAssertEqual(image.imageScaling, .scaleProportionallyUpOrDown)
@@ -1342,18 +1343,23 @@ final class ImagingTests: XCTestCase {
                             XCTAssertFalse(image.frame.intersects(label.frame), "Metadata must not cover photos")
                         }
                         if stacked {
-                            XCTAssertTrue(item.view.bounds.contains(button.frame))
-                            XCTAssertFalse(image.frame.intersects(button.frame), "Stack control must stay outside the photo")
-                            XCTAssertTrue(labels.allSatisfy { !$0.frame.intersects(button.frame) })
+                            for control in buttons.filter({ !$0.isHidden }) {
+                                XCTAssertTrue(item.view.bounds.contains(control.frame))
+                                XCTAssertFalse(image.frame.intersects(control.frame), "Stack control must stay outside the photo")
+                                XCTAssertTrue(labels.allSatisfy { !$0.frame.intersects(control.frame) })
+                            }
+                            XCTAssertLessThanOrEqual(button.frame.width, 52)
                             button.performClick(nil)
                         } else { XCTAssertTrue(button.isHidden) }
                         XCTAssertTrue(labels.contains { $0.toolTip?.contains(photo.displayName) == true })
                         XCTAssertTrue(labels.contains { $0.toolTip?.contains("★ 5") == true })
-                        XCTAssertFalse(labels.contains { $0.stringValue == "JPEG" }, "The filename already includes its extension")
                         if !film {
-                            let caption = try XCTUnwrap(labels.first { $0.stringValue == photo.displayName })
-                            let status = try XCTUnwrap(labels.first { $0.stringValue.contains("★ 5") })
-                            XCTAssertEqual(caption.frame.midY, status.frame.midY, accuracy: 0.01, "Filename and organization use one line")
+                            let caption = try XCTUnwrap(labels.first { $0.identifier?.rawValue == "photo-name" })
+                            let type = try XCTUnwrap(labels.first { $0.identifier?.rawValue == "photo-type" })
+                            XCTAssertEqual(caption.stringValue, "fixture-\(orientation) · A long virtual copy name")
+                            XCTAssertEqual(type.stringValue, "JPEG")
+                            XCTAssertEqual(caption.frame.midY, type.frame.midY, accuracy: 0.01)
+                            XCTAssertLessThanOrEqual(caption.frame.maxX, type.frame.minX)
                             XCTAssertTrue(labels.contains { $0.stringValue == "12" }, "Positions must not have leading zeroes")
                         }
                         XCTAssertEqual(item.displayedImage?.size.width, orientation == 1 ? 80 : 40)
@@ -1362,6 +1368,27 @@ final class ImagingTests: XCTestCase {
             }
         }
         XCTAssertEqual(toggles, 24, "A reused cell must retain its current stack action")
+    }
+
+    @MainActor func testPhotoCellSplitsOnlyTheSourceExtensionAndKeepsCopyNames() throws {
+        let service = ThumbnailService(), item = PhotoItem()
+        let cases = [
+            ("folder.with.dots/LC01298.JPG", "LC01298", "JPEG"),
+            ("scene.final.v2.tif", "scene.final.v2", "TIFF"),
+            ("多点.旅行.北京.ARW", "多点.旅行.北京", "RAW"),
+            ("preview.PNG", "preview", "PNG"),
+            ("no-extension", "no-extension", "")
+        ]
+        for (path, name, type) in cases {
+            var photo = Photo(id: path, rootID: "test", relativePath: path, identity: Data(), identityKey: path, width: 80, height: 40)
+            photo.copyName = "crop.v2"
+            item.configure(photo: photo, root: nil, service: service, film: false)
+            let labels = item.view.subviews.compactMap { $0 as? NSTextField }
+            XCTAssertEqual(labels.first { $0.identifier?.rawValue == "photo-name" }?.stringValue, name + " · crop.v2")
+            XCTAssertEqual(labels.first { $0.identifier?.rawValue == "photo-type" }?.stringValue, type)
+            XCTAssertTrue(labels.contains { $0.toolTip?.contains(photo.displayName) == true })
+        }
+        item.prepareForReuse()
     }
 
     @MainActor func testPhotoGridReflowsIntoAlignedCellsWithoutHorizontalOverflow() async throws {
