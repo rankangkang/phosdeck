@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3B9583FE6690D98E09610ED7 /* PhotoMergeFinishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23A27CF5EB589AA8EB8709DF /* PhotoMergeFinishTests.swift */; };
+		E8A935B0C4E80423AB121426 /* MergeDNGCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40A9327F5F6BD9D8E970E9C /* MergeDNGCodec.swift */; };
+		23F26854A40E57D32B433CE5 /* MergePanoramaFinish.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEF0360B45A636E778D2C948 /* MergePanoramaFinish.swift */; };
 		7853D22BD78931FEA6691CF5 /* PhotoMerging.swift in Sources */ = {isa = PBXBuildFile; fileRef = C92A0D2DBD79D5F8A1D1524E /* PhotoMerging.swift */; };
 		4CEFE7CAB72708F07D41744E /* MergedPhotos.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A783FB7DCFD2C6230655C0 /* MergedPhotos.swift */; };
 		04B155382A483AE7086637B8 /* FocusStackAlignment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 752F5BA81E5C1F88CF14038F /* FocusStackAlignment.swift */; };
@@ -229,6 +232,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		23A27CF5EB589AA8EB8709DF /* PhotoMergeFinishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMergeFinishTests.swift; sourceTree = "<group>"; };
+		B40A9327F5F6BD9D8E970E9C /* MergeDNGCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeDNGCodec.swift; sourceTree = "<group>"; };
+		EEF0360B45A636E778D2C948 /* MergePanoramaFinish.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergePanoramaFinish.swift; sourceTree = "<group>"; };
 		C92A0D2DBD79D5F8A1D1524E /* PhotoMerging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMerging.swift; sourceTree = "<group>"; };
 		14A783FB7DCFD2C6230655C0 /* MergedPhotos.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergedPhotos.swift; sourceTree = "<group>"; };
 		752F5BA81E5C1F88CF14038F /* FocusStackAlignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusStackAlignment.swift; sourceTree = "<group>"; };
@@ -539,6 +545,7 @@
 			isa = PBXGroup;
 			children = (
 				A1AFE0CC31D16CD293AB1C6B /* PhotoMergeTests.swift */,
+				23A27CF5EB589AA8EB8709DF /* PhotoMergeFinishTests.swift */,
 				BDAED02877AD1B941ED415CF /* FocusStackRegressionTests.swift */,
 				14EC3A28953F72C09F416976 /* CameraDiagnosticsTests.swift */,
 				B9A715E6F6E099A51F9F2FE8 /* UprightTests.swift */,
@@ -672,6 +679,8 @@
 				00CBEB07378E00E9DD291DEF /* FocusStackDepth.swift */,
 				BC1BB5ABA7B92005E3FDE28E /* MergeFusion.swift */,
 				75BFD8D7316B96185ADB2770 /* MergeMasterCodec.swift */,
+				B40A9327F5F6BD9D8E970E9C /* MergeDNGCodec.swift */,
+				EEF0360B45A636E778D2C948 /* MergePanoramaFinish.swift */,
 				B67D606E48B699F0228C61CB /* MergePanorama.swift */,
 				71E5D464F10D3CDC86C83166 /* MergePyramid.swift */,
 				23E6CD725F1A4F9E01932DA0 /* MergeCameraRefinement.swift */,
@@ -906,6 +915,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F5A10126BCAE8BCAAAF3BEA1 /* PhotoMergeTests.swift in Sources */,
+				3B9583FE6690D98E09610ED7 /* PhotoMergeFinishTests.swift in Sources */,
 				7F18F92F0412296E592EAD7C /* FocusStackRegressionTests.swift in Sources */,
 				A6A6287BB2B6932AFDE35052 /* CameraDiagnosticsTests.swift in Sources */,
 				7210A8A29658FD0074AAEBCB /* UprightTests.swift in Sources */,
@@ -984,6 +994,8 @@
 				C9EF6B4866E8FC05F0E28A9C /* FocusStackDepth.swift in Sources */,
 				9C6096AD3D2ACE1208F2BF3D /* MergeFusion.swift in Sources */,
 				D3A94D65BD7EF3663299D935 /* MergeMasterCodec.swift in Sources */,
+				E8A935B0C4E80423AB121426 /* MergeDNGCodec.swift in Sources */,
+				23F26854A40E57D32B433CE5 /* MergePanoramaFinish.swift in Sources */,
 				1E9CA434D5306AF6F9DE1E7F /* MergePanorama.swift in Sources */,
 				84BCAA51D4EAA11E4B4AADC2 /* MergePyramid.swift in Sources */,
 				C2A7A748760AF37F38AB31A9 /* MergeCameraRefinement.swift in Sources */,

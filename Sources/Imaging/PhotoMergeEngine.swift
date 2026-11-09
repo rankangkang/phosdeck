@@ -110,7 +110,7 @@ actor PhotoMergeEngine {
         guard let value = prepared,value.id == id else { throw stale }
         guard filename == URL(fileURLWithPath:filename).lastPathComponent,!filename.hasPrefix("."),
               !filename.contains(":"),filename.rangeOfCharacter(from:.controlCharacters) == nil,
-              ["tif","tiff"].contains(URL(fileURLWithPath:filename).pathExtension.lowercased()),filename.utf8.count <= 240 else { throw LRCError(L10n.text("merge.invalidFilename", defaultValue:"Enter a TIFF filename without folder separators")) }
+              (value.options.masterFormat == .tiff ? ["tif","tiff"] : ["dng"]).contains(URL(fileURLWithPath:filename).pathExtension.lowercased()),filename.utf8.count <= 240 else { throw LRCError(L10n.text("merge.invalidFilename", defaultValue:"Enter a filename matching the master format, without folder separators")) }
         let lease = try AccessLease(bookmark:directoryBookmark)
         defer { withExtendedLifetime(lease) {} }
         let directory = lease.url.resolvingSymlinksInPath().standardizedFileURL

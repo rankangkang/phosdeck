@@ -39,7 +39,11 @@ struct Photo: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatab
     var metadata: Data?
     var details: PhotoMetadata? { metadata.flatMap { try? JSONDecoder().decode(PhotoMetadata.self, from: $0) } }
     var name: String { URL(fileURLWithPath: relativePath).lastPathComponent }
-    var isRAW: Bool { PhotoFileType.isRAW(URL(fileURLWithPath: relativePath)) }
+    var isRAW: Bool {
+        let url = URL(fileURLWithPath:relativePath)
+        guard PhotoFileType.isRAW(url) else { return false }
+        return url.pathExtension.lowercased() != "dng" || details?.composite == nil
+    }
     var supportsEditing: Bool { PhotoFileType.editableExtensions.contains(URL(fileURLWithPath: relativePath).pathExtension.lowercased()) }
 }
 struct PhotoCollection: Codable, FetchableRecord, PersistableRecord, Identifiable, Hashable {

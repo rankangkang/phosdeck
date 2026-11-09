@@ -45657,13 +45657,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Uses uncropped originals and the first photo's white balance. Exposure, creative edits, local masks and rotation are not baked in. The result is a separate 32-bit float linear-sRGB TIFF, editable in Develop."
+            "value": "Uses uncropped originals and the first photo's white balance. Exposure, creative edits, local masks and rotation are not baked in. The result is a separate 32-bit float linear-sRGB TIFF or DNG, editable in Develop."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "使用未裁剪原片及第一张的白平衡，不烘焙曝光、创意调整、局部蒙版或旋转。结果为独立的 32 位浮点线性 sRGB TIFF，可继续在“编辑”中显影。"
+            "value": "使用未裁剪原片及第一张的白平衡，不烘焙曝光、创意调整、局部蒙版或旋转。结果为独立的 32 位浮点线性 sRGB TIFF 或 DNG，可继续在“编辑”中显影。"
           }
         }
       }
@@ -46405,13 +46405,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enter a TIFF filename without folder separators"
+            "value": "Enter a filename matching the master format, without folder separators"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "请输入不含路径分隔符的 TIFF 文件名"
+            "value": "请输入与母版格式一致的文件名，不能包含文件夹分隔符"
           }
         }
       }
@@ -46837,6 +46837,108 @@
           "stringUnit": {
             "state": "translated",
             "value": "自动对齐曝光组"
+          }
+        }
+      }
+    },
+    "merge.autoLevel": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto Level"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动调平"
+          }
+        }
+      }
+    },
+    "merge.boundaryWarp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Boundary Warp"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "边界变形"
+          }
+        }
+      }
+    },
+    "merge.fillEdges": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fill Edges"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "填充边缘"
+          }
+        }
+      }
+    },
+    "merge.finishHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Level estimates camera orientation. Warp stretches the boundary; fill diffuses nearby colours into gaps and may soften large empty areas."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按相机姿态估计水平。边界变形拉伸边缘；填充边缘使用周围颜色扩散，大块空白可能模糊。"
+          }
+        }
+      }
+    },
+    "merge.masterFormat": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Master Format"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "母版格式"
+          }
+        }
+      }
+    },
+    "merge.dngHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Float DNG masters reopen in Phosdeck. Some system image viewers cannot open this format; choose TIFF for those viewers."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浮点 DNG 母版可在 Phosdeck 中重新打开。部分系统看图工具无法打开此格式；需要在这些工具中查看时请选择 TIFF。"
           }
         }
       }

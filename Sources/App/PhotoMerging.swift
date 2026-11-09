@@ -32,7 +32,7 @@ import CoreGraphics
                 try Task.checkCancellation()
                 self.inputs = inputs
                 let base = inputs.first.map { URL(fileURLWithPath:$0.photo.name).deletingPathExtension().lastPathComponent } ?? "Merged"
-                filename = base+"-"+kind.suffix+".tif"
+                filename = base+"-"+kind.suffix+"."+options.masterFormat.fileExtension
             } catch is CancellationError { }
             catch { self.error = error.localizedDescription }
             working = false; job = nil
@@ -45,6 +45,10 @@ import CoreGraphics
     func applyModeDefaults() {
         options.align = options.kind.defaultAlignment; options.autoCrop = options.kind.isPanorama
         invalidate()
+    }
+    func updateFilenameExtension() {
+        guard !filename.isEmpty else { return }
+        filename = URL(fileURLWithPath:filename).deletingPathExtension().lastPathComponent+"."+options.masterFormat.fileExtension
     }
     func move(_ index: Int,by offset: Int) {
         guard !working,inputs.indices.contains(index),inputs.indices.contains(index+offset) else { return }

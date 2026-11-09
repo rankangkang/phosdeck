@@ -1,7 +1,7 @@
 // Adapted from LightCraft b3b49987d4b2c99f582b80ae91b2ec42ab24d14e
 // (2026-11-08), crates/merge/src/pano/camera.rs and linalg.rs, MIT option.
 // Native SIMD, analysis-pixel centres, bounded focal lengths and cancellation.
-// Keep the reference's orientation; no automatic horizon straightening.
+// Optional levelling follows LightCraft 2f4d095 (2026-11-09), pano/camera.rs::straighten.
 import Foundation
 import simd
 
@@ -29,7 +29,7 @@ enum MergeCameraRefinement {
     struct Observation { let i: Int;let j: Int;let match: MergeRegistration.Match }
     struct Result { let cameras: [MergeMatrix];let focal: Double;let rms: Double }
 
-    static func refine(_ frames: [MergeFrame],homographies: [MergeMatrix],edges: [MergePanoramaPlan.Edge],reference: Int,focal: Double) throws -> Result? {
+    static func refine(_ frames: [MergeFrame],homographies: [MergeMatrix],edges: [MergePanoramaPlan.Edge],reference: Int,focal: Double,autoLevel: Bool = false) throws -> Result? {
         // A translated scan/crop is planar rather than a rotating camera. Its
         // exact affine registration must not acquire artificial curvature.
         guard edges.contains(where:{ abs($0.fit.transform.m[0,2])+abs($0.fit.transform.m[1,2]) > 1e-6 }) else { return nil }
@@ -119,7 +119,45 @@ enum MergeCameraRefinement {
         }
         let rms = cost(current).1
         guard rms.isFinite,rms < 5 else { return nil }
+        if autoLevel { current = leveled(current) }
         return Result(cameras:current.map { MergeMatrix(m:$0.matrix) },focal:current[reference].f,rms:rms)
+    }
+
+    /// Common down is perpendicular to the camera x axes; mean forward fixes the heading.
+    static func leveled(_ cameras: [Camera]) -> [Camera] {
+        guard !cameras.isEmpty else { return cameras }
+        var covariance = simd_double3x3(),sumX = SIMD3<Double>.zero,sumY = sumX,sumZ = sumX
+        for camera in cameras {
+            let axes = camera.r.transpose,x = axes[0]
+            covariance += simd_double3x3(columns:(x*x.x,x*x.y,x*x.z))
+            sumX += x;sumY += axes[1];sumZ += axes[2]
+        }
+        // Jacobi on the symmetric 3×3 covariance; columns retain its eigenvectors.
+        var vectors = matrix_identity_double3x3
+        for _ in 0..<32 {
+            let (p,q) = [(0,1),(0,2),(1,2)].max { abs(covariance[$0.0,$0.1]) < abs(covariance[$1.0,$1.1]) }!
+            if abs(covariance[p,q]) < 1e-12 { break }
+            let angle = 0.5*atan2(2*covariance[q,p],covariance[q,q]-covariance[p,p])
+            var turn = matrix_identity_double3x3
+            turn[p,p] = cos(angle);turn[q,q] = cos(angle);turn[q,p] = sin(angle);turn[p,q] = -sin(angle)
+            covariance = turn.transpose*covariance*turn;vectors = vectors*turn
+        }
+        let order = (0..<3).sorted { covariance[$0,$0] < covariance[$1,$1] }
+        var down = vectors[order[0]]
+        let total = max(1e-12,(0..<3).reduce(0) { $0+covariance[$1,$1] })
+        if covariance[order[1],order[1]] < 1e-3*total {
+            guard simd_length(sumX) > 1e-9 else { return cameras }
+            let x = simd_normalize(sumX)
+            down = sumY-x*simd_dot(sumY,x)
+        }
+        guard simd_length(down) > 1e-9 else { return cameras }
+        down = simd_normalize(down)
+        if simd_dot(down,sumY) < 0 { down = -down }
+        let projected = sumZ-down*simd_dot(sumZ,down)
+        guard simd_length(projected) > 1e-9 else { return cameras }
+        let forward = simd_normalize(projected),right = simd_normalize(simd_cross(down,forward))
+        let world = simd_double3x3(columns:(right,down,forward))
+        return cameras.map { camera in var result = camera;result.r = camera.r*world;return result }
     }
     private static func rotation(_ w: SIMD3<Double>) -> simd_double3x3 {
         let angle = simd_length(w)

@@ -26,7 +26,7 @@ struct PhotoMergeSheet: View {
                 Spacer()
                 Text(L10n.text("merge.sourceCount", defaultValue:"\(session.inputs.count) originals")).font(.value).foregroundStyle(Theme.textSecondary)
             }
-            Text(L10n.text("merge.originalsHint", defaultValue:"Uses uncropped originals and the first photo's white balance. Exposure, creative edits, local masks and rotation are not baked in. The result is a separate 32-bit float linear-sRGB TIFF, editable in Develop.")).font(.caption11).foregroundStyle(Theme.textSecondary)
+            Text(L10n.text("merge.originalsHint", defaultValue:"Uses uncropped originals and the first photo's white balance. Exposure, creative edits, local masks and rotation are not baked in. The result is a separate 32-bit float linear-sRGB TIFF or DNG, editable in Develop.")).font(.caption11).foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal:false,vertical:true)
             HStack(alignment:.top,spacing:16) {
                 controls.frame(width:300)
@@ -87,10 +87,12 @@ struct PhotoMergeSheet: View {
             .interactiveDismissDisabled(session.working)
             .onChange(of:session.options) { session.invalidate() }
             .onChange(of:session.options.kind) { session.applyModeDefaults() }
+            .onChange(of:session.options.masterFormat) { session.updateFilenameExtension() }
             .onChange(of:session.previewEV) { session.updateDisplay() }
             .onDisappear { session.cancel() }
     }
     private var controls: some View {
+        ScrollView {
         VStack(alignment:.leading,spacing:12) {
             Picker(L10n.text("merge.mode", defaultValue:"Mode"),selection:$session.options.kind) {
                 ForEach(PhotoMergeKind.allCases) { Text($0.title).tag($0) }
@@ -99,6 +101,12 @@ struct PhotoMergeSheet: View {
                 Picker(L10n.text("merge.projection", defaultValue:"Projection"),selection:$session.options.projection) {
                     ForEach(MergeProjection.allCases) { Text($0.title).tag($0) }
                 }.accessibilityIdentifier("merge-projection")
+                Toggle(L10n.text("merge.autoLevel", defaultValue:"Auto Level"),isOn:$session.options.autoLevel).toggleStyle(.instrument).accessibilityIdentifier("merge-auto-level")
+                AdjustmentRow(label:L10n.text("merge.boundaryWarp", defaultValue:"Boundary Warp"),value:session.options.boundaryWarp,range:0...100,step:1,digits:0,unit:"%",
+                    change:{ value,_ in session.options.boundaryWarp = value },commit:{})
+                    .accessibilityIdentifier("merge-boundary-warp")
+                Toggle(L10n.text("merge.fillEdges", defaultValue:"Fill Edges"),isOn:$session.options.fillEdges).toggleStyle(.instrument).accessibilityIdentifier("merge-fill-edges")
+                Text(L10n.text("merge.finishHint", defaultValue:"Level estimates camera orientation. Warp stretches the boundary; fill diffuses nearby colours into gaps and may soften large empty areas.")).font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
             }
             if session.options.kind != .panorama {
                 Toggle(session.options.kind == .hdrPanorama ? L10n.text("merge.alignBrackets", defaultValue:"Auto Align Brackets") : L10n.text("merge.align", defaultValue:"Auto Align"),isOn:$session.options.align).toggleStyle(.instrument).accessibilityIdentifier("merge-align")
@@ -122,10 +130,15 @@ struct PhotoMergeSheet: View {
                 Text(L10n.text("merge.originalSize", defaultValue:"Original")).tag(0)
                 ForEach([6000,4000,2000],id:\.self) { Text(L10n.text("merge.pixelSize", defaultValue:"\($0) px")).tag($0) }
             }.accessibilityIdentifier("merge-source-size")
+            Picker(L10n.text("merge.masterFormat", defaultValue:"Master Format"),selection:$session.options.masterFormat) {
+                ForEach(MergeMasterFormat.allCases) { Text($0.title).tag($0) }
+            }.accessibilityIdentifier("merge-master-format")
+            if session.options.masterFormat == .dng {
+                Text(L10n.text("merge.dngHint", defaultValue:"Float DNG masters reopen in Phosdeck. Some system image viewers cannot open this format; choose TIFF for those viewers.")).font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
+            }
             SubgroupLabel(L10n.text("merge.order", defaultValue:"Source Order"))
             Text(session.options.kind == .focus ? L10n.text("merge.focusOrder", defaultValue:"Arrange in focus order, near to far or far to near.") : L10n.text("merge.orderHint", defaultValue:"Starts in capture/name order. Reorder complete brackets here if needed."))
                 .font(.caption11).foregroundStyle(Theme.textSecondary)
-            ScrollView {
                 LazyVStack(alignment:.leading,spacing:5) {
                     ForEach(Array(session.inputs.enumerated()),id:\.element.photo.id) { index,input in
                         HStack(spacing:6) {
@@ -139,8 +152,9 @@ struct PhotoMergeSheet: View {
                         }
                     }
                 }.padding(8)
-            }.background(Theme.inset).frame(maxHeight:.infinity)
+                .background(Theme.inset)
         }.disabled(session.working)
+        }
     }
     private func chooseDirectory() {
         let panel = NSOpenPanel()

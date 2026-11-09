@@ -20,6 +20,7 @@ struct CatalogSource: Codable, FetchableRecord, TableRecord, Equatable, Identifi
     var name: String { URL(fileURLWithPath:relativePath).lastPathComponent }
     var kind: String? {
         let url = URL(fileURLWithPath:relativePath)
+        if url.pathExtension.lowercased() == "dng",let metadata,let details = try? JSONDecoder().decode(PhotoMetadata.self,from:metadata),details.composite != nil { return nil }
         if PhotoFileType.isRAW(url) { return "RAW" }
         return ["jpg","jpeg"].contains(url.pathExtension.lowercased()) ? "JPEG" : nil
     }

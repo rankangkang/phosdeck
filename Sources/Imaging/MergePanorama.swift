@@ -2,7 +2,7 @@
 // reference LightCraft b3b49987d4b2c99f582b80ae91b2ec42ab24d14e (2026-11-08),
 // crates/merge/src/pano.rs and pano/{camera,project,blend}.rs, MIT option.
 // Rotating cameras receive a bounded rotation/focal bundle adjustment; planar
-// scans keep their homographies. No boundary warp or generative edge filling.
+// scans keep their homographies. Finishing stays in straight linear float RGB.
 import Foundation
 import simd
 
@@ -99,7 +99,7 @@ struct MergePanoramaPlan {
         let f = frames[reference].focal35mm.map { diagonal*$0/hypot(36,24) }
             ?? (estimates.isEmpty ? Double(max(ref.width,ref.height))*0.9 : estimates[estimates.count/2])
         let k = MergeMatrix([f,0,Double(ref.width-1)/2,0,f,Double(ref.height-1)/2,0,0,1])
-        let refined = try MergeCameraRefinement.refine(frames,homographies:homographies.map { $0! },edges:edges,reference:reference,focal:f)
+        let refined = try MergeCameraRefinement.refine(frames,homographies:homographies.map { $0! },edges:edges,reference:reference,focal:f,autoLevel:options.autoLevel)
         let cameras = refined?.cameras ?? homographies.map { k.followed(by:$0!) }
         let scale = Double(frames[reference].fullWidth)/Double(ref.width)
         let focal = (refined?.focal ?? f)*scale
@@ -200,7 +200,7 @@ final class MergePanoramaAccumulator {
     }
     func finish() throws -> MergeImage {
         let image = try pyramid.finish(coverage:coverage)
-        return plan.options.autoCrop ? try MergeCrop.crop(image) : image
+        return try MergePanoramaFinish.apply(image,options:plan.options)
     }
 }
 

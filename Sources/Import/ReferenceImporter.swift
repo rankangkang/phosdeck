@@ -127,9 +127,9 @@ actor ReferenceImporter {
 
     static func inspect(url: URL, root: StorageRoot, rootURL: URL) throws -> Photo {
         let identity = try FileIdentity.read(url)
-        let inspected = try PhotoFileType.inspectSource(url), source = inspected.source
-        guard let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else { throw LRCError(L10n.text("app.cannotReadImageMetadata", defaultValue: "Cannot read image metadata")) }
-        if PhotoFileType.isRAW(url) { try PhotoFileType.validateRAWDecode(PhotoFileType.rawFilter(url)) }
+        let inspected = try PhotoFileType.inspectSource(url),props = inspected.properties
+        if PhotoFileType.isRAW(url) && inspected.composite == nil { try PhotoFileType.validateRAWDecode(PhotoFileType.rawFilter(url)) }
+        if url.pathExtension.lowercased() == "dng",inspected.composite != nil { _ = try MergeDNGCodec.open(url)?.image() }
         guard try FileIdentity.read(url) == identity else { throw LRCError(L10n.text("app.theSourceChangedDuringImportVerification", defaultValue: "The source changed during import verification")) }
         let exif = props[kCGImagePropertyExifDictionary as String] as? [String: Any]
         let tiff = props[kCGImagePropertyTIFFDictionary as String] as? [String: Any]
@@ -141,9 +141,9 @@ actor ReferenceImporter {
             exposureTime: exif?[kCGImagePropertyExifExposureTime as String] as? Double,
             focalLength: exif?[kCGImagePropertyExifFocalLength as String] as? Double,
             orientation: props[kCGImagePropertyOrientation as String] as? Int,
-            profile: inspected.pngICC == false ? nil : props[kCGImagePropertyProfileName as String] as? String,
+            profile: inspected.composite != nil ? "sRGB IEC61966-2.1 Linear" : inspected.pngICC == false ? nil : props[kCGImagePropertyProfileName as String] as? String,
             focal35mm: (exif?[kCGImagePropertyExifFocalLenIn35mmFilm as String] as? NSNumber)?.doubleValue,
-            composite: try MergeProvenance.read(props))
+            composite: inspected.composite)
         var captured = exif?[kCGImagePropertyExifDateTimeOriginal as String] as? String
         if let original = captured {
             var precise = original

@@ -24,6 +24,12 @@ enum MergeMasterCodec {
             guard info.st_dev == expected.device,info.st_ino == expected.inode,expected.size == 0 else { throw invalid }
         }
         let sink = TIFFSink(descriptor)
+        if provenance.options.masterFormat == .dng {
+            try MergeDNGCodec.write(image,provenance:provenance) { data in
+                let written = data.withUnsafeBytes { sink.write($0.baseAddress!,count:$0.count) }
+                guard written == data.count else { throw NSError(domain:NSPOSIXErrorDomain,code:Int(sink.failure ?? EIO)) }
+            }
+        } else {
         let retained = Unmanaged.passRetained(sink)
         var callbacks = CGDataConsumerCallbacks(putBytes:{ pointer,bytes,count in
             let buffer = UnsafeRawBufferPointer(start:bytes,count:count)
@@ -39,6 +45,7 @@ enum MergeMasterCodec {
         let finalized = CGImageDestinationFinalize(destination)
         if let failure = sink.failure { throw NSError(domain:NSPOSIXErrorDomain,code:Int(failure)) }
         guard finalized else { throw invalid }
+        }
         guard fsync(descriptor) == 0 else { throw SafeFileWriter.posix(L10n.text("app.flushTemporaryFile", defaultValue:"Flush Temporary File")) }
         let back = try read(url,context:context)
         guard back.provenance == provenance,back.image.width == image.width,back.image.height == image.height else { throw invalid }
@@ -53,6 +60,7 @@ enum MergeMasterCodec {
         }
     }
     static func read(_ url: URL,context: CIContext,honorCancellation: Bool = true) throws -> (image: MergeImage,provenance: MergeProvenance) {
+        if let file = try MergeDNGCodec.open(url) { return (try file.image(honorCancellation:honorCancellation),file.provenance) }
         guard let source = CGImageSourceCreateWithURL(url as CFURL,[kCGImageSourceShouldCache:false] as CFDictionary),
               CGImageSourceGetType(source) as String? == UTType.tiff.identifier,CGImageSourceGetCount(source) == 1,
               let properties = CGImageSourceCopyPropertiesAtIndex(source,0,nil) as? [String:Any],

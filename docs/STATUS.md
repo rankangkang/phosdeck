@@ -6,14 +6,14 @@
 
 - 主线 `master`，仅维护原生 macOS（SwiftUI + Metal + GRDB）。
 - 目录 schema 13（`CatalogStore.schemaVersion`），旧版本目录直接拒绝。
-- 开发机有两台（M4 Pro／macOS 26.6.2，M4／macOS 27.0.1），固定体验基线不能混用。macOS 27 这台的体验 App 已更名为 Phosdeck Preview，保留原 bundle ID 和 `UnratedReview.phoscat`；合成图库含拍摄参数、文件夹差异与去边测试图，未恢复原图库与研究模型；已准备清单中的 Sony A7 III ARW 和 Leica M8 DNG 两份 CC0 样片。M4 Pro 的既有体验环境未改名或移动。
-- 仓库 Debug 默认免证书临时签名；macOS 27 这台已按用户要求通过忽略的 `Config/LocalSigning.xcconfig` 固定开发证书与团队，测试宿主及内部库、内置盘暂存副本均统一签名并保留沙箱与 hardened runtime。固定体验 App 继续保持原身份与开发签名。
+- 开发机有两台（M4 Pro／macOS 26.6.2，M4／macOS 27.0.1），固定体验基线不能混用。macOS 27 这台的体验 App 已更名为 Phosdeck Preview，保留原 bundle ID 和 `UnratedReview.phoscat`；合成图库含拍摄参数、文件夹差异与去边测试图，未恢复原图库与研究模型；已准备清单中的 Sony A7 III ARW 和 Leica M8 DNG 两份 CC0 样片。M4 Pro 固定体验 App 已同目录更名为 Phosdeck Preview，保留原身份、合成图库与偏好。
+- 仓库 Debug 默认免证书临时签名；macOS 27 这台已按用户要求通过忽略的 `Config/LocalSigning.xcconfig` 固定开发证书与团队，测试宿主及内部库、内置盘暂存副本均统一签名并保留沙箱与 hardened runtime。M4 Pro 也已通过本机忽略配置固定现有体验 App 的开发证书。固定体验 App 继续保持原身份与开发签名。
 
 ## 待用户验收
 
 以下内容已实现，检查限制按条目说明，用户尚未体验确认：
 
-- **照片合成**：“照片 → 照片合成”已接入全景、HDR、HDR 全景、对焦包围及常见堆栈；沿用原生界面与浮点管线，保存独立的线性 sRGB／TIFF32 母版、来源摘要及高光，核验后入库。公开 JPEG 四种合成、Nikon D2X 九张 NEF 包围的完整尺寸 HDR、三十帧线性 TIFF 对焦序列已核对预览与保存入库，既有合成图库数据保留。已补相机束调整、原始参考帧定位、对焦细节融合及饱和高光清晰度抑制；全景局部颜色共识约束修复多带重建制造的通道反转并保持亮度，出处与许可见随包声明。已运行 LightCraft 官方 CLI、Redlamp 原始 Auto 对焦核心与 Metal 内核，并用 REA 核对 Lightroom Classic 15.2.1 的 HDR／HDR 全景实跑；不同解码、显影与裁剪范围不作像素等价。iPhone 与 Panasonic 各三十帧复杂 RAW 使用共同 CIRAW 线性 TIFF 输入作算法隔离；Apple DNG／ProRAW 和 RW2 的现有入口限制保持，不能据此宣称完整 RAW 工作流支持。日出前景／河景水面仍有视差或运动残差，已剪切 JPEG 高光的源色差与复杂焦外遮挡仍未完全解决；完整尺寸复杂 RAW 对焦、真实 RAW HDR 全景、更大 RAW、Release 性能与实际 VoiceOver 未覆盖，效果待用户验收。尚无自动调平、边界变形／填充和 DNG 输出，用法与范围见[上手指南](getting-started.md)。
+- **照片合成**：“照片 → 照片合成”已接入全景、HDR、HDR 全景、对焦包围及常见堆栈；沿用原生界面与浮点管线，保存独立的线性 sRGB／TIFF32 母版、来源摘要及高光，核验后入库。公开 JPEG 四种合成、Nikon D2X 九张 NEF 包围的完整尺寸 HDR、三十帧线性 TIFF 对焦序列已核对预览与保存入库，既有合成图库数据保留。已补相机束调整、原始参考帧定位、对焦细节融合及饱和高光清晰度抑制；全景局部颜色共识约束修复多带重建制造的通道反转并保持亮度，出处与许可见随包声明。已运行 LightCraft 官方 CLI、Redlamp 原始 Auto 对焦核心与 Metal 内核，并用 REA 核对 Lightroom Classic 15.2.1 的 HDR／HDR 全景实跑；不同解码、显影与裁剪范围不作像素等价。iPhone 与 Panasonic 各三十帧复杂 RAW 使用共同 CIRAW 线性 TIFF 输入作算法隔离；Apple DNG／ProRAW 和 RW2 的现有入口限制保持，不能据此宣称完整 RAW 工作流支持。日出前景／河景水面仍有视差或运动残差，已剪切 JPEG 高光的源色差与复杂焦外遮挡仍未完全解决；完整尺寸复杂 RAW 对焦、真实 RAW HDR 全景、更大 RAW、Release 性能与实际 VoiceOver 未覆盖，效果待用户验收。已接入可选自动调平、0–100% 边界变形、扩散填边和独立 DNG32 母版，沿用原生控件与线性 sRGB 浮点管线；新全景选项默认关闭。DNG 以自有母版读取器保留负值、高光与透明度，LightCraft 官方 CLI 已独立读取本应用生成的 DNG；当前 Apple RAW 解码器无法完整读取这些浮点母版，其他软件的透明度与显影处理仍需核对。中文石墨固定 App 已核对新增控件布局；修正样片后的实窗预览／保存、米白与英文因原生 UI 工具连续超时尚未完成。新增选项效果待用户验收。用法与范围见[上手指南](getting-started.md)。
 - **几何校正**：已恢复 Lightroom 对照，依据 Classic 安装包动作资源及 Adobe 公开交互补齐参考线选中、端点调整、单线删除和取消拖动；保留现有求解器、裁剪与坐标模型。Lightroom 与原生石墨实窗均用相同合成参考图核对一条线不校正、两条线产生变换、端点调整和删除后退回基础几何；未作求解值或像素等价比较。原生较大的端点移动会提示不支持校正并保留最后有效值，验证改动已撤销。Lightroom 撤销项没有动作名称，未盲目撤销，仅重置本轮新增的测试照片。自动校正效果、真实摄影场景及鼠标拖动中取消未实测，效果与手感待用户验收。
 - **编辑区域外观**：保留已确认的分组、数值与单位对齐、照片信息条及图外剪切控制；补齐清除评级、内联数值错误与辅助功能播报，无效草稿随换图清除。窄栏英文琴键、白平衡模式、曲线通道、底栏操作和局部标题完整显示；“调整”标题保持完整单行，换图状态位不随载入改变布局。画笔自动蒙版补齐可见标题及开／关措辞，蒙版与曲线的添加操作文案独立于状态，“控制线”、白平衡取样与污点图钉复用基础灯键。禁用推子保留实体材质，沿轨道短行程限位并松手归位。原生交互、双主题外观与推子手感待用户体验确认。直方图剪切控制合为两颗文字灯键，移除重复入口，灯随按键状态显示，单击开关与 ⌥ 临时查看待体验确认。
 - **亮度范围**：上下限复用参数数值输入、内联错误与取消语义，草稿不跨蒙版组件；同轨双端推子复用实体帽面、精调、互相止挡与禁用限位。跨屏工具无法完成坐标拖动，实际鼠标手感仍待用户体验确认。
@@ -40,7 +40,7 @@
 - **既有源坐标逆映射**：合成浮点梯度检查显示 `PhotoGeometry`／`MaskGeometry.sourcePoint` 在四分之一旋转为 1 或 3 时，与实际渲染像素的位置不同；未改既有渲染、旋转或蒙版模型。新目标调整直接取同一输出几何的浮点参考图，并以原生输出核对位置；其他工具的逆映射差异待单独定位。
 - **偶发测试失败**：`ComparisonTests.testAdjustmentReturnEndsEditingAndDoesNotReapplyAnUndoneValue` 多次在首次全量中失败、单跑通过，根因未定位；测试期间切换窗口可能影响焦点。
 - **预设测试的语言假设**：`PresetManagementTests.testUnicodeSearchFavoriteAndMultipleGroupsFilter` 将中文分组顺序写成固定期望，英文环境的收藏排序断言失败、中文通过；筛选和排序实现未改，测试的语言假设待处理。
-- **模型资源复制测试**：`SmartMaskTests.testOptionalModelCapabilitiesAndPartialBundleCopies` 此前在全量和单跑中均因测试宿主沙箱拒绝 `ditto` 的 `.BC.T_*` 临时文件而失败，最近一次全量通过；对应脚本与测试未改动，具体触发机制仍未定位，不能据单次通过认定已修复。
+- **模型资源复制测试**：`SmartMaskTests.testOptionalModelCapabilitiesAndPartialBundleCopies` 仍会因测试宿主沙箱拒绝 `ditto` 的 `.BC.T_*` 临时文件而失败；对应脚本与测试未改动，具体触发机制未定位。
 - **测试环境**：免证书临时签名仍有权限身份随构建变化及 hardened runtime 关闭的限制；本机已统一稳定开发签名，后续实际测试是否仍有授权弹窗待观察。外置卷上的测试宿主、失败符号化及内置宿主读取外置仓库夹具曾停在 `__open`；内置盘暂存继续沿用同一路径，已能执行未过滤标识的全量原生检查；外置宿主路径与偶发夹具读取长等待仍待单独核对。
 - **应用分发**：本机已配置 Developer ID Application 证书；[`0.1.0-alpha.1`](https://github.com/rankangkang/phosdeck/releases/tag/v0.1.0-alpha.1) 已作为预发布公开，签名、公证、票据、`spctl` 评估及下载 ZIP 已核验。独立环境中的安装、启动与使用体验尚未验证。
 - **智能蒙版模型**：FaceParsing 权重标注 MIT，训练数据条款对权重分发的适用性尚不明确；LiteRT 预编译包的完整依赖清单与正式模型安装／分发方案仍待核对，见 [模型说明](smart-mask-models.md)。

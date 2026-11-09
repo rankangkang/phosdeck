@@ -41,7 +41,7 @@ Themes affect the interface only. They do not change photo pixels or exported im
 | Global adjustments | Exposure, white balance, point curves, HSL, B&W mixing, point color, manual defringe, sharpening, noise reduction, grain, and vignette; presets, history, and snapshots |
 | Local adjustments | Brushes, linear and radial gradients, color and luminance range masks, person selection, and spot repair |
 | Geometry | Crop, line-based straightening, flip, and guided or automatic perspective correction |
-| Photo merging | Panorama, HDR, HDR panorama and focus stacking; average, median, additive, lighten, darken and screen modes; separate editable 32-bit float TIFF masters |
+| Photo merging | Panorama, HDR, HDR panorama and focus stacking; average, median, additive, lighten, darken and screen modes; panorama levelling, boundary warp and diffusion edge fill; separate editable 32-bit float TIFF/DNG masters |
 | Camera checks | Local RAW decoding and pipeline consistency checks with JSON reports |
 | Export | JPEG, PNG, and 16-bit TIFF; naming templates, export presets, multiple output specifications, and optional metadata; existing files are never overwritten |
 

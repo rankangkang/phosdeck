@@ -15,9 +15,27 @@ bounded native worker, luminance-preserving reconstruction constraints from loca
 source channel-order consensus, safe TIFF32 master codec, catalog publication and SwiftUI
 workflow are native work. The camera solver retains the reference orientation,
 bounds focal lengths and shares the focal variable when matching EXIF supports it.
-Upstream automatic horizon straightening, log-space blend,
-boundary warp, edge filling, camera-RGB/DNG writing and Rust dependencies are not
-included. No Lightroom code is included.
+Optional panorama levelling in MergeCameraRefinement.swift and separable boundary
+stretch / push-pull edge diffusion in MergePanoramaFinish.swift adapt
+crates/merge/src/pano/{camera,finish}.rs at
+2f4d0959039da9a624f3a76d53a539a155badff1, checked 2026-11-09. Related callers/tests:
+crates/merge/src/pano.rs, crates/merge/tests/it/pano.rs and the finish module tests;
+crates/ui-egui/src/dialogs/merge.rs was reviewed for option semantics. Native
+resampling uses integer pixel centres, premultiplied interpolation, signed linear
+sRGB and independently retained coverage. Fill precedes the native destructive
+crop, preserving the filled canvas when both options are selected. Fill diffuses
+surrounding colours; it does not synthesize texture.
+
+MergeDNGCodec.swift is a native DNG 1.4 float32 writer/reader. Its format and
+linear-RGB colour-tag choices reference crates/merge/src/output.rs and
+crates/raw/src/dngwrite.rs at the same revision, their merge/engine callers and
+output round-trip tests, and the public Adobe DNG 1.7.1 specification. The native
+writer stores uncompressed, unchanged signed float32 RGB, carries highlight
+headroom through WhiteLevel/BaselineExposure, and stores coverage in a float32
+transparency-mask SubIFD. The bounded reader, safe publication and catalog/Develop
+integration are native work. No upstream camera colour metadata, sample clipping,
+normalization, half-float encoding, Rust dependencies, log-space blending or
+Lightroom code is included.
 
 The sparse CRS preset field mapping and unmapped-field reports in
 Sources/Imaging/XMPPresetSettings.swift and Sources/Import/XMPPresetReader.swift

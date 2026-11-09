@@ -50,17 +50,29 @@ enum MergeProjection: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum MergeMasterFormat: String, Codable, CaseIterable, Identifiable {
+    case tiff, dng
+    var id: String { rawValue }
+    var title: String { self == .tiff ? "TIFF · Float32" : "DNG · Float32" }
+    var fileExtension: String { self == .tiff ? "tif" : "dng" }
+}
+
 struct PhotoMergeOptions: Codable, Equatable {
     var kind: PhotoMergeKind = .hdr
     var align = true
     var deghost = 1
     var projection = MergeProjection.cylindrical
     var autoCrop = true
+    var autoLevel = false
+    var boundaryWarp = 0.0
+    var fillEdges = false
+    var masterFormat = MergeMasterFormat.tiff
     var bracketSize = 3
     /// Explicit source resolution, never an automatic reduction on memory failure. Zero means original.
     var sourceLongEdge = 0
     func validate(count: Int) throws {
         guard (2...128).contains(count), (0...3).contains(deghost), (2...9).contains(bracketSize),
+              boundaryWarp.isFinite, (0...100).contains(boundaryWarp),
               [0,2000,4000,6000].contains(sourceLongEdge),
               kind != .hdrPanorama || (count >= bracketSize * 2 && count.isMultiple(of: bracketSize)) else {
             throw LRCError(L10n.text("merge.invalidInputs", defaultValue: "Select 2–128 photos; HDR panoramas need at least two complete exposure brackets"))
@@ -218,8 +230,9 @@ struct MergeFrame {
 }
 
 struct MergeProvenance: Codable, Equatable {
-    static let prefix = "Phosdeck linear composite v1\n"
-    var version = 1
+    static let marker = "Phosdeck linear composite "
+    static let prefix = marker + "v2\n"
+    var version = 2
     var options: PhotoMergeOptions
     var sources: [Source]
     struct Source: Codable, Equatable {
@@ -231,15 +244,21 @@ struct MergeProvenance: Codable, Equatable {
     static func read(_ properties: [String:Any]) throws -> Self? {
         guard let tiff = properties[kCGImagePropertyTIFFDictionary as String] as? [String:Any],
               let text = tiff[kCGImagePropertyTIFFImageDescription as String] as? String,
-              text.hasPrefix(prefix) else { return nil }
-        let value = try JSONDecoder().decode(Self.self,from:Data(text.dropFirst(prefix.count).utf8))
-        try value.options.validate(count:value.sources.count)
-        guard value.version == 1, value.sources.allSatisfy({ !$0.photoID.isEmpty && $0.digest.count == 64 && $0.digest.allSatisfy(\.isHexDigit) }),
+              let value = try decode(text) else { return nil }
+        guard value.options.masterFormat == .tiff,
               properties[kCGImagePropertyIsFloat as String] as? Bool == true,
               properties[kCGImagePropertyDepth as String] as? Int == 32,
               properties[kCGImagePropertyProfileName as String] as? String == "sRGB IEC61966-2.1 Linear" else {
             throw LRCError(L10n.text("merge.invalidMaster", defaultValue: "The linear composite master is invalid"))
         }
+        return value
+    }
+    static func decode(_ text: String) throws -> Self? {
+        guard text.hasPrefix(marker) else { return nil }
+        guard text.hasPrefix(prefix) else { throw MergeMasterCodec.invalid }
+        let value = try JSONDecoder().decode(Self.self,from:Data(text.dropFirst(prefix.count).utf8))
+        try value.options.validate(count:value.sources.count)
+        guard value.version == 2,value.sources.allSatisfy({ !$0.photoID.isEmpty && $0.digest.count == 64 && $0.digest.allSatisfy(\.isHexDigit) }) else { throw MergeMasterCodec.invalid }
         return value
     }
 }

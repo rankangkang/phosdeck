@@ -129,7 +129,7 @@ actor ImagePipeline {
             let digest = try SafeFileWriter.sha256(url)
             if !request.photo.isRAW {
                 guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-                      [UTType.jpeg.identifier, UTType.tiff.identifier, UTType.png.identifier].contains(CGImageSourceGetType(source) as String? ?? "") else {
+                      request.photo.details?.composite != nil || [UTType.jpeg.identifier, UTType.tiff.identifier, UTType.png.identifier].contains(CGImageSourceGetType(source) as String? ?? "") else {
                     throw LRCError(L10n.text("app.sourceContentsAreNotJPEGTIFFPNG", defaultValue: "Source contents are not JPEG/TIFF/PNG"))
                 }
                 _ = try raster(url)
@@ -334,6 +334,7 @@ actor ImagePipeline {
     }
 
     private func raster(_ url: URL,materializeSource: Bool = false) throws -> CIImage {
+        if url.pathExtension.lowercased() == "dng",let file = try MergeDNGCodec.open(url) { return try file.image().ciImage() }
         var options: [CIImageOption: Any] = [.applyOrientationProperty: true]
         let inspected = try PhotoFileType.inspectSource(url), source = inspected.source
         guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else { throw LRCError(L10n.text("app.cannotDecodeImageMetadata", defaultValue: "Cannot decode image metadata")) }
@@ -1038,8 +1039,7 @@ actor ImagePipeline {
         let digest = try SafeFileWriter.sha256(url)
         var frozen = ExportMetadata()
         if snapshot.options.metadataPolicy.includesCapture {
-            let source = try PhotoFileType.imageSource(url)
-            guard let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else { throw LRCError(L10n.text("app.cannotFreezeCaptureMetadataNothingQueued", defaultValue: "Cannot freeze capture metadata; nothing queued")) }
+            let props = try PhotoFileType.inspectSource(url).properties
             frozen = ExportMetadata.capture(from: props)
         }
         frozen.descriptive = snapshot.metadata.descriptive
@@ -1170,6 +1170,12 @@ actor ThumbnailService {
         let url = lease.url.appendingPathComponent(photo.relativePath)
         guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: photo.identity) else { throw LRCError(L10n.text("app.sourceChanged", defaultValue: "Source changed")) }
         let token = generation
+        if photo.details?.composite != nil,url.pathExtension.lowercased() == "dng",let file = try MergeDNGCodec.open(url) {
+            let pixels = try file.image().resized(longEdge:edge),context = MergeMasterCodec.context()
+            guard let image = context.createCGImage(pixels.ciImage(),from:CGRect(x:0,y:0,width:pixels.width,height:pixels.height),format:.RGBA8,colorSpace:ImagePipeline.outputSpace),
+                  token == generation,try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self,from:photo.identity) else { throw MergeMasterCodec.invalid }
+            return try store(image,key:key)
+        }
         let source = try PhotoFileType.imageSource(url)
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageIfAbsent: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: edge] as CFDictionary) else { throw LRCError(L10n.text("app.noThumbnailAvailable", defaultValue: "No thumbnail available")) }
         try Task.checkCancellation()

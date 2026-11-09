@@ -20,14 +20,24 @@ enum PhotoFileType {
 
     /// The actual iCCP chunk distinguishes an embedded profile from ImageIO's
     /// inferred/calibrated profile names (for example an untagged PNG with gAMA).
-    static func inspectSource(_ url: URL) throws -> (source: CGImageSource, pngICC: Bool?) {
+    static func inspectSource(_ url: URL) throws -> (source: CGImageSource, pngICC: Bool?, composite: MergeProvenance?, properties: [String:Any]) {
         try Task.checkCancellation()
         let ext = url.pathExtension.lowercased()
         let expected = rawTypes[ext] ?? ["jpg": UTType.jpeg.identifier, "jpeg": UTType.jpeg.identifier,
             "tif": UTType.tiff.identifier, "tiff": UTType.tiff.identifier, "png": UTType.png.identifier][ext]
         guard let expected else { throw LRCError(L10n.text("app.thisFileFormatIsNotSupportedYet", defaultValue: "This file format is not supported yet")) }
+        let nativeDNG = ext == "dng" ? try MergeDNGCodec.open(url) : nil
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
-              CGImageSourceGetType(source) as String? == expected else { throw LRCError(L10n.text("app.fileContentsDifferFromTheExtensionOrTheFormat", defaultValue: "File contents differ from the extension, or the format is unrecognized")) }
+              nativeDNG != nil || CGImageSourceGetType(source) as String? == expected else { throw LRCError(L10n.text("app.fileContentsDifferFromTheExtensionOrTheFormat", defaultValue: "File contents differ from the extension, or the format is unrecognized")) }
+        if let nativeDNG {
+            // ImageIO can expose incomplete metadata for float LinearRaw masters.
+            // Read our format directly, independently of the camera RAW decoder.
+            return (source,nil,nativeDNG.provenance,[kCGImagePropertyPixelWidth as String:nativeDNG.width,
+                kCGImagePropertyPixelHeight as String:nativeDNG.height,kCGImagePropertyOrientation as String:1,
+                kCGImagePropertyDepth as String:32,kCGImagePropertyIsFloat as String:true,
+                kCGImagePropertyHasAlpha as String:true,kCGImagePropertyColorModel as String:"RGB",
+                kCGImagePropertyProfileName as String:"sRGB IEC61966-2.1 Linear"])
+        }
         guard CGImageSourceGetCount(source) == 1, CGImageSourceGetStatus(source) == .statusComplete,
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
               let width = props[kCGImagePropertyPixelWidth as String] as? Int, width > 0,
@@ -43,7 +53,7 @@ enum PhotoFileType {
         if ["tif", "tiff"].contains(ext), props[kCGImagePropertyColorModel as String] as? String != "RGB" {
             throw LRCError(L10n.text("app.onlyStandardRGBSinglePageTIFFFilesAreSupported", defaultValue: "Only standard RGB single-page TIFF files are supported"))
         }
-        _ = try MergeProvenance.read(props)
+        let composite = try MergeProvenance.read(props)
         var pngICC: Bool?
         if ext == "png" {
             pngICC = try PNGValidation.validate(url)
@@ -52,7 +62,7 @@ enum PhotoFileType {
                 throw LRCError(L10n.text("app.pngPixelsCannotBeDecodedCompletely", defaultValue: "PNG pixels cannot be decoded completely"))
             }
         }
-        return (source,pngICC)
+        return (source,pngICC,composite,props)
     }
 
     /// Port of codecs/src/jpeg.rs::reaches_eoi, LightCraft 4f0b110 (MIT).
@@ -82,6 +92,7 @@ enum PhotoFileType {
 
     static func rawFilter(_ url: URL) throws -> CIRAWFilter {
         guard isRAW(url) else { throw LRCError(L10n.text("app.theSourceIsNotASupportedRAWCandidate", defaultValue: "The source is not a supported RAW candidate")) }
+        if url.pathExtension.lowercased() == "dng",try MergeDNGCodec.open(url) != nil { throw MergeMasterCodec.invalid }
         let source = try imageSource(url)
         if url.pathExtension.lowercased() == "dng",
            let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
