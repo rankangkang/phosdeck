@@ -370,9 +370,16 @@
     "photoDisplayFrame": {
       "width": 3,
       "innerEdgeWidth": 1,
+      "innerEdge": "material.edge",
       "outerCornerRadius": 4,
       "areas": ["libraryGrid", "filmstrip"],
       "policy": "Recessed screen edge occupies existing section inset; do not clip photos or scrollbars or intercept input"
+    },
+    "photoDisplayScrollbar": {
+      "style": "native overlay",
+      "autohides": true,
+      "knob": "light on dark and medium viewing mats; dark on light and white viewing mats",
+      "filmstripWheel": "vertical wheel scrolls horizontally; precise deltas use points, discrete deltas use 40 pt per line; horizontal gestures stay native"
     },
     "thumbnail": {
       "selectedOutlineWidth": 2,

@@ -750,7 +750,7 @@ struct PhotoDisplayFrame<Content: View>: View {
     var body: some View {
         content
             .padding(1)
-            .background { Rectangle().strokeBorder(Theme.scopeBezel, lineWidth: 1).allowsHitTesting(false) }
+            .background { Rectangle().strokeBorder(Theme.materialEdge, lineWidth: 1).allowsHitTesting(false) }
             .padding(Metrics.photoDisplayBezel - 1)
             .background {
                 RoundedRectangle(cornerRadius: Metrics.scopeRadius + 1)

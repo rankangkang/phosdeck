@@ -12,7 +12,7 @@ struct PhotoGrid: NSViewRepresentable {
     var ordering: CollectionOrdering? = nil
     func makeCoordinator() -> Coordinator { Coordinator(model: model, film: film, ordering: ordering) }
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
+        let scroll: NSScrollView = film ? FilmstripScrollView() : NSScrollView()
         let layout = NSCollectionViewFlowLayout()
         layout.minimumInteritemSpacing = 0; layout.minimumLineSpacing = 0
         let inset = film ? Metrics.filmCell.inset : Metrics.thumbnailCell.inset
@@ -58,6 +58,9 @@ struct PhotoGrid: NSViewRepresentable {
         collection.dataSource = context.coordinator; collection.delegate = context.coordinator
         scroll.documentView = collection
         scroll.hasVerticalScroller = !film; scroll.hasHorizontalScroller = film
+        if film { scroll.horizontalLineScroll = 40 }
+        scroll.scrollerStyle = .overlay; scroll.autohidesScrollers = true
+        scroll.scrollerKnobStyle = mat.gray < 0.5 ? .light : .dark
         context.coordinator.collection = collection
         scroll.contentView.postsBoundsChangedNotifications = true
         let coordinator = context.coordinator
@@ -77,6 +80,7 @@ struct PhotoGrid: NSViewRepresentable {
         c.mat = mat
         if matChanged {
             c.collection?.backgroundColors = [mat.nsColor]; scroll.backgroundColor = mat.nsColor
+            scroll.scrollerKnobStyle = mat.gray < 0.5 ? .light : .dark
         }
         let photos = model.filtered
         c.applyingChanges = true
@@ -285,6 +289,22 @@ struct PhotoGrid: NSViewRepresentable {
             }
             model.choose(ids, active: id)
         }
+    }
+}
+
+final class FilmstripScrollView: NSScrollView {
+    override func scrollWheel(with event: NSEvent) {
+        guard event.scrollingDeltaX == 0, event.scrollingDeltaY != 0,
+              let documentView, documentView.bounds.width > contentView.bounds.width else {
+            super.scrollWheel(with: event)
+            return
+        }
+        let distance = event.scrollingDeltaY * (event.hasPreciseScrollingDeltas ? 1 : horizontalLineScroll)
+        var bounds = contentView.bounds
+        bounds.origin.x -= distance
+        contentView.scroll(to: contentView.constrainBoundsRect(bounds).origin)
+        reflectScrolledClipView(contentView)
+        flashScrollers()
     }
 }
 

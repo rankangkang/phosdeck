@@ -1346,6 +1346,60 @@ final class ImagingTests: XCTestCase {
         XCTAssertLessThan(center.greenComponent, 0.3)
     }
 
+    @MainActor func testPhotoGridOverlayScrollersKeepViewportAndScrollInBothDirections() async throws {
+        let model = AppModel()
+        model.photos = (0..<40).map { Photo(id: "scroll-\($0)", rootID: "test", relativePath: "\($0).jpg", identity: Data(), identityKey: "scroll-\($0)", width: 100, height: 80) }
+        func find(_ view: NSView) -> NSScrollView? { (view as? NSScrollView) ?? view.subviews.compactMap(find).first }
+        for film in [false, true] {
+            let height = film ? 96.0 : 200.0
+            let host = NSHostingView(rootView: PhotoDisplayFrame { PhotoGrid(model: model, film: film, filmHeight: height, mat: .dark) })
+            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 320, height: height), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = host
+            defer { window.contentView = nil }
+            host.layoutSubtreeIfNeeded()
+            let scroll = try XCTUnwrap(find(host))
+            XCTAssertEqual(scroll.scrollerStyle, .overlay)
+            XCTAssertTrue(scroll.autohidesScrollers)
+            XCTAssertEqual(scroll.scrollerKnobStyle, .light)
+            XCTAssertEqual(scroll.contentSize.width, scroll.bounds.width, accuracy: 0.1)
+            XCTAssertEqual(scroll.contentSize.height, scroll.bounds.height, accuracy: 0.1)
+            let collection = try XCTUnwrap(scroll.documentView as? NSCollectionView)
+            collection.collectionViewLayout?.invalidateLayout(); collection.layoutSubtreeIfNeeded()
+            let origin = film ? NSPoint(x: 100, y: 0) : NSPoint(x: 0, y: 100)
+            scroll.contentView.scroll(to: origin); scroll.reflectScrolledClipView(scroll.contentView)
+            XCTAssertGreaterThan(film ? scroll.contentView.bounds.origin.x : scroll.contentView.bounds.origin.y, 0)
+            host.rootView = PhotoDisplayFrame { PhotoGrid(model: model, film: film, filmHeight: height, mat: .white) }
+            try await waitUntil { find(host)?.scrollerKnobStyle == .dark }
+        }
+    }
+
+    @MainActor func testFilmstripMouseWheelScrollsHorizontallyWithinBounds() async throws {
+        let model = AppModel()
+        model.photos = (0..<40).map { Photo(id: "wheel-\($0)", rootID: "test", relativePath: "\($0).jpg", identity: Data(), identityKey: "wheel-\($0)", width: 100, height: 80) }
+        let host = NSHostingView(rootView: PhotoDisplayFrame { PhotoGrid(model: model, film: true, filmHeight: 96) }.frame(width: 320, height: 96))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 320, height: 96), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil }
+        func find(_ view: NSView) -> FilmstripScrollView? { (view as? FilmstripScrollView) ?? view.subviews.compactMap(find).first }
+        func wheel(_ vertical: Int32, units: CGScrollEventUnit = .line) throws -> NSEvent {
+            let event = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: units, wheelCount: 1, wheel1: vertical, wheel2: 0, wheel3: 0))
+            return try XCTUnwrap(NSEvent(cgEvent: event))
+        }
+        host.layoutSubtreeIfNeeded()
+        let scroll = try XCTUnwrap(find(host)), collection = try XCTUnwrap(scroll.documentView as? NSCollectionView)
+        try await waitUntil { collection.bounds.width > scroll.contentView.bounds.width }
+        collection.scrollWheel(with: try wheel(-1))
+        XCTAssertEqual(scroll.contentView.bounds.origin.x, 40, accuracy: 0.5)
+        collection.scrollWheel(with: try wheel(-12, units: .pixel))
+        XCTAssertEqual(scroll.contentView.bounds.origin.x, 52, accuracy: 0.5)
+        collection.scrollWheel(with: try wheel(100))
+        XCTAssertEqual(scroll.contentView.bounds.origin.x, 0, accuracy: 0.5)
+        collection.scrollWheel(with: try wheel(-1000))
+        XCTAssertEqual(scroll.contentView.bounds.origin.x, collection.bounds.width - scroll.contentView.bounds.width, accuracy: 0.5)
+        collection.scrollWheel(with: try wheel(1))
+        XCTAssertLessThan(scroll.contentView.bounds.origin.x, collection.bounds.width - scroll.contentView.bounds.width)
+    }
+
     @MainActor func testFilmstripCellsFitWhenSystemScrollbarsAreAlwaysVisible() async throws {
         let model = AppModel()
         model.photos = (0..<20).map { Photo(id: "film-\($0)", rootID: "test", relativePath: "\($0).jpg", identity: Data(), identityKey: "film-\($0)", width: 100, height: 80) }
