@@ -360,8 +360,6 @@ private final class StackButton: NSButton {
 }
 
 final class PhotoItem: NSCollectionViewItem {
-    private let metadataWell = NSView()
-    private let metadataSeam = NSView()
     private let picture = NSImageView()
     private let caption = NSTextField(labelWithString: "")
     private let fileType = NSTextField(labelWithString: "")
@@ -386,11 +384,9 @@ final class PhotoItem: NSCollectionViewItem {
     private var stackedDetailsLeading: NSLayoutConstraint!
     private var stackInset: NSLayoutConstraint!
     private var handleWidths: [NSLayoutConstraint] = []
-    private var metadataHeight: NSLayoutConstraint!
     var displayedImage: NSImage? { picture.image }
     override func loadView() {
         view = PhotoCellView(); view.wantsLayer = true
-        metadataWell.wantsLayer = true; metadataSeam.wantsLayer = true
         picture.imageScaling = .scaleProportionallyUpOrDown
         caption.font = .systemFont(ofSize: 11, weight: .medium); caption.lineBreakMode = .byTruncatingMiddle
         fileType.font = .systemFont(ofSize: 9, weight: .semibold); fileType.alignment = .center
@@ -404,7 +400,7 @@ final class PhotoItem: NSCollectionViewItem {
         for (id, label) in [("photo-name", caption), ("photo-type", fileType), ("photo-status", details), ("photo-position", positionLabel)] {
             label.identifier = NSUserInterfaceItemIdentifier(id)
         }
-        for sub in [metadataWell, metadataSeam, picture, caption, fileType, details, positionLabel] { sub.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(sub) }
+        for sub in [picture, caption, fileType, details, positionLabel] { sub.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(sub) }
         colorIndicator.wantsLayer = true; colorIndicator.layer?.cornerRadius = 1
         colorIndicator.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(colorIndicator)
         NSLayoutConstraint.activate([colorIndicator.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
@@ -423,12 +419,7 @@ final class PhotoItem: NSCollectionViewItem {
         detailsLeading = details.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12)
         stackedDetailsLeading = details.leadingAnchor.constraint(equalTo: stackButton.trailingAnchor, constant: 6)
         stackInset = stackButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8)
-        metadataHeight = metadataWell.heightAnchor.constraint(equalToConstant: Metrics.thumbnailCell.footer)
         NSLayoutConstraint.activate([
-            metadataWell.leadingAnchor.constraint(equalTo: view.leadingAnchor), metadataWell.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            metadataWell.bottomAnchor.constraint(equalTo: view.bottomAnchor), metadataHeight,
-            metadataSeam.leadingAnchor.constraint(equalTo: view.leadingAnchor), metadataSeam.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            metadataSeam.topAnchor.constraint(equalTo: metadataWell.topAnchor), metadataSeam.heightAnchor.constraint(equalToConstant: 0.5),
             captionLeading, caption.heightAnchor.constraint(equalToConstant: 14),
             caption.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
             caption.trailingAnchor.constraint(equalTo: fileType.leadingAnchor, constant: -8),
@@ -475,8 +466,6 @@ final class PhotoItem: NSCollectionViewItem {
         (view as! PhotoCellView).seamColor = background.blended(withFraction: 0.16, of: mat.selection)?.cgColor
         view.layer?.borderWidth = isActivePhoto ? 2 : isSelected ? 1 : 0
         view.layer?.borderColor = mat.selection.withAlphaComponent(isActivePhoto ? 1 : 0.7).cgColor
-        metadataWell.layer?.backgroundColor = mat.selection.withAlphaComponent(0.04).cgColor
-        metadataSeam.layer?.backgroundColor = mat.selection.withAlphaComponent(0.14).cgColor
         caption.textColor = isSelected || isActivePhoto ? mat.text : mat.textSecondary
         details.textColor = mat.textSecondary; positionLabel.textColor = mat.textSecondary; fileType.textColor = mat.textSecondary
         fileType.layer?.backgroundColor = mat.selection.withAlphaComponent(0.06).cgColor
@@ -492,7 +481,6 @@ final class PhotoItem: NSCollectionViewItem {
             NSLayoutConstraint.deactivate(gridConstraints + filmConstraints)
             NSLayoutConstraint.activate(film ? filmConstraints : gridConstraints)
             self.film = film
-            metadataHeight.constant = film ? Metrics.filmCell.footer : Metrics.thumbnailCell.footer
             for width in handleWidths { width.constant = film ? Metrics.filmCell.imageInset : Metrics.thumbnailCell.imageInset }
         }
         positionLabel.isHidden = film; caption.isHidden = film; fileType.isHidden = film

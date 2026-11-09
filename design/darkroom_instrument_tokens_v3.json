@@ -413,8 +413,6 @@
       },
       "neutralMatMarks": {
         "idleCellOpacity": 0.025,
-        "metadataOpacity": 0.04,
-        "seamOpacity": 0.14,
         "sharedSeamOpacity": 0.16,
         "selectedOutlineOpacity": 0.7,
         "selectionFillOpacity": 0.1
