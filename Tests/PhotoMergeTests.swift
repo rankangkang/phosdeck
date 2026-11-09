@@ -483,8 +483,11 @@ final class PhotoMergeTests: XCTestCase {
         let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(sources.map(\.id)))
         var options = PhotoMergeOptions(); options.kind = .average; options.align = false; options.autoCrop = false
         let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
-        let saved = try await engine.save(preview.id,to:root.bookmark,filename:"merged.tif",catalog:catalog,progress:{ _,_ in })
+        let saved = try await engine.save(preview.id,to:root.bookmark,filename:"merged.tif",catalog:catalog,stackWithSources:true,progress:{ _,_ in })
         XCTAssertEqual(try catalog.photoCount(),3); XCTAssertEqual(try catalog.photo(saved.photo.id),saved.photo)
+        XCTAssertEqual(saved.previousStacks,[])
+        let stack = try XCTUnwrap(catalog.stacks().first)
+        XCTAssertEqual(stack.members,[saved.photo.id]+inputs.map { $0.photo.id }); XCTAssertTrue(stack.collapsed)
         let result = try MergeMasterCodec.read(saved.url,context:context)
         XCTAssertEqual(result.image.pixels[0].x,0.4,accuracy:1e-5)
         XCTAssertEqual(Set(result.provenance.sources.map(\.photoID)),Set(sources.map(\.id)))

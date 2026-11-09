@@ -3245,6 +3245,30 @@ extension AppModel {
             showNotice(L10n.text("app.versionOpened", defaultValue: "Version opened · ") + target.versionName + L10n.text("app.returnToPreviousBrowseLocation", defaultValue: " · Return to previous browse location"))
         }
     }
+    /// Keep the current source and filters when the new master is visible there.
+    /// Other destinations use All Photos, with the original query retained in history.
+    func revealMergedPhoto(_ id: String) throws -> Bool {
+        guard let catalog else { throw PhotoMergeEngine.sourceChanged }
+        if editMode, !selectDevelopTool(.adjust) {
+            throw LRCError(L10n.text("merge.revealBlocked", defaultValue:"Finish the current editing tool to view the saved master"))
+        }
+        try rememberBrowseDeparture()
+        try reload()
+        let relocated = try catalog.offset(of:id,query:query) == nil
+        endComparison(); endSurvey()
+        if relocated {
+            try discardTransientBrowse()
+            scope = "all"; filtersEnabled = false; holdFilterResults = false; manualOrderEnabled = false
+        }
+        editMode = false; singleView = false; librarySingleView = false
+        cropMode = false; maskMode = false; spotMode = false
+        fullResolution = false; fillView = false; beforeAfter = .off
+        guard let offset = try catalog.offset(of:id,query:query) else { throw PhotoMergeEngine.sourceChanged }
+        pageOffset = offset / pageSize * pageSize
+        try reloadPhotos()
+        choose([id],active:id)
+        return relocated
+    }
     private func beginRelatedBrowsing(ids: [String], active: String, title: String) throws {
         guard let catalog else { return }
         let available = Set(try catalog.photos(ids: Set(ids)).map(\.id))

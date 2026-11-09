@@ -13,6 +13,94 @@ final class StackTests: XCTestCase {
         }
         return (c,dir)
     }
+    private func registerMaster(_ catalog: CatalogStore,ids: [String],stacked: Bool = true,collection: String? = nil,root: StorageRoot? = nil) throws -> MergeSaved {
+        let sourceRoot = try XCTUnwrap(catalog.roots().first),destination = root ?? sourceRoot
+        let inputs = try ids.map { ImageRequest(photo:try XCTUnwrap(catalog.photo($0)),root:sourceRoot,recipe:nil) }
+        let photo = Photo(id:"merged",rootID:destination.id,relativePath:"zz-merged.tif",identity:Data(),identityKey:"fixture:merged",width:100,height:80)
+        let registered = try catalog.registerMergedPhoto(photo,root:destination,inputs:inputs,stackWithSources:stacked,collectionID:collection)
+        return MergeSaved(photo:registered.photo,url:URL(fileURLWithPath:destination.path).appendingPathComponent(photo.relativePath),previousStacks:registered.previousStacks)
+    }
+    @MainActor func testMergedStackMovesOnlyParticipantsAndUndoKeepsMasterAndCollection() throws {
+        let (c,dir) = try fixture(); defer { try? FileManager.default.removeItem(at:dir) }
+        _ = try c.restoreStacks([PhotoStack(id:"remaining",members:["0000","0001","0002","0003"],collapsed:false),
+                                 PhotoStack(id:"singleton",members:["0004","0005"]),
+                                 PhotoStack(id:"untouched",members:["0006","0007"],collapsed:false)])
+        try c.collection(name:"Merge",id:"c"); try c.membership(ids:["0004","0001"],collection:"c",add:true)
+        let before = try c.stacks(),originals = try c.photos()
+        let m = AppModel(previewRenderer:{ _,_,_ in throw LRCError("synthetic") })
+        m.catalog = c; m.scope = "collection:c"; m.manualOrderEnabled = true; try m.reload()
+        try m.completeImport(ids:["0007"],cancelled:false)
+        m.choose(["0004","0001"],active:"0004")
+        let saved = try registerMaster(c,ids:["0004","0001"],collection:"c")
+        XCTAssertEqual(saved.previousStacks,before)
+        XCTAssertEqual(try c.stacks().first { $0.id == "remaining" },PhotoStack(id:"remaining",members:["0000","0002","0003"],collapsed:false))
+        XCTAssertNil(try c.stacks().first { $0.id == "singleton" })
+        XCTAssertEqual(try c.stacks().first { $0.id == "untouched" },before.first { $0.id == "untouched" })
+        XCTAssertEqual(try c.photos(ids:Set(originals.map(\.id))),originals)
+        m.undo.beginUndoGrouping(); m.completePhotoMerge(saved); m.undo.endUndoGrouping()
+        XCTAssertNil(m.error); XCTAssertEqual(m.scope,"collection:c"); XCTAssertTrue(m.manualOrderEnabled)
+        XCTAssertEqual(m.activeID,saved.photo.id); XCTAssertEqual(m.selection,[saved.photo.id])
+        XCTAssertEqual(m.resultCount,3); XCTAssertEqual(m.visibleCount,1)
+        XCTAssertEqual(m.lastImport?.photoIDs,["0007"],"merging must not replace the last import")
+        let merged = try XCTUnwrap(m.activeStack)
+        XCTAssertEqual(merged.members,[saved.photo.id,"0004","0001"]); XCTAssertTrue(merged.collapsed)
+        _ = try c.changeStacks(.collapse([merged.id],false))
+        XCTAssertEqual(try c.page(m.query,offset:0).photos.map(\.id),[saved.photo.id,"0004","0001"])
+        _ = try c.changeStacks(.collapse([merged.id],true))
+        m.undo.undo()
+        XCTAssertEqual(try c.stacks(),before); XCTAssertNotNil(try c.photo(saved.photo.id))
+        XCTAssertEqual(Set(try c.allResultIDs(PhotoQuery(scope:"collection:c"))),[saved.photo.id,"0004","0001"])
+        XCTAssertEqual(m.selection,["0004","0001"])
+        m.undo.redo()
+        XCTAssertEqual(m.activeStack,merged); XCTAssertEqual(m.selection,[saved.photo.id]); XCTAssertEqual(m.visibleCount,1)
+    }
+    @MainActor func testUnstackedMergeKeepsExistingStacksAndCurrentList() throws {
+        let (c,dir) = try fixture(); defer { try? FileManager.default.removeItem(at:dir) }
+        _ = try c.changeStacks(.group(top:"0000",members:["0001"]))
+        let before = try c.stacks(),root = try XCTUnwrap(c.roots().first)
+        let m = AppModel(previewRenderer:{ _,_,_ in throw LRCError("synthetic") })
+        m.catalog = c; m.scope = root.id; try m.reload(); m.choose(["0001","0002"],active:"0002")
+        let visible = m.visibleCount,saved = try registerMaster(c,ids:["0001","0002"],stacked:false)
+        m.completePhotoMerge(saved)
+        XCTAssertNil(m.error); XCTAssertNil(saved.previousStacks); XCTAssertEqual(try c.stacks(),before)
+        XCTAssertEqual(m.scope,root.id); XCTAssertEqual(m.activeID,saved.photo.id); XCTAssertEqual(m.visibleCount,visible+1)
+        XCTAssertFalse(m.undo.canUndo)
+    }
+    @MainActor func testMergeOutsideHeldFilteredSourceRevealsCorrectPageAndRetainsBrowseBack() throws {
+        let (c,dir) = try fixture(405); defer { try? FileManager.default.removeItem(at:dir) }
+        let root = try XCTUnwrap(c.roots().first)
+        try c.setOrganization(ids:["0202","0203"],rating:5)
+        let m = AppModel(previewRenderer:{ _,_,_ in throw LRCError("synthetic") })
+        m.catalog = c; m.scope = root.id; m.photoSort = .filename
+        m.ratingThreshold = 5; m.filterSections = [.attribute]; m.holdFilterResults = true
+        try m.reload(); m.choose(["0202","0203"],active:"0203")
+        let saved = try registerMaster(c,ids:["0203","0202"],root:StorageRoot(id:"masters",path:dir.appendingPathComponent("masters").path,bookmark:Data(),label:"Masters"))
+        m.completePhotoMerge(saved)
+        XCTAssertNil(m.error); XCTAssertEqual(m.scope,"all"); XCTAssertFalse(m.filtersEnabled); XCTAssertFalse(m.holdFilterResults)
+        XCTAssertNil(m.query.snapshotID); XCTAssertEqual(m.pageOffset,200); XCTAssertTrue(m.photos.contains { $0.id == saved.photo.id })
+        XCTAssertEqual(m.activeID,saved.photo.id); XCTAssertEqual(m.selection,[saved.photo.id]); XCTAssertTrue(m.canBrowseBack)
+        XCTAssertEqual(m.visibleCount,404)
+        m.navigateBrowse(-1)
+        XCTAssertEqual(m.scope,root.id); XCTAssertTrue(m.filtersEnabled); XCTAssertTrue(m.holdFilterResults)
+        XCTAssertNotNil(m.query.snapshotID); XCTAssertEqual(m.ratingThreshold,5); XCTAssertEqual(m.photoSort,.filename)
+        XCTAssertEqual(m.resultCount,2)
+        m.navigateBrowse(1)
+        XCTAssertEqual(m.scope,"all"); XCTAssertEqual(m.pageOffset,200); XCTAssertEqual(m.activeID,saved.photo.id)
+    }
+    func testMergeRegistrationRollsBackIndexRootCollectionAndStacksOnFailure() throws {
+        let (c,dir) = try fixture(); defer { try? FileManager.default.removeItem(at:dir) }
+        _ = try c.changeStacks(.group(top:"0000",members:["0001","0002"]))
+        try c.collection(name:"Merge",id:"c"); try c.membership(ids:["0000","0001"],collection:"c",add:true)
+        let before = try c.stacks(),rootIDs = try c.roots().map(\.id),photos = try c.photos()
+        let destination = StorageRoot(id:"masters",path:dir.appendingPathComponent("masters").path,bookmark:Data(),label:"Masters")
+        try c.database.write { try $0.execute(sql:"CREATE TRIGGER fail_merge_stack BEFORE INSERT ON stackMember WHEN NEW.photoID='merged' BEGIN SELECT RAISE(ABORT,'injected stack failure'); END") }
+        XCTAssertThrowsError(try registerMaster(c,ids:["0001","0000"],collection:"c",root:destination))
+        XCTAssertEqual(try c.photos(),photos); XCTAssertEqual(try c.roots().map(\.id),rootIDs); XCTAssertEqual(try c.stacks(),before)
+        XCTAssertEqual(Set(try c.allResultIDs(PhotoQuery(scope:"collection:c"))),["0000","0001"])
+        try c.database.write { try $0.execute(sql:"DROP TRIGGER fail_merge_stack") }
+        XCTAssertThrowsError(try registerMaster(c,ids:["0001","0000"],stacked:false,collection:"missing",root:destination))
+        XCTAssertEqual(try c.photos(),photos); XCTAssertEqual(try c.roots().map(\.id),rootIDs); XCTAssertEqual(try c.stacks(),before)
+    }
     func testMergeSplitMoveCoverRemoveAtomicAndBackup() throws {
         let (c,dir) = try fixture(); defer { try? FileManager.default.removeItem(at:dir) }
         _ = try c.changeStacks(.group(top:"0001",members:["0000","0002"]))

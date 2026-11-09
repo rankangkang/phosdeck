@@ -11,6 +11,7 @@ struct MergePreview {
 struct MergeSaved {
     let photo: Photo
     let url: URL
+    let previousStacks: [PhotoStack]?
 }
 
 /// Serialized, separate from interactive previews. Analysis is bounded to 1000 px;
@@ -106,7 +107,7 @@ actor PhotoMergeEngine {
         guard let image = context.createCGImage(ci,from:ci.extent,format:.RGBA8,colorSpace:ImagePipeline.outputSpace) else { throw MergeMasterCodec.invalid }
         return MergePreview(id:value.id,image:image,width:value.plan.size.0,height:value.plan.size.1)
     }
-    func save(_ id: UUID,to directoryBookmark: Data,filename: String,catalog: CatalogStore,progress: Progress) async throws -> MergeSaved {
+    func save(_ id: UUID,to directoryBookmark: Data,filename: String,catalog: CatalogStore,stackWithSources: Bool = false,collectionID: String? = nil,progress: Progress) async throws -> MergeSaved {
         guard let value = prepared,value.id == id else { throw stale }
         guard filename == URL(fileURLWithPath:filename).lastPathComponent,!filename.hasPrefix("."),
               !filename.contains(":"),filename.rangeOfCharacter(from:.controlCharacters) == nil,
@@ -153,18 +154,18 @@ actor PhotoMergeEngine {
         ownsStaging = false
         // Publication is the commit point. Cancellation after it must not strand an
         // unreported file or delete a master that another process could already see.
-        let indexed: Photo
+        let registered: (photo: Photo,previousStacks: [PhotoStack]?)
         do {
             try checkpoint("published")
             guard try FileIdentity.read(destination) == identity else { throw MergeMasterCodec.invalid }
             let readback = try MergeMasterCodec.read(destination,context:context,honorCancellation:false)
             guard readback.provenance == provenance,readback.image.width == image.width,readback.image.height == image.height else { throw MergeMasterCodec.invalid }
-            indexed = try catalog.registerMergedPhoto(photo,root:root,inputs:value.requests)
+            registered = try catalog.registerMergedPhoto(photo,root:root,inputs:value.requests,stackWithSources:stackWithSources,collectionID:collectionID)
         } catch {
             throw LRCError(L10n.text("merge.savedButNotIndexed", defaultValue:"The master was preserved at \(destination.path). Catalog registration or final verification failed: \(error.localizedDescription)"))
         }
         prepared = nil
-        return MergeSaved(photo:indexed,url:destination)
+        return MergeSaved(photo:registered.photo,url:destination,previousStacks:registered.previousStacks)
     }
     private func makePlan(_ frames: [MergeFrame],options: PhotoMergeOptions) throws -> Plan {
         switch options.kind {

@@ -57,7 +57,7 @@ extension AppModel {
             choose(live.isEmpty ? Set(next.map { [$0] } ?? []) : live,active:next)
         }
     }
-    private func restoreStackUndo(_ stacks: [PhotoStack], selection: Set<String>, active: String?) {
+    func restoreStackUndo(_ stacks: [PhotoStack], selection: Set<String>, active: String?) {
         guard let catalog, commitRecipe() else { return }
         perform {
             let previous = try catalog.restoreStacks(stacks), ids = self.selection, id = activeID

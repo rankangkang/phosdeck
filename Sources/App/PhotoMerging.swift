@@ -5,7 +5,9 @@ import CoreGraphics
 @MainActor @Observable final class PhotoMergeSession: Identifiable {
     let id = UUID()
     let catalog: CatalogStore
+    let collectionID: String?
     var options = PhotoMergeOptions()
+    var stackWithSources = true
     private(set) var inputs: [ImageRequest] = []
     private(set) var working = false
     private(set) var saving = false
@@ -23,8 +25,8 @@ import CoreGraphics
     @ObservationIgnored private var token = UUID()
     @ObservationIgnored private var displayToken = UUID()
 
-    init(catalog: CatalogStore,ids: Set<String>,kind: PhotoMergeKind) {
-        self.catalog = catalog; options.kind = kind; options.align = kind.defaultAlignment; options.autoCrop = kind.isPanorama
+    init(catalog: CatalogStore,ids: Set<String>,kind: PhotoMergeKind,collectionID: String? = nil) {
+        self.catalog = catalog; self.collectionID = collectionID; options.kind = kind; options.align = kind.defaultAlignment; options.autoCrop = kind.isPanorama
         working = true; phase = L10n.text("merge.loading", defaultValue:"Loading selected originals…")
         job = Task {
             do {
@@ -93,10 +95,10 @@ import CoreGraphics
         guard !working,let preview,let directoryBookmark else { return }
         displayJob?.cancel(); working = true; saving = true; progress = 0; error = nil
         let token = UUID(); self.token = token
-        let filename = filename
+        let filename = filename,stackWithSources = stackWithSources
         job = Task {
             do {
-                let result = try await engine.save(preview.id,to:directoryBookmark,filename:filename,catalog:catalog) { [weak self] value,phase in
+                let result = try await engine.save(preview.id,to:directoryBookmark,filename:filename,catalog:catalog,stackWithSources:stackWithSources,collectionID:collectionID) { [weak self] value,phase in
                     await self?.report(value,phase:phase,token:token)
                 }
                 guard self.token == token else { return }
@@ -128,15 +130,19 @@ extension AppModel {
     var canMergePhotos: Bool { workspaceAvailable && catalog != nil && (2...128).contains(selection.count) }
     func requestPhotoMerge(_ kind: PhotoMergeKind) {
         guard canMergePhotos,commitRecipe(),let catalog else { return }
-        mergeSession = PhotoMergeSession(catalog:catalog,ids:selection,kind:kind)
+        mergeSession = PhotoMergeSession(catalog:catalog,ids:selection,kind:kind,collectionID:regularCollectionID)
     }
     func completePhotoMerge(_ result: MergeSaved) {
         mergeSession = nil
+        if let stacks = result.previousStacks {
+            let previous = selection,active = activeID
+            undo.registerUndo(withTarget:self) { $0.restoreStackUndo(stacks,selection:previous,active:active) }
+            undo.setActionName(L10n.text("merge.stackUndo", defaultValue:"Stack Merged Photo"))
+        }
         do {
-            try completeImport(ids:[result.photo.id],cancelled:false)
-            try reload()
-            showLastImport()
+            let relocated = try revealMergedPhoto(result.photo.id)
             status = L10n.text("merge.completed", defaultValue:"Float master saved and added: \(result.url.lastPathComponent)")
+            if relocated { status += L10n.text("merge.revealedAll", defaultValue:" · Shown in All Photos; return to your previous location with Back") }
         } catch {
             self.error = L10n.text("merge.savedRefreshFailed", defaultValue:"The master is saved and cataloged at \(result.url.path), but the workspace could not refresh: \(error.localizedDescription)")
         }

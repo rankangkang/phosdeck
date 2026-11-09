@@ -67,6 +67,12 @@ struct PhotoMergeSheet: View {
                 Text(L10n.text("merge.noOverwrite", defaultValue:"Existing files are preserved")).font(.caption11).foregroundStyle(Theme.textSecondary)
                 Spacer()
             }
+            VStack(alignment:.leading,spacing:4) {
+                Toggle(L10n.text("merge.stackWithSources", defaultValue:"Stack with Source Photos"),isOn:$session.stackWithSources)
+                    .toggleStyle(.instrument).accessibilityIdentifier("merge-stack-with-sources")
+                Text(L10n.text("merge.stackHint", defaultValue:"When enabled, the result is first and sources are collapsed. Only participating photos leave their old stacks; other members stay. Undo restores stacking and keeps the master."))
+                    .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
+            }.disabled(session.working)
             if let error = session.error { Text(error).font(.caption11).foregroundStyle(Theme.warning).textSelection(.enabled).fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("merge-error") }
             HStack(spacing:12) {
                 if session.working {

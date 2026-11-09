@@ -17,11 +17,13 @@ extension CatalogStore {
                   let root = try StorageRoot.fetchOne(db,key:request.root.id),root.path == request.root.path,root.bookmark == request.root.bookmark else { throw PhotoMergeEngine.sourceChanged }
         }
     }
-    /// Source validation, root and master become visible together. Existing stacks,
-    /// source edits and histories are never rewritten by a photo merge.
-    func registerMergedPhoto(_ photo: Photo,root: StorageRoot,inputs: [ImageRequest]) throws -> Photo {
+    /// Indexing, collection membership and optional stacking share one transaction.
+    /// Move only participating versions; never absorb unselected members of old stacks.
+    func registerMergedPhoto(_ photo: Photo,root: StorageRoot,inputs: [ImageRequest],stackWithSources: Bool,collectionID: String?) throws -> (photo: Photo,previousStacks: [PhotoStack]?) {
         try database.write { db in
             try Self.validateMergeInputs(inputs,in:db)
+            let sourceIDs = inputs.map { $0.photo.id },selected = Set(sourceIDs)
+            guard sourceIDs.count >= 2,selected.count == sourceIDs.count,!selected.contains(photo.id) else { throw PhotoMergeEngine.sourceChanged }
             if let existing = try StorageRoot.fetchOne(db,key:root.id) {
                 guard existing.path == root.path,existing.bookmark == root.bookmark else { throw PhotoMergeEngine.sourceChanged }
             } else {
@@ -31,7 +33,21 @@ extension CatalogStore {
             }
             guard try Self.index(photo,in:db) else { throw PhotoMergeEngine.sourceChanged }
             guard let indexed = try Photo.fetchOne(db,key:photo.id) else { throw PhotoMergeEngine.sourceChanged }
-            return indexed
+            if let collectionID {
+                try requireManualCollection(db,id:collectionID)
+                try db.execute(sql:"INSERT INTO membership(collectionID,photoID) VALUES (?,?)",arguments:[collectionID,indexed.id])
+            }
+            let previous = stackWithSources ? try Self.readStacks(db) : nil
+            if let previous {
+                var stacks = previous.map { stack in
+                    var remaining = stack
+                    remaining.members.removeAll { selected.contains($0) }
+                    return remaining
+                }.filter { $0.members.count >= 2 }
+                stacks.append(PhotoStack(members:[indexed.id]+sourceIDs))
+                try Self.writeStacks(stacks,db:db)
+            }
+            return (indexed,previous)
         }
     }
 }

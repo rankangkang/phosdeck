@@ -46229,6 +46229,91 @@
         }
       }
     },
+    "merge.stackWithSources": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stack with Source Photos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与来源照片堆叠"
+          }
+        }
+      }
+    },
+    "merge.stackHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When enabled, the result is first and sources are collapsed. Only participating photos leave their old stacks; other members stay. Undo restores stacking and keeps the master."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启后结果置前、来源折叠；仅将参与合成的照片移出原堆叠，其余成员保留。撤销会还原堆叠，保留母版。"
+          }
+        }
+      }
+    },
+    "merge.stackUndo": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stack Merged Photo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "堆叠合成照片"
+          }
+        }
+      }
+    },
+    "merge.revealedAll": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " · Shown in All Photos; return to your previous location with Back"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " · 已在所有照片中定位；可用浏览后退返回原位置"
+          }
+        }
+      }
+    },
+    "merge.revealBlocked": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finish the current editing tool to view the saved master"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请完成当前编辑工具后查看已保存的母版"
+          }
+        }
+      }
+    },
     "merge.completed": {
       "extractionState": "manual",
       "localizations": {
