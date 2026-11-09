@@ -1312,6 +1312,84 @@ final class ImagingTests: XCTestCase {
         }
     }
 
+    @MainActor func testPhotoCellSeparatesImageStackAndMetadataWhenResizedAndReused() async throws {
+        let root = StorageRoot(id: "r", path: directory.path, bookmark: try AccessLease.bookmark(directory, readOnly: true), label: "synthetic")
+        let item = PhotoItem(), service = ThumbnailService()
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 240, height: 240), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = item.view
+        defer { window.contentView = nil; item.prepareForReuse() }
+        let badge = StackBadge(stackID: "stack", position: 1, count: 4, matching: 3, collapsed: false)
+        var toggles = 0
+        for orientation in [1, 6] {
+            var photo = try ReferenceImporter.inspect(url: fixture(orientation: orientation), root: root, rootURL: directory)
+            photo.rating = 5; photo.flag = -1; photo.colorLabel = 1; photo.copyName = "A long virtual copy name"
+            for mat in PhotoMat.allCases {
+                for film in [false, true, false] {
+                    for stacked in [true, false] {
+                        let size = film ? NSSize(width: 104, height: 30) : NSSize(width: 100, height: 133)
+                        window.setContentSize(size)
+                        item.configure(photo: photo, root: root, service: service, film: film, active: true, mat: mat,
+                                       badge: stacked ? badge : nil, paired: true, position: 12, toggleStack: { toggles += 1 })
+                        item.view.layoutSubtreeIfNeeded()
+                        try await waitUntil { item.displayedImage != nil }
+                        let image = try XCTUnwrap(item.view.subviews.compactMap { $0 as? NSImageView }.first)
+                        let button = try XCTUnwrap(item.view.subviews.compactMap { $0 as? NSButton }.first)
+                        let labels = item.view.subviews.compactMap { $0 as? NSTextField }.filter { !$0.isHidden }
+                        XCTAssertGreaterThan(image.bounds.height, 0)
+                        XCTAssertEqual(image.imageScaling, .scaleProportionallyUpOrDown)
+                        for label in labels {
+                            XCTAssertTrue(item.view.bounds.contains(label.frame), "Metadata must fit the smallest cell")
+                            XCTAssertFalse(image.frame.intersects(label.frame), "Metadata must not cover photos")
+                        }
+                        if stacked {
+                            XCTAssertTrue(item.view.bounds.contains(button.frame))
+                            XCTAssertFalse(image.frame.intersects(button.frame), "Stack control must stay outside the photo")
+                            XCTAssertTrue(labels.allSatisfy { !$0.frame.intersects(button.frame) })
+                            button.performClick(nil)
+                        } else { XCTAssertTrue(button.isHidden) }
+                        XCTAssertTrue(labels.contains { $0.toolTip?.contains(photo.displayName) == true })
+                        XCTAssertTrue(labels.contains { $0.toolTip?.contains("★ 5") == true })
+                        XCTAssertEqual(item.displayedImage?.size.width, orientation == 1 ? 80 : 40)
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(toggles, 24, "A reused cell must retain its current stack action")
+    }
+
+    @MainActor func testPhotoGridReflowsIntoAlignedCellsWithoutHorizontalOverflow() async throws {
+        let model = AppModel()
+        model.photos = (0..<24).map { Photo(id: "cell-\($0)", rootID: "synthetic", relativePath: "\($0).jpg", identity: Data(), identityKey: "cell-\($0)", width: 80, height: 40) }
+        let host = NSHostingView(rootView: PhotoGrid(model: model))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 640, height: 500), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil }
+        func find(_ view: NSView) -> NSScrollView? { (view as? NSScrollView) ?? view.subviews.compactMap(find).first }
+        host.layoutSubtreeIfNeeded()
+        let scroll = try XCTUnwrap(find(host)), collection = try XCTUnwrap(scroll.documentView as? NSCollectionView)
+        let layout = try XCTUnwrap(collection.collectionViewLayout as? NSCollectionViewFlowLayout)
+        for width in [480.0, 900, 640] {
+            for thumbnailSize in [100.0, 156, 240] {
+                window.setContentSize(NSSize(width: width, height: 500)); model.thumbnailSize = thumbnailSize
+                try await Task.sleep(for: .milliseconds(30)); host.layoutSubtreeIfNeeded()
+                layout.invalidateLayout(); collection.layoutSubtreeIfNeeded()
+                let frames = try (0..<12).map { try XCTUnwrap(collection.layoutAttributesForItem(at: IndexPath(item: $0, section: 0))).frame }
+                XCTAssertEqual(frames[0].height, frames[1].height)
+                if let neighbor = frames.first(where: { $0.minY == frames[0].minY && $0.minX > frames[0].minX }) {
+                    XCTAssertEqual(frames[0].maxX, neighbor.minX, accuracy: 1, "Adjacent cells form one continuous grid")
+                }
+                for frame in frames {
+                    XCTAssertGreaterThan(frame.width, 0)
+                    XCTAssertGreaterThanOrEqual(frame.minX, 0)
+                    XCTAssertLessThanOrEqual(frame.maxX, scroll.contentSize.width)
+                }
+                let nextRow = try XCTUnwrap(frames.first { $0.minY > frames[0].minY })
+                XCTAssertEqual(nextRow.minX, frames[0].minX, accuracy: 1)
+                XCTAssertEqual(nextRow.minY, frames[0].maxY, accuracy: 1)
+            }
+        }
+    }
+
     @MainActor func testSliderDoubleClickRestoresWhiteBalanceBaseline() throws {
         let slider = AdjustmentNSSlider(frame: NSRect(x: 0, y: 0, width: 240, height: 22))
         slider.minValue = 2000; slider.maxValue = 50000; slider.step = 50

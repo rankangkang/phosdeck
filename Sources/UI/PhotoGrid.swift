@@ -14,8 +14,9 @@ struct PhotoGrid: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
         let layout = NSCollectionViewFlowLayout()
-        layout.minimumInteritemSpacing = 4; layout.minimumLineSpacing = 4
-        layout.sectionInset = NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+        layout.minimumInteritemSpacing = 0; layout.minimumLineSpacing = 0
+        let inset = film ? Metrics.filmCell.inset : Metrics.thumbnailCell.inset
+        layout.sectionInset = NSEdgeInsets(top: inset, left: inset, bottom: inset, right: inset)
         layout.scrollDirection = film ? .horizontal : .vertical
         let collection = KeyboardCollectionView()
         collection.command = { [weak model] event in
@@ -119,12 +120,11 @@ struct PhotoGrid: NSViewRepresentable {
                 guard let path = c.collection?.indexPath(for: item), photos.indices.contains(path.item),
                       let item = item as? PhotoItem else { continue }
                 let photo = photos[path.item]
-                item.configure(photo: photo, root: model.roots.first { $0.id == photo.rootID }, service: model.thumbnails, film: film, active: model.activeID == photo.id, mat: mat, badge:model.stackBadges[photo.id],paired:model.pairedSourceIDs.contains(photo.sourceKey),toggleStack:{ [weak model] in model?.toggleStack(photo.id) })
+                item.configure(photo: photo, root: model.roots.first { $0.id == photo.rootID }, service: model.thumbnails, film: film, active: model.activeID == photo.id, mat: mat, badge:model.stackBadges[photo.id],paired:model.pairedSourceIDs.contains(photo.sourceKey),position:model.pageOffset + path.item + 1,toggleStack:{ [weak model] in model?.toggleStack(photo.id) })
             }
         }
-        let width = film ? (filmHeight - 8) * 1.15 : model.thumbnailSize
         if let layout = c.collection?.collectionViewLayout as? NSCollectionViewFlowLayout {
-            let size = film ? c.filmItemSize(viewportHeight: scroll.contentSize.height) : NSSize(width: width, height: width * 0.76 + 32)
+            let size = film ? c.filmItemSize(viewportHeight: scroll.contentSize.height) : c.gridItemSize(viewportWidth: scroll.contentSize.width)
             if layout.itemSize != size { layout.itemSize = size; layout.invalidateLayout() }
         }
         let indexes = Set(photos.enumerated().filter { model.selection.contains($0.element.id) }.map { IndexPath(item: $0.offset, section: 0) })
@@ -163,20 +163,25 @@ struct PhotoGrid: NSViewRepresentable {
             // A persistent horizontal scrollbar consumes space inside the thumbnail band.
             let available = viewportHeight > 0 ? Double(viewportHeight) : filmHeight
             let height = max(1, min(filmHeight, available) - 9)
-            return NSSize(width: (filmHeight - 8) * 1.15, height: height)
+            return NSSize(width: max(104, (filmHeight - 8) * 1.25), height: height)
+        }
+        func gridItemSize(viewportWidth: CGFloat) -> NSSize {
+            let available = max(1, viewportWidth - 2 * Metrics.thumbnailCell.inset)
+            let columns = max(1, floor(available / model.thumbnailSize))
+            let width = floor(available / columns)
+            let height = (width - 2 * Metrics.thumbnailCell.imageInset) * 0.75
+                + Metrics.thumbnailCell.header + Metrics.thumbnailCell.footer + Metrics.thumbnailCell.imageGap
+            return NSSize(width: width, height: height)
         }
         func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize {
             if film { return filmItemSize(viewportHeight: collectionView.enclosingScrollView?.contentSize.height ?? CGFloat(filmHeight)) }
-            let available = max(100, collectionView.bounds.width - 8)
-            let columns = max(1, floor((available + 4) / (model.thumbnailSize + 4)))
-            let width = floor((available - (columns - 1) * 4) / columns)
-            return NSSize(width: width, height: width * 0.76 + 32)
+            return gridItemSize(viewportWidth: collectionView.bounds.width)
         }
         func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { photos.count }
         func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
             let item = collectionView.makeItem(withIdentifier: NSUserInterfaceItemIdentifier("photo"), for: indexPath) as! PhotoItem
             let photo = photos[indexPath.item]
-            item.configure(photo: photo, root: model.roots.first { $0.id == photo.rootID }, service: model.thumbnails, film: film, active: model.activeID == photo.id, mat: mat, badge:model.stackBadges[photo.id],paired:model.pairedSourceIDs.contains(photo.sourceKey),toggleStack:{ [weak model] in model?.toggleStack(photo.id) })
+            item.configure(photo: photo, root: model.roots.first { $0.id == photo.rootID }, service: model.thumbnails, film: film, active: model.activeID == photo.id, mat: mat, badge:model.stackBadges[photo.id],paired:model.pairedSourceIDs.contains(photo.sourceKey),position:model.pageOffset + indexPath.item + 1,toggleStack:{ [weak model] in model?.toggleStack(photo.id) })
             return item
         }
         fileprivate static let orderingPasteboardType = NSPasteboard.PasteboardType("dev.cmkk.phosdeck.collection-order")
@@ -291,8 +296,12 @@ final class KeyboardCollectionView: NSCollectionView {
 }
 
 final class PhotoItem: NSCollectionViewItem {
+    private let metadataWell = NSView()
+    private let metadataSeam = NSView()
     private let picture = NSImageView()
     private let caption = NSTextField(labelWithString: "")
+    private let details = NSTextField(labelWithString: "")
+    private let positionLabel = NSTextField(labelWithString: "")
     private let colorIndicator = NSView()
     private let stackButton = NSButton(title:"",target:nil,action:nil)
     private var stackToggle: (() -> Void)?
@@ -302,49 +311,110 @@ final class PhotoItem: NSCollectionViewItem {
     private var sourceKey: String?
     private var isActivePhoto = false
     private var mat = PhotoMat.dark
+    private var film: Bool?
+    private var gridConstraints: [NSLayoutConstraint] = []
+    private var filmConstraints: [NSLayoutConstraint] = []
+    private var captionLeading: NSLayoutConstraint!
+    private var filmCaptionTrailing: NSLayoutConstraint!
+    private var stackedCaptionTrailing: NSLayoutConstraint!
+    private var metadataHeight: NSLayoutConstraint!
     var displayedImage: NSImage? { picture.image }
     override func loadView() {
         view = NSView(); view.wantsLayer = true
         view.layer?.cornerRadius = 1
+        metadataWell.wantsLayer = true; metadataSeam.wantsLayer = true
         picture.imageScaling = .scaleProportionallyUpOrDown
-        caption.font = .systemFont(ofSize: 11); caption.lineBreakMode = .byTruncatingMiddle
-        caption.alignment = .center
-        for sub in [picture, caption] { sub.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(sub) }
+        caption.font = .systemFont(ofSize: 11, weight: .medium); caption.lineBreakMode = .byTruncatingMiddle
+        details.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        details.lineBreakMode = .byTruncatingMiddle
+        positionLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+        positionLabel.setAccessibilityElement(false)
+        for sub in [metadataWell, metadataSeam, picture, caption, details, positionLabel] { sub.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(sub) }
         colorIndicator.wantsLayer = true; colorIndicator.layer?.cornerRadius = 1
         colorIndicator.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(colorIndicator)
-        NSLayoutConstraint.activate([colorIndicator.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 5),
+        NSLayoutConstraint.activate([colorIndicator.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
             colorIndicator.centerYAnchor.constraint(equalTo: caption.centerYAnchor), colorIndicator.widthAnchor.constraint(equalToConstant: 6), colorIndicator.heightAnchor.constraint(equalToConstant: 6)])
         stackButton.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(stackButton)
         stackButton.bezelStyle = .inline; stackButton.font = .monospacedDigitSystemFont(ofSize:11,weight:.medium)
         stackButton.target = self; stackButton.action = #selector(toggleStack)
-        NSLayoutConstraint.activate([stackButton.leadingAnchor.constraint(equalTo:view.leadingAnchor,constant:3),stackButton.topAnchor.constraint(equalTo:view.topAnchor,constant:2)])
+        stackButton.wantsLayer = true; stackButton.layer?.cornerRadius = 2
+        stackButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        captionLeading = caption.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12)
+        metadataHeight = metadataWell.heightAnchor.constraint(equalToConstant: Metrics.thumbnailCell.footer)
         NSLayoutConstraint.activate([
-            picture.topAnchor.constraint(equalTo: view.topAnchor, constant: 4), picture.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-            picture.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8), picture.bottomAnchor.constraint(equalTo: caption.topAnchor, constant: -2),
-            caption.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14), caption.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
-            caption.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -4), caption.heightAnchor.constraint(equalToConstant: 14)
+            metadataWell.leadingAnchor.constraint(equalTo: view.leadingAnchor), metadataWell.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            metadataWell.bottomAnchor.constraint(equalTo: view.bottomAnchor), metadataHeight,
+            metadataSeam.leadingAnchor.constraint(equalTo: view.leadingAnchor), metadataSeam.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            metadataSeam.topAnchor.constraint(equalTo: metadataWell.topAnchor), metadataSeam.heightAnchor.constraint(equalToConstant: 0.5),
+            captionLeading, caption.heightAnchor.constraint(equalToConstant: 14),
+            stackButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6), stackButton.heightAnchor.constraint(equalToConstant: 18),
+            positionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12), positionLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
+            positionLabel.heightAnchor.constraint(equalToConstant: 14)
         ])
+        gridConstraints = [
+            picture.topAnchor.constraint(equalTo: view.topAnchor, constant: Metrics.thumbnailCell.header),
+            picture.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Metrics.thumbnailCell.imageInset),
+            picture.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Metrics.thumbnailCell.imageInset),
+            picture.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -Metrics.thumbnailCell.footer - Metrics.thumbnailCell.imageGap),
+            stackButton.topAnchor.constraint(equalTo: view.topAnchor, constant: 3),
+            caption.topAnchor.constraint(equalTo: view.bottomAnchor, constant: -Metrics.thumbnailCell.footer + 6),
+            caption.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            details.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12), details.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            details.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -5), details.heightAnchor.constraint(equalToConstant: 12)
+        ]
+        filmConstraints = [
+            picture.topAnchor.constraint(equalTo: view.topAnchor, constant: 4),
+            picture.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Metrics.filmCell.imageInset),
+            picture.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Metrics.filmCell.imageInset),
+            picture.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -Metrics.filmCell.footer - 2),
+            stackButton.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            caption.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -2)
+        ]
+        filmCaptionTrailing = caption.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8)
+        stackedCaptionTrailing = caption.trailingAnchor.constraint(equalTo: stackButton.leadingAnchor, constant: -4)
     }
     override var isSelected: Bool { didSet { style() } }
     private func style() {
-        view.layer?.backgroundColor = isSelected || isActivePhoto ? mat.selection.withAlphaComponent(0.1).cgColor : NSColor.clear.cgColor
-        view.layer?.borderWidth = isActivePhoto ? 2 : isSelected ? 1 : 0
-        view.layer?.borderColor = mat.selection.cgColor
+        view.layer?.backgroundColor = mat.nsColor.blended(withFraction: isSelected || isActivePhoto ? 0.1 : 0.025, of: mat.selection)?.cgColor
+        view.layer?.borderWidth = isActivePhoto ? 2 : 1
+        view.layer?.borderColor = mat.selection.withAlphaComponent(isActivePhoto ? 1 : isSelected ? 0.7 : 0.16).cgColor
+        metadataWell.layer?.backgroundColor = mat.selection.withAlphaComponent(0.04).cgColor
+        metadataSeam.layer?.backgroundColor = mat.selection.withAlphaComponent(0.14).cgColor
         caption.textColor = isSelected || isActivePhoto ? mat.text : mat.textSecondary
+        details.textColor = mat.textSecondary; positionLabel.textColor = mat.textSecondary
+        stackButton.layer?.backgroundColor = mat.selection.withAlphaComponent(0.08).cgColor
     }
     @objc private func toggleStack() { stackToggle?() }
-    func configure(photo: Photo, root: StorageRoot?, service: ThumbnailService, film: Bool, active: Bool = false, mat: PhotoMat = .dark, badge: StackBadge? = nil, paired: Bool = false, toggleStack: (() -> Void)? = nil) {
+    func configure(photo: Photo, root: StorageRoot?, service: ThumbnailService, film: Bool, active: Bool = false, mat: PhotoMat = .dark, badge: StackBadge? = nil, paired: Bool = false, position: Int? = nil, toggleStack: (() -> Void)? = nil) {
+        _ = view
         isActivePhoto = active; self.mat = mat
+        NSLayoutConstraint.deactivate([filmCaptionTrailing, stackedCaptionTrailing])
+        if self.film != film {
+            NSLayoutConstraint.deactivate(gridConstraints + filmConstraints)
+            NSLayoutConstraint.activate(film ? filmConstraints : gridConstraints)
+            self.film = film
+            metadataHeight.constant = film ? Metrics.filmCell.footer : Metrics.thumbnailCell.footer
+        }
+        positionLabel.isHidden = film; details.isHidden = film
+        positionLabel.stringValue = position.map { String(format: "%03d", $0) } ?? ""
         let label = PhotoColorLabel(rawValue: photo.colorLabel) ?? .none
         colorIndicator.isHidden = label == .none
         colorIndicator.layer?.backgroundColor = label.nsColor.cgColor
         colorIndicator.toolTip = label.title
+        captionLeading.constant = label == .none ? (film ? 8 : 12) : 20
         stackToggle = toggleStack; stackButton.isHidden = badge == nil; stackButton.title = badge?.text ?? ""
         stackButton.attributedTitle = NSAttributedString(string:badge?.text ?? "",attributes:[.foregroundColor:mat.text,.font:NSFont.monospacedDigitSystemFont(ofSize:11,weight:.medium)])
         stackButton.contentTintColor = mat.text; stackButton.setAccessibilityLabel(badge.map { $0.description + L10n.text("app.toggleExpansion", defaultValue: ", toggle expansion") })
         stackButton.toolTip = badge?.description
 
-        caption.stringValue = (paired ? "↔ " : "") + (photo.isRAW ? "RAW · " : ["jpg","jpeg"].contains(URL(fileURLWithPath:photo.relativePath).pathExtension.lowercased()) ? "JPEG · " : "") + (film ? "\(photo.isVirtualCopy ? L10n.text("app.copy_1724", defaultValue: "Copy · ") + photo.versionName + " " : "")\(photo.flag == -1 ? "× " : photo.flag == 1 ? "⚑ " : "")" + String(repeating: "★", count: photo.rating) : "\(photo.flag == -1 ? "× " : photo.flag == 1 ? "⚑ " : "")\(photo.displayName) \(String(repeating: "★", count: photo.rating))")
+        let format = photo.isRAW ? "RAW" : ["jpg", "jpeg"].contains(URL(fileURLWithPath: photo.relativePath).pathExtension.lowercased()) ? "JPEG" : URL(fileURLWithPath: photo.relativePath).pathExtension.uppercased()
+        let flags = photo.flag == -1 ? "×" : photo.flag == 1 ? "⚑" : ""
+        let rating = photo.rating > 0 ? "★ \(photo.rating)" : ""
+        details.stringValue = [format, paired ? "↔" : "", flags, rating].filter { !$0.isEmpty }.joined(separator: "  ·  ")
+        caption.stringValue = film ? [flags, rating, paired ? "↔" : "", format, photo.isVirtualCopy ? photo.versionName : ""].filter { !$0.isEmpty }.joined(separator: " ") : photo.displayName
+        caption.toolTip = photo.displayName + "\n" + details.stringValue
+        caption.font = .systemFont(ofSize: film ? 10 : 11, weight: .medium)
+        if film { (badge == nil ? filmCaptionTrailing : stackedCaptionTrailing)?.isActive = true }
         view.setAccessibilityLabel(L10n.text("app.stars_1725", defaultValue: "\(photo.displayName), \(photo.isRAW ? "RAW" : URL(fileURLWithPath:photo.relativePath).pathExtension.uppercased()), \(paired ? L10n.text("app.rawJPEGPaired", defaultValue: "RAW/JPEG Paired") : L10n.text("app.unpaired", defaultValue: "Unpaired")), \(badge?.description ?? L10n.text("app.unstacked", defaultValue: "Unstacked")), \(photo.rating) stars, \(label.title)\(active ? L10n.text("app.activePhoto", defaultValue: ", active photo") : "")\(photo.flag == -1 ? L10n.text("app.rejected", defaultValue: ", rejected") : photo.flag == 1 ? L10n.text("app.picked", defaultValue: ", picked") : "")"))
         style()
         let key = ThumbnailService.key(photo: photo, edge: 320)

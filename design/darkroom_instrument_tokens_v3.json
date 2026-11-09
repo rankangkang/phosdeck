@@ -370,7 +370,32 @@
     "thumbnail": {
       "selectedOutlineWidth": 2,
       "outlineMustStayOutsidePhoto": true,
-      "preservePhotoAspectRatio": true
+      "preservePhotoAspectRatio": true,
+      "grid": {
+        "sectionInset": 8,
+        "cellSpacing": 0,
+        "imageInset": 12,
+        "headerHeight": 24,
+        "metadataHeight": 42,
+        "imageMetadataGap": 10
+      },
+      "filmstrip": {
+        "sectionInset": 4,
+        "cellSpacing": 0,
+        "minimumCellWidth": 104,
+        "imageInset": 8,
+        "imageTopInset": 4,
+        "metadataHeight": 18,
+        "imageMetadataGap": 2
+      },
+      "neutralMatMarks": {
+        "idleCellOpacity": 0.025,
+        "metadataOpacity": 0.04,
+        "seamOpacity": 0.14,
+        "idleOutlineOpacity": 0.16,
+        "selectedOutlineOpacity": 0.7,
+        "selectionFillOpacity": 0.1
+      }
     },
     "lampSwitch": {
       "size": 16,
