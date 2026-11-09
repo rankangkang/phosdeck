@@ -413,9 +413,11 @@
       },
       "neutralMatMarks": {
         "idleCellOpacity": 0.025,
+        "hoverCellOpacity": 0.075,
         "sharedSeamOpacity": 0.16,
         "selectedOutlineOpacity": 0.7,
-        "selectionFillOpacity": 0.1
+        "selectionFillOpacity": 0.1,
+        "selectionHoverFillOpacity": 0.14
       }
     },
     "lampSwitch": {

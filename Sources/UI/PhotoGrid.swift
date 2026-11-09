@@ -310,6 +310,11 @@ final class KeyboardCollectionView: NSCollectionView {
 
 private final class PhotoCellView: NSView {
     private let leadingSeam = CALayer(), trailingSeam = CALayer(), topSeam = CALayer(), bottomSeam = CALayer()
+    private var hoverTrackingArea: NSTrackingArea?
+    var hoverChanged: (() -> Void)?
+    var isHovered = false {
+        didSet { if oldValue != isHovered { hoverChanged?() } }
+    }
     var seamColor: CGColor? {
         didSet { for seam in [leadingSeam, trailingSeam, topSeam, bottomSeam] { seam.backgroundColor = seamColor } }
     }
@@ -322,7 +327,31 @@ private final class PhotoCellView: NSView {
         }
         return backing
     }
-    override func viewDidMoveToSuperview() { super.viewDidMoveToSuperview(); needsLayout = true }
+    override func viewDidMoveToSuperview() { super.viewDidMoveToSuperview(); needsLayout = true; refreshHover() }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        if let window {
+            NotificationCenter.default.addObserver(self, selector: #selector(refreshHover), name: NSWindow.didBecomeKeyNotification, object: window)
+            NotificationCenter.default.addObserver(self, selector: #selector(refreshHover), name: NSWindow.didResignKeyNotification, object: window)
+        }
+        refreshHover()
+    }
+    deinit { NotificationCenter.default.removeObserver(self) }
+    override func updateTrackingAreas() {
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        hoverTrackingArea = area; addTrackingArea(area)
+        super.updateTrackingAreas()
+        refreshHover()
+    }
+    @objc func refreshHover() {
+        guard let window, window.isKeyWindow, !isHiddenOrHasHiddenAncestor else { isHovered = false; return }
+        isHovered = visibleRect.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
     override func layout() {
         super.layout()
         let width = Metrics.thumbnailCell.seamWidth
@@ -386,7 +415,9 @@ final class PhotoItem: NSCollectionViewItem {
     private var handleWidths: [NSLayoutConstraint] = []
     var displayedImage: NSImage? { picture.image }
     override func loadView() {
-        view = PhotoCellView(); view.wantsLayer = true
+        let cell = PhotoCellView()
+        cell.hoverChanged = { [weak self] in self?.style() }
+        view = cell; view.wantsLayer = true
         picture.imageScaling = .scaleProportionallyUpOrDown
         caption.font = .systemFont(ofSize: 11, weight: .medium); caption.lineBreakMode = .byTruncatingMiddle
         fileType.font = .systemFont(ofSize: 9, weight: .semibold); fileType.alignment = .center
@@ -461,7 +492,10 @@ final class PhotoItem: NSCollectionViewItem {
     }
     override var isSelected: Bool { didSet { style() } }
     private func style() {
-        let background = mat.nsColor.blended(withFraction: isSelected || isActivePhoto ? 0.1 : 0.025, of: mat.selection) ?? mat.nsColor
+        let selected = isSelected || isActivePhoto, hovered = (view as! PhotoCellView).isHovered
+        let fill = selected ? (hovered ? Metrics.thumbnailCellFill.selectedHover : Metrics.thumbnailCellFill.selected)
+                            : (hovered ? Metrics.thumbnailCellFill.hover : Metrics.thumbnailCellFill.idle)
+        let background = mat.nsColor.blended(withFraction: fill, of: mat.selection) ?? mat.nsColor
         view.layer?.backgroundColor = background.cgColor
         (view as! PhotoCellView).seamColor = background.blended(withFraction: 0.16, of: mat.selection)?.cgColor
         view.layer?.borderWidth = isActivePhoto ? 2 : isSelected ? 1 : 0
@@ -475,6 +509,7 @@ final class PhotoItem: NSCollectionViewItem {
     @objc private func toggleStack() { stackToggle?() }
     func configure(photo: Photo, root: StorageRoot?, service: ThumbnailService, film: Bool, active: Bool = false, mat: PhotoMat = .dark, badge: StackBadge? = nil, paired: Bool = false, position: Int? = nil, stackStart: Bool = true, stackEnd: Bool = true, toggleStack: (() -> Void)? = nil) {
         _ = view
+        if imageKey == nil { (view as? PhotoCellView)?.refreshHover() }
         isActivePhoto = active; self.mat = mat
         NSLayoutConstraint.deactivate([detailsLeading, stackedDetailsLeading])
         if self.film != film {
@@ -535,6 +570,7 @@ final class PhotoItem: NSCollectionViewItem {
     }
     override func prepareForReuse() {
         work?.cancel(); work = nil; token = UUID(); imageKey = nil; sourceKey = nil; picture.image = nil; stackToggle = nil
+        (view as? PhotoCellView)?.isHovered = false
         super.prepareForReuse()
     }
 }

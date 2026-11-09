@@ -151,6 +151,7 @@ enum Metrics {
     /// Thumbnail band only; with the 26 pt bar the filmstrip totals 80–160 (122 by default).
     static let filmstrip = (initial: 96.0, range: 54.0...134.0)
     static let thumbnailCell = (inset: CGFloat(8), imageInset: CGFloat(12), header: CGFloat(24), footer: CGFloat(28), imageGap: CGFloat(10), seamWidth: CGFloat(1))
+    static let thumbnailCellFill = (idle: CGFloat(0.025), hover: CGFloat(0.075), selected: CGFloat(0.1), selectedHover: CGFloat(0.14))
     static let filmCell = (inset: CGFloat(4), imageInset: CGFloat(8), footer: CGFloat(18))
     static let thumbnailStack = (handleHeight: CGFloat(32), markHeight: CGFloat(18), countHeight: CGFloat(18), minWidth: CGFloat(18), maxWidth: CGFloat(52))
     static let leftPanel = (initial: 232.0, range: 200.0...280.0)

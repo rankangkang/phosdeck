@@ -348,6 +348,52 @@ final class ImagingTests: XCTestCase {
         item.prepareForReuse()
     }
 
+    @MainActor func testPhotoCellHoverTracksPointerAndClearsOnReuse() throws {
+        let photo = Photo(id: "hover", rootID: "test", relativePath: "hover.jpg", identity: Data(), identityKey: "hover", width: 80, height: 40)
+        let item = PhotoItem(), service = ThumbnailService()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 160, height: 140), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = item.view
+        defer { window.contentView = nil; item.prepareForReuse() }
+        item.view.updateTrackingAreas()
+        XCTAssertTrue(item.view.trackingAreas.contains { $0.options.contains([.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect]) })
+        func event(_ type: NSEvent.EventType) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.enterExitEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+        }
+        func backgroundRed() throws -> CGFloat {
+            let color = try XCTUnwrap(item.view.layer?.backgroundColor)
+            return try XCTUnwrap(NSColor(cgColor: color)?.usingColorSpace(.sRGB)).redComponent
+        }
+        let entered = try event(.mouseEntered), exited = try event(.mouseExited)
+        for mat in PhotoMat.allCases {
+            for film in [false, true] {
+                item.configure(photo: photo, root: nil, service: service, film: film, mat: mat)
+                let picture = try XCTUnwrap(item.view.subviews.compactMap { $0 as? NSImageView }.first)
+                let image = NSImage(size: NSSize(width: 80, height: 40)); picture.image = image
+                let idle = try backgroundRed()
+                item.view.mouseEntered(with: entered)
+                let hovered = try backgroundRed()
+                XCTAssertGreaterThan(abs(hovered - idle), 0.005, "Hover should be visible on every viewing mat")
+                XCTAssertTrue(item.displayedImage === image, "Hover must not replace or tint the photo")
+                item.configure(photo: photo, root: nil, service: service, film: film, mat: mat)
+                XCTAssertEqual(try backgroundRed(), hovered, accuracy: 0.0001, "Metadata updates must preserve hover")
+                item.isSelected = true
+                let selectedHover = try backgroundRed()
+                XCTAssertEqual(item.view.layer?.borderWidth, 1, "Selection remains visible while hovering")
+                item.view.mouseExited(with: exited)
+                let selected = try backgroundRed()
+                XCTAssertGreaterThan(abs(selectedHover - selected), 0.005)
+                item.view.mouseEntered(with: entered)
+                NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+                XCTAssertEqual(try backgroundRed(), selected, accuracy: 0.0001, "Inactive windows must clear hover")
+                item.isSelected = false
+                item.view.mouseEntered(with: entered)
+                item.prepareForReuse()
+                XCTAssertEqual(try backgroundRed(), idle, accuracy: 0.0001, "Reused cells must not retain stale hover")
+            }
+        }
+    }
+
     @MainActor private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
