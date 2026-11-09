@@ -36223,6 +36223,23 @@
         }
       }
     },
+    "app.stackMembersHiddenByScope": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hidden by the current source or filters: %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前来源或筛选未显示的组员：%lld 张"
+          }
+        }
+      }
+    },
     "app.stackVersionMatchesInTheCurrentScope": {
       "extractionState": "manual",
       "comment": "Sources/Catalog/PhotoStacks.swift: 19",

@@ -168,7 +168,7 @@ struct PhotoGrid: NSViewRepresentable {
         func gridItemSize(viewportWidth: CGFloat) -> NSSize {
             let available = max(1, viewportWidth - 2 * Metrics.thumbnailCell.inset)
             let columns = max(1, floor(available / model.thumbnailSize))
-            let width = floor(available / columns)
+            let width = available / columns
             let height = (width - 2 * Metrics.thumbnailCell.imageInset) * 0.75
                 + Metrics.thumbnailCell.header + Metrics.thumbnailCell.footer + Metrics.thumbnailCell.imageGap
             return NSSize(width: width, height: height)
@@ -295,6 +295,38 @@ final class KeyboardCollectionView: NSCollectionView {
     }
 }
 
+private final class PhotoCellView: NSView {
+    private let leadingSeam = CALayer(), trailingSeam = CALayer(), topSeam = CALayer(), bottomSeam = CALayer()
+    var seamColor: CGColor? {
+        didSet { for seam in [leadingSeam, trailingSeam, topSeam, bottomSeam] { seam.backgroundColor = seamColor } }
+    }
+    override func makeBackingLayer() -> CALayer {
+        let backing = super.makeBackingLayer()
+        for (name, seam) in zip(["leading", "trailing", "top", "bottom"], [leadingSeam, trailingSeam, topSeam, bottomSeam]) {
+            seam.name = "photo-grid-seam-" + name; seam.zPosition = 1
+            seam.actions = ["position": NSNull(), "bounds": NSNull(), "hidden": NSNull(), "backgroundColor": NSNull()]
+            backing.addSublayer(seam)
+        }
+        return backing
+    }
+    override func viewDidMoveToSuperview() { super.viewDidMoveToSuperview(); needsLayout = true }
+    override func layout() {
+        super.layout()
+        let width = Metrics.thumbnailCell.seamWidth
+        leadingSeam.frame = NSRect(x: 0, y: 0, width: width, height: bounds.height)
+        trailingSeam.frame = NSRect(x: bounds.width - width, y: 0, width: width, height: bounds.height)
+        topSeam.frame = NSRect(x: 0, y: bounds.height - width, width: bounds.width, height: width)
+        bottomSeam.frame = NSRect(x: 0, y: 0, width: bounds.width, height: width)
+        // Each cell owns its right/bottom seam; only the first row/column adds the outer edges.
+        if let collection = enclosingScrollView?.documentView as? NSCollectionView,
+           let layout = collection.collectionViewLayout as? NSCollectionViewFlowLayout {
+            let frame = convert(bounds, to: collection)
+            leadingSeam.isHidden = abs(frame.minX - layout.sectionInset.left) > 0.01
+            topSeam.isHidden = abs(frame.minY - layout.sectionInset.top) > 0.01
+        }
+    }
+}
+
 final class PhotoItem: NSCollectionViewItem {
     private let metadataWell = NSView()
     private let metadataSeam = NSView()
@@ -320,13 +352,14 @@ final class PhotoItem: NSCollectionViewItem {
     private var metadataHeight: NSLayoutConstraint!
     var displayedImage: NSImage? { picture.image }
     override func loadView() {
-        view = NSView(); view.wantsLayer = true
-        view.layer?.cornerRadius = 1
+        view = PhotoCellView(); view.wantsLayer = true
         metadataWell.wantsLayer = true; metadataSeam.wantsLayer = true
         picture.imageScaling = .scaleProportionallyUpOrDown
         caption.font = .systemFont(ofSize: 11, weight: .medium); caption.lineBreakMode = .byTruncatingMiddle
         details.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
         details.lineBreakMode = .byTruncatingMiddle
+        details.setContentHuggingPriority(.required, for: .horizontal)
+        details.setContentCompressionResistancePriority(.required, for: .horizontal)
         positionLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
         positionLabel.setAccessibilityElement(false)
         for sub in [metadataWell, metadataSeam, picture, caption, details, positionLabel] { sub.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(sub) }
@@ -358,9 +391,9 @@ final class PhotoItem: NSCollectionViewItem {
             picture.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -Metrics.thumbnailCell.footer - Metrics.thumbnailCell.imageGap),
             stackButton.topAnchor.constraint(equalTo: view.topAnchor, constant: 3),
             caption.topAnchor.constraint(equalTo: view.bottomAnchor, constant: -Metrics.thumbnailCell.footer + 6),
-            caption.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            details.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12), details.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            details.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -5), details.heightAnchor.constraint(equalToConstant: 12)
+            caption.trailingAnchor.constraint(equalTo: details.leadingAnchor, constant: -8),
+            details.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            details.centerYAnchor.constraint(equalTo: caption.centerYAnchor), details.heightAnchor.constraint(equalToConstant: 14)
         ]
         filmConstraints = [
             picture.topAnchor.constraint(equalTo: view.topAnchor, constant: 4),
@@ -375,9 +408,11 @@ final class PhotoItem: NSCollectionViewItem {
     }
     override var isSelected: Bool { didSet { style() } }
     private func style() {
-        view.layer?.backgroundColor = mat.nsColor.blended(withFraction: isSelected || isActivePhoto ? 0.1 : 0.025, of: mat.selection)?.cgColor
-        view.layer?.borderWidth = isActivePhoto ? 2 : 1
-        view.layer?.borderColor = mat.selection.withAlphaComponent(isActivePhoto ? 1 : isSelected ? 0.7 : 0.16).cgColor
+        let background = mat.nsColor.blended(withFraction: isSelected || isActivePhoto ? 0.1 : 0.025, of: mat.selection) ?? mat.nsColor
+        view.layer?.backgroundColor = background.cgColor
+        (view as! PhotoCellView).seamColor = background.blended(withFraction: 0.16, of: mat.selection)?.cgColor
+        view.layer?.borderWidth = isActivePhoto ? 2 : isSelected ? 1 : 0
+        view.layer?.borderColor = mat.selection.withAlphaComponent(isActivePhoto ? 1 : 0.7).cgColor
         metadataWell.layer?.backgroundColor = mat.selection.withAlphaComponent(0.04).cgColor
         metadataSeam.layer?.backgroundColor = mat.selection.withAlphaComponent(0.14).cgColor
         caption.textColor = isSelected || isActivePhoto ? mat.text : mat.textSecondary
@@ -396,7 +431,7 @@ final class PhotoItem: NSCollectionViewItem {
             metadataHeight.constant = film ? Metrics.filmCell.footer : Metrics.thumbnailCell.footer
         }
         positionLabel.isHidden = film; details.isHidden = film
-        positionLabel.stringValue = position.map { String(format: "%03d", $0) } ?? ""
+        positionLabel.stringValue = position.map(String.init) ?? ""
         let label = PhotoColorLabel(rawValue: photo.colorLabel) ?? .none
         colorIndicator.isHidden = label == .none
         colorIndicator.layer?.backgroundColor = label.nsColor.cgColor
@@ -407,12 +442,11 @@ final class PhotoItem: NSCollectionViewItem {
         stackButton.contentTintColor = mat.text; stackButton.setAccessibilityLabel(badge.map { $0.description + L10n.text("app.toggleExpansion", defaultValue: ", toggle expansion") })
         stackButton.toolTip = badge?.description
 
-        let format = photo.isRAW ? "RAW" : ["jpg", "jpeg"].contains(URL(fileURLWithPath: photo.relativePath).pathExtension.lowercased()) ? "JPEG" : URL(fileURLWithPath: photo.relativePath).pathExtension.uppercased()
         let flags = photo.flag == -1 ? "×" : photo.flag == 1 ? "⚑" : ""
         let rating = photo.rating > 0 ? "★ \(photo.rating)" : ""
-        details.stringValue = [format, paired ? "↔" : "", flags, rating].filter { !$0.isEmpty }.joined(separator: "  ·  ")
-        caption.stringValue = film ? [flags, rating, paired ? "↔" : "", format, photo.isVirtualCopy ? photo.versionName : ""].filter { !$0.isEmpty }.joined(separator: " ") : photo.displayName
-        caption.toolTip = photo.displayName + "\n" + details.stringValue
+        details.stringValue = [paired ? "↔" : "", flags, rating].filter { !$0.isEmpty }.joined(separator: " ")
+        caption.stringValue = film ? [flags, rating, paired ? "↔" : "", photo.isVirtualCopy ? photo.versionName : ""].filter { !$0.isEmpty }.joined(separator: " ") : photo.displayName
+        caption.toolTip = ([photo.displayName, details.stringValue].filter { !$0.isEmpty }).joined(separator: "\n")
         caption.font = .systemFont(ofSize: film ? 10 : 11, weight: .medium)
         if film { (badge == nil ? filmCaptionTrailing : stackedCaptionTrailing)?.isActive = true }
         view.setAccessibilityLabel(L10n.text("app.stars_1725", defaultValue: "\(photo.displayName), \(photo.isRAW ? "RAW" : URL(fileURLWithPath:photo.relativePath).pathExtension.uppercased()), \(paired ? L10n.text("app.rawJPEGPaired", defaultValue: "RAW/JPEG Paired") : L10n.text("app.unpaired", defaultValue: "Unpaired")), \(badge?.description ?? L10n.text("app.unstacked", defaultValue: "Unstacked")), \(photo.rating) stars, \(label.title)\(active ? L10n.text("app.activePhoto", defaultValue: ", active photo") : "")\(photo.flag == -1 ? L10n.text("app.rejected", defaultValue: ", rejected") : photo.flag == 1 ? L10n.text("app.picked", defaultValue: ", picked") : "")"))

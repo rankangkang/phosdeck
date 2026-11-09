@@ -15,8 +15,12 @@ struct StackBadge: Equatable {
     var count: Int
     var matching: Int
     var collapsed: Bool
-    var text: String { collapsed ? "▸ \(matching)/\(count)" : "▾ \(position + 1)/\(count)" }
-    var description: String { L10n.text("app.stackVersionMatchesInTheCurrentScope", defaultValue: "Stack version \(position + 1)/\(count), \(matching) matches in the current scope, \(collapsed ? L10n.text("app.collapsed", defaultValue: "Collapsed") : L10n.text("app.expanded", defaultValue: "Expanded"))") }
+    var text: String { "\(collapsed ? "▸" : "▾") \(matching)/\(count)" }
+    var scopeNotice: String? {
+        guard matching < count else { return nil }
+        return L10n.text("app.stackMembersHiddenByScope", defaultValue: "Hidden by the current source or filters: \(count - matching)")
+    }
+    var description: String { [L10n.text("app.stackVersionMatchesInTheCurrentScope", defaultValue: "Stack version \(position + 1)/\(count), \(matching) matches in the current scope, \(collapsed ? L10n.text("app.collapsed", defaultValue: "Collapsed") : L10n.text("app.expanded", defaultValue: "Expanded"))"), scopeNotice].compactMap { $0 }.joined(separator: " · ") }
 }
 enum StackAction {
     case group(top: String, members: [String])

@@ -188,6 +188,37 @@ final class StackTests: XCTestCase {
         m.undo.redo(); XCTAssertNil(try c.photo("0002"))
     }
 
+    @MainActor func testFilteredStackExpansionKeepsQueryAndExplainsHiddenMembers() throws {
+        let (catalog, directory) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        _ = try catalog.restoreStacks([PhotoStack(id: "partial", members: ["0000", "0001", "0002"])])
+        let model = AppModel(previewRenderer: { _, _, _ in throw LRCError("synthetic") })
+        model.catalog = catalog; try model.reload()
+        try model.completeImport(ids: ["0001"], cancelled: false)
+        model.showLastImport()
+        model.choose(["0001"], active: "0001")
+        let query = model.query
+        XCTAssertEqual(model.stackBadges["0001"]?.text, "▸ 1/3")
+        let message = try XCTUnwrap(model.stackBadges["0001"]?.scopeNotice)
+        model.toggleStack("0001")
+        XCTAssertEqual(model.query, query)
+        XCTAssertEqual(model.photos.map(\.id), ["0001"])
+        XCTAssertEqual(model.stackBadges["0001"]?.text, "▾ 1/3")
+        XCTAssertTrue(model.status.hasPrefix(message))
+        XCTAssertEqual(model.notice?.text, message)
+        XCTAssertTrue(try XCTUnwrap(model.stackBadges["0001"]?.description).contains(message))
+        XCTAssertFalse(try XCTUnwrap(catalog.stacks().first).collapsed)
+        model.toggleActiveStack(); model.toggleActiveStack()
+        XCTAssertEqual(model.query, query, "Keyboard expansion must keep the same source and filters")
+        XCTAssertEqual(model.stackBadges["0001"]?.text, "▾ 1/3")
+        XCTAssertTrue(model.status.hasPrefix(message))
+        model.setScope("all")
+        XCTAssertNil(model.stackBadges["0001"]?.scopeNotice)
+        XCTAssertEqual(model.stackBadges["0001"]?.text, "▾ 3/3")
+        XCTAssertEqual(model.photos.count, 8)
+        model.choose([], active: nil); model.catalog = nil
+    }
+
     @MainActor func testNativeStackWindowAtBothSizes() async throws {
         let f = ImportTests(); try f.setUpWithError(); defer { try? f.tearDownWithError() }
         let root = try f.catalog.addRoot(url:f.source,bookmark:AccessLease.bookmark(f.source,readOnly:true))
@@ -205,11 +236,30 @@ final class StackTests: XCTestCase {
         w.isReleasedWhenClosed = false; w.title = "完整堆叠验证 — Phosdeck"; w.contentView = workspace; w.makeKeyAndOrderFront(nil)
         defer { w.orderOut(nil); w.contentView = nil; m.choose([],active:nil); m.catalog = nil }
         print("STACK_UI_SYNTHETIC_CATALOG=\(f.catalog.fileURL.path)")
+        func collections(_ view: NSView) -> [NSCollectionView] {
+            (view as? NSCollectionView).map { [$0] } ?? view.subviews.flatMap(collections)
+        }
         for size in [CGSize(width:1440,height:900),CGSize(width:1280,height:800)] {
             w.setContentSize(size); try await Task.sleep(for:.milliseconds(300)); workspace.layoutSubtreeIfNeeded()
             XCTAssertEqual(workspace.bounds.size,size)
             XCTAssertEqual(m.stackBadges[ids[0]]?.count,3)
             m.toggleActiveStack(); XCTAssertEqual(m.visibleCount,9)
+            let deadline = Date().addingTimeInterval(5)
+            func expandedImagesVisible() -> Bool {
+                workspace.layoutSubtreeIfNeeded()
+                let grids = collections(workspace)
+                guard grids.count == 2 else { return false }
+                return grids.allSatisfy { grid in
+                    guard let coordinator = grid.dataSource as? PhotoGrid.Coordinator, coordinator.photos.count == 9 else { return false }
+                    return ids.prefix(3).allSatisfy { id in
+                        guard let index = coordinator.photos.firstIndex(where: { $0.id == id }),
+                              let item = grid.item(at: IndexPath(item: index, section: 0)) as? PhotoItem else { return false }
+                        return item.displayedImage != nil && grid.visibleItems().contains(item) && item.view.bounds.height > 0
+                    }
+                }
+            }
+            while !expandedImagesVisible(), Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+            XCTAssertTrue(expandedImagesVisible(), "Expanded members must have visible thumbnails in the grid and filmstrip")
             m.move(1); XCTAssertEqual(m.activeID,ids[1])
             m.toggleActiveStack(); XCTAssertEqual(m.visibleCount,7); XCTAssertEqual(m.selection.count,1)
             if let bitmap = workspace.bitmapImageRepForCachingDisplay(in:workspace.bounds) {

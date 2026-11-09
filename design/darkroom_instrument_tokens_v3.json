@@ -179,7 +179,7 @@
     "structuralPanel": 0,
     "photo": 0,
     "thumbnailPhoto": 0,
-    "thumbnailCell": 1,
+    "thumbnailCell": 0,
     "sliderThumb": 2,
     "key": 3,
     "input": 2,
@@ -371,12 +371,14 @@
       "selectedOutlineWidth": 2,
       "outlineMustStayOutsidePhoto": true,
       "preservePhotoAspectRatio": true,
+      "sharedSeamWidthPt": 1,
+      "positionLeadingZeroes": false,
       "grid": {
         "sectionInset": 8,
         "cellSpacing": 0,
         "imageInset": 12,
         "headerHeight": 24,
-        "metadataHeight": 42,
+        "metadataHeight": 28,
         "imageMetadataGap": 10
       },
       "filmstrip": {
@@ -392,7 +394,7 @@
         "idleCellOpacity": 0.025,
         "metadataOpacity": 0.04,
         "seamOpacity": 0.14,
-        "idleOutlineOpacity": 0.16,
+        "sharedSeamOpacity": 0.16,
         "selectedOutlineOpacity": 0.7,
         "selectionFillOpacity": 0.1
       }

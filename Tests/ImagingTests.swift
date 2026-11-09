@@ -1349,6 +1349,13 @@ final class ImagingTests: XCTestCase {
                         } else { XCTAssertTrue(button.isHidden) }
                         XCTAssertTrue(labels.contains { $0.toolTip?.contains(photo.displayName) == true })
                         XCTAssertTrue(labels.contains { $0.toolTip?.contains("★ 5") == true })
+                        XCTAssertFalse(labels.contains { $0.stringValue == "JPEG" }, "The filename already includes its extension")
+                        if !film {
+                            let caption = try XCTUnwrap(labels.first { $0.stringValue == photo.displayName })
+                            let status = try XCTUnwrap(labels.first { $0.stringValue.contains("★ 5") })
+                            XCTAssertEqual(caption.frame.midY, status.frame.midY, accuracy: 0.01, "Filename and organization use one line")
+                            XCTAssertTrue(labels.contains { $0.stringValue == "12" }, "Positions must not have leading zeroes")
+                        }
                         XCTAssertEqual(item.displayedImage?.size.width, orientation == 1 ? 80 : 40)
                     }
                 }
@@ -1376,8 +1383,20 @@ final class ImagingTests: XCTestCase {
                 let frames = try (0..<12).map { try XCTUnwrap(collection.layoutAttributesForItem(at: IndexPath(item: $0, section: 0))).frame }
                 XCTAssertEqual(frames[0].height, frames[1].height)
                 if let neighbor = frames.first(where: { $0.minY == frames[0].minY && $0.minX > frames[0].minX }) {
-                    XCTAssertEqual(frames[0].maxX, neighbor.minX, accuracy: 1, "Adjacent cells form one continuous grid")
+                    XCTAssertEqual(frames[0].maxX, neighbor.minX, accuracy: 0.01, "No extra gutter may widen the shared seam")
+                    let index = try XCTUnwrap(frames.firstIndex(of: neighbor))
+                    let item = try XCTUnwrap(collection.item(at: IndexPath(item: index, section: 0)))
+                    item.view.layoutSubtreeIfNeeded()
+                    let leading = try XCTUnwrap(item.view.layer?.sublayers?.first { $0.name == "photo-grid-seam-leading" })
+                    XCTAssertTrue(leading.isHidden, "An interior edge is drawn only by the preceding cell")
                 }
+                let first = try XCTUnwrap(collection.item(at: IndexPath(item: 0, section: 0)))
+                first.view.layoutSubtreeIfNeeded()
+                XCTAssertEqual(first.view.layer?.borderWidth, 0, "Unselected cells must not add a second outline")
+                let seams = try XCTUnwrap(first.view.layer?.sublayers?.filter { $0.name?.hasPrefix("photo-grid-seam-") == true })
+                XCTAssertEqual(seams.count, 4)
+                XCTAssertTrue(seams.allSatisfy { !$0.isHidden })
+                XCTAssertTrue(seams.allSatisfy { min($0.bounds.width, $0.bounds.height) == 1 }, "Outer and shared seams use the same width")
                 for frame in frames {
                     XCTAssertGreaterThan(frame.width, 0)
                     XCTAssertGreaterThanOrEqual(frame.minX, 0)
@@ -1386,6 +1405,11 @@ final class ImagingTests: XCTestCase {
                 let nextRow = try XCTUnwrap(frames.first { $0.minY > frames[0].minY })
                 XCTAssertEqual(nextRow.minX, frames[0].minX, accuracy: 1)
                 XCTAssertEqual(nextRow.minY, frames[0].maxY, accuracy: 1)
+                let rowIndex = try XCTUnwrap(frames.firstIndex(of: nextRow))
+                let rowItem = try XCTUnwrap(collection.item(at: IndexPath(item: rowIndex, section: 0)))
+                rowItem.view.layoutSubtreeIfNeeded()
+                XCTAssertTrue(try XCTUnwrap(rowItem.view.layer?.sublayers?.first { $0.name == "photo-grid-seam-top" }).isHidden,
+                              "Horizontal shared seams must also be drawn once")
             }
         }
     }

@@ -25,8 +25,12 @@ extension AppModel {
     func toggleStack(_ photoID: String) {
         guard let s = (try? catalog?.stacks())?.first(where: { $0.members.contains(photoID) }) else { return }
         stackAction(.collapse([s.id],!s.collapsed),title:s.collapsed ? L10n.text("app.expandStack", defaultValue: "Expand Stack") : L10n.text("app.collapseStack", defaultValue: "Collapse Stack"))
+        if s.collapsed, let badge = stackBadges[photoID], !badge.collapsed, let message = badge.scopeNotice {
+            status = message + " · " + status
+            showNotice(message)
+        }
     }
-    func toggleActiveStack() { if let s = activeStack { stackAction(.collapse([s.id],!s.collapsed),title:s.collapsed ? L10n.text("app.expandStack", defaultValue: "Expand Stack") : L10n.text("app.collapseStack", defaultValue: "Collapse Stack")) } }
+    func toggleActiveStack() { if let id = activeID { toggleStack(id) } }
     func collapseResultStacks(_ collapsed: Bool) {
         guard let catalog else { return }
         perform {
