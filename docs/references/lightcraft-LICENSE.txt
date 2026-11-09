@@ -15,6 +15,16 @@ bounded native worker, luminance-preserving reconstruction constraints from loca
 source channel-order consensus, safe TIFF32 master codec, catalog publication and SwiftUI
 workflow are native work. The camera solver retains the reference orientation,
 bounds focal lengths and shares the focal variable when matching EXIF supports it.
+Exact descriptor matching semantics were rechecked against features.rs
+(dist2, nearest, match_features and shifted_images_match_with_the_shift),
+align.rs::align_pair and pano/camera.rs::match_pairs at
+d73c849ed11c5672cb89a999dd4bd57b6345eb6c, checked 2026-11-09.
+That upstream uses fixed 64-float descriptors and Rayon parallel searches.
+Native matching batches candidates with system Accelerate vector operations,
+keeps descriptor-dimension accumulation order, reuses each distance in both
+directions and retains the strict ratio and first-tie ordering. This batching
+is native work; no approximate index, Rust runtime or upstream parallel worker
+implementation is included.
 Optional panorama levelling in MergeCameraRefinement.swift and separable boundary
 stretch / push-pull edge diffusion in MergePanoramaFinish.swift adapt
 crates/merge/src/pano/{camera,finish}.rs at

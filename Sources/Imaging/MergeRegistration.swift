@@ -3,6 +3,7 @@
 // features.rs, ransac.rs and align.rs. MIT option; see lightcraft-LICENSE.txt.
 // Native coordinates are top-left integer-centred pixels, with explicit size conjugation.
 import Foundation
+import Accelerate
 import simd
 
 struct MergeMatrix: Equatable {
@@ -137,22 +138,41 @@ enum MergeRegistration {
         return ranked.prefix(maximum).map { all[$0.0] }
     }
     static func matches(_ a: [MergeFeature],_ b: [MergeFeature]) throws -> [Match] {
-        guard a.count > 1, b.count > 1 else { return [] }
-        func nearest(_ x: [MergeFeature],_ y: [MergeFeature]) throws -> [(Int,Float,Float)] {
-            var out = [(Int,Float,Float)]()
-            for (i,f) in x.enumerated() {
-                if i.isMultiple(of:32) { try Task.checkCancellation() }
-                var best = (-1,Float.infinity,Float.infinity)
-                for (j,g) in y.enumerated() {
-                    var distance: Float = 0
-                    for k in 0..<64 { let delta = f.descriptor[k]-g.descriptor[k]; distance += delta*delta }
-                    if distance < best.1 { best = (j,distance,best.1) } else if distance < best.2 { best.2 = distance }
-                }
-                out.append(best)
-            }
-            return out
+        guard a.count > 1,b.count > 1 else { return [] }
+        // Vectorize across candidates while retaining the scalar 64-dimension sum order.
+        var columns = [Float](repeating:0,count:64*b.count)
+        for (j,feature) in b.enumerated() {
+            if j.isMultiple(of:32) { try Task.checkCancellation() }
+            for k in 0..<64 { columns[k*b.count+j] = feature.descriptor[k] }
         }
-        let ab = try nearest(a,b), ba = try nearest(b,a)
+        var ab = [(Int,Float,Float)](); ab.reserveCapacity(a.count)
+        var ba = [(Int,Float)](repeating:(-1,.infinity),count:b.count)
+        var distances = [Float](repeating:0,count:b.count),scratch = distances
+        try columns.withUnsafeBufferPointer { descriptors in
+            try distances.withUnsafeMutableBufferPointer { sums in
+                try scratch.withUnsafeMutableBufferPointer { squares in
+                    let count = vDSP_Length(b.count)
+                    for (i,feature) in a.enumerated() {
+                        try Task.checkCancellation()
+                        vDSP_vclr(sums.baseAddress!,1,count)
+                        for k in 0..<64 {
+                            var offset = -feature.descriptor[k]
+                            vDSP_vsadd(descriptors.baseAddress!+k*b.count,1,&offset,squares.baseAddress!,1,count)
+                            vDSP_vsq(squares.baseAddress!,1,squares.baseAddress!,1,count)
+                            vDSP_vadd(squares.baseAddress!,1,sums.baseAddress!,1,sums.baseAddress!,1,count)
+                        }
+                        var best = (-1,Float.infinity,Float.infinity)
+                        for j in 0..<b.count {
+                            let distance = sums[j]
+                            if distance < best.1 { best = (j,distance,best.1) } else if distance < best.2 { best.2 = distance }
+                            // Each distance also supplies the reverse nearest neighbour; first ties win.
+                            if distance < ba[j].1 { ba[j] = (i,distance) }
+                        }
+                        ab.append(best)
+                    }
+                }
+            }
+        }
         return ab.enumerated().compactMap { i,value in
             value.0 >= 0 && value.1 < 0.64*value.2 && ba[value.0].0 == i ? Match(a:a[i].p,b:b[value.0].p) : nil
         }

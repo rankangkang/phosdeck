@@ -145,6 +145,64 @@ final class PhotoMergeTests: XCTestCase {
         let robust = try XCTUnwrap(MergeRegistration.ransac(pairs,similarity:true))
         let q = try XCTUnwrap(robust.transform.point(10,20)); XCTAssertEqual(q.x,13.5,accuracy:1e-6); XCTAssertEqual(q.y,17.75,accuracy:1e-6)
     }
+    private func scalarDescriptorMatches(_ a: [MergeFeature],_ b: [MergeFeature]) -> [[SIMD2<Double>]] {
+        guard a.count > 1,b.count > 1 else { return [] }
+        func nearest(_ x: [MergeFeature],_ y: [MergeFeature]) -> [(Int,Float,Float)] {
+            x.map { f in
+                var best = (-1,Float.infinity,Float.infinity)
+                for (j,g) in y.enumerated() {
+                    var distance: Float = 0
+                    for k in 0..<64 { let delta = f.descriptor[k]-g.descriptor[k]; distance += delta*delta }
+                    if distance < best.1 { best = (j,distance,best.1) } else if distance < best.2 { best.2 = distance }
+                }
+                return best
+            }
+        }
+        let forward = nearest(a,b),reverse = nearest(b,a)
+        return forward.enumerated().compactMap { i,best in
+            best.0 >= 0 && best.1 < 0.64*best.2 && reverse[best.0].0 == i ? [a[i].p,b[best.0].p] : nil
+        }
+    }
+    func testVectorDescriptorMatchingRetainsScalarResultsAcrossBatchTails() throws {
+        var seed: UInt64 = 0x4d4f5053
+        func next() -> Float { seed = seed &* 6364136223846793005 &+ 1; return Float((seed >> 32)&65535)/8192-4 }
+        func features(_ count: Int) -> [MergeFeature] {
+            (0..<count).map { MergeFeature(p:SIMD2(Double($0),Double($0*3)),strength:1,descriptor:(0..<64).map { _ in next() }) }
+        }
+        for (n,m) in [(0,3),(1,2),(2,1),(2,3),(7,9),(16,17),(31,33),(73,129)] {
+            let a = features(n);var b = features(m)
+            for j in 0..<min(n,m) where j%3 != 0 { b[j].descriptor = a[(j*17)%n].descriptor.map { $0+next()*0.01 } }
+            let result = try MergeRegistration.matches(a,b).map { [$0.a,$0.b] }
+            XCTAssertEqual(result,scalarDescriptorMatches(a,b),"\(n) × \(m)")
+        }
+    }
+    func testDescriptorMatchingPreservesFirstTiesAndStrictRatioBoundary() throws {
+        func features(_ values: [Float]) -> [MergeFeature] {
+            values.enumerated().map { i,value in
+                var descriptor = [Float](repeating:0,count:64);descriptor[63] = value
+                return MergeFeature(p:SIMD2(Double(i),0),strength:1,descriptor:descriptor)
+            }
+        }
+        let a = features([0,0,10]),b = features([0,10,20])
+        XCTAssertEqual(try MergeRegistration.matches(a,b).map { [$0.a.x,$0.b.x] },[[0,0],[2,1]])
+        XCTAssertEqual(try MergeRegistration.matches(features([0,10]),features([0,0,10])).map { [$0.a.x,$0.b.x] },[[1,2]])
+        let boundary: Float = 0.8
+        for value in [boundary.nextDown,boundary,boundary.nextUp] {
+            let a = features([0,10]),b = features([value,1,10])
+            let result = try MergeRegistration.matches(a,b).map { [$0.a,$0.b] }
+            XCTAssertEqual(result,scalarDescriptorMatches(a,b))
+            XCTAssertEqual(result.count,value < boundary ? 2 : 1)
+        }
+    }
+    func testDescriptorMatchingHonorsCancellation() async throws {
+        let features = (0..<3).map { MergeFeature(p:SIMD2(Double($0),0),strength:1,descriptor:.init(repeating:Float($0),count:64)) }
+        let job = Task.detached {
+            while !Task.isCancelled { await Task.yield() }
+            return try MergeRegistration.matches(features,features)
+        }
+        job.cancel()
+        do { _ = try await job.value;XCTFail("Cancelled matching must stop") } catch is CancellationError { }
+    }
     func testPanoramaProjectionsAndMultibandSeamRetainSceneValues() throws {
         let world = texture(w:360,h:192),a = crop(world,x:0,w:260),b = crop(world,x:100,w:260)
         for projection in MergeProjection.allCases {
