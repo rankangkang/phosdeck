@@ -744,18 +744,14 @@ struct SubgroupLabel: View {
     }
 }
 
-/// A narrow screen bezel outside the photo viewport, without clipping its contents.
+/// A flat, square screen frame outside the photo viewport, without clipping its contents.
 struct PhotoDisplayFrame<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         content
-            .padding(1)
-            .background { Rectangle().strokeBorder(Theme.materialEdge, lineWidth: 1).allowsHitTesting(false) }
-            .padding(Metrics.photoDisplayBezel - 1)
+            .padding(Metrics.photoDisplayBezel)
             .background {
-                RoundedRectangle(cornerRadius: Metrics.scopeRadius + 1)
-                    .strokeBorder(LinearGradient(colors: [Theme.knobRimTop, Theme.seamLight], startPoint: .top, endPoint: .bottom), lineWidth: Metrics.photoDisplayBezel - 1)
-                    .overlay(RoundedRectangle(cornerRadius: Metrics.scopeRadius + 1).strokeBorder(Theme.materialEdge, lineWidth: 0.5))
+                Rectangle().strokeBorder(Theme.materialEdge, lineWidth: Metrics.photoDisplayBezel)
                     .allowsHitTesting(false)
             }
     }

@@ -182,7 +182,7 @@ struct WorkspaceView: View {
                 VStack(spacing: 0) {
                     if !model.editMode && model.libraryFiltersOpen {
                         filterbar
-                        Seam()
+                        if viewMode.wrappedValue != .grid { Seam() }
                     }
                     WorkspaceRegion { centerContent(showMasks: showMasks) }
                         .overlay(alignment: .bottom) {

@@ -369,11 +369,12 @@
     },
     "photoDisplayFrame": {
       "width": 3,
-      "innerEdgeWidth": 1,
-      "innerEdge": "material.edge",
-      "outerCornerRadius": 4,
+      "color": "material.edge",
+      "cornerRadius": 0,
+      "gradient": false,
+      "gridHeaderSeam": false,
       "areas": ["libraryGrid", "filmstrip"],
-      "policy": "Recessed screen edge occupies existing section inset; do not clip photos or scrollbars or intercept input"
+      "policy": "One solid square frame occupies existing section inset; do not clip photos or scrollbars or intercept input"
     },
     "photoDisplayScrollbar": {
       "style": "native overlay",
