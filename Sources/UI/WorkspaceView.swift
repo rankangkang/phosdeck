@@ -99,11 +99,7 @@ struct WorkspaceView: View {
                     Theme.base.frame(width: Metrics.rim)
                 }.fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 0) {
-                Theme.base.frame(width: Metrics.rim)
-                Seam()
-                Theme.base.frame(width: Metrics.rim)
-            }.fixedSize(horizontal: false, vertical: true)
+            Seam().padding(.horizontal, Metrics.rim).background(Theme.base)
             WorkspaceRegion { statusBar }
         }
         }
