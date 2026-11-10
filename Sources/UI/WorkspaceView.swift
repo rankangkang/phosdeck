@@ -1585,7 +1585,9 @@ struct WorkspaceResizeHandle: View {
     @State private var start: Double?
     @State private var hovering = false
     var body: some View {
+        // Keep the highlight on the sidebar side of each vertical handle.
         Seam(axis: horizontal ? .vertical : .horizontal)
+            .scaleEffect(x: horizontal && direction > 0 ? -1 : 1, y: 1)
             .overlay {
                 (hovering || start != nil ? Theme.controlBorder : Color.clear)
                     .frame(width: horizontal ? 2 : nil, height: horizontal ? nil : 2)

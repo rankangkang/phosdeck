@@ -373,6 +373,7 @@
       "cornerRadius": 0,
       "gradient": false,
       "gridHeaderSeam": false,
+      "sidePanelSeam": "mirrored: dark line against photo frame, highlight against sidebar",
       "areas": ["libraryGrid", "filmstrip"],
       "policy": "One solid square frame occupies existing section inset; do not clip photos or scrollbars or intercept input"
     },
