@@ -2,12 +2,13 @@ import SwiftUI
 import AppKit
 
 enum SettingsPane: String, CaseIterable {
-    case appearance = "外观", storage = "缓存与存储", shortcuts = "快捷键"
+    case appearance = "外观", storage = "缓存与存储", shortcuts = "快捷键", agent = "Agent"
     var title: String {
         switch self {
         case .appearance: L10n.text("app.appearance", defaultValue: "Appearance")
         case .storage: L10n.text("app.cacheAndStorage", defaultValue: "Cache and Storage")
         case .shortcuts: L10n.text("app.shortcuts", defaultValue: "Shortcuts")
+        case .agent: L10n.text("agent.settings", defaultValue: "Agent")
         }
     }
 
@@ -35,6 +36,7 @@ struct SettingsSheet: View {
                     case .appearance: appearance
                     case .storage: storage
                     case .shortcuts: shortcuts
+                    case .agent: AgentSettings(service: model.mcp)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
             }
@@ -170,5 +172,70 @@ struct SettingsSheet: View {
                 feedback = L10n.text("app.rebuildableCacheClearedForTheCurrentCatalog", defaultValue: "Rebuildable cache cleared for the current catalog.")
             } catch { failure = error.localizedDescription }
         }
+    }
+}
+
+private struct AgentSettings: View {
+    let service: AppMCPService
+    @State private var feedback: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Toggle(isOn: Binding(get: { service.enabled }, set: service.setEnabled)) {
+                Text(L10n.text("agent.enable", defaultValue: "Local MCP Server"))
+            }.toggleStyle(InstrumentToggleStyle(expand: true)).accessibilityIdentifier("settings-mcp-enable")
+            Text(L10n.text("agent.localAccess", defaultValue: "Clients on this Mac can use the current catalog with the connection token."))
+                .font(.caption11).foregroundStyle(Theme.textSecondary)
+            HStack {
+                Text(status).foregroundStyle(service.status == .failed ? Theme.error : Theme.textSecondary)
+                    .accessibilityIdentifier("settings-mcp-status")
+                Spacer()
+                if service.status == .failed {
+                    Button(L10n.text("agent.retry", defaultValue: "Retry"), action: service.retry).buttonStyle(.key)
+                }
+            }.font(.caption11)
+            Seam()
+            Toggle(isOn: Binding(get: { service.sharesImages }, set: service.setSharesImages)) {
+                Text(L10n.text("agent.shareImages", defaultValue: "Share Photo Previews"))
+            }.toggleStyle(InstrumentToggleStyle(expand: true)).disabled(!service.enabled)
+                .accessibilityIdentifier("settings-mcp-share-images")
+            Text(L10n.text("agent.shareHelp", defaultValue: "Clients using cloud models may send shared previews to their model provider."))
+                .font(.caption11).foregroundStyle(Theme.textSecondary)
+            if let endpoint = service.endpoint {
+                Seam()
+                SubgroupLabel(L10n.text("agent.connection", defaultValue: "Client Connection"))
+                Text(endpoint).font(.value).textSelection(.enabled).accessibilityIdentifier("settings-mcp-endpoint")
+                HStack(spacing: 8) {
+                    Button(L10n.text("agent.copyConfig", defaultValue: "Copy Codex Configuration")) {
+                        copy(service.clientConfiguration, feedback: L10n.text("agent.configCopied", defaultValue: "Configuration copied"))
+                    }.buttonStyle(.key).accessibilityIdentifier("settings-mcp-copy-config")
+                    Button(L10n.text("agent.copyToken", defaultValue: "Copy Token")) {
+                        copy(service.connectionToken, feedback: L10n.text("agent.tokenCopied", defaultValue: "Token copied"))
+                    }.buttonStyle(.key).accessibilityIdentifier("settings-mcp-copy-token")
+                    if let feedback { Text(feedback).font(.caption11).foregroundStyle(Theme.textSecondary) }
+                }
+                Text(L10n.text("agent.connectionHelp", defaultValue: "Set the token in the client's environment. The address and token change when the server restarts."))
+                    .font(.caption11).foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .onChange(of: service.endpoint) { _, _ in feedback = nil }
+    }
+
+    private var status: String {
+        switch service.status {
+        case .off: L10n.text("agent.off", defaultValue: "Server is off")
+        case .starting: L10n.text("agent.starting", defaultValue: "Starting server…")
+        case .listening: L10n.text("agent.listening", defaultValue: "Listening on this Mac")
+        case .stopping: L10n.text("agent.stopping", defaultValue: "Stopping server…")
+        case .failed: L10n.text("agent.startFailed", defaultValue: "Could not start the local MCP server.")
+        }
+    }
+
+    private func copy(_ value: String?, feedback message: String) {
+        guard let value else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.prepareForNewContents(with: .currentHostOnly)
+        if pasteboard.setString(value, forType: .string) { feedback = message }
     }
 }

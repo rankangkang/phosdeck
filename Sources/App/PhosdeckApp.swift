@@ -6,18 +6,27 @@ import Observation
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
     var keyboard: WorkspaceKeyboard?
-    private var waitingForMergeTermination = false
+    private var waitingForTermination = false
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
         if model.changingCatalogExtension { return .terminateCancel }
         if !model.commitRecipe() { return .terminateCancel }
-        if waitingForMergeTermination { return .terminateLater }
-        if let session = model.mergeSession,session.working {
-            waitingForMergeTermination = true
+        if waitingForTermination { return .terminateLater }
+        let merge = model.mergeSession
+        if merge?.working == true || model.mcp.needsShutdown {
+            waitingForTermination = true
             Task { @MainActor in
-                await session.cancelAndWait()
-                waitingForMergeTermination = false
-                sender.reply(toApplicationShouldTerminate:session.error == nil)
+                if let merge, merge.working {
+                    await merge.cancelAndWait()
+                    if merge.error != nil {
+                        waitingForTermination = false
+                        sender.reply(toApplicationShouldTerminate: false)
+                        return
+                    }
+                }
+                await model.mcp.shutdownForQuit()
+                waitingForTermination = false
+                sender.reply(toApplicationShouldTerminate: true)
             }
             return .terminateLater
         }
@@ -34,7 +43,12 @@ struct PhosdeckApp: App {
         Window("\(model.catalogName) — Phosdeck", id: "main") {
             WorkspaceView(model: model)
                 .onOpenURL { model.openCatalog(url: $0) }
-                .onAppear { delegate.model = model; delegate.keyboard = WorkspaceKeyboard(model: model); model.openStartupCatalogIfNeeded() }
+                .onAppear {
+                    delegate.model = model
+                    delegate.keyboard = WorkspaceKeyboard(model: model)
+                    model.openStartupCatalogIfNeeded()
+                    model.mcp.attach(to: model)
+                }
         }.defaultSize(width: 1380, height: 850)
         .windowStyle(.hiddenTitleBar)
         .defaultLaunchBehavior(.presented)

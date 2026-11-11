@@ -128,6 +128,7 @@
 | `image_access_disabled`、`file_access_required` | 等待用户开启图像共享，或按任务要求完成原生文件授权。 |
 | `rating_conflict`、`undo_conflict` | 回读实际评级和工作区状态。只有用户意图仍匹配时才提交新的修改。 |
 | `request_id_conflict`、`request_expired` | 核对上次调用结果，回读后以新请求标识提交当前动作。 |
+| `service_stopped` | 在设置重新取得连接配置和令牌，再读工作区。 |
 | `operation_failed` | 按结果中的提交状态恢复。保存状态不确定时先回读记录或文件。 |
 
 ### 状态与图像
@@ -164,6 +165,8 @@
 
 在聚合请求体和分配会话前校验确切的回环 `Host`、存在时的 `Origin` 及 `Authorization: Bearer`。无效凭据返回 HTTP `401` 和 Bearer 质询，不匹配的 `Host`／`Origin` 返回 `403`。控制请求体、空闲连接、并发和会话数量，关停时关闭监听及活动连接并清除本次凭据。网络解析在主线程之外运行。沙箱使用入站网络权限，签名沿用已有构建约定。服务生命周期由 App 持有，设置窗口负责呈现和控制。[入站网络权限](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.server)
 
+首批 HTTP 响应流随 POST 请求返回。独立 GET 流返回 `405`。每次连接处理一个请求，请求体上限 64 KiB。传输会话空闲 15 分钟或达到消息及响应大小上限时需要重新初始化，业务请求代次在监听运行期间继续有效。分页游标使用数据库读中的变更计数，目录写入后可重新读取工作区与首屏。
+
 首个客户端采用本机 Codex 的 Streamable HTTP 配置。下例端口由设置实际显示值替换，`PHOSDECK_MCP_TOKEN` 由启动客户端的环境提供。设置生成的配置只引用变量名，令牌由用户在设置中单独复制。Preview 使用独立的服务器配置名和令牌环境变量。[OpenAI Docs 的 MCP 配置](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
 
 ```toml
@@ -171,6 +174,8 @@
 url = "http://127.0.0.1:49152/mcp"
 bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 ```
+
+配套 Skill 随仓库发布。支持项目级 Skill 的客户端可从仓库发现；在其他工作区使用时，将 `phosdeck` 文件夹复制到客户端配置的用户 Skill 目录。[Phosdeck Skill](../.agents/skills/phosdeck/SKILL.md)
 
 ### 首批接口
 

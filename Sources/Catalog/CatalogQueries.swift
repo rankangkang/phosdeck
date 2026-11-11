@@ -193,7 +193,10 @@ struct PhotoPage {
     var offset: Int
     var visibleTotal: Int = 0
     var badges: [String:StackBadge] = [:]
+    var databaseChanges = 0
 }
+enum PhotoPageError: Error { case staleCursor }
+
 extension CatalogStore {
     // Arrange the WHOLE base result before LIMIT/OFFSET. Only IDs/ranks enter
     // the windows; recipes/metadata are fetched for the displayed page alone.
@@ -217,9 +220,11 @@ extension CatalogStore {
           FROM ranked WHERE \(visibleCondition))
         """
     }
-    func page(_ query: PhotoQuery, offset: Int, limit: Int = 200) throws -> PhotoPage {
+    func page(_ query: PhotoQuery, offset: Int, limit: Int = 200, expectedChanges: Int? = nil) throws -> PhotoPage {
         let (_, args) = query.predicate, cte = stackCTE(query), size = max(1, min(1000, limit))
         return try database.read { db in
+            let changes = db.totalChangesCount
+            if let expectedChanges, changes != expectedChanges { throw PhotoPageError.staleCursor }
             let counts = try Row.fetchOne(db,sql:cte+" SELECT (SELECT count(*) FROM base) AS total,(SELECT count(*) FROM visible) AS shown",arguments:args)!
             let count: Int = counts["total"], shown: Int = counts["shown"]
             let start = min(max(0, offset), max(0, ((shown - 1) / size) * size))
@@ -228,7 +233,7 @@ extension CatalogStore {
             for row in rows {
                 if let sid: String = row["stackID"] { let id: String = row["id"]; badges[id] = StackBadge(stackID:sid,position:row["position"],count:row["stackCount"],matching:row["matching"],collapsed:row["collapsed"]) }
             }
-            return PhotoPage(photos:try rows.map { try Photo(row:$0) },total:count,offset:start,visibleTotal:shown,badges:badges)
+            return PhotoPage(photos:try rows.map { try Photo(row:$0) },total:count,offset:start,visibleTotal:shown,badges:badges,databaseChanges:changes)
         }
     }
     func offset(of id: String, query: PhotoQuery) throws -> Int? {
@@ -321,8 +326,17 @@ extension CatalogStore {
         }
     }
     func photo(_ id: String) throws -> Photo? { try database.read { try Photo.fetchOne($0, sql: "SELECT * FROM photo WHERE id=? AND deleted=0", arguments:[id]) } }
+    func matchesPhotoRevisions(id: String, source: Int, recipe: Int) throws -> Bool {
+        try database.read {
+            try Int.fetchOne($0, sql: "SELECT 1 FROM photo WHERE id=? AND deleted=0 AND revision=? AND recipeRevision=? AND availability='available'",
+                             arguments: [id, source, recipe]) != nil
+        }
+    }
     func photos(ids: Set<String>) throws -> [Photo] {
-        try database.read { try Photo.filter(ids.contains(Column("id"))).filter(Column("deleted") == false).order(Column("captureDate"), Column("relativePath"), Column("id")).fetchAll($0) }
+        try database.read { try Self.photos(ids: ids, in: $0) }
+    }
+    static func photos(ids: Set<String>, in db: Database) throws -> [Photo] {
+        try Photo.filter(ids.contains(Column("id"))).filter(Column("deleted") == false).order(Column("captureDate"), Column("relativePath"), Column("id")).fetchAll(db)
     }
     /// All selected SQL results, in the current browse order, independent of pagination.
     func exportPhotos(ids: Set<String>, query: PhotoQuery) throws -> [Photo] {

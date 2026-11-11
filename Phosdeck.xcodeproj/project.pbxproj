@@ -7,6 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AA7900000000000000000001 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = AA7900000000000000000021 /* MCP */; };
+		AA7900000000000000000002 /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA7900000000000000000022 /* NIOCore */; };
+		AA7900000000000000000003 /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = AA7900000000000000000023 /* NIOHTTP1 */; };
+		AA7900000000000000000004 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = AA7900000000000000000024 /* NIOPosix */; };
+		AA7900000000000000000031 /* AppMCPService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000041 /* AppMCPService.swift */; };
+		AA7900000000000000000032 /* AppMCPTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000042 /* AppMCPTools.swift */; };
+		AA7900000000000000000033 /* MCPHTTPListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000043 /* MCPHTTPListener.swift */; };
+		AA7900000000000000000034 /* mcp-NOTICES.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000044 /* mcp-NOTICES.txt */; };
+		AA7900000000000000000035 /* AgentMCPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000045 /* AgentMCPTests.swift */; };
 		3B9583FE6690D98E09610ED7 /* PhotoMergeFinishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23A27CF5EB589AA8EB8709DF /* PhotoMergeFinishTests.swift */; };
 		E8A935B0C4E80423AB121426 /* MergeDNGCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40A9327F5F6BD9D8E970E9C /* MergeDNGCodec.swift */; };
 		23F26854A40E57D32B433CE5 /* MergePanoramaFinish.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEF0360B45A636E778D2C948 /* MergePanoramaFinish.swift */; };
@@ -232,6 +241,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		AA7900000000000000000041 /* AppMCPService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPService.swift; sourceTree = "<group>"; };
+		AA7900000000000000000042 /* AppMCPTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPTools.swift; sourceTree = "<group>"; };
+		AA7900000000000000000043 /* MCPHTTPListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPHTTPListener.swift; sourceTree = "<group>"; };
+		AA7900000000000000000044 /* mcp-NOTICES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "mcp-NOTICES.txt"; sourceTree = "<group>"; };
+		AA7900000000000000000045 /* AgentMCPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentMCPTests.swift; sourceTree = "<group>"; };
 		23A27CF5EB589AA8EB8709DF /* PhotoMergeFinishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMergeFinishTests.swift; sourceTree = "<group>"; };
 		B40A9327F5F6BD9D8E970E9C /* MergeDNGCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeDNGCodec.swift; sourceTree = "<group>"; };
 		EEF0360B45A636E778D2C948 /* MergePanoramaFinish.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergePanoramaFinish.swift; sourceTree = "<group>"; };
@@ -455,6 +469,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				7FE38BD160F7CB6767AAFE99 /* GRDB in Frameworks */,
+				AA7900000000000000000001 /* MCP in Frameworks */,
+				AA7900000000000000000002 /* NIOCore in Frameworks */,
+				AA7900000000000000000003 /* NIOHTTP1 in Frameworks */,
+				AA7900000000000000000004 /* NIOPosix in Frameworks */,
 				B5203473D78904304F940B62 /* SmartMaskRuntime in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -467,6 +485,7 @@
 			children = (
 				21F5D7CEC50F9DD8E6F09743 /* redlamp-LICENSE.txt */,
 				D20300010000000000000002 /* grdb-LICENSE.txt */,
+				AA7900000000000000000044 /* mcp-NOTICES.txt */,
 				D20300010000000000000003 /* litert-NOTICES.txt */,
 				A5334CF392C1CE1E6D909AB9 /* oklab-LICENSE.txt */,
 				B2D5F9C18E304AB7C26D4FA1 /* lightcraft-LICENSE.txt */,
@@ -608,6 +627,7 @@
 				D60700020000000000000003 /* AutomaticAdjustmentTests.swift */,
 				D42700020000000000000004 /* DirectAdjustmentTests.swift */,
 				D60A24C4208C52F3CAB9048E /* WorkflowTests.swift */,
+				AA7900000000000000000045 /* AgentMCPTests.swift */,
 				9A239B718941D84CDC85C2F2 /* SmartMaskTests.swift */,
 			);
 			path = Tests;
@@ -643,6 +663,9 @@
 				D42700020000000000000006 /* TargetedEditing.swift */,
 				5EA2AA836B41430697BFC16E /* PointColorEditing.swift */,
 				C9D7E74E491B5B6820B2A5BF /* AppModel.swift */,
+				AA7900000000000000000041 /* AppMCPService.swift */,
+				AA7900000000000000000042 /* AppMCPTools.swift */,
+				AA7900000000000000000043 /* MCPHTTPListener.swift */,
 				D19CCA868344D600A7F11CDD /* InspectionEditing.swift */,
 				751FCC1E508E2CE354177999 /* CollectionOrdering.swift */,
 				46DFC89A23FC44AD21F99C76 /* AdjustmentPreview.swift */,
@@ -812,6 +835,10 @@
 			name = Phosdeck;
 			packageProductDependencies = (
 				7C118933BC8908AF49949977 /* GRDB */,
+				AA7900000000000000000021 /* MCP */,
+				AA7900000000000000000022 /* NIOCore */,
+				AA7900000000000000000023 /* NIOHTTP1 */,
+				AA7900000000000000000024 /* NIOPosix */,
 				E461D142BE59BC5E36282D83 /* SmartMaskRuntime */,
 			);
 			productName = Phosdeck;
@@ -847,6 +874,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				E10A70C59B07AEC5FC3996F7 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+				AA7900000000000000000011 /* XCRemoteSwiftPackageReference "swift-sdk" */,
+				AA7900000000000000000012 /* XCRemoteSwiftPackageReference "swift-nio" */,
 				D9CAA14602DE57ED16F7EE93 /* XCLocalSwiftPackageReference "Packages/SmartMaskRuntime" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -873,6 +902,7 @@
 				A1C4E8B07D2F49A6B15C3E90 /* lightcraft-LICENSE.txt in Resources */,
 				D20300020000000000000001 /* LICENSE in Resources */,
 				D20300020000000000000002 /* grdb-LICENSE.txt in Resources */,
+				AA7900000000000000000034 /* mcp-NOTICES.txt in Resources */,
 				D20300020000000000000003 /* litert-NOTICES.txt in Resources */,
 				D7A1C0DE00000000000000B5 /* AppIcon.icon in Resources */,
 				FEEDBEEF00000000000000B1 /* wordmark-approved-ivory.svg in Resources */,
@@ -978,6 +1008,7 @@
 				D60700010000000000000003 /* AutomaticAdjustmentTests.swift in Sources */,
 				D42700010000000000000004 /* DirectAdjustmentTests.swift in Sources */,
 				B954E0DF2619F412432A8C86 /* WorkflowTests.swift in Sources */,
+				AA7900000000000000000035 /* AgentMCPTests.swift in Sources */,
 				FDB12FE8C1C91C4A371A52E6 /* SmartMaskTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1021,6 +1052,9 @@
 				83C9C2CBABFA4C4AFB6AB636 /* XMPPresetReader.swift in Sources */,
 				436255011F4E1BCB772DD16B /* XMPPresetImportSheet.swift in Sources */,
 				FB23F056B5AEF44EEF30E376 /* AppModel.swift in Sources */,
+				AA7900000000000000000031 /* AppMCPService.swift in Sources */,
+				AA7900000000000000000032 /* AppMCPTools.swift in Sources */,
+				AA7900000000000000000033 /* MCPHTTPListener.swift in Sources */,
 				F49651F836A00B9FF96B73EB /* InspectionEditing.swift in Sources */,
 				697D9CF45E47AEDB0B59398F /* CollectionOrdering.swift in Sources */,
 				C845B62D4A94DCDDDE0097C8 /* AdjustmentPreview.swift in Sources */,
@@ -1394,6 +1428,22 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		AA7900000000000000000011 /* XCRemoteSwiftPackageReference "swift-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/modelcontextprotocol/swift-sdk.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.12.1;
+			};
+		};
+		AA7900000000000000000012 /* XCRemoteSwiftPackageReference "swift-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.105.0;
+			};
+		};
 		E10A70C59B07AEC5FC3996F7 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/groue/GRDB.swift.git";
@@ -1405,6 +1455,26 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		AA7900000000000000000021 /* MCP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA7900000000000000000011 /* XCRemoteSwiftPackageReference "swift-sdk" */;
+			productName = MCP;
+		};
+		AA7900000000000000000022 /* NIOCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA7900000000000000000012 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOCore;
+		};
+		AA7900000000000000000023 /* NIOHTTP1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA7900000000000000000012 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOHTTP1;
+		};
+		AA7900000000000000000024 /* NIOPosix */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA7900000000000000000012 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOPosix;
+		};
 		7C118933BC8908AF49949977 /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E10A70C59B07AEC5FC3996F7 /* XCRemoteSwiftPackageReference "GRDB.swift" */;

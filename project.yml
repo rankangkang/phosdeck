@@ -21,6 +21,12 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift.git
     exactVersion: 7.11.1
+  swift-sdk:
+    url: https://github.com/modelcontextprotocol/swift-sdk.git
+    exactVersion: 0.12.1
+  swift-nio:
+    url: https://github.com/apple/swift-nio.git
+    exactVersion: 2.105.0
 targets:
   Phosdeck:
     type: application
@@ -28,6 +34,7 @@ targets:
     sources:
       # Includes automatic image analysis (Imaging/AutomaticAdjustments.swift, App/AutomaticAdjustmentEditing.swift) and folder comparison (Import/FolderReview.swift, UI/FolderReviewSheet.swift) and native direct adjustments.
       # Includes Imaging/ManualDefringe.swift.
+      # Includes App/AppMCPService.swift, App/AppMCPTools.swift and App/MCPHTTPListener.swift.
       # Includes MergePanoramaFinish.swift and MergeDNGCodec.swift for float panorama finishing and linear DNG masters.
       # Includes native multiframe merge registration, MergeCameraRefinement, depth-gated FocusStackFusion, float masters and UI.
       - path: Sources
@@ -50,6 +57,8 @@ targets:
         buildPhase: resources
       - path: docs/references/redlamp-LICENSE.txt
         buildPhase: resources
+      - path: docs/references/mcp-NOTICES.txt
+        buildPhase: resources
     info:
       path: Sources/App/Info.plist
       properties:
@@ -71,6 +80,10 @@ targets:
       - package: GRDB
       - package: SmartMaskRuntime
         product: SmartMaskRuntime
+      - package: swift-sdk
+        product: MCP
+      - package: swift-nio
+        products: [NIOCore, NIOHTTP1, NIOPosix]
     postBuildScripts:
       - name: Copy prepared smart mask research models
         path: scripts/copy-smart-mask-models.sh
@@ -103,6 +116,7 @@ targets:
       # Includes ManualDefringeTests.swift, AutomaticAdjustmentTests.swift, FolderReviewTests.swift, DirectAdjustmentTests.swift and TargetedAdjustmentTests.swift.
       # Includes PhotoMergeFinishTests.swift for levelling, boundary warp/fill, DNG readback, import and publication.
       # Includes PhotoMergeTests.swift and FocusStackRegressionTests.swift for merge algorithms, float masters, safe publication and clipped focus selection.
+      # Includes AgentMCPTests.swift for native MCP tool and listener checks.
       - path: Tests
         excludes: [test_calibration_paths.py]
     dependencies:

@@ -17,7 +17,9 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-2A2B29?style=flat-square&amp;labelColor=1C1D1C" alt="Licensed under AGPL-3.0-only"></a>
 </p>
 
-Phosdeck is a photo manager and non-destructive editor for macOS, built with SwiftUI, Core Image, Metal, and GRDB. Photos stay on your Mac. The catalog stores organization data and edits; editing does not overwrite the originals.
+Phosdeck is a photo manager and non-destructive editor for macOS, built with SwiftUI, Core Image, Metal, and GRDB. Originals stay on your Mac. The catalog stores organization data and edits.
+
+Enable the local MCP server in Settings → Agent to browse the catalog and rate photos from an Agent client. Preview sharing has its own switch. [Setup and Phosdeck Skill](docs/agent-integration.md#本地连接)
 
 The project is a development preview. Download a [prerelease build](https://github.com/rankangkang/phosdeck/releases) or build from source.
 
@@ -152,6 +154,7 @@ Project code is licensed under [AGPL-3.0-only](LICENSE). Third-party code, depen
 - [Redlamp attribution and MPL-2.0 license](docs/references/redlamp-LICENSE.txt).
 - [Oklab attribution and MIT license](docs/references/oklab-LICENSE.txt).
 - [GRDB MIT license](docs/references/grdb-LICENSE.txt).
+- [MCP Swift SDK, SwiftNIO, and dependency notices](docs/references/mcp-NOTICES.txt).
 - [SmartMaskRuntime/LiteRT Apache-2.0 license](Packages/SmartMaskRuntime/LICENSE) and [pinned runtime dependency notices](docs/references/litert-NOTICES.txt).
 - [Smart-mask research model sources, licenses, and restrictions](docs/references/smart-mask-research-NOTICE.txt).
 

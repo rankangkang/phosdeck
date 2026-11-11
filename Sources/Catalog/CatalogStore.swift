@@ -1,6 +1,11 @@
 import Foundation
 import GRDB
 
+enum OrganizationError: Error {
+    case photoUnavailable
+    case ratingConflict(actual: Int)
+}
+
 final class CatalogStore: @unchecked Sendable {
     let fileURL: URL
     var directory: URL { fileURL.deletingLastPathComponent() }
@@ -208,15 +213,25 @@ final class CatalogStore: @unchecked Sendable {
             }
         }
     }
-    func setOrganization(ids: [String], rating: Int? = nil, flag: Int? = nil, colorLabel: Int? = nil) throws {
+    @discardableResult
+    func setOrganization(ids: [String], rating: Int? = nil, flag: Int? = nil, colorLabel: Int? = nil, expectedRating: Int? = nil) throws -> [Photo] {
         if let colorLabel, PhotoColorLabel(rawValue: colorLabel) == nil { throw LRCError(L10n.text("app.invalidColorLabel", defaultValue: "Invalid color label")) }
-        try database.write { db in
-            for id in ids {
-                if let rating { try db.execute(sql: "UPDATE photo SET rating = ? WHERE id = ?", arguments: [rating, id]) }
-                if let flag { try db.execute(sql: "UPDATE photo SET flag = ? WHERE id = ?", arguments: [flag, id]) }
-                if let colorLabel { try db.execute(sql: "UPDATE photo SET colorLabel = ? WHERE id = ?", arguments: [colorLabel, id]) }
+        return try database.write { db in
+            let previous = try Self.photos(ids: Set(ids), in: db)
+            if let expectedRating {
+                guard ids.count == 1, let photo = previous.first else { throw OrganizationError.photoUnavailable }
+                guard photo.rating == expectedRating else { throw OrganizationError.ratingConflict(actual: photo.rating) }
             }
+            for photo in previous {
+                if let rating, photo.rating != rating { try db.execute(sql: "UPDATE photo SET rating = ? WHERE id = ?", arguments: [rating, photo.id]) }
+                if let flag, photo.flag != flag { try db.execute(sql: "UPDATE photo SET flag = ? WHERE id = ?", arguments: [flag, photo.id]) }
+                if let colorLabel, photo.colorLabel != colorLabel { try db.execute(sql: "UPDATE photo SET colorLabel = ? WHERE id = ?", arguments: [colorLabel, photo.id]) }
+            }
+            return previous
         }
+    }
+    func photoRating(_ id: String) throws -> Int? {
+        try database.read { try Int.fetchOne($0, sql: "SELECT rating FROM photo WHERE id=? AND deleted=0", arguments: [id]) }
     }
     func setRatings(_ ratings: [String: Int]) throws {
         try database.write { db in

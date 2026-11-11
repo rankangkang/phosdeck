@@ -134,6 +134,21 @@ struct WorkspaceNotice: Equatable {
     let text: String
 }
 
+@MainActor
+final class PhotoRatingUndo {
+    let id = UUID().uuidString
+    let photoID: String
+    let previous: Int
+    let applied: Int
+    var restoration: Result<Bool, Error>?
+
+    init(photoID: String, previous: Int, applied: Int) {
+        self.photoID = photoID
+        self.previous = previous
+        self.applied = applied
+    }
+}
+
 private struct BeforeImageKey: Equatable {
     let photoID: String
     let recipe: EditRecipe
@@ -488,11 +503,16 @@ final class AppModel {
     private(set) var changingCatalogExtension = false
     let viewport = PhotoViewport()
     let undo = UndoManager()
+    @ObservationIgnored lazy var mcp = AppMCPService()
     let pipeline: ImagePipeline
     private let renderPreview: (ImageRequest, Bool, Int?) async throws -> RenderedImage
     let thumbnails = ThumbnailService()
     let importer = ReferenceImporter()
-    var catalog: CatalogStore?
+    @ObservationIgnored private(set) var catalogSessionID: String?
+    @ObservationIgnored private(set) var browseGeneration = UUID()
+    var catalog: CatalogStore? {
+        didSet { catalogSessionID = catalog.map { _ in UUID().uuidString } }
+    }
     var catalogName: String { catalog?.fileURL.deletingPathExtension().lastPathComponent ?? L10n.text("app.noCatalogOpen", defaultValue: "No catalog open") }
     /// Menu-bar commands stay reachable while a sheet is up, so they must not stack a second sheet.
     var presentingSheet: Bool { showCameraDiagnostics || showImport || folderReview != nil || mergeSession != nil || showXMPPresetImport || showExport || showNewCatalog || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
@@ -788,8 +808,10 @@ final class AppModel {
     func reloadPhotos() throws {
         guard let catalog else { return }
         if holdFilterResults, heldResultsID == nil { heldResultsID = try catalog.holdResults(query, replacing: nil) }
+        let currentQuery = query
+        if currentQuery != lastAppliedQuery { browseGeneration = UUID() }
         collectionCounts = Dictionary(uniqueKeysWithValues:collections.map { ($0.id,(try? catalog.collectionCount($0)) ?? -1) })
-        let page = try catalog.page(query, offset: pageOffset, limit: pageSize)
+        let page = try catalog.page(currentQuery, offset: pageOffset, limit: pageSize)
         photos = page.photos; resultCount = page.total; visibleCount = page.visibleTotal; stackBadges = page.badges; pageOffset = page.offset
         pairedSourceIDs = try catalog.pairedSources(within:Set(photos.map(\.sourceKey)))
         if let id = activeID { activePhoto = try photos.first { $0.id == id } ?? catalog.photo(id) }
@@ -904,6 +926,7 @@ final class AppModel {
         }
         return L10n.text("app.browseHistory", defaultValue: "Browse History")
     }
+    var browseSourceName: String { browseTitle(currentBrowseContext()) }
     private func currentBrowseContext() -> ImportBrowseContext {
         ImportBrowseContext(scope: scope, search: search, ratingComparison: ratingComparison,
             ratingThreshold: ratingThreshold, flags: flagFilter, colorLabels: colorLabelFilter, keyword: keywordFilter, metadata: metadataFilter,
@@ -1507,17 +1530,18 @@ final class AppModel {
     }
     /// `advance` moves on to the next photo unless the filter already hid the marked one and chose its neighbour.
     func organize(rating: Int? = nil, flag: Int? = nil, colorLabel: Int? = nil, advance: Bool? = nil) {
-        updateOrganization(advance: advance ?? autoAdvance) { catalog, old in
-            try catalog.setOrganization(ids: old.map(\.id), rating: rating, flag: flag, colorLabel: colorLabel)
-            return Self.organizationNotice(rating: rating, flag: flag, colorLabel: colorLabel, count: old.count)
+        updateOrganization(advance: advance ?? autoAdvance) { catalog in
+            let old = try catalog.setOrganization(ids: Array(organizationIDs), rating: rating, flag: flag, colorLabel: colorLabel)
+            return (old, Self.organizationNotice(rating: rating, flag: flag, colorLabel: colorLabel, count: old.count))
         }
     }
     func stepRating(_ delta: Int, advance: Bool? = nil) {
-        updateOrganization(advance: advance ?? autoAdvance) { catalog, old in
+        updateOrganization(advance: advance ?? autoAdvance) { catalog in
+            let old = try catalog.photos(ids: organizationIDs)
             let ratings = Dictionary(uniqueKeysWithValues: old.map { ($0.id, max(0, min(5, $0.rating + delta))) })
             try catalog.setRatings(ratings)
-            if old.count == 1, let rating = ratings.values.first { return Self.organizationNotice(rating: rating, flag: nil, count: 1) }
-            return L10n.text("app.ratingPhotos", defaultValue: "Rating \(delta > 0 ? "+" : "−")\(abs(delta)) · \(old.count) photos")
+            if old.count == 1, let rating = ratings.values.first { return (old, Self.organizationNotice(rating: rating, flag: nil, count: 1)) }
+            return (old, L10n.text("app.ratingPhotos", defaultValue: "Rating \(delta > 0 ? "+" : "−")\(abs(delta)) · \(old.count) photos"))
         }
     }
     /// Repeating a lit state clears it; a mixed selection receives one explicit state.
@@ -1576,19 +1600,69 @@ final class AppModel {
         if count > 1 { parts.append(L10n.text("app.photos", defaultValue: "\(count) photos")) }
         return parts.joined(separator: " · ")
     }
-    private func updateOrganization(advance: Bool, write: (CatalogStore, [Photo]) throws -> String) {
+    private func updateOrganization(advance: Bool, write: (CatalogStore) throws -> ([Photo], String)) {
         guard workspaceAvailable, let catalog, !selection.isEmpty, commitRecipe() else { return }
         perform {
             let previousIndex = photos.firstIndex { $0.id == activeID } ?? 0
             let previousActive = activeID
-            let old = try catalog.photos(ids: organizationIDs)
-            let text = try write(catalog, old)
-            undo.registerUndo(withTarget: self) { target in target.restoreOrganization(old) }
-            undo.setActionName(L10n.text("app.ratingAndFlags", defaultValue: "Rating and Flags"))
-            try reloadPhotos(); reconcileVisibleSelection(preferredIndex: previousIndex)
-            status = L10n.text("app.savedRatingsAndFlagsForPhotos", defaultValue: "Saved ratings and flags for \(old.count) photos")
-            showNotice(text)
+            let (old, text) = try write(catalog)
+            registerOrganizationUndo { $0.restoreOrganization(old) }
+            try refreshOrganization(preferredIndex: previousIndex, count: old.count, notice: text)
             if advance, activeID == previousActive { move(1) }
+        }
+    }
+    private func registerOrganizationUndo(_ action: @escaping @MainActor (AppModel) -> Void) {
+        undo.registerUndo(withTarget: self, handler: action)
+        undo.setActionName(L10n.text("app.ratingAndFlags", defaultValue: "Rating and Flags"))
+    }
+    private func refreshOrganization(preferredIndex: Int, count: Int, notice text: String, preserveActive: Bool = false) throws {
+        if preserveActive, let activeID, let offset = try catalog?.offset(of: activeID, query: query) {
+            pageOffset = offset / pageSize * pageSize
+        }
+        try reloadPhotos()
+        if !preserveActive || activeID != nil || !selection.isEmpty {
+            reconcileVisibleSelection(preferredIndex: preferredIndex)
+        }
+        status = L10n.text("app.savedRatingsAndFlagsForPhotos", defaultValue: "Saved ratings and flags for \(count) photos")
+        showNotice(text)
+    }
+    /// The caller checks the workspace and open undo groups before entering this synchronous commit.
+    func ratePhoto(id: String, expected: Int, rating: Int) throws -> (receipt: PhotoRatingUndo?, refreshed: Bool) {
+        guard let catalog else { throw OrganizationError.photoUnavailable }
+        let previousIndex = photos.firstIndex { $0.id == activeID } ?? 0
+        _ = try catalog.setOrganization(ids: [id], rating: rating, expectedRating: expected)
+        guard expected != rating else { return (nil, true) }
+
+        let receipt = PhotoRatingUndo(photoID: id, previous: expected, applied: rating)
+        let groupsByEvent = undo.groupsByEvent
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        registerOrganizationUndo { $0.restoreRating(id: id, expected: rating, rating: expected, receipt: receipt) }
+        undo.endUndoGrouping()
+        undo.groupsByEvent = groupsByEvent
+        return (receipt, refreshRating(rating, preferredIndex: previousIndex))
+    }
+    private func restoreRating(id: String, expected: Int, rating: Int, receipt: PhotoRatingUndo? = nil) {
+        do {
+            guard let catalog else { throw OrganizationError.photoUnavailable }
+            let previousIndex = photos.firstIndex { $0.id == activeID } ?? 0
+            _ = try catalog.setOrganization(ids: [id], rating: rating, expectedRating: expected)
+            registerOrganizationUndo { $0.restoreRating(id: id, expected: rating, rating: expected) }
+            let refreshed = refreshRating(rating, preferredIndex: previousIndex)
+            receipt?.restoration = .success(refreshed)
+        } catch {
+            receipt?.restoration = .failure(error)
+            self.error = L10n.text("agent.undoFailed", defaultValue: "The photo rating could not be restored.")
+        }
+    }
+    private func refreshRating(_ rating: Int, preferredIndex: Int) -> Bool {
+        do {
+            try refreshOrganization(preferredIndex: preferredIndex, count: 1,
+                                    notice: Self.organizationNotice(rating: rating, flag: nil, count: 1), preserveActive: true)
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
         }
     }
     func showNotice(_ text: String) {
