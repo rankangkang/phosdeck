@@ -32,6 +32,13 @@ struct RawJpegPair: Codable, FetchableRecord, PersistableRecord, Identifiable, E
     var jpegSourceID: String
     func partner(of source: String) -> String? { source == rawSourceID ? jpegSourceID : source == jpegSourceID ? rawSourceID : nil }
 }
+struct PairChange {
+    let previous: [RawJpegPair]
+    let current: [RawJpegPair]
+}
+struct PairStateChanged: LocalizedError {
+    var errorDescription: String? { L10n.text("app.thePairingPreviewExpiredBecauseSourcesOrLocationsChanged", defaultValue: "The pairing preview expired because sources or locations changed. No pairing was created") }
+}
 struct PairCandidate: Identifiable {
     var id: String { sources.map(\.id).sorted().joined(separator:":") }
     var sources: [CatalogSource]
@@ -82,6 +89,13 @@ extension CatalogStore {
     }
     func pairs() throws -> [RawJpegPair] { try database.read { try RawJpegPair.order(Column("id")).fetchAll($0) } }
     func pair(sourceID: String) throws -> RawJpegPair? { try database.read { try RawJpegPair.fetchOne($0,sql:"SELECT * FROM rawJpegPair WHERE rawSourceID=? OR jpegSourceID=?",arguments:[sourceID,sourceID]) } }
+    func unlinkPair(_ id: String) throws -> PairChange {
+        try database.write { db in
+            let previous = try RawJpegPair.order(Column("id")).fetchAll(db)
+            try db.execute(sql: "DELETE FROM rawJpegPair WHERE id=?", arguments: [id])
+            return PairChange(previous: previous, current: previous.filter { $0.id != id })
+        }
+    }
     /// Restore catalog relationships without requiring online originals. Previously verified
     /// pair IDs survive source relocation and an endpoint with zero active versions.
     @discardableResult func restorePairs(_ values: [RawJpegPair]) throws -> [RawJpegPair] {
@@ -94,27 +108,32 @@ extension CatalogStore {
     }
     /// Only accepts frozen, file-verified proposals. Called after re-hashing by the service;
     /// final source/root/identity checks run inside the SAME transaction as both endpoints.
-    @discardableResult func establishPairs(_ proposals: [PairProposal]) throws -> [RawJpegPair] {
+    @discardableResult func establishPairs(_ proposals: [PairProposal]) throws -> PairChange {
         try database.write { db in
             let previous = try RawJpegPair.order(Column("id")).fetchAll(db)
+            var pairs = previous
             for proposal in proposals {
                 guard proposal.raw.source.kind == "RAW", proposal.jpeg.source.kind == "JPEG", proposal.raw.source.id != proposal.jpeg.source.id else { throw LRCError(L10n.text("app.aPairMustContainOneRAWSourceAndOne", defaultValue: "A pair must contain one RAW source and one JPEG source")) }
                 for endpoint in [proposal.raw,proposal.jpeg] {
-                    guard let current = try CatalogSource.fetchOne(db,key:endpoint.source.id) else { throw LRCError(L10n.text("app.thePairedSourceDoesNotExist", defaultValue: "The paired source does not exist")) }
+                    guard let current = try CatalogSource.fetchOne(db,key:endpoint.source.id) else { throw PairStateChanged() }
                     var expected = endpoint.source
                     if expected.digest == nil, current.digest == endpoint.digest { expected.digest = endpoint.digest }
                     guard current == expected,
                           let root = try StorageRoot.fetchOne(db,key:current.rootID), root.path == endpoint.rootPath, root.bookmark == endpoint.rootBookmark,
-                          try FileIdentity.read(URL(fileURLWithPath:root.path).appendingPathComponent(current.relativePath)) == JSONDecoder().decode(FileIdentity.self,from:current.identity) else { throw LRCError(L10n.text("app.thePairingPreviewExpiredBecauseSourcesOrLocationsChanged", defaultValue: "The pairing preview expired because sources or locations changed. No pairing was created")) }
+                          (try? FileIdentity.read(URL(fileURLWithPath:root.path).appendingPathComponent(current.relativePath))) == (try JSONDecoder().decode(FileIdentity.self,from:current.identity)) else { throw PairStateChanged() }
                     if let digest = current.digest, digest != endpoint.digest { throw LRCError(L10n.text("app.theSourceDigestDiffersFromSavedEdits", defaultValue: "The source digest differs from saved edits")) }
                 }
                 let pair = RawJpegPair(rawSourceID:proposal.raw.source.id,jpegSourceID:proposal.jpeg.source.id)
                 // Idempotent retry of the same relationship; a different partner is always refused.
-                if previous.contains(where: { $0.rawSourceID == pair.rawSourceID && $0.jpegSourceID == pair.jpegSourceID }) { continue }
+                if let existing = pairs.first(where: { $0.rawSourceID == pair.rawSourceID || $0.jpegSourceID == pair.jpegSourceID }) {
+                    guard existing.rawSourceID == pair.rawSourceID, existing.jpegSourceID == pair.jpegSourceID else { throw PairStateChanged() }
+                    continue
+                }
                 try pair.insert(db)
+                pairs.append(pair)
                 for endpoint in [proposal.raw,proposal.jpeg] { try db.execute(sql:"UPDATE photoSource SET digest=? WHERE id=?",arguments:[endpoint.digest,endpoint.source.id]) }
             }
-            return previous
+            return PairChange(previous: previous, current: pairs.sorted { $0.id < $1.id })
         }
     }
 }
@@ -200,6 +219,14 @@ actor RawJpegPairing {
             return value
         }
     }
+    func prepare(_ candidate: PairCandidate, catalog: CatalogStore) throws -> PairProposal {
+        guard candidate.issue == nil, candidate.sources.count == 2,
+              let raw = candidate.sources.first(where: { $0.kind == "RAW" }),
+              let jpeg = candidate.sources.first(where: { $0.kind == "JPEG" }) else { throw PairStateChanged() }
+        let proposal = try prepare(rawID: raw.id, jpegID: jpeg.id, catalog: catalog)
+        guard proposal.raw.source == raw, proposal.jpeg.source == jpeg else { throw PairStateChanged() }
+        return proposal
+    }
     /// Freeze only sources already admitted to the catalog. inspect evaluates an actual
     /// RAW decode and checks actual ImageIO type; JPEG content is never accepted as RAW.
     func prepare(rawID: String, jpegID: String, catalog: CatalogStore) throws -> PairProposal {
@@ -220,18 +247,22 @@ actor RawJpegPairing {
         }
         return try PairProposal(raw:freeze(raw),jpeg:freeze(jpeg))
     }
-    @discardableResult func apply(_ proposals: [PairProposal], catalog: CatalogStore) throws -> [RawJpegPair] {
+    @discardableResult func apply(_ proposals: [PairProposal], catalog: CatalogStore) throws -> PairChange {
         var leases = [AccessLease]()
         defer { withExtendedLifetime(leases) {} }
         for proposal in proposals {
             for endpoint in [proposal.raw,proposal.jpeg] {
                 try Task.checkCancellation()
-                let lease = try AccessLease(bookmark:endpoint.rootBookmark); leases.append(lease)
-                guard lease.url.resolvingSymlinksInPath().path == endpoint.rootPath else { throw LRCError(L10n.text("app.thePairingLocationChangedPreviewAgain", defaultValue: "The pairing location changed. Preview again")) }
-                let url = lease.url.appendingPathComponent(endpoint.source.relativePath)
-                try SourceAvailability.check(root:lease.url,file:url)
-                let identity = try JSONDecoder().decode(FileIdentity.self,from:endpoint.source.identity)
-                guard try FileIdentity.read(url) == identity, try SafeFileWriter.sha256(url) == endpoint.digest, try FileIdentity.read(url) == identity else { throw LRCError(L10n.text("app.pairedFilesChangedAfterPreviewNoPairingChangesWere", defaultValue: "Paired files changed after preview. No pairing changes were applied")) }
+                do {
+                    let lease = try AccessLease(bookmark:endpoint.rootBookmark); leases.append(lease)
+                    guard lease.url.resolvingSymlinksInPath().path == endpoint.rootPath else { throw PairStateChanged() }
+                    let url = lease.url.appendingPathComponent(endpoint.source.relativePath)
+                    try SourceAvailability.check(root:lease.url,file:url)
+                    let identity = try JSONDecoder().decode(FileIdentity.self,from:endpoint.source.identity)
+                    guard try FileIdentity.read(url) == identity, try SafeFileWriter.sha256(url) == endpoint.digest,
+                          try FileIdentity.read(url) == identity else { throw PairStateChanged() }
+                } catch is CancellationError { throw CancellationError() }
+                catch { throw PairStateChanged() }
             }
         }
         try Task.checkCancellation()

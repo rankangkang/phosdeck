@@ -449,8 +449,11 @@ final class AgentMCPTests: XCTestCase {
     }
 
     @MainActor func testClosedNotificationConnectionKeepsProtocolSession() async throws {
-        let model = AppModel()
-        let sessions = MCPHTTPSessions(name: "phosdeck-test", version: "1", tools: tools(model))
+        let (catalog, model, tools) = try fixture()
+        try catalog.collection(name: "Review set", id: "review")
+        try catalog.membership(ids: ["a", "b"], collection: "review", add: true)
+        let sessions = MCPHTTPSessions(name: "phosdeck-test", version: "1", tools: tools)
+        addTeardownBlock { await sessions.stop() }
         let headers = ["Content-Type": "application/json", "Accept": "application/json, text/event-stream",
                        "MCP-Protocol-Version": "2025-11-25"]
         let initResponse = ReceivedResponse()
@@ -464,11 +467,25 @@ final class AgentMCPTests: XCTestCase {
             XCTAssertEqual(response.statusCode, 202)
             throw CancellationError()
         }
-        let call = Data(#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_capabilities","arguments":{}}}"#.utf8)
-        let result = ReceivedResponse()
-        await sessions.respond(to: HTTPRequest(method: "POST", headers: sessionHeaders, body: call)) { try await result.collect($0) }
-        await sessions.stop()
-        let body = await result.body
-        XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("structuredContent"))
+        func result(_ request: String) async throws -> [String: Value] {
+            let response = ReceivedResponse()
+            await sessions.respond(to: HTTPRequest(method: "POST", headers: sessionHeaders, body: Data(request.utf8))) { try await response.collect($0) }
+            let body = String(decoding: await response.body, as: UTF8.self)
+            let payloads = body.split(whereSeparator: \.isNewline).filter { $0.hasPrefix("data:") }
+                .map { $0.dropFirst(5).trimmingCharacters(in: .whitespaces) }
+            let event = try XCTUnwrap(payloads.first { !$0.isEmpty }, body)
+            let decoded = try JSONDecoder().decode(Value.self, from: Data(event.utf8))
+            return try XCTUnwrap(decoded.objectValue?["result"]?.objectValue, body)
+        }
+        let listed = try await result(#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#)
+        let names = try XCTUnwrap(listed["tools"]?.arrayValue).compactMap { $0.objectValue?["name"]?.stringValue }
+        XCTAssertEqual(Set(names), Set(AppMCPTool.allCases.map(\.rawValue)))
+        XCTAssertTrue(["get_collection", "save_smart_collection", "create_virtual_copies", "plan_auto_stacks", "plan_raw_jpeg_pairs"]
+            .allSatisfy(names.contains))
+        let session = try XCTUnwrap(model.catalogSessionID)
+        let collection = try await result(#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_collection","arguments":{"catalog_session_id":"\#(session)","collection_id":"review","page_size":1}}}"#)
+        let data = try XCTUnwrap(collection["structuredContent"]?.objectValue?["data"]?.objectValue)
+        XCTAssertEqual(data["items"], [["photo_id": "a"]])
+        XCTAssertEqual(data["next_offset"], 1)
     }
 }

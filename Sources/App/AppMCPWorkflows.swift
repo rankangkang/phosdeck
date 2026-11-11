@@ -121,6 +121,8 @@ final class AppMCPWorkflows {
     private var recentIDs: [String: String] = [:]
     var importPlans: [String: MCPImportPlan] = [:]
     var folderPlans: [String: MCPFolderPlan] = [:]
+    var stackPlans: [String: MCPAutoStackPlan] = [:]
+    var pairPlans: [String: MCPPairPlan] = [:]
     private var activeReads = 0
 
     init(model: AppModel, chooseFile: FilePicker?) {
@@ -144,6 +146,8 @@ final class AppMCPWorkflows {
             grants[job.id] = nil
             importPlans[job.id] = nil
             folderPlans[job.id] = nil
+            stackPlans[job.id] = nil
+            pairPlans[job.id] = nil
         }
     }
 
@@ -167,6 +171,8 @@ final class AppMCPWorkflows {
             return try await librarySources(catalog: model.catalog!, session: session!, arguments: arguments)
         case .keywords:
             return try await listKeywords(catalog: model.catalog!, session: session!, arguments: arguments)
+        case .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs:
+            return try await readOrganization(tool, catalog: model.catalog!, session: session!, args: arguments)
         case .job, .importRecords:
             guard let catalog = model.catalog else { throw Self.missingJob }
             let response = try await readImportRecords(catalog: catalog, tool: tool, arguments: arguments)
@@ -225,6 +231,8 @@ final class AppMCPWorkflows {
             grants[oldest.id] = nil
             importPlans[oldest.id] = nil
             folderPlans[oldest.id] = nil
+            stackPlans[oldest.id] = nil
+            pairPlans[oldest.id] = nil
         }
         if let action { wait(job, action: action) }
         jobs.append(job)

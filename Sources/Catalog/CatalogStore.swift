@@ -5,6 +5,7 @@ enum OrganizationError: Error {
     case photoUnavailable
     case ratingConflict(actual: Int)
     case marksConflict(id: String, actual: PhotoMarks)
+    case versionConflict
 }
 
 struct PhotoMarks: Equatable {
@@ -496,6 +497,19 @@ final class CatalogStore: @unchecked Sendable {
     func snapshots(photoID: String) throws -> [EditSnapshot] {
         try database.read { try EditSnapshot.fetchAll($0, sql: "SELECT * FROM editSnapshot WHERE photoID=? ORDER BY createdAt DESC,id", arguments: [photoID]) }
     }
+    func savedEdit(photoID: String, historyID: Int64?, snapshotID: String?) throws -> (data: Data, title: String)? {
+        try database.read { db in
+            if let historyID {
+                return try EditHistoryEntry.fetchOne(db, sql: "SELECT * FROM editHistory WHERE photoID=? AND id=?",
+                                                     arguments: [photoID, historyID]).map { ($0.recipe, $0.title) }
+            }
+            if let snapshotID {
+                return try EditSnapshot.fetchOne(db, sql: "SELECT * FROM editSnapshot WHERE photoID=? AND id=?",
+                                                 arguments: [photoID, snapshotID]).map { ($0.recipe, $0.title) }
+            }
+            return nil
+        }
+    }
     func createSnapshot(photoID: String, title: String) throws {
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name.count <= 100 else { throw LRCError(L10n.text("app.snapshotNamesMustContain1100Characters", defaultValue: "Snapshot names must contain 1–100 characters")) }
@@ -527,9 +541,13 @@ final class CatalogStore: @unchecked Sendable {
         }
     }
     func collection(name: String, id: String? = nil) throws {
-        if let id, try collections().first(where: { $0.id == id })?.isSmart == true { throw LRCError(L10n.text("app.useTheSmartCollectionRuleEditor", defaultValue: "Use the smart collection rule editor")) }
         let value = PhotoCollection(id: id ?? UUID().uuidString, name: name.trimmingCharacters(in: .whitespacesAndNewlines))
-        try database.write { try value.save($0) }
+        try database.write { db in
+            if try PhotoCollection.fetchOne(db, key: value.id)?.isSmart == true {
+                throw LRCError(L10n.text("app.useTheSmartCollectionRuleEditor", defaultValue: "Use the smart collection rule editor"))
+            }
+            try value.save(db)
+        }
     }
     func collectionContents(_ id: String) throws -> CollectionContents {
         try database.read { try Self.readCollectionContents($0, id: id) }
@@ -599,12 +617,24 @@ final class CatalogStore: @unchecked Sendable {
     /// undo, where the previous complete order is already known. With nil,
     /// existing members retain their relative order and newly added IDs are
     /// appended in lexical order, never in Dictionary iteration order.
-    @discardableResult func restoreOrderedMembership(_ states: [String: Bool], collection: String, order: [String]? = nil) throws -> OrderedMembershipChange {
+    @discardableResult func restoreOrderedMembership(_ states: [String: Bool], collection: String, order: [String]? = nil,
+                                                      query: PhotoQuery? = nil, newName: String? = nil,
+                                                      requireLive: Bool = false) throws -> OrderedMembershipChange {
         try database.write { db in
+            if let newName { try PhotoCollection(id: collection, name: newName).insert(db) }
             try requireManualCollection(db,id:collection)
             let previousOrder = try Self.readManualCollectionOrder(db, id: collection)
             let previousSet = Set(previousOrder)
             let ids = states.keys.sorted()
+            if requireLive, !ids.isEmpty {
+                let marks = Array(repeating: "?", count: ids.count).joined(separator: ",")
+                let count = try Int.fetchOne(db, sql: "SELECT count(*) FROM photo WHERE deleted=0 AND id IN (" + marks + ")", arguments: StatementArguments(ids))
+                guard count == ids.count else { throw OrganizationError.photoUnavailable }
+            }
+            let added = ids.filter { states[$0] == true && !previousSet.contains($0) }
+            let matched = try query.map { try Self.resultIDs(db, query: $0, within: added) } ?? []
+            let matchedIDs = Set(matched)
+            let desiredOrder = order ?? (previousOrder.filter { states[$0] != false } + matched + added.filter { !matchedIDs.contains($0) })
             var inverse = [String: Bool]()
 
             for id in ids {
@@ -615,16 +645,8 @@ final class CatalogStore: @unchecked Sendable {
                 try db.execute(sql: add ? "INSERT INTO membership VALUES (?,?)" : "DELETE FROM membership WHERE collectionID=? AND photoID=?", arguments: [collection,id])
             }
 
-            let desiredOrder: [String]
-            if let order {
-                desiredOrder = order
-            } else {
-                let removed = Set(ids.filter { states[$0] == false })
-                let added = ids.filter { states[$0] == true && !previousSet.contains($0) }
-                desiredOrder = previousOrder.filter { !removed.contains($0) } + added
-            }
             try Self.replaceManualCollectionOrder(db, id: collection, order: desiredOrder)
-            return OrderedMembershipChange(inverse: inverse, previousOrder: previousOrder,
+            return OrderedMembershipChange(inverse: inverse, previousOrder: previousOrder, order: desiredOrder,
                                            changed: !inverse.isEmpty || desiredOrder != previousOrder)
         }
     }
@@ -644,31 +666,24 @@ final class CatalogStore: @unchecked Sendable {
     /// page passed by the UI. Returns the complete order before the change for
     /// one-step undo.
     @discardableResult func reorderCollection(_ collection: String, moving ids: [String], before: String? = nil) throws -> [String] {
+        try changeCollectionOrder(collection, moving: ids, before: before).previous
+    }
+    func changeCollectionOrder(_ collection: String, moving ids: [String], before: String?) throws -> (previous: [String], current: [String]) {
         try database.write { db in
             try Self.requireManualOrderCollection(db, id: collection)
             let old = try Self.readManualCollectionOrder(db, id: collection)
-            var unique = [String](), seen = Set<String>()
-            for id in ids where seen.insert(id).inserted { unique.append(id) }
-            let uniqueSet = Set(unique)
-            let moving = old.filter { uniqueSet.contains($0) }
-            guard uniqueSet.isSubset(of: Set(old)) else {
+            let movingSet = Set(ids)
+            let moving = old.filter { movingSet.contains($0) }
+            guard movingSet.isSubset(of: Set(old)) else {
                 throw LRCError(L10n.text("app.aMemberBeingReorderedIsNoLongerInThe", defaultValue: "A member being reordered is no longer in the collection. Refresh and try again"))
             }
-            guard let before else {
-                let movingSet = Set(moving)
-                let rest = old.filter { !movingSet.contains($0) }
-                try Self.replaceManualCollectionOrder(db, id: collection, order: rest + moving)
-                return old
-            }
-            let movingSet = Set(moving)
-            guard old.contains(before), !movingSet.contains(before) else {
-                throw LRCError(L10n.text("app.theReorderTargetChangedRefreshAndTryAgain", defaultValue: "The reorder target changed. Refresh and try again"))
-            }
             var rest = old.filter { !movingSet.contains($0) }
-            guard let index = rest.firstIndex(of: before) else { throw LRCError(L10n.text("app.theReorderTargetChangedRefreshAndTryAgain", defaultValue: "The reorder target changed. Refresh and try again")) }
-            rest.insert(contentsOf: moving, at: index)
+            if let before {
+                guard let index = rest.firstIndex(of: before) else { throw LRCError(L10n.text("app.theReorderTargetChangedRefreshAndTryAgain", defaultValue: "The reorder target changed. Refresh and try again")) }
+                rest.insert(contentsOf: moving, at: index)
+            } else { rest.append(contentsOf: moving) }
             try Self.replaceManualCollectionOrder(db, id: collection, order: rest)
-            return old
+            return (old, rest)
         }
     }
     /// Replace a regular collection's complete member order. This is used by
@@ -687,7 +702,7 @@ final class CatalogStore: @unchecked Sendable {
             throw LRCError(L10n.text("app.onlyRegularCollectionsSupportManualOrdering", defaultValue: "Only regular collections support manual ordering"))
         }
     }
-    private static func readManualCollectionOrder(_ db: Database, id: String) throws -> [String] {
+    static func readManualCollectionOrder(_ db: Database, id: String) throws -> [String] {
         try String.fetchAll(db, sql: "SELECT photoID FROM membership WHERE collectionID=? ORDER BY rowid ASC", arguments: [id])
     }
     private static func replaceManualCollectionOrder(_ db: Database, id: String, order: [String]) throws {
@@ -696,6 +711,7 @@ final class CatalogStore: @unchecked Sendable {
         guard Set(current) == Set(order), current.count == order.count else {
             throw LRCError(L10n.text("app.collectionMembersChangedRefreshAndTryAgain", defaultValue: "Collection members changed. Refresh and try again"))
         }
+        guard current != order else { return }
         try db.execute(sql: "DELETE FROM membership WHERE collectionID=?", arguments: [id])
         let statement = try db.makeStatement(sql: "INSERT INTO membership(collectionID,photoID) VALUES (?,?)")
         for photoID in order { try statement.execute(arguments: [id, photoID]) }
@@ -802,10 +818,18 @@ final class CatalogStore: @unchecked Sendable {
 struct OrderedMembershipChange: Equatable {
     let inverse: [String: Bool]
     let previousOrder: [String]
+    let order: [String]
     let changed: Bool
 
     /// Alias kept close to the SQL/API vocabulary used by callers.
     var oldOrder: [String] { previousOrder }
+}
+
+struct PhotoVersionRevision: Equatable {
+    let source: Int
+    let recipe: Int
+
+    func matches(_ photo: Photo) -> Bool { source == photo.revision && recipe == photo.recipeRevision }
 }
 
 extension CatalogStore {
@@ -815,12 +839,17 @@ extension CatalogStore {
     func versions(sourceID: String) throws -> [Photo] {
         try database.read { try Photo.fetchAll($0, sql:"SELECT * FROM photo WHERE sourceID=? AND deleted=0 ORDER BY (copyName IS NOT NULL),copyName,id", arguments:[sourceID]) }
     }
-    func createVirtualCopies(ids: Set<String>, recipeOverride: EditRecipe? = nil, historyTitle: String = L10n.text("app.createVirtualCopy", defaultValue: "Create Virtual Copy")) throws -> [Photo] {
+    func createVirtualCopies(ids: Set<String>, recipeOverride: EditRecipe? = nil,
+                             historyTitle: String = L10n.text("app.createVirtualCopy", defaultValue: "Create Virtual Copy"),
+                             expecting: [String: PhotoVersionRevision] = [:]) throws -> [Photo] {
         guard recipeOverride == nil || ids.count == 1 else { throw LRCError(L10n.text("app.aHistoryStateCanOnlyBeUsedForOne", defaultValue: "A history state can only be used for one copy of its corresponding photo")) }
         return try database.write { db in
             var copies = [Photo]()
+            let previousStacks = try Self.readStacks(db)
+            var stacks = previousStacks
             for id in ids.sorted() {
                 guard let original = try Photo.fetchOne(db,key:id), !original.deleted else { throw LRCError(L10n.text("app.theSelectedVersionNoLongerExistsNoCopyWas", defaultValue: "The selected version no longer exists. No copy was created")) }
+                if let expected = expecting[id], !expected.matches(original) { throw OrganizationError.versionConflict }
                 if let data = original.recipe { try JSONDecoder().decode(EditRecipe.self,from:data).validate(for:original) }
                 let names = Set(try String.fetchAll(db,sql:"SELECT copyName FROM photo WHERE sourceID=? AND copyName IS NOT NULL",arguments:[original.sourceKey]))
                 var number = 1
@@ -843,34 +872,37 @@ extension CatalogStore {
                 if let data = copy.recipe {
                     try db.execute(sql:"INSERT INTO editHistory(photoID,title,createdAt,recipe) VALUES (?,?,?,?)",arguments:[copy.id,historyTitle,Date().timeIntervalSince1970,data])
                 }
-                var stacks = try Self.readStacks(db)
                 if let i = stacks.firstIndex(where: { $0.members.contains(id) }), let at = stacks[i].members.firstIndex(of:id) {
                     stacks[i].members.insert(copy.id,at:at+1); stacks[i].collapsed = false
-                    try Self.writeStacks(stacks,db:db)
                 }
                 copies.append(copy)
             }
+            if previousStacks != stacks { try Self.writeStacks(stacks, db: db) }
             return copies
         }
     }
-    func renameVersion(id: String, name: String) throws -> String {
+    func renameVersion(id: String, name: String, expecting: String? = nil) throws -> String {
         let value = name.trimmingCharacters(in:.whitespacesAndNewlines)
         guard (1...100).contains(value.count), value.rangeOfCharacter(from:.controlCharacters) == nil else { throw LRCError(L10n.text("app.copyNamesMustContain1100CharactersWithoutControl", defaultValue: "Copy names must contain 1–100 characters without control characters")) }
         return try database.write { db in
             guard let photo = try Photo.fetchOne(db,key:id), !photo.deleted, let previous = photo.copyName else { throw LRCError(L10n.text("app.onlyExistingVirtualCopiesCanBeRenamed", defaultValue: "Only existing virtual copies can be renamed")) }
-            try db.execute(sql:"UPDATE photo SET copyName=? WHERE id=?",arguments:[value,id])
+            if let expecting, previous != expecting { throw OrganizationError.versionConflict }
+            if value != previous { try db.execute(sql:"UPDATE photo SET copyName=? WHERE id=?",arguments:[value,id]) }
             return previous
         }
     }
     /// Catalog-only deletion. Retain recipes, history, attachments and original
     /// bytes for undo and source siblings. No filesystem deletion or asset GC.
-    func setVersionDeletion(_ states: [String: Bool], restoringStacks: [PhotoStack]? = nil) throws -> [String: Bool] {
+    func setVersionDeletion(_ states: [String: Bool], restoringStacks: [PhotoStack]? = nil,
+                            expecting: [String: PhotoVersionRevision] = [:], requireLive: Bool = false) throws -> [String: Bool] {
         try database.write { db in
             var inverse = [String: Bool]()
             for (id,deleted) in states {
                 guard let photo = try Photo.fetchOne(db,key:id) else { throw LRCError(L10n.text("app.theVersionDoesNotExist", defaultValue: "The version does not exist")) }
+                if requireLive, photo.deleted { throw OrganizationError.photoUnavailable }
+                if let expected = expecting[id], !expected.matches(photo) { throw OrganizationError.versionConflict }
                 inverse[id] = photo.deleted
-                try db.execute(sql:"UPDATE photo SET deleted=? WHERE id=?",arguments:[deleted,id])
+                if photo.deleted != deleted { try db.execute(sql:"UPDATE photo SET deleted=? WHERE id=?",arguments:[deleted,id]) }
             }
             let stacks = try Self.readStacks(db).compactMap { stack -> PhotoStack? in
                 var value = stack

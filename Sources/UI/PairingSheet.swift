@@ -139,15 +139,13 @@ struct PairingSheet: View {
                 var frozen = [PairProposal]()
                 for c in chosen {
                     try Task.checkCancellation()
-                    guard let raw = c.sources.first(where: { $0.kind == "RAW" }), let jpeg = c.sources.first(where: { $0.kind == "JPEG" }) else { throw LRCError(L10n.text("app.incompleteCandidates", defaultValue: "Incomplete Candidates")) }
                     let proposal: PairProposal
-                    do { proposal = try await model.pairing.prepare(rawID:raw.id,jpegID:jpeg.id,catalog:catalog) }
+                    do { proposal = try await model.pairing.prepare(c, catalog: catalog) }
                     catch is CancellationError { throw CancellationError() }
                     catch {
                         if let i = candidates.firstIndex(where: { $0.id == c.id }) { candidates[i].issue = L10n.text("app.ambiguityContentVerificationFailed", defaultValue: "Ambiguity / content verification failed: ") + error.localizedDescription }
                         selected.remove(c.id); throw error
                     }
-                    guard proposal.raw.source == raw, proposal.jpeg.source == jpeg else { throw LRCError(L10n.text("app.candidatesChangedAfterDetectionRescan", defaultValue: "Candidates changed after detection. Rescan")) }
                     frozen.append(proposal)
                 }
                 try Task.checkCancellation(); proposals = frozen

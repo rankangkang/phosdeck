@@ -28,6 +28,13 @@ enum StackAction {
     case move(String, Int), cover(String), split(String)
     case collapse(Set<String>, Bool) // stack IDs, explicit scope
 }
+struct StackChange {
+    let previous: [PhotoStack]
+    let current: [PhotoStack]
+}
+struct StackStateChanged: LocalizedError {
+    var errorDescription: String? { L10n.text("app.theGroupingPreviewExpiredPreviewAgain", defaultValue: "The grouping preview expired. Preview again") }
+}
 struct AutoStackInput: Equatable {
     var id: String
     var name: String
@@ -105,8 +112,12 @@ extension CatalogStore {
         try database.write { db in let old = try Self.readStacks(db); try Self.writeStacks(values, db: db); return old }
     }
     @discardableResult func changeStacks(_ action: StackAction) throws -> [PhotoStack] {
+        try editStacks(action).previous
+    }
+    func editStacks(_ action: StackAction, expecting expected: [PhotoStack]? = nil) throws -> StackChange {
         try database.write { db in
             let old = try Self.readStacks(db)
+            guard expected == nil || expected == old else { throw StackStateChanged() }
             var values = old
             switch action {
             case let .group(top, members):
@@ -136,18 +147,20 @@ extension CatalogStore {
                 values[i].members = Array(values[i].members[..<at]); values.removeAll { $0.members.count < 2 }
                 if tail.count >= 2 { values.append(PhotoStack(members: tail, collapsed: collapsed)) }
             }
-            try Self.writeStacks(values, db: db)
-            return old
+            let next = values.sorted { $0.id < $1.id }
+            if old != next { try Self.writeStacks(next, db: db) }
+            return StackChange(previous: old, current: next)
         }
     }
     func stackInputs(query: PhotoQuery, ids: Set<String>? = nil) throws -> [AutoStackInput] {
+        try database.read { try Self.stackInputs($0, query: query, ids: ids) }
+    }
+    private static func stackInputs(_ db: Database, query: PhotoQuery, ids: Set<String>?) throws -> [AutoStackInput] {
         let (predicate,args) = query.predicate
-        return try database.read { db in
-            try Row.fetchAll(db, sql: "SELECT photo.id,photo.relativePath,photo.rootID,photo.captureDate,EXISTS(SELECT 1 FROM stackMember m WHERE m.photoID=photo.id) AS stacked FROM " + query.relation + " WHERE " + predicate + " ORDER BY " + query.order, arguments: args).compactMap { row in
-                let id: String = row["id"]
-                guard ids == nil || ids!.contains(id) else { return nil }
-                return AutoStackInput(id: id, name: row["relativePath"], rootID: row["rootID"], captureDate: row["captureDate"], stacked: row["stacked"])
-            }
+        return try Row.fetchAll(db, sql: "SELECT photo.id,photo.relativePath,photo.rootID,photo.captureDate,EXISTS(SELECT 1 FROM stackMember m WHERE m.photoID=photo.id) AS stacked FROM " + query.relation + " WHERE " + predicate + " ORDER BY " + query.order, arguments: args).compactMap { row in
+            let id: String = row["id"]
+            guard ids?.contains(id) ?? true else { return nil }
+            return AutoStackInput(id: id, name: row["relativePath"], rootID: row["rootID"], captureDate: row["captureDate"], stacked: row["stacked"])
         }
     }
     static func previewAutoStacks(_ inputs: [AutoStackInput], gap: Double) throws -> AutoStackPreview {
@@ -155,6 +168,7 @@ extension CatalogStore {
         var skippedTime = 0, skippedStacked = 0
         var timed = [(String, Double, String, String)]()
         for input in inputs {
+            try Task.checkCancellation()
             if input.stacked { skippedStacked += 1; continue }
             guard let time = CaptureTime.parse(input.captureDate) else { skippedTime += 1; continue }
             timed.append((time.hasOffset ? "instant" : "local:" + input.rootID, time.seconds, input.name.precomposedStringWithCanonicalMapping.lowercased(), input.id))
@@ -169,18 +183,23 @@ extension CatalogStore {
         return AutoStackPreview(inputs: inputs, groups: groups.filter { $0.count >= 2 }, gap: gap, skippedTime: skippedTime, skippedStacked: skippedStacked)
     }
     @discardableResult func applyAutoStacks(_ preview: AutoStackPreview) throws -> [PhotoStack] {
+        try saveAutoStacks(preview).previous
+    }
+    func saveAutoStacks(_ preview: AutoStackPreview, query: PhotoQuery? = nil, ids: Set<String>? = nil) throws -> StackChange {
         try database.write { db in
+            if let query, try Self.stackInputs(db, query: query, ids: ids) != preview.inputs { throw StackStateChanged() }
             let old = try Self.readStacks(db), stacked = Set(old.flatMap(\.members))
             let inputs = Dictionary(uniqueKeysWithValues: preview.inputs.map { ($0.id,$0) })
             var seen = Set<String>()
             for id in preview.groups.flatMap({ $0 }) {
                 guard seen.insert(id).inserted, !stacked.contains(id), let expected = inputs[id],
                       let row = try Row.fetchOne(db, sql: "SELECT rootID,relativePath,captureDate FROM photo WHERE id=? AND deleted=0", arguments: [id]),
-                      expected.rootID == row["rootID"], expected.name == row["relativePath"], expected.captureDate == row["captureDate"] else { throw LRCError(L10n.text("app.theGroupingPreviewExpiredPreviewAgain", defaultValue: "The grouping preview expired. Preview again")) }
+                      expected.rootID == row["rootID"], expected.name == row["relativePath"], expected.captureDate == row["captureDate"] else { throw StackStateChanged() }
             }
             guard try Self.previewAutoStacks(preview.inputs, gap: preview.gap).groups == preview.groups else { throw LRCError(L10n.text("app.invalidGroupingPreview", defaultValue: "Invalid grouping preview")) }
-            try Self.writeStacks(old + preview.groups.map { PhotoStack(members: $0) }, db: db)
-            return old
+            let next = (old + preview.groups.map { PhotoStack(members: $0) }).sorted { $0.id < $1.id }
+            if old != next { try Self.writeStacks(next, db: db) }
+            return StackChange(previous: old, current: next)
         }
     }
 }

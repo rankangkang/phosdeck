@@ -1,6 +1,6 @@
 ---
 name: phosdeck
-description: Work in Phosdeck through its local MCP server. Manage catalogs, import and locate originals, recover copy imports, cull and compare photos, and edit ratings, flags, color labels, keywords, and captions.
+description: Work in Phosdeck through its local MCP server. Manage catalogs and imports, cull and compare photos, edit marks and metadata, manage regular and smart collections, create virtual copies, arrange stacks, and verify RAW/JPEG pairs.
 ---
 
 # Phosdeck
@@ -9,6 +9,7 @@ Call `get_capabilities` and `get_workspace` before operating on a catalog. Check
 
 - For catalog changes, file access, import, folder review or recovery, read [Library and import workflows](references/library-and-import.md).
 - For filtering, selecting, comparing, marking or editing metadata, read [Culling and photo metadata](references/culling-and-metadata.md).
+- For collections, virtual copies, display stacks or RAW/JPEG pairs, read [Photo organization](references/organization.md).
 - For visual review, use `get_photo_preview` with the exact `photo_id`, `source_revision` and `recipe_revision` from the list or active photo. Review the returned PNG as the saved edit. If preview sharing is off, the user can enable **Share Photo Previews** in Settings. Refresh the target and revisions if the preview is stale.
 - Use the returned `operation_id` with `undo_operation` if the user wants to undo the current action. Use `redo_operation` with the same operation ID after an MCP undo. Each uses the current catalog session and request epoch and a new request ID. If the action is no longer at the top of the native stack, reread the affected items before deciding how to proceed.
 

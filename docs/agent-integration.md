@@ -41,12 +41,12 @@
 | `set_clipping_display`、`retry_photo_preview` | 显示高光和阴影剪切、查看状态或重试预览 | `ClippingVisibility`、`showShadowClipping`／`showHighlightClipping`、`retryPhotoLoad`。图像观察沿用同一显影管线 |
 | `set_photo_ratings`、`set_photo_marks` | 批量设置或步进星级、设置选中／拒绝／无旗标、颜色标签，可显式前进。返回每张前后值及撤销 ID | `updateOrganization`／`stepRating`、`CatalogStore.setOrganization`／`setRatings`。图库写入，批次核对目标 |
 | `list_keywords`、`edit_photo_keywords`、`rename_keyword`、`set_photo_caption` | 查看关键词、建议与计数，添加／移除词项、全局重命名、设置题注。返回实际影响的版本和可撤销结果 | `CatalogKeywords`、`changeKeywords`／`renameKeyword`／`changeCaption`。沿用版本作用域及冲突校验 |
-| `save_collection`、`delete_collection`、`set_collection_members` | 创建／改名／移除普通集合、增减明确成员、将查询结果加入既有或新集合。返回集合及实际成员变化 | `makeCollection`／`deleteCollection`／`membership`／`collectResults`。按原生入口返回撤销能力，移除集合保留照片 |
+| `get_collection`、`save_collection`、`delete_collection`、`set_collection_members` | 分页读成员与规则，创建／改名／移除普通集合、增减明确成员、将查询结果加入既有或新集合。返回集合及实际成员变化 | `CatalogStore`、`saveRegularCollection`／`setCollectionPresence`／`saveCollectionMembership`／`collectResults`。移除集合保留照片 |
 | `set_target_collection`、`edit_quick_collection`、`reorder_collection` | 指定／清除目标集合、快速集合添加和移除、切换手工排序和移动成员。返回目标与实际顺序 | `setTargetCollection`／`toggleQuickCollection`／`setManualCollectionOrder`、`CollectionOrdering` |
 | `save_smart_collection`、`delete_smart_collection` | 新建／改名、编辑规则来源、字段、操作符、值和组合方式，或用当前筛选新建。返回集合 ID 和匹配数量 | `SmartCollectionSheet`、`SmartRules.from`、`saveSmartCollection`／`deleteSmartCollection`。校验规则与名称 |
-| `create_virtual_copies`、`rename_photo_version`、`remove_photo_versions` | 从当前或指定历史／快照建立版本，改名或移除明确版本。返回版本 ID 和撤销能力 | `createVirtualCopies`／`createVirtualCopy`／`renameVirtualCopy`／`deleteSelectedVersions`。移除编辑版本保留原片 |
-| `edit_photo_stack`、`plan_auto_stacks`、`apply_auto_stacks` | 分组／合并、移出、拆分、解散、移动、设封面、折叠／展开指定组或查询范围。时间间隔自动分组先预览再应用 | `StackAction`、`stackAction`／`collapseResultStacks`／`applyAutoStacks`、`AutoStackSheet`。回读实际成员及范围 |
-| `plan_raw_jpeg_pairs`、`apply_raw_jpeg_pairs`、`unlink_raw_jpeg_pair` | 范围内检测／复扫、选择候选、解绑。配对版本定位、比较和入组复用选片、比较和堆叠工具 | `PairingSheet`、`RawJpegPairing`、`applyPairs`／`unlinkPair`／`comparePartner`／`stackPartner`。保留两侧版本 |
+| `list_photo_versions`、`create_virtual_copies`、`rename_photo_version`、`remove_photo_versions` | 查看同原片版本，从当前或指定历史／快照建立版本，改名或移除明确版本。返回版本 ID 和撤销能力 | `CatalogStore.versions`、`saveVirtualCopies`／`renamePhotoVersion`／`removePhotoVersions`。移除编辑版本保留原片 |
+| `list_photo_stacks`、`edit_photo_stack`、`plan_auto_stacks`、`apply_auto_stacks` | 查看组与有序成员，分组／合并、移出、拆分、解散、移动、设封面、折叠／展开指定组或查询范围。按拍摄时间自动分组先预览再应用 | `StackAction`、`saveStackAction`／`saveAutoStacks`、`AutoStackSheet`。回读实际成员及范围 |
+| `list_raw_jpeg_pairs`、`plan_raw_jpeg_pairs`、`apply_raw_jpeg_pairs`、`unlink_raw_jpeg_pair` | 查来源和关系，范围内检测、核验候选、手动指定配对及解绑。配对版本定位、比较和入组复用选片、比较和堆叠工具 | `PairingSheet`、`RawJpegPairing`、`savePairs`／`removePair`。保留两侧来源及版本 |
 | `get_photo_recipe`、`set_global_adjustments`、`reset_adjustments` | 读原生参数及有效范围，按字段设置或按原生重置范围恢复。覆盖白平衡／原样、曝光、对比、饱和、四段明暗、纹理、清晰度、去雾、鲜艳度、彩色／黑白 | `DevelopPanel`、`EditRecipe`、`DevelopAdjustments`、`changeRecipe`／`commitRecipe`。使用保存配方版本，限制文件格式及 RAW 解码能力 |
 | `set_tone_curve`、`set_zone_lighting`、`set_color_adjustments` | 曲线通道及点增删改、通道重置、五区 EV、HSL 八色、黑白混色、阴影／中间调／高光／全局色彩分级与混合平衡 | `ToneCurvePanel`、`ToneZones`、`ColorGrading`、`DevelopPanel`。点颜色与画布取样见第五步 |
 | `set_detail_adjustments`、`set_effects` | 通用锐化／降噪、RAW 锐化／降噪／镜头校正、紫边／绿边数量及范围、暗角样式和形状、颗粒大小和粗糙度。返回实际接受的参数 | `GeneralDetail`、`RAWDetailSettings`、`ManualDefringe`、`CreativeVignette`、`FilmGrain`。沿用渲染顺序与支持范围 |
@@ -127,6 +127,7 @@
 | `workspace_busy`、`native_interaction_active` | 查询当前状态。等待任务结束或用户完成原生编辑，再核对目标。 |
 | `image_access_disabled`、`file_access_required` | 等待用户开启图像共享，或按任务要求完成原生文件授权。 |
 | `rating_conflict`、`undo_conflict` | 回读实际评级和工作区状态。只有用户意图仍匹配时才提交新的修改。 |
+| `collection_unavailable`、`stale_collection`、`stale_stack`、`pair_unavailable` | 回读集合、堆叠或配对及其成员，核对当前 ID 与顺序。 |
 | `request_id_conflict`、`request_expired` | 核对上次调用结果，回读后以新请求标识提交当前动作。 |
 | `stale_plan`、`stale_conflict` | 重新查看计划或任务，依据当前候选或冲突选项提交。 |
 | `job_unavailable`、`import_record_unavailable` | 核对图库及复制记录，确认是否可以继续。 |
@@ -215,6 +216,16 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 `set_photo_ratings` 和 `set_photo_marks` 单次接收最多 200 个明确目标。每张传入所修改字段的当前值，任一不匹配时整批保留，并返回 `marks_conflict` 和对应照片的实际标记。相对星级以各张照片原值步进，越界停在 0 或 5。`advance` 显式开启时，仅从本批目标中的活动照片前进。批量写入返回各版本的前后标记和共同的撤销 ID。
 
 `list_keywords` 可搜索目录词表、返回近期关键词和选中计数，并按 `photo_id` 回读该版本的关键词及题注。添加与移除限定版本，重命名沿用全图库关联校验。题注以 `expected_captions` 核对每张现有内容，遇到 `caption_conflict` 时先核对新值再决定是否重发。关键词和题注变更可通过原生撤销栈撤销。
+
+### 集合、版本、堆叠与配对接口
+
+`get_collection` 分页读取实际成员，普通集合按保存的手工顺序，智能集合按现行规则计算。`collection_revision` 跟踪保存的名称、规则或成员顺序。`set_collection_members` 的 `collect_results` 使用当前查询的全部命中，包含跨页、折叠及冻结范围。快速集合动作使用 `get_workspace` 的目标 ID。普通集合创建、改名及收集查询结果沿用原生保存语义，其余动作按结果中的 `operation_id` 判断能否撤销。智能集合可提供 `rules` 或 `from_current_query=true`，保存后可用返回的 `source_id` 打开。
+
+`photo_id` 指照片版本。`list_photos` 与版本工具返回的物理 `source_id` 指同一原片。`list_photo_versions` 可用其中任一 ID 查同原片的编辑版本。`list_edit_records` 用 `record_type=history` 或 `snapshots` 查指定版本的保存记录。`create_virtual_copies` 默认复制当前保存编辑，也可以给单个目标指定一个 `history_id` 或 `snapshot_id`。复制和移除可用 `expected_revisions` 核对各目标的来源与配方，移除版本保留原片及撤销所需记录。
+
+`list_photo_stacks` 返回各组的封面、匹配数及成员总数。指定 `stack_id` 或成员 `photo_id` 时可分页查看完整顺序及每张是否在查询内。`plan_auto_stacks` 按相邻拍摄时间差生成计划，`get_job` 分页列出候选组员及跳过原因计数。`apply_auto_stacks` 应用所审查的整个计划，提交时重新核对查询和输入，整批使用一次原生撤销。
+
+`list_raw_jpeg_pairs` 查询已有关系，`listing=sources` 列出物理 RAW 与 JPEG 来源及目录记录的可用状态。自动配对依次调用 `plan_raw_jpeg_pairs` 的 `detect`、`verify`，再以核验后的 `plan_id` 和 `candidate_ids` 调用 `apply_raw_jpeg_pairs`。已明确是同一次拍摄时，也可用 `action=manual`、两侧来源 ID 与 `same_capture=true` 生成核验计划。每步任务均通过 `get_job` 回读。应用时复查原片和已存关系，整批提交并返回配对 ID 和撤销标识。过期时重新检测或核验。解绑保留双方原片和编辑版本。配对任一侧可用其物理来源 ID 查版本，再通过已有工具定位、比较或加入堆叠。
 
 ## 实施顺序
 

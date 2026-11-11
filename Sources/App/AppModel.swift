@@ -299,7 +299,7 @@ final class AppModel {
     var collectionCounts: [String:Int] = [:]
     private(set) var targetCollectionID: String?
     private var targetMemberIDs: Set<String> = []
-    private var quickCollectionID: String?
+    private(set) var quickCollectionID: String?
     private var targetCatalogPath: String?
     @ObservationIgnored private(set) var selectionGeneration = UUID()
     var selection: Set<String> = [] {
@@ -1117,7 +1117,10 @@ final class AppModel {
             choose(id.map { [$0] } ?? [], active: id)
         }
     }
-    func perform(_ operation: () throws -> Void) { do { try operation() } catch { self.error = error.localizedDescription } }
+    @discardableResult func perform(_ operation: () throws -> Void) -> Bool {
+        do { try operation(); return true }
+        catch { self.error = error.localizedDescription; return false }
+    }
     func choose(_ ids: Set<String>, active id: String?) {
         guard !applyingAdjustments else { return }
         if let comparison, let id, id == comparison.reference.photo?.id {
@@ -1838,33 +1841,39 @@ final class AppModel {
         }
     }
     func makeCollection(name: String, id: String? = nil) {
-        perform { try catalog?.collection(name: name, id: id); try reload() }
+        perform { _ = try saveRegularCollection(name: name, id: id ?? UUID().uuidString) }
+    }
+    func saveRegularCollection(name: String, id: String) throws -> Bool {
+        guard let catalog else { return false }
+        try catalog.collection(name: name, id: id)
+        return perform { try reload() }
     }
     func deleteCollection(_ id: String) {
         guard workspaceAvailable, let catalog else { return }
-        do { setCollectionPresence(try catalog.collectionContents(id), present: false, catalog: catalog) }
-        catch { self.error = error.localizedDescription }
+        perform { _ = try setCollectionPresence(catalog.collectionContents(id), present: false, catalog: catalog) }
     }
-    private func setCollectionPresence(_ contents: CollectionContents, present: Bool, catalog expectedCatalog: CatalogStore,
-                                       restoringTargets: (target: String?, quick: String?)? = nil,
-                                       expectingTargets: (target: String?, quick: String?)? = nil) {
-        guard workspaceAvailable, let catalog, catalog === expectedCatalog else { return }
+    func setCollectionPresence(_ contents: CollectionContents, present: Bool, catalog expectedCatalog: CatalogStore,
+                               restoringTargets: (target: String?, quick: String?)? = nil,
+                               expectingTargets: (target: String?, quick: String?)? = nil,
+                               closedUndo: Bool = false) throws -> Bool {
+        guard workspaceAvailable, let catalog, catalog === expectedCatalog else { return false }
         let id = contents.collection.id
-        guard present || scope != "collection:" + id || commitRecipe() else { return }
-        perform {
-            let previousTargets = (target: targetCollectionID, quick: quickCollectionID)
-            if present { try catalog.restoreCollection(contents) }
-            else { try catalog.deleteCollection(id, expecting: contents) }
-            // Keep a recovery action even if a subsequent UI refresh fails.
-            defer {
-                let currentTargets = (target: targetCollectionID, quick: quickCollectionID)
-                undo.registerUndo(withTarget: self) { target in
-                    target.setCollectionPresence(contents, present: !present, catalog: expectedCatalog,
-                                                 restoringTargets: previousTargets, expectingTargets: currentTargets)
+        guard present || scope != "collection:" + id || commitRecipe() else { return false }
+        let previousTargets = (target: targetCollectionID, quick: quickCollectionID)
+        if present { try catalog.restoreCollection(contents) }
+        else { try catalog.deleteCollection(id, expecting: contents) }
+        // Keep a recovery action even if a subsequent UI refresh fails.
+        defer {
+            let currentTargets = (target: targetCollectionID, quick: quickCollectionID)
+            registerCatalogUndo(L10n.text("app.deleteCollection", defaultValue: "Delete Collection"), closed: closedUndo) { target in
+                target.perform {
+                    _ = try target.setCollectionPresence(contents, present: !present, catalog: expectedCatalog,
+                                                         restoringTargets: previousTargets, expectingTargets: currentTargets)
                 }
-                undo.setActionName(L10n.text("app.deleteCollection", defaultValue: "Delete Collection"))
             }
-            if !present, scope == "collection:" + id { setScope("all") }
+        }
+        return perform {
+            if !present, scope == "collection:" + id { try updateLibraryQuery(source: "all") }
             try reload()
             if let restoringTargets, let expectingTargets,
                previousTargets.target == expectingTargets.target, previousTargets.quick == expectingTargets.quick {
@@ -1891,19 +1900,23 @@ final class AppModel {
                   self.manualOrderEnabled, self.regularCollectionID == collection,
                   self.query == expected, self.commitRecipe() else { return false }
             do {
-                let requested = Set(ids)
-                guard !requested.isEmpty, try catalog.resultIDs(expected, within: requested) == requested else { return false }
-                if let before, !(try catalog.resultIDs(expected, within: [before])).contains(before) { return false }
-                let old = try catalog.reorderCollection(collection, moving: ids, before: before)
-                let new = try catalog.collectionOrder(collection)
-                guard old != new else { return true }
-                self.undo.registerUndo(withTarget: self) { $0.restoreCollectionOrder(collection, order: old) }
-                self.undo.setActionName(L10n.text("app.reorderCollection", defaultValue: "Reorder Collection"))
-                try self.refreshCollectionOrder()
-                self.showNotice(L10n.text("app.collectionReorderedUndoAvailable", defaultValue: "Collection reordered · Undo available"))
-                return true
+                let requested = Set(ids + (before.map { [$0] } ?? []))
+                guard !ids.isEmpty, try catalog.resultIDs(expected, within: requested) == requested else { return false }
+                return try self.moveCollectionMembers(collection, moving: ids, before: before).refreshed
             } catch { self.error = error.localizedDescription; return false }
         }
+    }
+    func moveCollectionMembers(_ collection: String, moving ids: [String], before: String?, closedUndo: Bool = false) throws
+        -> (previous: [String], current: [String], refreshed: Bool) {
+        guard let catalog else { throw OrganizationError.photoUnavailable }
+        let change = try catalog.changeCollectionOrder(collection, moving: ids, before: before)
+        guard change.previous != change.current else { return (change.previous, change.current, true) }
+        registerCatalogUndo(L10n.text("app.reorderCollection", defaultValue: "Reorder Collection"), closed: closedUndo) {
+            $0.restoreCollectionOrder(collection, order: change.previous)
+        }
+        let refreshed = perform { if regularCollectionID == collection { try refreshCollectionOrder() } }
+        showNotice(L10n.text("app.collectionReorderedUndoAvailable", defaultValue: "Collection reordered · Undo available"))
+        return (change.previous, change.current, refreshed)
     }
     private func refreshCollectionOrder() throws {
         guard let catalog else { return }
@@ -1930,7 +1943,7 @@ final class AppModel {
         perform {
             let inverse = try catalog.restoreCollectionOrder(collection, order: order)
             undo.registerUndo(withTarget: self) { $0.restoreCollectionOrder(collection, order: inverse) }
-            try refreshCollectionOrder()
+            if regularCollectionID == collection { try refreshCollectionOrder() }
         }
     }
     var targetCollection: PhotoCollection? { collections.first { $0.id == targetCollectionID && !$0.isSmart } }
@@ -1962,55 +1975,67 @@ final class AppModel {
         guard workspaceAvailable, let catalog, !quickCollectIDs.isEmpty, commitRecipe() else { return }
         perform {
             let ids = quickCollectIDs
-            if targetCollection == nil {
-                let id = UUID().uuidString
-                try catalog.collection(name: L10n.text("app.quickCollection", defaultValue: "Quick Collection"), id: id)
-                quickCollectionID = id; targetCollectionID = id
-                collections = try catalog.collections(); persistTargetCollection()
-            }
-            guard let target = targetCollection else { return }
-            let present = try catalog.members(target.id, within: ids)
-            let add = present.count != ids.count
-            if restoreMembership(Dictionary(uniqueKeysWithValues: ids.map { ($0, add) }), collection: target.id) {
-                status = L10n.text("app.photos_71", defaultValue: "\(add ? L10n.text("app.addTo", defaultValue: "Add to") : L10n.text("app.removeFrom", defaultValue: "Remove from")) \(target.name) · \(ids.count) photos")
-                showNotice(status)
-            }
+            let present = try targetCollectionID.map { try catalog.members($0, within: ids) } ?? []
+            _ = try changeQuickCollection(ids, add: present.count != ids.count)
         }
+    }
+    func changeQuickCollection(_ ids: Set<String>, add: Bool, closedUndo: Bool = false) throws
+        -> (id: String, change: OrderedMembershipChange, refreshed: Bool)? {
+        let target = targetCollection
+        guard add || target != nil else { return nil }
+        let id = target?.id ?? UUID().uuidString
+        let name = target?.name ?? L10n.text("app.quickCollection", defaultValue: "Quick Collection")
+        let states = Dictionary(uniqueKeysWithValues: ids.map { ($0, add) })
+        let (change, refreshed) = try saveCollectionMembership(states, collection: id, newQuickName: target == nil ? name : nil, closedUndo: closedUndo)
+        if refreshed {
+            status = L10n.text("app.photos_71", defaultValue: "\(add ? L10n.text("app.addTo", defaultValue: "Add to") : L10n.text("app.removeFrom", defaultValue: "Remove from")) \(name) · \(ids.count) photos")
+            showNotice(status)
+        }
+        return (id, change, refreshed)
     }
     func membership(_ collection: String, add: Bool) {
         guard !applyingAdjustments, !selection.isEmpty, commitRecipe() else { return }
-        restoreMembership(Dictionary(uniqueKeysWithValues: selection.map { ($0,add) }),collection:collection)
-    }
-    @discardableResult private func restoreMembership(_ states: [String: Bool], collection: String, order: [String]? = nil) -> Bool {
-        guard let catalog, commitRecipe() else { return false }
-        var succeeded = false
         perform {
-            let previousIndex = photos.firstIndex { $0.id == activeID } ?? 0
-            let desired: [String]?
-            if let order { desired = order }
-            else {
-                let old = try catalog.collectionOrder(collection), previous = Set(old)
-                let added = Set(states.filter { $0.value && !previous.contains($0.key) }.map(\.key))
-                let visible = try catalog.exportPhotos(ids: added, query: query).map(\.id)
-                desired = old.filter { states[$0] != false } + visible + added.subtracting(visible).sorted()
-            }
-            let change = try catalog.restoreOrderedMembership(states, collection: collection, order: desired)
-            if change.changed {
-                undo.registerUndo(withTarget:self) { $0.restoreMembership(change.inverse,collection:collection,order:change.previousOrder) }
-                undo.setActionName(L10n.text("app.collectionMembers", defaultValue: "Collection Members"))
-            }
-            try reloadPhotos(); reconcileVisibleSelection(preferredIndex:previousIndex)
-            succeeded = true
+            _ = try saveCollectionMembership(Dictionary(uniqueKeysWithValues: selection.map { ($0, add) }), collection: collection)
         }
-        return succeeded
+    }
+    func saveCollectionMembership(_ states: [String: Bool], collection: String, order: [String]? = nil,
+                                  newQuickName: String? = nil, closedUndo: Bool = false) throws -> (OrderedMembershipChange, Bool) {
+        guard let catalog else { throw OrganizationError.photoUnavailable }
+        let previousIndex = photos.firstIndex { $0.id == activeID } ?? 0
+        let change = try catalog.restoreOrderedMembership(states, collection: collection, order: order,
+            query: order == nil ? query : nil, newName: newQuickName, requireLive: closedUndo)
+        if change.changed {
+            registerCatalogUndo(L10n.text("app.collectionMembers", defaultValue: "Collection Members"), closed: closedUndo) { target in
+                guard target.commitRecipe() else { return }
+                target.perform { _ = try target.saveCollectionMembership(change.inverse, collection: collection, order: change.previousOrder) }
+            }
+        }
+        let refreshed = perform {
+            if newQuickName != nil {
+                quickCollectionID = collection; targetCollectionID = collection
+                collections = try catalog.collections()
+                persistTargetCollection()
+            }
+            try reloadPhotos()
+            if activeID != nil || !selection.isEmpty || !closedUndo {
+                reconcileVisibleSelection(preferredIndex: previousIndex, keepMatchingActive: closedUndo)
+            }
+        }
+        return (change, refreshed)
     }
     func collectResults(collection: String? = nil, newName: String? = nil) {
-        guard let catalog else { return }
-        perform {
-            let count = try catalog.collectResults(query, collection: collection ?? UUID().uuidString, newName: newName)
+        perform { _ = try saveResultsCollection(collection ?? UUID().uuidString, newName: newName) }
+    }
+    func saveResultsCollection(_ id: String, newName: String?) throws -> (count: Int, refreshed: Bool) {
+        guard let catalog else { throw OrganizationError.photoUnavailable }
+        let count = try catalog.collectResults(query, collection: id, newName: newName)
+        let refreshed = perform {
             collections = try catalog.collections()
+            try reloadPhotos()
             status = L10n.text("app.addedResultsToCollectionNewPhotosResultsAcrossAll", defaultValue: "Added results to collection · \(count) new photos (\(resultCount) results across all pages)")
         }
+        return (count, refreshed)
     }
     func retryPhotoLoad() {
         guard workspaceAvailable, !canEdit, !loadingPhoto, active != nil, comparison == nil, survey == nil else { return }
@@ -2325,17 +2350,11 @@ final class AppModel {
         }
     }
     func createVirtualCopy(data: Data, photoID: String, title: String) {
-        guard workspaceAvailable, canEdit, let catalog else { return }
+        guard workspaceAvailable, canEdit else { return }
         perform {
             let value = try validatedSavedEdit(data: data, photoID: photoID)
             clearSavedEditPreview()
-            let stacks = try catalog.stacks()
-            let made = try catalog.createVirtualCopies(ids: [photoID], recipeOverride: value, historyTitle: L10n.text("app.createCopyFrom", defaultValue: "Create Copy from \(title)"))
-            undo.registerUndo(withTarget: self) { $0.restoreVersionDeletion(Dictionary(uniqueKeysWithValues: made.map { ($0.id, true) }), stacks: stacks, preserveUnrelatedDraft: true) }
-            undo.setActionName(L10n.text("app.createCopyFromHistory", defaultValue: "Create Copy from History"))
-            try reload()
-            status = L10n.text("app.createdFromCurrentAdjustmentsWerePreserved", defaultValue: "Created \(made.first?.copyName ?? L10n.text("app.copy", defaultValue: "Copy")) from “\(title)”. Current adjustments were preserved")
-            showNotice(status)
+            _ = try saveVirtualCopies([photoID], savedEdit: (value, title))
         }
     }
     func copyAdjustments() {
@@ -3374,13 +3393,30 @@ extension AppModel {
 
 extension AppModel {
     func createVirtualCopies() {
-        guard !busy, !applyingAdjustments, let catalog, !selection.isEmpty, commitRecipe() else { return }
-        perform {
-            let previousStacks = try catalog.stacks()
-            let made = try catalog.createVirtualCopies(ids:selection)
-            undo.registerUndo(withTarget:self) { $0.restoreVersionDeletion(Dictionary(uniqueKeysWithValues:made.map { ($0.id,true) }), stacks:previousStacks) }
-            undo.setActionName(L10n.text("app.createVirtualCopy", defaultValue: "Create Virtual Copy"))
+        guard !busy, !applyingAdjustments, !selection.isEmpty, commitRecipe() else { return }
+        perform { _ = try saveVirtualCopies(selection) }
+    }
+    func saveVirtualCopies(_ ids: Set<String>, savedEdit: (recipe: EditRecipe, title: String)? = nil,
+                           expecting: [String: PhotoVersionRevision] = [:], closedUndo: Bool = false) throws
+        -> (copies: [Photo], previousStacks: [PhotoStack], refreshed: Bool) {
+        guard let catalog else { throw OrganizationError.photoUnavailable }
+        let previousStacks = try catalog.stacks()
+        let title = savedEdit.map { L10n.text("app.createCopyFrom", defaultValue: "Create Copy from \($0.title)") }
+            ?? L10n.text("app.createVirtualCopy", defaultValue: "Create Virtual Copy")
+        let made = try catalog.createVirtualCopies(ids: ids, recipeOverride: savedEdit?.recipe, historyTitle: title, expecting: expecting)
+        let fromRecord = savedEdit != nil
+        let deletion = Dictionary(uniqueKeysWithValues: made.map { ($0.id, true) })
+        let undoTitle = fromRecord ? L10n.text("app.createCopyFromHistory", defaultValue: "Create Copy from History") : title
+        registerCatalogUndo(undoTitle, closed: closedUndo) {
+            $0.restoreVersionDeletion(deletion, stacks: previousStacks, preserveUnrelatedDraft: fromRecord, title: undoTitle)
+        }
+        let refreshed = perform {
             try reload()
+            if let savedEdit {
+                status = L10n.text("app.createdFromCurrentAdjustmentsWerePreserved", defaultValue: "Created \(made.first?.copyName ?? L10n.text("app.copy", defaultValue: "Copy")) from “\(savedEdit.title)”. Current adjustments were preserved")
+                showNotice(status)
+                return
+            }
             let visible = try catalog.resultIDs(query,within:Set(made.map(\.id)))
             if let id = made.last(where:{ visible.contains($0.id) })?.id {
                 if let offset = try catalog.offset(of:id,query:query) { pageOffset = offset / pageSize * pageSize; try reloadPhotos() }
@@ -3388,34 +3424,56 @@ extension AppModel {
             }
             status = L10n.text("app.createdVirtualCopiesWithSharedOriginalsAndIndependentEdits", defaultValue: "Created \(made.count) virtual copies with shared originals and independent edits. Copies follow their originals in existing stacks; unstacked versions remain unstacked") + (holdFilterResults ? L10n.text("app.includedInHeldResultsAfterRefresh", defaultValue: " · Included in held results after refresh") : "")
         }
+        return (made, previousStacks, refreshed)
     }
     func deleteSelectedVersions() {
         guard !busy, !applyingAdjustments, commitRecipe(), !selection.isEmpty else { return }
-        restoreVersionDeletion(Dictionary(uniqueKeysWithValues:selection.map { ($0,true) }))
-        undo.setActionName(L10n.text("app.removeEditVersion", defaultValue: "Remove Edit Version"))
+        perform { _ = try removePhotoVersions(selection) }
     }
-    private func restoreVersionDeletion(_ states:[String:Bool], stacks:[PhotoStack]? = nil, preserveUnrelatedDraft: Bool = false) {
-        guard let catalog, (preserveUnrelatedDraft && states[activeID ?? ""] == nil) || commitRecipe() else { return }
+    func removePhotoVersions(_ ids: Set<String>, expecting: [String: PhotoVersionRevision] = [:], closedUndo: Bool = false) throws
+        -> (previousStacks: [PhotoStack], refreshed: Bool) {
+        let title = L10n.text("app.removeEditVersion", defaultValue: "Remove Edit Version")
+        return try setPhotoVersionDeletion(Dictionary(uniqueKeysWithValues: ids.map { ($0, true) }),
+                                           title: title, expecting: expecting, closedUndo: closedUndo)
+    }
+    private func restoreVersionDeletion(_ states: [String: Bool], stacks: [PhotoStack], preserveUnrelatedDraft: Bool, title: String) {
+        guard (preserveUnrelatedDraft && states[activeID ?? ""] == nil) || commitRecipe() else { return }
         perform {
-            let oldStacks = try catalog.stacks(), oldSelection = selection, oldActive = activeID
-            let inverse = try catalog.setVersionDeletion(states,restoringStacks:stacks)
-            undo.registerUndo(withTarget:self) { target in
-                target.restoreVersionDeletion(inverse,stacks:oldStacks,preserveUnrelatedDraft:preserveUnrelatedDraft)
-                target.restoreStackSelection(oldSelection,active:oldActive)
-            }
+            _ = try setPhotoVersionDeletion(states, stacks: stacks, preserveUnrelatedDraft: preserveUnrelatedDraft, title: title)
+        }
+    }
+    private func setPhotoVersionDeletion(_ states: [String: Bool], stacks: [PhotoStack]? = nil, preserveUnrelatedDraft: Bool = false,
+                                         title: String, expecting: [String: PhotoVersionRevision] = [:], closedUndo: Bool = false) throws
+        -> (previousStacks: [PhotoStack], refreshed: Bool) {
+        guard let catalog else { throw OrganizationError.photoUnavailable }
+        let oldStacks = try catalog.stacks(), oldSelection = selection, oldActive = activeID
+        let inverse = try catalog.setVersionDeletion(states, restoringStacks: stacks, expecting: expecting, requireLive: closedUndo)
+        registerCatalogUndo(title, closed: closedUndo) { target in
+            target.restoreVersionDeletion(inverse, stacks: oldStacks, preserveUnrelatedDraft: preserveUnrelatedDraft, title: title)
+            target.restoreStackSelection(oldSelection, active: oldActive)
+        }
+        let refreshed = perform {
             if comparison != nil { endComparison() }
             try reload(); reconcileVisibleSelection()
             status = L10n.text("app.editVersionsUpdatedOriginalsAndSharedEditAssetsPreserved", defaultValue: "Edit versions updated · Originals and shared edit assets preserved")
         }
+        return (oldStacks, refreshed)
     }
     func renameVirtualCopy(id:String,name:String) {
-        guard let catalog, commitRecipe() else { return }
-        perform {
-            let previous = try catalog.renameVersion(id:id,name:name)
-            undo.registerUndo(withTarget:self) { $0.renameVirtualCopy(id:id,name:previous) }
-            undo.setActionName(L10n.text("app.renameVirtualCopy", defaultValue: "Rename Virtual Copy"))
-            try reload()
+        guard commitRecipe() else { return }
+        perform { _ = try renamePhotoVersion(id: id, name: name) }
+    }
+    func renamePhotoVersion(id: String, name: String, expecting: String? = nil, closedUndo: Bool = false) throws
+        -> (previous: String, current: String, refreshed: Bool) {
+        guard let catalog else { throw OrganizationError.photoUnavailable }
+        let current = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let previous = try catalog.renameVersion(id: id, name: current, expecting: expecting)
+        guard previous != current else { return (previous, current, true) }
+        registerCatalogUndo(L10n.text("app.renameVirtualCopy", defaultValue: "Rename Virtual Copy"), closed: closedUndo) { target in
+            guard target.commitRecipe() else { return }
+            target.perform { _ = try target.renamePhotoVersion(id: id, name: previous, expecting: current) }
         }
+        return (previous, current, perform { try reload() })
     }
     func openVersion(_ id:String) {
         guard workspaceAvailable, commitRecipe(), let catalog else { return }
@@ -3503,26 +3561,38 @@ extension AppModel {
 
 extension AppModel {
     @discardableResult func saveSmartCollection(id:String,name:String,rules:SmartRules) -> Bool {
-        guard let catalog, !busy, commitRecipe() else { return false }
+        guard !busy, commitRecipe() else { return false }
         do {
-            let collection = try PhotoCollection(id:id,name:name.trimmingCharacters(in:.whitespacesAndNewlines),rules:JSONEncoder().encode(rules))
-            let old = try catalog.replaceSmartCollection(id:id,with:collection)
-            undo.registerUndo(withTarget:self) { $0.restoreSmartCollection(id:id,value:old) }
-            undo.setActionName(old == nil ? L10n.text("app.createSmartCollection", defaultValue: "Create Smart Collection") : L10n.text("app.editSmartCollection", defaultValue: "Edit Smart Collection"))
-            try reload()
-            if old == nil { clearFilters(); setScope("collection:"+id) }
-            else if scope == "collection:"+id { filterChanged() }
-            return true
+            let collection = try PhotoCollection(id: id, name: name.trimmingCharacters(in: .whitespacesAndNewlines), rules: JSONEncoder().encode(rules))
+            return try changeSmartCollection(id: id, to: collection, openNew: true).refreshed
         } catch { self.error = error.localizedDescription; return false }
     }
-    func deleteSmartCollection(_ id:String) { restoreSmartCollection(id:id,value:nil); undo.setActionName(L10n.text("app.deleteSmartCollection", defaultValue: "Delete Smart Collection")) }
-    private func restoreSmartCollection(id:String,value:PhotoCollection?) {
-        guard let catalog, commitRecipe() else { return }
-        perform {
-            let inverse = try catalog.replaceSmartCollection(id:id,with:value)
-            undo.registerUndo(withTarget:self) { $0.restoreSmartCollection(id:id,value:inverse) }
-            if value == nil, scope == "collection:"+id { scope = "all" }
-            try reload(); filterChanged()
+    func deleteSmartCollection(_ id: String) {
+        guard commitRecipe() else { return }
+        perform { _ = try changeSmartCollection(id: id, to: nil) }
+    }
+    func changeSmartCollection(id: String, to value: PhotoCollection?, openNew: Bool = false,
+                               closedUndo: Bool = false, restoring: Bool = false) throws -> (previous: PhotoCollection?, refreshed: Bool) {
+        guard let catalog else { throw OrganizationError.photoUnavailable }
+        let previous = try catalog.replaceSmartCollection(id: id, with: value, restoring: restoring)
+        guard previous != value else { return (previous, true) }
+        let title: String
+        if value == nil { title = L10n.text("app.deleteSmartCollection", defaultValue: "Delete Smart Collection") }
+        else if previous == nil { title = L10n.text("app.createSmartCollection", defaultValue: "Create Smart Collection") }
+        else { title = L10n.text("app.editSmartCollection", defaultValue: "Edit Smart Collection") }
+        registerCatalogUndo(title, closed: closedUndo) { target in
+            guard target.commitRecipe() else { return }
+            target.perform { _ = try target.changeSmartCollection(id: id, to: previous, restoring: true) }
         }
+        let refreshed = perform {
+            let current = scope == "collection:" + id
+            if value == nil, current { try updateLibraryQuery(source: "all") }
+            try reload()
+            if previous == nil, value != nil, openNew {
+                clearFilters()
+                try updateLibraryQuery(source: "collection:" + id)
+            } else if value != nil, current { try updateLibraryQuery() }
+        }
+        return (previous, refreshed)
     }
 }

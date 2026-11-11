@@ -18,6 +18,10 @@
 		AA7900000000000000000038 /* AppMCPImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000048 /* AppMCPImport.swift */; };
 		AA790000000000000000003A /* AppMCPCulling.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004A /* AppMCPCulling.swift */; };
 		AA790000000000000000003B /* AppMCPMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004B /* AppMCPMetadata.swift */; };
+		AA790000000000000000003C /* AppMCPCollections.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004C /* AppMCPCollections.swift */; };
+		AA790000000000000000003D /* AppMCPVersions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004D /* AppMCPVersions.swift */; };
+		AA790000000000000000003E /* AppMCPPairs.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004E /* AppMCPPairs.swift */; };
+		AA790000000000000000003F /* AgentOrganizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004F /* AgentOrganizationTests.swift */; };
 		AA7900000000000000000033 /* MCPHTTPListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000043 /* MCPHTTPListener.swift */; };
 		AA7900000000000000000034 /* mcp-NOTICES.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000044 /* mcp-NOTICES.txt */; };
 		AA7900000000000000000035 /* AgentMCPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000045 /* AgentMCPTests.swift */; };
@@ -254,6 +258,10 @@
 		AA7900000000000000000048 /* AppMCPImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPImport.swift; sourceTree = "<group>"; };
 		AA790000000000000000004A /* AppMCPCulling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPCulling.swift; sourceTree = "<group>"; };
 		AA790000000000000000004B /* AppMCPMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPMetadata.swift; sourceTree = "<group>"; };
+		AA790000000000000000004C /* AppMCPCollections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPCollections.swift; sourceTree = "<group>"; };
+		AA790000000000000000004D /* AppMCPVersions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPVersions.swift; sourceTree = "<group>"; };
+		AA790000000000000000004E /* AppMCPPairs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPPairs.swift; sourceTree = "<group>"; };
+		AA790000000000000000004F /* AgentOrganizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentOrganizationTests.swift; sourceTree = "<group>"; };
 		AA7900000000000000000043 /* MCPHTTPListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPHTTPListener.swift; sourceTree = "<group>"; };
 		AA7900000000000000000044 /* mcp-NOTICES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "mcp-NOTICES.txt"; sourceTree = "<group>"; };
 		AA7900000000000000000045 /* AgentMCPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentMCPTests.swift; sourceTree = "<group>"; };
@@ -641,6 +649,7 @@
 				D60A24C4208C52F3CAB9048E /* WorkflowTests.swift */,
 				AA7900000000000000000045 /* AgentMCPTests.swift */,
 				AA7900000000000000000049 /* AgentLibraryTests.swift */,
+				AA790000000000000000004F /* AgentOrganizationTests.swift */,
 				9A239B718941D84CDC85C2F2 /* SmartMaskTests.swift */,
 			);
 			path = Tests;
@@ -683,6 +692,9 @@
 				AA7900000000000000000048 /* AppMCPImport.swift */,
 				AA790000000000000000004A /* AppMCPCulling.swift */,
 				AA790000000000000000004B /* AppMCPMetadata.swift */,
+				AA790000000000000000004C /* AppMCPCollections.swift */,
+				AA790000000000000000004D /* AppMCPVersions.swift */,
+				AA790000000000000000004E /* AppMCPPairs.swift */,
 				AA7900000000000000000043 /* MCPHTTPListener.swift */,
 				D19CCA868344D600A7F11CDD /* InspectionEditing.swift */,
 				751FCC1E508E2CE354177999 /* CollectionOrdering.swift */,
@@ -1028,6 +1040,7 @@
 				B954E0DF2619F412432A8C86 /* WorkflowTests.swift in Sources */,
 				AA7900000000000000000035 /* AgentMCPTests.swift in Sources */,
 				AA7900000000000000000039 /* AgentLibraryTests.swift in Sources */,
+				AA790000000000000000003F /* AgentOrganizationTests.swift in Sources */,
 				FDB12FE8C1C91C4A371A52E6 /* SmartMaskTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1078,6 +1091,9 @@
 				AA7900000000000000000038 /* AppMCPImport.swift in Sources */,
 				AA790000000000000000003A /* AppMCPCulling.swift in Sources */,
 				AA790000000000000000003B /* AppMCPMetadata.swift in Sources */,
+				AA790000000000000000003C /* AppMCPCollections.swift in Sources */,
+				AA790000000000000000003D /* AppMCPVersions.swift in Sources */,
+				AA790000000000000000003E /* AppMCPPairs.swift in Sources */,
 				AA7900000000000000000033 /* MCPHTTPListener.swift in Sources */,
 				F49651F836A00B9FF96B73EB /* InspectionEditing.swift in Sources */,
 				697D9CF45E47AEDB0B59398F /* CollectionOrdering.swift in Sources */,

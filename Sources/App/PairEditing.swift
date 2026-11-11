@@ -10,25 +10,43 @@ extension AppModel {
     @discardableResult func applyPairs(_ proposals: [PairProposal]) async -> Bool {
         guard let catalog, !busy, !applyingAdjustments, commitRecipe() else { return false }
         busy = true; defer { busy = false }
-        do {
-            let previous = try await pairing.apply(proposals,catalog:catalog)
-            guard try catalog.pairs() != previous else { return true }
-            undo.registerUndo(withTarget:self) { $0.restorePairUndo(previous) }
-            undo.setActionName(L10n.text("app.pairRAWJPEGSources", defaultValue: "Pair RAW/JPEG Sources"))
-            try reload()
+        do { return try await savePairs(proposals, catalog: catalog).refreshed }
+        catch { self.error = error.localizedDescription; return false }
+    }
+    func savePairs(_ proposals: [PairProposal], catalog: CatalogStore, closedUndo: Bool = false) async throws
+        -> (change: PairChange, refreshed: Bool) {
+        let change = try await pairing.apply(proposals, catalog: catalog)
+        guard self.catalog === catalog else { return (change, false) }
+        let title = L10n.text("app.pairRAWJPEGSources", defaultValue: "Pair RAW/JPEG Sources")
+        let refreshed = finishPairChange(change, title: title, closedUndo: closedUndo)
+        if refreshed, change.previous != change.current {
             status = L10n.text("app.pairedSourcesIndependentEditsStacksPreserved", defaultValue: "Paired \(proposals.count) sources · Independent edits · Stacks preserved")
-            return true
-        } catch { self.error = error.localizedDescription; return false }
+        }
+        return (change, refreshed)
     }
     func unlinkPair(_ id: String) {
-        guard let catalog, !busy, commitRecipe() else { return }
-        perform { restorePairUndo(try catalog.pairs().filter { $0.id != id }); undo.setActionName(L10n.text("app.unpairRAWJPEGSources", defaultValue: "Unpair RAW/JPEG Sources")) }
+        guard !busy, commitRecipe() else { return }
+        perform { _ = try removePair(id) }
     }
-    private func restorePairUndo(_ values: [RawJpegPair]) {
+    func removePair(_ id: String, closedUndo: Bool = false) throws -> (change: PairChange, refreshed: Bool) {
+        guard let catalog else { throw OrganizationError.photoUnavailable }
+        let change = try catalog.unlinkPair(id)
+        let title = L10n.text("app.unpairRAWJPEGSources", defaultValue: "Unpair RAW/JPEG Sources")
+        return (change, finishPairChange(change, title: title, closedUndo: closedUndo))
+    }
+    private func finishPairChange(_ change: PairChange, title: String, closedUndo: Bool) -> Bool {
+        guard change.previous != change.current else { return true }
+        registerCatalogUndo(title, closed: closedUndo) { $0.restorePairUndo(change.previous, title: title) }
+        return perform {
+            try reload()
+            status = L10n.text("app.rawJPEGPairingUpdatedPhotosVersionsEditsAndStacks", defaultValue: "RAW/JPEG pairing updated · Photos, versions, edits, and stacks preserved")
+        }
+    }
+    private func restorePairUndo(_ values: [RawJpegPair], title: String) {
         guard let catalog, !busy, commitRecipe() else { return }
         perform {
             let inverse = try catalog.restorePairs(values)
-            undo.registerUndo(withTarget:self) { $0.restorePairUndo(inverse) }
+            registerCatalogUndo(title, closed: false) { $0.restorePairUndo(inverse, title: title) }
             try reload(); status = L10n.text("app.rawJPEGPairingUpdatedPhotosVersionsEditsAndStacks", defaultValue: "RAW/JPEG pairing updated · Photos, versions, edits, and stacks preserved")
         }
     }

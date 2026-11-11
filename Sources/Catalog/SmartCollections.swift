@@ -155,6 +155,12 @@ extension PhotoCollection {
         guard let rules else { return nil }
         let decoded = try JSONDecoder().decode(SmartRules.self,from:rules); try decoded.validate(); return decoded
     }
+    func resultQuery(manualOrder: Bool = false) throws -> PhotoQuery {
+        if let rules = try decodedRules() { return PhotoQuery(scope: rules.source, smart: rules) }
+        var query = PhotoQuery(scope: "collection:" + id)
+        query.manualCollectionOrder = manualOrder
+        return query
+    }
 }
 extension CatalogStore {
     func checkSmartSource(_ rules:SmartRules) throws {
@@ -170,15 +176,20 @@ extension CatalogStore {
         }
     }
     /// Replacement is atomic. No smart collection has stored member rows.
-    func replaceSmartCollection(id:String,with value:PhotoCollection?) throws -> PhotoCollection? {
+    func replaceSmartCollection(id:String,with value:PhotoCollection?, restoring: Bool = false) throws -> PhotoCollection? {
         if let value {
-            guard value.id == id, let rules = try value.decodedRules() else { throw LRCError(L10n.text("app.invalidSmartCollectionData", defaultValue: "Invalid smart collection data")) }
-            try checkSmartSource(rules)
-            guard (1...100).contains(value.name.trimmingCharacters(in:.whitespacesAndNewlines).count), value.name.rangeOfCharacter(from:.controlCharacters) == nil else { throw LRCError(L10n.text("app.collectionNamesMustContain1100CharactersWithoutControl", defaultValue: "Collection names must contain 1–100 characters without control characters")) }
+            guard value.id == id, value.isSmart else { throw LRCError(L10n.text("app.invalidSmartCollectionData", defaultValue: "Invalid smart collection data")) }
+            if !restoring {
+                guard let rules = try value.decodedRules() else { throw LRCError(L10n.text("app.invalidSmartCollectionData", defaultValue: "Invalid smart collection data")) }
+                try checkSmartSource(rules)
+                guard (1...100).contains(value.name.trimmingCharacters(in:.whitespacesAndNewlines).count),
+                      value.name.rangeOfCharacter(from:.controlCharacters) == nil else { throw LRCError(L10n.text("app.collectionNamesMustContain1100CharactersWithoutControl", defaultValue: "Collection names must contain 1–100 characters without control characters")) }
+            }
         }
         return try database.write { db in
             let old = try PhotoCollection.fetchOne(db,key:id)
             if let old, !old.isSmart { throw LRCError(L10n.text("app.aRegularCollectionCannotBeOverwrittenWithASmart", defaultValue: "A regular collection cannot be overwritten with a smart collection")) }
+            guard old != value else { return old }
             if let value { try value.save(db) }
             else { try db.execute(sql:"DELETE FROM collection WHERE id=?",arguments:[id]) }
             return old
@@ -188,11 +199,7 @@ extension CatalogStore {
         guard let collection = try PhotoCollection.fetchOne(db,key:id), !collection.isSmart else { throw LRCError(L10n.text("app.smartCollectionMembershipIsDeterminedByRulesMembersCannot", defaultValue: "Smart collection membership is determined by rules. Members cannot be added or removed manually")) }
     }
     func collectionCount(_ collection:PhotoCollection) throws -> Int {
-        var query = PhotoQuery(scope:"collection:"+collection.id)
-        if collection.isSmart {
-            guard let smart = try collection.decodedRules() else { throw LRCError(L10n.text("app.invalidRules", defaultValue: "Invalid rules")) }
-            query.scope = smart.source; query.smart = smart
-        }
+        let query = try collection.resultQuery()
         let (predicate,args) = query.predicate
         return try database.read { try Int.fetchOne($0,sql:"SELECT count(*) FROM photo WHERE "+predicate,arguments:args) ?? 0 }
     }

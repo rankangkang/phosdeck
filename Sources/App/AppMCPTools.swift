@@ -27,6 +27,14 @@ enum AppMCPTool: String, CaseIterable {
     case developReference = "set_develop_reference", clipping = "set_clipping_display", retryPreview = "retry_photo_preview"
     case rateBatch = "set_photo_ratings", marks = "set_photo_marks", redo = "redo_operation"
     case keywords = "list_keywords", editKeywords = "edit_photo_keywords", renameKeyword = "rename_keyword", caption = "set_photo_caption"
+    case getCollection = "get_collection", saveCollection = "save_collection", deleteCollection = "delete_collection"
+    case collectionMembers = "set_collection_members", targetCollection = "set_target_collection"
+    case quickCollection = "edit_quick_collection", reorderCollection = "reorder_collection"
+    case saveSmartCollection = "save_smart_collection", deleteSmartCollection = "delete_smart_collection"
+    case listVersions = "list_photo_versions", listEditRecords = "list_edit_records", createCopies = "create_virtual_copies"
+    case renameVersion = "rename_photo_version", removeVersions = "remove_photo_versions"
+    case listStacks = "list_photo_stacks", editStack = "edit_photo_stack", planStacks = "plan_auto_stacks", applyStacks = "apply_auto_stacks"
+    case listPairs = "list_raw_jpeg_pairs", planPairs = "plan_raw_jpeg_pairs", applyPairs = "apply_raw_jpeg_pairs", unlinkPair = "unlink_raw_jpeg_pair"
 
     enum Field: String {
         case catalog = "catalog_session_id", photo = "photo_id", cursor, pageSize = "page_size"
@@ -48,6 +56,11 @@ enum AppMCPTool: String, CaseIterable {
         case browseLocation = "location_id", view, tool, pane, zoom, scale, x, y, linked, locked, restricted = "restrict_to_group"
         case highlights, shadows, advance, markTargets = "targets", flag, label = "color_label", ratingStep = "rating_step"
         case keywordNames = "keywords", keywordID = "keyword_id", caption, expectedCaptions = "expected_captions"
+        case collectionRevision = "collection_revision", manualOrder = "manual_order", beforePhoto = "before_photo_id"
+        case rules, fromQuery = "from_current_query", expectedName = "expected_name"
+        case versionRevisions = "expected_revisions", historyID = "history_id", snapshotID = "snapshot_id", recordType = "record_type"
+        case stackID = "stack_id", stackIDs = "stack_ids", stackRevision = "stack_revision", direction, scope
+        case interval = "interval_seconds", pairID = "pair_id", rawSource = "raw_source_id", jpegSource = "jpeg_source_id", sameCapture = "same_capture"
 
         private var range: ClosedRange<Int>? {
             switch self {
@@ -59,6 +72,7 @@ enum AppMCPTool: String, CaseIterable {
             case .minimumISO, .maximumISO: 0...Int.max
             case .sourceRevision, .recipeRevision: 0...Int.max
             case .offset: 0...Int.max
+            case .historyID: 1...Int.max
             default: nil
             }
         }
@@ -70,7 +84,10 @@ enum AppMCPTool: String, CaseIterable {
             case .policy: ["ask"] + ConflictPolicy.allCases.map(\.rawValue)
             case .ratingComparison: RatingComparison.allCases.map(\.rawValue)
             case .sort: PhotoSort.allCases.map(\.rawValue) + ["manual"]
-            case .listing: ["visible", "matches"]
+            case .listing: tool == .listPairs ? ["pairs", "sources"] : ["visible", "matches"]
+            case .recordType: ["history", "snapshots"]
+            case .direction: ["earlier", "later"]
+            case .scope: tool == .planPairs ? ["catalog", "query", "selection"] : ["query", "selection"]
             case .view: WorkspaceMode.allCases.map(\.rawValue)
             case .tool: DevelopTool.allCases.map(\.rawValue)
             case .pane: ["main", "reference", "candidate", "develop_reference"]
@@ -81,13 +98,14 @@ enum AppMCPTool: String, CaseIterable {
         }
         private var isBoolean: Bool {
             [.recursive, .skipCataloged, .sidecars, .pair, .all, .remaining, .descending, .hold, .filtersEnabled,
-             .filtersOpen, .clearFilters, .linked, .locked, .restricted, .highlights, .shadows, .advance].contains(self)
+             .filtersOpen, .clearFilters, .linked, .locked, .restricted, .highlights, .shadows, .advance,
+             .manualOrder, .fromQuery, .sameCapture].contains(self)
         }
         private var textCriteria: Bool { [.search, .keyword, .camera, .lens, .dateFrom, .dateThrough].contains(self) }
         private var maxString: Int {
             switch self {
             case .folder, .source: 4096
-            case .name: 255
+            case .name, .expectedName: 255
             case .search, .camera, .lens: 512
             case .keyword, .keywordID: 1024
             case .dateFrom, .dateThrough: 10
@@ -116,8 +134,17 @@ enum AppMCPTool: String, CaseIterable {
                 default: LibraryFilterSection.allCases.map { .string($0.rawValue) }
                 }
                 return ["type": "array", "uniqueItems": true, "items": ["enum": .array(values)]]
-            case .photoIDs:
+            case .photoIDs, .stackIDs:
                 return ["type": "array", "minItems": 1, "maxItems": 1000, "uniqueItems": true, "items": identifierSchema]
+            case .interval:
+                return ["type": "number", "minimum": 0, "maximum": 86400]
+            case .rules: return MCPCollectionState.rulesSchema
+            case .versionRevisions:
+                let revision: Value = ["type": "integer", "minimum": 0]
+                return ["type": "object", "minProperties": 1, "maxProperties": 1000, "propertyNames": identifierSchema,
+                        "additionalProperties": ["type": "object", "additionalProperties": false,
+                                                  "required": ["source_revision", "recipe_revision"],
+                                                  "properties": ["source_revision": revision, "recipe_revision": revision]]]
             case .markTargets:
                 return ["type": "array", "minItems": 1, "maxItems": 200, "items": [
                     "type": "object", "additionalProperties": false, "required": ["photo_id"],
@@ -144,7 +171,7 @@ enum AppMCPTool: String, CaseIterable {
         func accepts(_ value: Value, for tool: AppMCPTool) -> Bool {
             if let range { return value.intValue.map(range.contains) ?? false }
             if isBoolean { return value.boolValue != nil }
-            if self == .candidates || self == .differences || self == .photoIDs {
+            if self == .candidates || self == .differences || self == .photoIDs || self == .stackIDs {
                 guard let values = value.arrayValue, (1...1000).contains(values.count) else { return false }
                 let ids = values.compactMap(\.stringValue)
                 return Set(ids).count == values.count && ids.allSatisfy(Self.isID)
@@ -154,6 +181,15 @@ enum AppMCPTool: String, CaseIterable {
                 return values.allSatisfy { Self.isID($0.key) && ($0.value.stringValue.map(Self.isID) ?? false) }
             }
             switch self {
+            case .interval: return value.number.map((0...86400).contains) ?? false
+            case .rules: return value.objectValue != nil
+            case .versionRevisions:
+                guard let values = value.objectValue, (1...1000).contains(values.count) else { return false }
+                return values.allSatisfy { id, value in
+                    guard Self.isID(id), let revision = value.objectValue, revision.count == 2,
+                          let source = revision["source_revision"]?.intValue, let recipe = revision["recipe_revision"]?.intValue else { return false }
+                    return source >= 0 && recipe >= 0
+                }
             case .scale: return value.number.map(AppModel.zoomScales.contains) ?? false
             case .x, .y: return value.number.map((0...1).contains) ?? false
             case .ratingStep: return value.intValue == -1 || value.intValue == 1
@@ -203,6 +239,11 @@ enum AppMCPTool: String, CaseIterable {
         case .survey: ["set", "remove", "activate", "open", "previous_page", "next_page"]
         case .developReference: ["pin", "toggle", "clear"]
         case .editKeywords: ["add", "remove"]
+        case .collectionMembers: ["add", "remove", "collect_results"]
+        case .quickCollection: ["add", "remove"]
+        case .reorderCollection: ["set_manual_order", "move"]
+        case .editStack: ["group", "remove", "ungroup", "cover", "move", "split", "collapse", "expand"]
+        case .planPairs: ["detect", "verify", "manual"]
         default: nil
         }
     }
@@ -221,6 +262,19 @@ enum AppMCPTool: String, CaseIterable {
         case .editKeywords: [.catalog, .action, .photoIDs, .keywordNames]
         case .renameKeyword: [.catalog, .keywordID, .name]
         case .caption: [.catalog, .caption, .expectedCaptions]
+        case .getCollection, .deleteCollection, .deleteSmartCollection: [.catalog, .collection]
+        case .saveCollection: [.catalog, .name]
+        case .collectionMembers, .editStack, .planPairs: [.catalog, .action]
+        case .targetCollection, .saveSmartCollection, .listVersions, .listStacks, .listPairs: [.catalog]
+        case .quickCollection: [.catalog, .action, .photoIDs]
+        case .reorderCollection: [.catalog, .collection, .action]
+        case .listEditRecords: [.catalog, .photo]
+        case .createCopies, .removeVersions: [.catalog, .photoIDs]
+        case .renameVersion: [.catalog, .photo, .name]
+        case .planStacks: [.catalog, .interval]
+        case .applyStacks: [.catalog, .plan]
+        case .applyPairs: [.catalog, .plan, .candidates]
+        case .unlinkPair: [.catalog, .pairID]
         case .fileAccess: [.purpose]
         case .createCatalog: [.access, .name]
         case .openCatalog: []
@@ -257,6 +311,23 @@ enum AppMCPTool: String, CaseIterable {
         case .rateBatch: [.rating, .ratingStep, .advance]
         case .marks: [.flag, .label, .advance]
         case .keywords: [.photo, .search, .offset, .pageSize]
+        case .getCollection: [.offset, .pageSize, .collectionRevision]
+        case .saveCollection, .quickCollection: [.collection, .collectionRevision]
+        case .deleteCollection, .deleteSmartCollection: [.collectionRevision]
+        case .collectionMembers: [.collection, .name, .photoIDs, .queryRevision, .collectionRevision]
+        case .targetCollection: [.collection]
+        case .reorderCollection: [.manualOrder, .photoIDs, .beforePhoto, .collectionRevision, .queryRevision]
+        case .saveSmartCollection: [.collection, .name, .rules, .fromQuery, .queryRevision, .collectionRevision]
+        case .listVersions: [.photo, .source, .offset, .pageSize]
+        case .listEditRecords: [.recordType, .offset, .pageSize]
+        case .createCopies: [.versionRevisions, .historyID, .snapshotID]
+        case .removeVersions: [.versionRevisions]
+        case .renameVersion: [.expectedName]
+        case .listStacks: [.photo, .stackID, .offset, .pageSize, .stackRevision]
+        case .editStack: [.photo, .photoIDs, .direction, .stackIDs, .all, .queryRevision, .stackRevision]
+        case .planStacks: [.scope, .photoIDs, .queryRevision, .selectionRevision]
+        case .listPairs: [.photo, .source, .listing, .offset, .pageSize]
+        case .planPairs: [.plan, .candidates, .scope, .photoIDs, .queryRevision, .selectionRevision, .rawSource, .jpegSource, .sameCapture]
         case .preview: [.longEdge]
         case .job, .librarySources, .importRecords: [.offset, .pageSize]
         case .fileAccess, .createCatalog: [.catalog]
@@ -271,7 +342,8 @@ enum AppMCPTool: String, CaseIterable {
     }
     var writes: Bool {
         switch self {
-        case .capabilities, .workspace, .listPhotos, .listSelected, .preview, .librarySources, .recentCatalogs, .importRecords, .job, .keywords: false
+        case .capabilities, .workspace, .listPhotos, .listSelected, .preview, .librarySources, .recentCatalogs, .importRecords, .job, .keywords,
+             .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs: false
         default: true
         }
     }
@@ -304,11 +376,12 @@ enum AppMCPTool: String, CaseIterable {
                 : "Redo an operation undone with undo_operation if it is still Phosdeck's current redo action."
             output = "operation_id, the verified restored values, and commit_state."
         default:
-            (description, output) = cullingDescription ?? workflowDescription
+            (description, output) = cullingDescription ?? organizationDescription ?? workflowDescription
         }
         let required = required + (needsRequestID ? [.epoch, .request] : [])
         let properties = Dictionary(uniqueKeysWithValues: (required + optional).map { ($0.rawValue, $0.schema(for: self)) })
-        let destructive = [.startImport, .resolveConflict, .resumeImport, .cleanBackup].contains(self)
+        let destructive = [.startImport, .resolveConflict, .resumeImport, .cleanBackup,
+                           .deleteCollection, .deleteSmartCollection, .removeVersions, .unlinkPair].contains(self)
         return Tool(name: rawValue, description: description, inputSchema: [
             "type": "object", "properties": .object(properties), "additionalProperties": false,
             "required": .array(required.map { .string($0.rawValue) })
@@ -435,7 +508,7 @@ final class AppMCPTools {
     private var activeLists = 0
     private var previewWorker: Task<Preview, Error>?
     private lazy var previewPipeline = ImagePipeline(qualityCacheLimit: 0)
-    private let workflows: AppMCPWorkflows
+    let workflows: AppMCPWorkflows
 
     init(model: AppModel, appName: String, version: String, bundleID: String, sharesImages: Bool,
          chooseFile: AppMCPWorkflows.FilePicker? = nil) {
@@ -578,6 +651,8 @@ final class AppMCPTools {
             "busy": .bool(model.busy || model.applyingAdjustments || model.cacheMaintenance),
             "modal": .bool(nativeModal(model)),
             "draft": .bool(nativeInteraction(model)), "task": task, "agent_job": workflows.currentJob,
+            "target_collection_id": model.targetCollectionID.map(Value.string) ?? .null,
+            "quick_collection_id": model.quickCollectionID.map(Value.string) ?? .null,
             "undo_operation_id": undoAvailable(model, redo: false) ? .string(currentUndo!.id) : .null,
             "redo_operation_id": undoAvailable(model, redo: true) ? .string(currentUndo!.id) : .null
         ]
@@ -660,7 +735,8 @@ final class AppMCPTools {
              "matched_count": .int($0.matching), "collapsed": .bool($0.collapsed)]
         } ?? .null
         let metadata = photo.details
-        return ["photo_id": .string(photo.id), "name": .string(photo.name), "version_name": .string(String(photo.versionName.prefix(256))),
+        return ["photo_id": .string(photo.id), "source_id": .string(photo.sourceKey), "name": .string(photo.name),
+                "version_name": .string(String(photo.versionName.prefix(256))),
                 "source_revision": .int(photo.revision), "recipe_revision": .int(photo.recipeRevision), "rating": .int(photo.rating),
                 "flag": .int(photo.flag), "color_label": .int(photo.colorLabel), "source_status": .string(photo.availability), "stack": stack,
                 "is_virtual_copy": .bool(photo.isVirtualCopy),
@@ -742,6 +818,15 @@ final class AppMCPTools {
                 result = try editMarks(tool, arguments: arguments, model: model, catalog: model.catalog!)
             case .editKeywords, .renameKeyword, .caption:
                 result = try editMetadata(tool, arguments: arguments, model: model, catalog: model.catalog!)
+            case .saveCollection, .deleteCollection, .collectionMembers, .targetCollection, .quickCollection, .reorderCollection,
+                 .saveSmartCollection, .deleteSmartCollection:
+                result = try writeCollections(tool, args: arguments, model: model, catalog: model.catalog!)
+            case .createCopies, .renameVersion, .removeVersions:
+                result = try writeVersions(tool, args: arguments, model: model, catalog: model.catalog!)
+            case .editStack, .planStacks, .applyStacks:
+                result = try writeStacks(tool, args: arguments, model: model, catalog: model.catalog!)
+            case .planPairs, .applyPairs, .unlinkPair:
+                result = try writePairs(tool, args: arguments, model: model, catalog: model.catalog!)
             case .undo, .redo: result = try replay(model, redo: tool == .redo)
             default:
                 if tool.cullingDescription != nil {
@@ -754,6 +839,8 @@ final class AppMCPTools {
             result = .init(.ratingConflict(actual), commitState: "not_committed")
         } catch OrganizationError.photoUnavailable {
             result = .init(.photoUnavailable, commitState: "not_committed")
+        } catch OrganizationError.versionConflict {
+            result = .init(.stalePhoto, commitState: "not_committed")
         } catch OrganizationError.marksConflict(let photo, let actual) {
             result = .init(.init(code: "marks_conflict", summary: "A target photo's marks changed.", next: "Read its actual marks before editing again.",
                                  details: ["photo_id": .string(photo), "actual": actual.mcpValue]), commitState: "not_committed")

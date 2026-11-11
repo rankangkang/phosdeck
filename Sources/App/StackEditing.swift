@@ -3,13 +3,16 @@ import Foundation
 extension AppModel {
     var activeStack: PhotoStack? { guard let id = activeID else { return nil }; return (try? catalog?.stacks())?.first { $0.members.contains(id) } }
     func stackAction(_ action: StackAction, title: String) {
-        guard !busy, !applyingAdjustments, let catalog, commitRecipe() else { return }
-        perform {
-            let before = try catalog.stacks(), previous = selection, active = activeID
-            _ = try catalog.changeStacks(action)
-            guard try before != catalog.stacks() else { return }
-            undo.registerUndo(withTarget:self) { $0.restoreStackUndo(before,selection:previous,active:active) }
-            undo.setActionName(title)
+        guard !busy, !applyingAdjustments, commitRecipe() else { return }
+        perform { _ = try saveStackAction(action, title: title) }
+    }
+    func saveStackAction(_ action: StackAction, title: String, expecting: [PhotoStack]? = nil, closedUndo: Bool = false) throws
+        -> (change: StackChange, refreshed: Bool) {
+        guard let catalog else { throw OrganizationError.photoUnavailable }
+        let change = try catalog.editStacks(action, expecting: expecting)
+        guard change.previous != change.current else { return (change, true) }
+        registerStackUndo(change.previous, title: title, closed: closedUndo)
+        let refreshed = perform {
             try reloadPhotos()
             let visible = Set(try catalog.allResultIDs(query,visibleOnly:true))
             let representative = try activeID.flatMap { try catalog.representative(of:$0,query:query) }
@@ -17,6 +20,7 @@ extension AppModel {
             restoreStackSelection(retained.union(representative.map { [$0] } ?? []),active:representative)
             status = L10n.text("app.matchingVersionsVisiblePhotosSelectedVersions", defaultValue: "\(title) · \(resultCount) matching versions / \(visibleCount) visible photos / \(selection.count) selected versions")
         }
+        return (change, refreshed)
     }
     func groupSelection() {
         guard let catalog, let top = activeID, selection.contains(top) else { return }
@@ -70,15 +74,24 @@ extension AppModel {
         }
     }
     @discardableResult func applyAutoStacks(_ preview: AutoStackPreview) -> Bool {
-        guard let catalog, !busy, commitRecipe() else { return false }
-        do {
-            guard !preview.groups.isEmpty else { return true }
-            let previous = try catalog.applyAutoStacks(preview), ids = selection, id = activeID
-            undo.registerUndo(withTarget:self) { $0.restoreStackUndo(previous,selection:ids,active:id) }
-            undo.setActionName(L10n.text("app.autoStackByCaptureInterval", defaultValue: "Auto Stack by Capture Interval"))
-            try reloadPhotos(); restoreStackSelection([],active:id)
+        guard !busy, commitRecipe() else { return false }
+        do { return try saveAutoStacks(preview).refreshed }
+        catch { self.error = error.localizedDescription; return false }
+    }
+    func saveAutoStacks(_ preview: AutoStackPreview, query: PhotoQuery? = nil, ids: Set<String>? = nil, closedUndo: Bool = false) throws
+        -> (change: StackChange, refreshed: Bool) {
+        guard let catalog else { throw OrganizationError.photoUnavailable }
+        let change = try catalog.saveAutoStacks(preview, query: query, ids: ids)
+        guard change.previous != change.current else { return (change, true) }
+        registerStackUndo(change.previous, title: L10n.text("app.autoStackByCaptureInterval", defaultValue: "Auto Stack by Capture Interval"), closed: closedUndo)
+        let refreshed = perform {
+            try reloadPhotos(); restoreStackSelection([], active: activeID)
             status = L10n.text("app.createdStacksVersionsUndoAsOneAction", defaultValue: "Created \(preview.groups.count) stacks · \(preview.photoCount) versions · Undo as one action")
-            return true
-        } catch { self.error = error.localizedDescription; return false }
+        }
+        return (change, refreshed)
+    }
+    private func registerStackUndo(_ previous: [PhotoStack], title: String, closed: Bool) {
+        let selection = self.selection, active = activeID
+        registerCatalogUndo(title, closed: closed) { $0.restoreStackUndo(previous, selection: selection, active: active) }
     }
 }

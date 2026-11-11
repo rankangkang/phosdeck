@@ -261,6 +261,14 @@ extension CatalogStore {
             return try String.fetchAll(db,sql:"SELECT photo.id FROM "+query.relation+" WHERE "+predicate+" ORDER BY "+query.order,arguments:args)
         }
     }
+    static func resultIDs(_ db: Database, query: PhotoQuery, within ids: [String]) throws -> [String] {
+        guard !ids.isEmpty else { return [] }
+        let (predicate, args) = query.predicate
+        // One JSON parameter also supports selections larger than the SQLite bind limit.
+        let requested = String(decoding: try JSONEncoder().encode(ids), as: UTF8.self)
+        return try String.fetchAll(db, sql: "SELECT photo.id FROM " + query.relation + " WHERE " + predicate
+            + " AND photo.id IN (SELECT value FROM json_each(?)) ORDER BY " + query.order, arguments: args + [requested])
+    }
     /// Explicit members of the current import; independent from held filter results.
     /// The array overload preserves caller order for related version groups.
     func snapshotPhotos(_ ids: [String]) throws -> String {
