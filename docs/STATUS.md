@@ -54,6 +54,8 @@
 
 ## 下一步与候选
 
+- **Agent 接入**：用户要求设置开启本地 MCP 服务并提供配套 Skill，目标覆盖 App 已支持的几乎全部工作流。[执行方案](agent-integration.md)已整理，功能待实施。下一步按方案第一步核定逐项操作清单、共享入口和接口契约，再依次接入服务、图库、显影、画布、合成输出与维护能力。
+
 Lightroom 功能补齐第一批（匹配总曝光、直方图拖动、图上目标调整）、第二批文件夹差异预览、第三批自动白平衡／自动色调及手动去边已实现原生版本，运行对照与未测边界见待用户验收。交互参考本机 Classic 15.2.1 安装资源和 Adobe 公开说明，未恢复 Adobe 算法。以下保留候选，沿用 [已定决策](decisions.md) 中的不做与暂缓范围。
 
 - **外部编辑往返（用户暂缓）**：参考 [外部编辑](https://helpx.adobe.com/lightroom-classic/desktop/work-with-external-editors/open-lightroom-photos-external-applications.html)。复用 TIFF16 导出生成派生文件、交给外部 App，再核验并作为独立来源入库关联；文件生命周期、身份与中断恢复须单独设计。
