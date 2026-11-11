@@ -35,13 +35,9 @@ struct ImportRecoverySheet: View {
                                     }
                                 }
                             }
-                            if plan.state != "completed" {
+                            if plan.canResume {
                                 Button(L10n.text("app.verifyAgainAndContinueIncompleteItems", defaultValue: "Verify Again and Continue Incomplete Items")) {
-                                    var resumed = plan
-                                    for i in resumed.groups.indices where resumed.groups[i].state != "completed" && !resumed.groups[i].members.isEmpty {
-                                        if ["cancelled", "needsReview"].contains(resumed.groups[i].state) { resumed.groups[i].state = "planned" }
-                                    }
-                                    model.runCopy(resumed); dismiss()
+                                    model.runCopy(plan.resuming); dismiss()
                                 }.disabled(model.busy)
                             }
                             Seam()

@@ -14,6 +14,11 @@ struct SourceRelocation {
 }
 
 actor RootRelocator {
+    struct Issue {
+        let sourceID: String
+        let name: String
+        let message: String
+    }
     // Workflow reference: lightcraft 4f0b110 cmd/missing.rs and tests_import.rs.
     // Native policy is stricter: the same content/identity is required, versions
     // share one source, and existing frozen exports are never rewritten.
@@ -133,34 +138,45 @@ actor RootRelocator {
     private static func contains(_ path: String, in root: String) -> Bool { path != root && path.hasPrefix(root == "/" ? "/" : root + "/") }
     private static func overlaps(_ a: String, _ b: String) -> Bool { a == b || contains(a, in: b) || contains(b, in: a) }
 
-    func relocate(_ root: StorageRoot, to url: URL, catalog: CatalogStore) throws -> [String] {
+    func relocate(_ root: StorageRoot, to url: URL, catalog: CatalogStore) throws -> [Issue] {
         let lease = AccessLease(url: url); defer { withExtendedLifetime(lease) {} }
         let normalized = url.resolvingSymlinksInPath().standardizedFileURL
+        try SourceAvailability.check(root: normalized, file: normalized)
         guard !(try catalog.roots()).contains(where: { $0.id != root.id && ($0.path == normalized.path || $0.path.hasPrefix(normalized.path + "/") || normalized.path.hasPrefix($0.path + "/")) }) else { throw LRCError(L10n.text("app.theNewLocationOverlapsAnotherRootFolder", defaultValue: "The new location overlaps another root folder")) }
         // Relocate physical sources once, including retained sources with no active versions.
         let photos = try catalog.sources().filter { $0.rootID == root.id }
         var updates = [(String, FileIdentity?, String)]()
-        var reports = [String]()
+        var reports = [Issue]()
         for photo in photos {
             try Task.checkCancellation()
             let candidate = normalized.appendingPathComponent(photo.relativePath)
             do {
+                guard Self.contains(candidate.standardizedFileURL.path, in: normalized.path),
+                      candidate.standardizedFileURL.resolvingSymlinksInPath() == candidate.standardizedFileURL else {
+                    throw LRCError(L10n.text("app.theSelectedFileIsOutsideTheAuthorizedFolder", defaultValue: "The selected file is outside the authorized folder"))
+                }
                 let identity = try FileIdentity.read(candidate)
                 let original = try JSONDecoder().decode(FileIdentity.self, from: photo.identity)
                 let verified: Bool
                 if let digest = photo.digest { verified = try SafeFileWriter.sha256(candidate) == digest }
                 else { verified = identity == original }
-                guard verified else { throw LRCError(L10n.text("app.identityCannotBeConfirmedOrganizationAndRecipePreservedDevelopment", defaultValue: "Identity cannot be confirmed. Organization and recipe preserved; development paused")) }
+                guard verified, try FileIdentity.read(candidate) == identity else { throw LRCError(L10n.text("app.identityCannotBeConfirmedOrganizationAndRecipePreservedDevelopment", defaultValue: "Identity cannot be confirmed. Organization and recipe preserved; development paused")) }
                 updates.append((photo.id, identity, "available"))
-            } catch {
+            } catch is CancellationError { throw CancellationError() }
+            catch {
                 updates.append((photo.id, nil, "changed"))
-                reports.append("\(photo.name)：\(error.localizedDescription)")
+                reports.append(Issue(sourceID: photo.id, name: photo.name, message: "\(photo.name)：\(error.localizedDescription)"))
             }
         }
         let bookmark = try AccessLease.bookmark(url, readOnly: true)
+        try Task.checkCancellation()
         try catalog.database.write { db in
+            guard let current = try StorageRoot.fetchOne(db, key: root.id), current.path == root.path, current.bookmark == root.bookmark else {
+                throw LRCError(L10n.text("app.folderAuthorizationChangedLocateItAgain", defaultValue: "Folder authorization changed. Locate it again"))
+            }
             try db.execute(sql: "UPDATE storageRoot SET path=?,bookmark=?,label=? WHERE id=?", arguments: [normalized.path, bookmark, url.lastPathComponent, root.id])
             for (id, identity, state) in updates {
+                try Task.checkCancellation()
                 if let identity {
                     try db.execute(sql: "UPDATE photoSource SET identity=?,identityKey=?,availability=? WHERE id=?", arguments: [try JSONEncoder().encode(identity), identity.key, state, id])
                 } else { try db.execute(sql: "UPDATE photoSource SET availability=? WHERE id=?", arguments: [state, id]) }

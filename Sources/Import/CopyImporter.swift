@@ -19,7 +19,8 @@ actor CopyImporter {
     init(checkpoint: @escaping @Sendable (String) throws -> Void = { _ in }) { self.checkpoint = checkpoint }
 
     func run(_ input: CopyPlan, catalog: CatalogStore, resolveConflict: (@Sendable (ImportConflict) async -> ImportConflictDecision?)? = nil,
-             onImported: @escaping @Sendable (String) async -> Void = { _ in }, progress: @escaping @Sendable (String) async -> Void) async -> CopyPlan {
+             onImported: @escaping @Sendable (String) async -> Void = { _ in },
+             groupProgress: (@Sendable (Int, Int) async -> Void)? = nil, progress: @escaping @Sendable (String) async -> Void) async -> CopyPlan {
         guard input.version == 2 else {
             var refused = input; refused.omitted.append(L10n.text("app.unsupportedCopyPlanVersionOriginalTaskPreservedWithoutExecution", defaultValue: "Unsupported copy plan version. Original task preserved without execution or modification"))
             refused.state = "needsReview"; return refused
@@ -30,6 +31,7 @@ actor CopyImporter {
             let sourceLease = try AccessLease(bookmark: plan.sourceBookmark), targetLease = try AccessLease(bookmark: plan.targetBookmark)
             defer { withExtendedLifetime([sourceLease, targetLease]) {} }
             guard sourceLease.url.resolvingSymlinksInPath() == plan.sourceRoot, targetLease.url.resolvingSymlinksInPath() == plan.targetRoot else { throw LRCError(L10n.text("app.theCatalogLocationChangedCreateANewPlan", defaultValue: "The catalog location changed. Create a new plan")) }
+            try Task.checkCancellation()
             // Persist the complete immutable naming decisions before any copy.
             plan.state = "running"; try persist(plan, catalog: catalog)
             let required = plan.groups.filter { $0.selected && $0.state != "completed" && $0.state != "skippedVerified" && $0.state != "skippedConflict" }.flatMap(\.members).reduce(Int64(0)) { $0 + $1.sourceIdentity.size }
@@ -37,6 +39,7 @@ actor CopyImporter {
             let root = try catalog.addRoot(url: plan.targetRoot, bookmark: plan.targetBookmark)
             for g in plan.groups.indices {
                 guard plan.groups[g].selected, !["completed", "skippedConflict", "needsReview"].contains(plan.groups[g].state) else { continue }
+                await groupProgress?(g, plan.groups.count)
                 if Task.isCancelled { plan.state = "cancelled"; break }
                 do {
                     if plan.groups[g].requiresConflictCheck == true {
@@ -99,15 +102,22 @@ actor CopyImporter {
                         await progress(L10n.text("app.copyingGroup", defaultValue: "Copying group \(g + 1)/\(plan.groups.count) · \(member.source.lastPathComponent)"))
                         try Task.checkCancellation()
                         try ensureDestination(member.destination, root: plan.targetRoot)
-                        guard try FileIdentity.read(member.source) == member.sourceIdentity,
+                        guard member.source.resolvingSymlinksInPath().standardizedFileURL == member.source.standardizedFileURL,
+                              member.source.path.hasPrefix(plan.sourceRoot.path + "/"),
+                              try FileIdentity.read(member.source) == member.sourceIdentity,
                               try SafeFileWriter.sha256(member.source) == member.digest else { throw LRCError(L10n.text("app.theSourceChangedThisGroupWasStopped", defaultValue: "The source changed. This group was stopped")) }
                         // Reconcile interruption after a rename but before journal update using inode + hash.
                         if let stagedIdentity = member.stagedIdentity,
                            let actual = try? FileIdentity.read(member.destination), actual == stagedIdentity,
                            try SafeFileWriter.sha256(member.destination) == member.digest { member.state = "published" }
                         if verifiedReuse {
-                            guard try SafeFileWriter.sha256(member.destination) == member.digest else { throw LRCError(L10n.text("app.theReusableDestinationChangedAfterPreview", defaultValue: "The reusable destination changed after preview")) }
+                            let identity = try FileIdentity.read(member.destination)
+                            guard try SafeFileWriter.sha256(member.destination) == member.digest,
+                                  try FileIdentity.read(member.destination) == identity else { throw LRCError(L10n.text("app.theReusableDestinationChangedAfterPreview", defaultValue: "The reusable destination changed after preview")) }
+                            member.reusedIdentity = identity
                             member.state = "published"
+                            plan.groups[g].members[m] = member
+                            try persist(plan, catalog: catalog)
                         }
                         if member.state == "published" {
                             guard try SafeFileWriter.sha256(member.destination) == member.digest,
@@ -157,6 +167,9 @@ actor CopyImporter {
                             }
                             try SafeFileWriter.publish(staging, to: member.destination)
                             try checkpoint("renamedBeforeJournal")
+                            guard try FileIdentity.read(member.destination) == member.stagedIdentity else {
+                                throw LRCError(L10n.text("app.copyReadbackVerificationFailed", defaultValue: "Copy readback verification failed"))
+                            }
                             member.state = "published"; plan.groups[g].members[m] = member; try persist(plan, catalog: catalog)
                             try checkpoint("published")
                         }
@@ -195,12 +208,26 @@ actor CopyImporter {
     }
     static func savedPlans(catalog: CatalogStore) throws -> [CopyPlan] {
         try catalog.database.read { db in
-            try Data.fetchAll(db, sql: "SELECT payload FROM importPlan").map {
-                let plan = try JSONDecoder().decode(CopyPlan.self,from:$0)
-                guard plan.version == 2 else { throw LRCError(L10n.text("app.unsupportedCopyTaskOriginalDataPreserved", defaultValue: "Unsupported copy task. Original data preserved")) }
-                return plan
-            }
+            try Data.fetchAll(db, sql: "SELECT payload FROM importPlan").map(decode)
         }
+    }
+    static func savedPlan(_ id: String, catalog: CatalogStore) throws -> CopyPlan? {
+        try catalog.database.read { db in
+            try Data.fetchOne(db, sql: "SELECT payload FROM importPlan WHERE id=?", arguments: [id]).map(decode)
+        }
+    }
+    static func savedPlans(catalog: CatalogStore, offset: Int, limit: Int) throws -> ([CopyPlan], Int) {
+        try catalog.database.read { db in
+            let count = try Int.fetchOne(db, sql: "SELECT count(*) FROM importPlan") ?? 0
+            let plans = try Data.fetchAll(db, sql: "SELECT payload FROM importPlan ORDER BY rowid DESC LIMIT ? OFFSET ?",
+                                          arguments: [limit, offset]).map(decode)
+            return (plans, count)
+        }
+    }
+    private static func decode(_ data: Data) throws -> CopyPlan {
+        let plan = try JSONDecoder().decode(CopyPlan.self, from: data)
+        guard plan.version == 2 else { throw LRCError(L10n.text("app.unsupportedCopyTaskOriginalDataPreserved", defaultValue: "Unsupported copy task. Original data preserved")) }
+        return plan
     }
     private func ensureDestination(_ url: URL, root: URL) throws {
         guard url.standardizedFileURL.path.hasPrefix(root.path + "/") else { throw LRCError(L10n.text("app.theDestinationIsOutsideTheAuthorizedFolder", defaultValue: "The destination is outside the authorized folder")) }
@@ -270,8 +297,20 @@ actor CopyImporter {
         guard let recovery = member.recovery, try FileIdentity.read(recovery) == member.targetIdentity,
               try SafeFileWriter.sha256(recovery) == member.targetDigest else { throw LRCError(L10n.text("app.recoveryFileVerificationFailed", defaultValue: "Recovery file verification failed")) }
         let staging = try SafeFileWriter.stage(in: destination.deletingLastPathComponent())
-        try streamCopy(recovery, to: staging)
-        guard try SafeFileWriter.sha256(staging) == member.targetDigest else { throw LRCError(L10n.text("app.recoveryCopyVerificationFailed", defaultValue: "Recovery copy verification failed")) }
-        try SafeFileWriter.publish(staging, to: destination)
+        let created = try FileIdentity.read(staging)
+        do {
+            try streamCopy(recovery, to: staging, expected: created)
+            guard try FileIdentity.read(recovery) == member.targetIdentity,
+                  try SafeFileWriter.sha256(staging) == member.targetDigest else { throw LRCError(L10n.text("app.recoveryCopyVerificationFailed", defaultValue: "Recovery copy verification failed")) }
+            let verified = try FileIdentity.read(staging)
+            try Task.checkCancellation()
+            try SafeFileWriter.publish(staging, to: destination)
+            guard try FileIdentity.read(destination) == verified else {
+                throw LRCError(L10n.text("app.recoveryCopyVerificationFailed", defaultValue: "Recovery copy verification failed"))
+            }
+        } catch {
+            if (try? FileIdentity.read(staging))?.key == created.key { try? FileManager.default.removeItem(at: staging) }
+            throw error
+        }
     }
 }

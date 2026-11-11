@@ -22,7 +22,13 @@ final class CatalogStore: @unchecked Sendable {
     }
 
     init(fileURL: URL, create: Bool = false, access: AccessLease? = nil) throws {
-        self.fileURL = fileURL.resolvingSymlinksInPath().standardizedFileURL
+        if create {
+            // The exclusive writer must see an occupied leaf, including a dangling symlink.
+            let parent = fileURL.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
+            self.fileURL = parent.appendingPathComponent(fileURL.lastPathComponent)
+        } else {
+            self.fileURL = fileURL.resolvingSymlinksInPath().standardizedFileURL
+        }
         self.access = access
         if create {
             // Exclusive publication refuses even a file created after the save dialog.

@@ -11,22 +11,53 @@ enum AppMCPTool: String, CaseIterable {
     case preview = "get_photo_preview"
     case rate = "set_photo_rating"
     case undo = "undo_operation"
+    case librarySources = "list_library_sources", recentCatalogs = "list_recent_catalogs"
+    case fileAccess = "request_file_access", createCatalog = "create_catalog", openCatalog = "open_catalog"
+    case relocateRoot = "relocate_library_root", locateOriginal = "locate_photo_original"
+    case planImport = "plan_photo_import", startImport = "start_photo_import", resolveConflict = "resolve_import_conflict"
+    case recentImport = "show_recent_import", scanFolder = "scan_library_folder"
+    case planFolder = "plan_folder_review", applyFolder = "apply_folder_review"
+    case importRecords = "list_import_records", resumeImport = "resume_photo_import"
+    case restoreBackup = "restore_import_backup", cleanBackup = "clean_import_backup"
+    case job = "get_job", cancelJob = "cancel_job"
 
     enum Field: String {
         case catalog = "catalog_session_id", photo = "photo_id", cursor, pageSize = "page_size"
         case sourceRevision = "source_revision", recipeRevision = "recipe_revision", longEdge = "long_edge"
         case expectedRating = "expected_rating", rating, epoch = "request_epoch", request = "request_id", operation = "operation_id"
+        case offset, purpose, access = "access_id", recent = "recent_catalog_id", name, root = "root_id", folder = "folder_id"
+        case sourceAccess = "source_access_id", destinationAccess = "destination_access_id", mode, recursive = "include_subfolders"
+        case skipCataloged = "skip_cataloged", layout = "date_layout", archiveDate = "archive_date", sidecars = "include_sidecars"
+        case collection = "collection_id", pair = "detect_pairs", policy, basePlan = "base_plan_id", attachments = "attachment_assignments"
+        case plan = "plan_id", candidates = "candidate_ids", all = "select_all", job = "job_id", conflict = "conflict_id"
+        case remaining = "apply_to_remaining", action, differences = "difference_ids", locations = "locations"
+        case record = "record_id", member = "member_id"
 
-        var optional: Bool { self == .cursor || self == .pageSize || self == .longEdge }
         private var range: ClosedRange<Int>? {
             switch self {
             case .pageSize: 1...200
             case .longEdge: 1...1024
             case .expectedRating, .rating: 0...5
             case .sourceRevision, .recipeRevision: 0...Int.max
+            case .offset: 0...Int.max
             default: nil
             }
         }
+        private var options: [String]? {
+            switch self {
+            case .purpose: MCPFilePurpose.allCases.map(\.rawValue)
+            case .mode: ["reference", "copy"]
+            case .layout: DateLayout.allCases.map(\.rawValue)
+            case .policy: ["ask"] + ConflictPolicy.allCases.map(\.rawValue)
+            case .action: ["show", "start_culling", "return"]
+            default: nil
+            }
+        }
+        private var isBoolean: Bool {
+            [.recursive, .skipCataloged, .sidecars, .pair, .all, .remaining].contains(self)
+        }
+        private var maxString: Int { self == .folder ? 4096 : self == .name ? 255 : 128 }
+        private var identifierSchema: Value { ["type": "string", "minLength": 1, "maxLength": 128] }
         var schema: Value {
             if let range {
                 var schema: [String: Value] = ["type": "integer", "minimum": .int(range.lowerBound)]
@@ -35,26 +66,82 @@ enum AppMCPTool: String, CaseIterable {
                 if self == .longEdge { schema["default"] = 768 }
                 return .object(schema)
             }
-            return ["type": "string", "minLength": 1, "maxLength": 128]
+            if let options { return ["type": "string", "enum": .array(options.map(Value.string))] }
+            if isBoolean { return ["type": "boolean"] }
+            if self == .candidates || self == .differences {
+                return ["type": "array", "minItems": 1, "maxItems": 1000, "uniqueItems": true, "items": identifierSchema]
+            }
+            if self == .attachments || self == .locations {
+                return ["type": "object", "maxProperties": 1000, "propertyNames": identifierSchema, "additionalProperties": identifierSchema]
+            }
+            return ["type": "string", "minLength": 1, "maxLength": .int(maxString)]
         }
-        func accepts(_ value: Value?) -> Bool {
-            guard let value else { return optional }
+        func accepts(_ value: Value) -> Bool {
             if let range { return value.intValue.map(range.contains) ?? false }
+            if isBoolean { return value.boolValue != nil }
+            if self == .candidates || self == .differences {
+                guard let values = value.arrayValue, (1...1000).contains(values.count) else { return false }
+                let ids = values.compactMap(\.stringValue)
+                return Set(ids).count == values.count && ids.allSatisfy(Self.isID)
+            }
+            if self == .attachments || self == .locations {
+                guard let values = value.objectValue, values.count <= 1000 else { return false }
+                return values.allSatisfy { Self.isID($0.key) && ($0.value.stringValue.map(Self.isID) ?? false) }
+            }
             guard let text = value.stringValue else { return false }
-            return (1...128).contains(text.utf8.count)
+            return options?.contains(text) ?? ((1...maxString).contains(text.utf8.count) && !text.contains("\0"))
         }
+        private static func isID(_ text: String) -> Bool { (1...128).contains(text.utf8.count) && !text.contains("\0") }
     }
 
-    var fields: [Field] {
+    var required: [Field] {
         switch self {
-        case .capabilities, .workspace: []
-        case .listPhotos: [.catalog, .cursor, .pageSize]
-        case .preview: [.catalog, .photo, .sourceRevision, .recipeRevision, .longEdge]
-        case .rate: [.catalog, .photo, .expectedRating, .rating, .epoch, .request]
-        case .undo: [.catalog, .operation, .epoch, .request]
+        case .capabilities, .workspace, .recentCatalogs: []
+        case .listPhotos, .librarySources, .importRecords: [.catalog]
+        case .preview: [.catalog, .photo, .sourceRevision, .recipeRevision]
+        case .rate: [.catalog, .photo, .expectedRating, .rating]
+        case .undo: [.catalog, .operation]
+        case .fileAccess: [.purpose]
+        case .createCatalog: [.access, .name]
+        case .openCatalog: []
+        case .relocateRoot: [.catalog, .root, .access]
+        case .locateOriginal: [.catalog, .photo, .sourceRevision, .access]
+        case .planImport: [.catalog, .mode, .sourceAccess]
+        case .startImport: [.catalog, .plan]
+        case .resolveConflict: [.job, .conflict, .policy, .remaining]
+        case .recentImport: [.catalog, .action]
+        case .scanFolder, .planFolder: [.catalog, .root]
+        case .applyFolder: [.catalog, .plan, .differences]
+        case .resumeImport: [.catalog, .record]
+        case .restoreBackup: [.catalog, .record, .member, .access]
+        case .cleanBackup: [.catalog, .record, .member]
+        case .job, .cancelJob: [.job]
         }
     }
-    var writes: Bool { self == .rate || self == .undo }
+    var optional: [Field] {
+        switch self {
+        case .listPhotos: [.cursor, .pageSize]
+        case .preview: [.longEdge]
+        case .job, .librarySources, .importRecords: [.offset, .pageSize]
+        case .fileAccess, .createCatalog: [.catalog]
+        case .openCatalog: [.catalog, .access, .recent]
+        case .planImport: [.destinationAccess, .recursive, .skipCataloged, .layout, .archiveDate, .sidecars, .collection, .pair, .policy, .basePlan, .candidates, .attachments]
+        case .startImport: [.candidates, .all]
+        case .scanFolder, .planFolder: [.folder, .recursive]
+        case .applyFolder: [.locations]
+        case .restoreBackup: [.name]
+        default: []
+        }
+    }
+    var writes: Bool {
+        switch self {
+        case .capabilities, .workspace, .listPhotos, .preview, .librarySources, .recentCatalogs, .importRecords, .job: false
+        default: true
+        }
+    }
+    var addressedJobAction: Bool { self == .cancelJob || self == .resolveConflict }
+    var needsRequestID: Bool { writes && !addressedJobAction }
+    var needsCatalog: Bool { required.contains(.catalog) }
 
     var definition: Tool {
         let description: String
@@ -78,12 +165,16 @@ enum AppMCPTool: String, CaseIterable {
         case .undo:
             description = "Undo a rating with its operation_id, if that action is still at the top of Phosdeck's undo stack. Use a fresh request_id."
             output = "operation_id, photo_id, restored rating, and commit_state."
+        default:
+            (description, output) = workflowDescription
         }
-        let properties = Dictionary(uniqueKeysWithValues: fields.map { ($0.rawValue, $0.schema) })
+        let required = required + (needsRequestID ? [.epoch, .request] : [])
+        let properties = Dictionary(uniqueKeysWithValues: (required + optional).map { ($0.rawValue, $0.schema) })
+        let destructive = [.startImport, .resolveConflict, .resumeImport, .cleanBackup].contains(self)
         return Tool(name: rawValue, description: description, inputSchema: [
             "type": "object", "properties": .object(properties), "additionalProperties": false,
-            "required": .array(fields.filter { !$0.optional }.map { .string($0.rawValue) })
-        ], annotations: .init(readOnlyHint: !writes, destructiveHint: false, idempotentHint: true, openWorldHint: false), outputSchema: [
+            "required": .array(required.map { .string($0.rawValue) })
+        ], annotations: .init(readOnlyHint: !writes, destructiveHint: destructive, idempotentHint: true, openWorldHint: false), outputSchema: [
             "type": "object", "required": ["status", "summary", "next_actions", "artifacts", "data"],
             "properties": [
                 "status": ["enum": ["success", "warning", "error"]],
@@ -97,15 +188,15 @@ enum AppMCPTool: String, CaseIterable {
     }
 }
 
-private struct MCPToolProblem: Error {
+struct MCPToolProblem: Error {
     let code: String
     let summary: String
     let next: String
     var details: [String: Value] = [:]
 
     static let stopped = Self(code: "service_stopped", summary: "The Phosdeck MCP service stopped.", next: "Reconnect using the current settings.")
-    static let noCatalog = Self(code: "no_catalog", summary: "Phosdeck has no open catalog.", next: "Open a catalog in Phosdeck.")
-    static let catalogChanged = Self(code: "catalog_changed", summary: "The catalog session changed.", next: "Call get_workspace and locate the photo again.")
+    static let noCatalog = Self(code: "no_catalog", summary: "Phosdeck has no open catalog.", next: "Open or create a catalog in Phosdeck.")
+    static let catalogChanged = Self(code: "catalog_changed", summary: "The catalog session changed.", next: "Call get_workspace and locate the target again.")
     static let staleCursor = Self(code: "stale_cursor", summary: "The photo query or its results changed.", next: "Call get_workspace and restart list_photos without a cursor.")
     static let photoUnavailable = Self(code: "photo_unavailable", summary: "The requested photo is unavailable.", next: "Call list_photos to locate the photo.")
     static let stalePhoto = Self(code: "stale_photo", summary: "The requested photo version changed.", next: "Call list_photos to obtain the current revisions.")
@@ -115,22 +206,25 @@ private struct MCPToolProblem: Error {
     static let busy = Self(code: "workspace_busy", summary: "Phosdeck has an open dialog or a task in progress.", next: "Wait for the task or close the dialog and call get_workspace.")
     static let nativeInteraction = Self(code: "native_interaction_active", summary: "A native edit or undo group is still active.", next: "Finish or cancel the edit in Phosdeck, then refresh the workspace.")
     static let undoConflict = Self(code: "undo_conflict", summary: "That operation is no longer the current undo action.", next: "Read the current workspace and photo rating.")
-    static let expired = Self(code: "request_expired", summary: "This write request epoch expired.", next: "Read the current workspace and rating before making a new request.")
+    static let expired = Self(code: "request_expired", summary: "This write request epoch expired.", next: "Read get_workspace and check the affected state before making a new request.")
     static let failed = Self(code: "operation_failed", summary: "Phosdeck could not complete the operation.", next: "Check the current state in Phosdeck before retrying.")
+    static func invalid(_ message: String) -> Self {
+        Self(code: "invalid_arguments", summary: message, next: "Read the tool's input schema and refresh the target IDs.")
+    }
     static func ratingConflict(_ actual: Int) -> Self {
         Self(code: "rating_conflict", summary: "The photo has a different current rating.", next: "Use the actual rating to reassess the intended edit.",
              details: ["actual_rating": .int(actual)])
     }
 }
 
-private struct MCPToolResult: Sendable {
+struct MCPToolResult: Sendable {
     let payload: Value
     let image: String?
     let failed: Bool
 
-    init(_ summary: String, data: [String: Value], warning: Bool = false, artifacts: [Value] = [], image: String? = nil) {
+    init(_ summary: String, data: [String: Value], warning: Bool = false, artifacts: [Value] = [], image: String? = nil, next: [Value] = []) {
         payload = ["status": warning ? "warning" : "success", "summary": .string(summary),
-                   "next_actions": warning ? ["Refresh the workspace before making another edit."] : [],
+                   "next_actions": .array(warning && next.isEmpty ? ["Refresh the workspace before making another edit."] : next),
                    "artifacts": .array(artifacts), "data": .object(data)]
         self.image = image
         failed = false
@@ -189,13 +283,16 @@ final class AppMCPTools {
     private var activeLists = 0
     private var previewWorker: Task<Preview, Error>?
     private lazy var previewPipeline = ImagePipeline(qualityCacheLimit: 0)
+    private let workflows: AppMCPWorkflows
 
-    init(model: AppModel, appName: String, version: String, bundleID: String, sharesImages: Bool) {
+    init(model: AppModel, appName: String, version: String, bundleID: String, sharesImages: Bool,
+         chooseFile: AppMCPWorkflows.FilePicker? = nil) {
         self.model = model
         self.appName = appName
         self.version = version
         self.bundleID = bundleID
         self.sharesImages = sharesImages
+        workflows = AppMCPWorkflows(model: model, chooseFile: chooseFile)
         // A rating is registered in its own closed group. Any new group, undo or redo
         // invalidates the receipt before the next MCP request can reach the main actor.
         for name in [Notification.Name.NSUndoManagerDidOpenUndoGroup, .NSUndoManagerWillUndoChange, .NSUndoManagerWillRedoChange] {
@@ -212,13 +309,14 @@ final class AppMCPTools {
             previewWorker?.cancel()
         }
     }
-    func stop() {
+    @discardableResult func stop() -> Task<Void, Never>? {
         stopped = true
         previewWorker?.cancel()
         undoObservers.removeAll()
         currentUndo = nil
         cursors.removeAll()
         writes.removeAll()
+        return workflows.stop()
     }
 
     nonisolated func call(_ params: CallTool.Parameters) async -> CallTool.Result {
@@ -232,58 +330,77 @@ final class AppMCPTools {
             return .init(.init(code: "unsupported_operation", summary: "This tool is unavailable.", next: "Read the registered tools."))
         }
         let arguments = params.arguments ?? [:]
-        let fields = tool.fields
+        let required = tool.required + (tool.needsRequestID ? [.epoch, .request] : [])
+        let fields = required + tool.optional
         guard Set(arguments.keys).isSubset(of: Set(fields.map(\.rawValue))) else {
             return invalidArguments("Unexpected tool argument.", writes: tool.writes)
         }
-        if let field = fields.first(where: { !$0.accepts(arguments[$0.rawValue]) }) {
+        if let field = required.first(where: { arguments[$0.rawValue] == nil }) ??
+            fields.first(where: { field in arguments[field.rawValue].map { !field.accepts($0) } ?? false }) {
             return invalidArguments("Invalid or missing \(field.rawValue).", writes: tool.writes)
         }
 
         let catalogSession = model.catalogSessionID
         if observedCatalog != catalogSession {
             observedCatalog = catalogSession
-            rotateRequestEpoch()
             cursors.removeAll()
             currentUndo = nil
+            workflows.catalogChanged()
         }
         switch tool {
         case .capabilities: return capabilities(model)
         case .workspace: return workspace(model)
+        case .cancelJob, .resolveConflict:
+            do { return try workflows.control(tool, arguments: arguments) }
+            catch let problem as MCPToolProblem { return .init(problem, commitState: "not_committed") }
+            catch { return .init(.failed, commitState: "not_committed") }
         default: break
         }
-        let commitState = tool.writes ? "not_committed" : nil
-        guard let catalog = model.catalog, let catalogSession else { return .init(.noCatalog, commitState: commitState) }
-        guard arguments["catalog_session_id"]?.stringValue == catalogSession else { return .init(.catalogChanged, commitState: commitState) }
+        if tool.needsRequestID { return write(tool, arguments: arguments, model: model) }
         do {
+            try checkCatalog(tool, arguments: arguments, model: model)
             switch tool {
-            case .listPhotos: return try await listPhotos(model, catalog: catalog, session: catalogSession, arguments: arguments)
-            case .preview: return try await preview(model, catalog: catalog, session: catalogSession, arguments: arguments)
-            case .rate, .undo: return write(tool, arguments: arguments, model: model, catalog: catalog)
-            case .capabilities, .workspace: preconditionFailure("Observation tools were handled before opening the catalog.")
+            case .listPhotos:
+                return try await listPhotos(model, catalog: model.catalog!, session: catalogSession!, arguments: arguments)
+            case .preview:
+                return try await preview(model, catalog: model.catalog!, session: catalogSession!, arguments: arguments)
+            default:
+                let result = try await workflows.read(tool, arguments: arguments)
+                guard !stopped, !Task.isCancelled else { throw MCPToolProblem.stopped }
+                return result
             }
         } catch let problem as MCPToolProblem {
-            return .init(problem, commitState: commitState)
+            return .init(problem)
         } catch {
-            return .init(.failed, commitState: commitState)
+            return .init(.failed)
+        }
+    }
+
+    private func checkCatalog(_ tool: AppMCPTool, arguments: [String: Value], model: AppModel) throws {
+        if tool.needsCatalog && model.catalog == nil { throw MCPToolProblem.noCatalog }
+        let session = arguments["catalog_session_id"]?.stringValue
+        let catalogBound = tool.needsCatalog || [.fileAccess, .createCatalog, .openCatalog].contains(tool)
+        if catalogBound && session != model.catalogSessionID {
+            throw MCPToolProblem.catalogChanged
         }
     }
 
     private func invalidArguments(_ summary: String, writes: Bool) -> MCPToolResult {
-        .init(.init(code: "invalid_arguments", summary: summary, next: "Read the tool's input schema."),
-              commitState: writes ? "not_committed" : nil)
+        .init(.invalid(summary), commitState: writes ? "not_committed" : nil)
     }
 
     private func capabilities(_ model: AppModel) -> MCPToolResult {
         let tools: [Value] = AppMCPTool.allCases.map { tool in
             let problem: MCPToolProblem?
             switch tool {
-            case .capabilities, .workspace: problem = nil
+            case .capabilities, .workspace, .recentCatalogs, .job, .cancelJob: problem = nil
             case .listPhotos: problem = model.catalog == nil ? .noCatalog : nil
             case .preview: problem = model.catalog == nil ? .noCatalog : sharesImages ? nil : .imageDisabled
             case .rate: problem = model.catalog == nil ? .noCatalog : writeProblem(model)
             case .undo:
                 problem = model.catalog == nil ? .noCatalog : writeProblem(model) ?? (currentUndo == nil || !model.undo.canUndo ? .undoConflict : nil)
+            case .resolveConflict: problem = workflows.waitingForConflict ? nil : .busy
+            default: problem = tool.needsCatalog && model.catalog == nil ? .noCatalog : tool.writes ? writeProblem(model) : nil
             }
             return ["name": .string(tool.rawValue), "enabled": .bool(problem == nil),
                     "reason": problem.map { .string($0.code) } ?? .null]
@@ -295,7 +412,7 @@ final class AppMCPTools {
     }
 
     private func workspace(_ model: AppModel) -> MCPToolResult {
-        if writes.count >= 256 { rotateRequestEpoch() }
+        if writes.count >= 256 && !workflows.isWorking { rotateRequestEpoch() }
         let query = model.query
         let metadata = query.metadata
         let selection = model.selection.prefix(50).sorted()
@@ -321,7 +438,7 @@ final class AppMCPTools {
             "selection_truncated": .bool(selection.count < model.selection.count),
             "busy": .bool(model.busy || model.applyingAdjustments || model.cacheMaintenance),
             "modal": .bool(nativeModal(model)),
-            "draft": .bool(nativeInteraction(model)), "task": task
+            "draft": .bool(nativeInteraction(model)), "task": task, "agent_job": workflows.currentJob
         ])
     }
 
@@ -420,7 +537,7 @@ final class AppMCPTools {
                      artifacts: [["type": "photo_preview", "id": preview.data["preview_id"]!, "name": .string(preview.name)]], image: preview.png)
     }
 
-    private func write(_ tool: AppMCPTool, arguments: [String: Value], model: AppModel, catalog: CatalogStore) -> MCPToolResult {
+    private func write(_ tool: AppMCPTool, arguments: [String: Value], model: AppModel) -> MCPToolResult {
         guard arguments["request_epoch"]?.stringValue == requestEpoch else { return .init(.expired, commitState: "not_committed") }
         let id = arguments["request_id"]!.stringValue!
         if let previous = writes[id] {
@@ -431,26 +548,28 @@ final class AppMCPTools {
             return previous.result
         }
         if writes.count >= 256 {
+            if workflows.isWorking { return .init(.busy, commitState: "not_committed") }
             rotateRequestEpoch()
             return .init(.expired, commitState: "not_committed")
         }
         let result: MCPToolResult
-        if tool == .undo, currentUndo?.id != arguments["operation_id"]?.stringValue {
-            result = .init(.undoConflict, commitState: "not_committed")
-        } else if let problem = writeProblem(model) { result = .init(problem, commitState: "not_committed") }
-        else {
-            do {
-                if tool == .rate { result = try rate(arguments, model: model, catalog: catalog) }
-                else { result = try undo(arguments, model: model, catalog: catalog) }
-            } catch OrganizationError.ratingConflict(let actual) {
-                result = .init(.ratingConflict(actual), commitState: "not_committed")
-            } catch OrganizationError.photoUnavailable {
-                result = .init(.photoUnavailable, commitState: "not_committed")
-            } catch let problem as MCPToolProblem {
-                result = .init(problem, commitState: "not_committed")
-            } catch {
-                result = .init(.failed, commitState: "not_committed")
+        do {
+            try checkCatalog(tool, arguments: arguments, model: model)
+            if tool == .undo, currentUndo?.id != arguments["operation_id"]?.stringValue { throw MCPToolProblem.undoConflict }
+            if let problem = writeProblem(model) { throw problem }
+            switch tool {
+            case .rate: result = try rate(arguments, model: model, catalog: model.catalog!)
+            case .undo: result = try undo(arguments, model: model, catalog: model.catalog!)
+            default: result = try workflows.write(tool, arguments: arguments)
             }
+        } catch OrganizationError.ratingConflict(let actual) {
+            result = .init(.ratingConflict(actual), commitState: "not_committed")
+        } catch OrganizationError.photoUnavailable {
+            result = .init(.photoUnavailable, commitState: "not_committed")
+        } catch let problem as MCPToolProblem {
+            result = .init(problem, commitState: "not_committed")
+        } catch {
+            result = .init(.failed, commitState: "not_committed")
         }
         writes[id] = Write(tool: tool, arguments: arguments, result: result)
         return result

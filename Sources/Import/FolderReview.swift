@@ -73,13 +73,17 @@ struct FolderReviewResult {
     }
 }
 
+struct StaleFolderReview: LocalizedError {
+    var errorDescription: String? {
+        L10n.text("folderReview.stale", defaultValue: "The folder, file or catalog changed after preview. Scan again; no selected changes were applied.")
+    }
+}
+
 /// Native read-only comparison followed by explicit, revalidated publication.
 /// Adobe's Synchronize Folder is an interaction reference, not a code source.
 /// Missing records, versions and frozen outputs are never removed or rewritten.
 actor FolderReviewService {
-    private static var stale: LRCError {
-        LRCError(L10n.text("folderReview.stale", defaultValue: "The folder, file or catalog changed after preview. Scan again; no selected changes were applied."))
-    }
+    private static let stale = StaleFolderReview()
 
     func preview(scope: FolderReviewScope, includeSubfolders: Bool, catalog: CatalogStore,
                  progress: @escaping @Sendable (Int) async -> Void = { _ in }) async throws -> FolderReviewPreview {
@@ -272,7 +276,7 @@ actor FolderReviewService {
         guard try identity(at: file.relativePath, root: root) == file.identity else { throw stale }
         return value
     }
-    private static func access(_ scope: FolderReviewScope, catalog: CatalogStore) throws -> AccessLease {
+    static func access(_ scope: FolderReviewScope, catalog: CatalogStore) throws -> AccessLease {
         guard scope.directory.isEmpty || validRelative(scope.directory) else { throw stale }
         try catalog.database.read { try checkRoot(scope.root, in: $0) }
         let lease = try AccessLease(bookmark: scope.root.bookmark)

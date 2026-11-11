@@ -478,6 +478,7 @@ final class AppModel {
     var cacheBytes: Int64 = 0
     var cacheGigabytes = 5
     private(set) var cacheMaintenance = false
+    @ObservationIgnored private(set) var cacheConfigurationTask: Task<Void, Never>?
     @ObservationIgnored var exportOperationCounts = ExportOperationCounts()
     var settingsPane = SettingsPane.appearance
     var showExport = false
@@ -492,6 +493,7 @@ final class AppModel {
     var catalogRestoreSource: URL?
     var importConflict: ImportConflict?
     private var conflictContinuation: CheckedContinuation<ImportConflictDecision?, Never>?
+    private var conflictToken: UUID?
     var showImport = false
     var folderReview: FolderReviewScope?
     var mergeSession: PhotoMergeSession?
@@ -500,7 +502,7 @@ final class AppModel {
     private var startupCatalogOpen: CatalogOpenRequest?
     private var openingStartupCatalog = false
     private var deferredCatalogURL: URL?
-    private(set) var changingCatalogExtension = false
+    var changingCatalogExtension = false
     let viewport = PhotoViewport()
     let undo = UndoManager()
     @ObservationIgnored lazy var mcp = AppMCPService()
@@ -1384,10 +1386,14 @@ final class AppModel {
         }
     }
     func chooseDirectory(title: String, initialURL: URL? = nil) -> URL? {
+        let panel = Self.directoryPanel(title: title, initialURL: initialURL)
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+    static func directoryPanel(title: String, initialURL: URL? = nil) -> NSOpenPanel {
         let panel = NSOpenPanel(); panel.title = title; panel.canChooseDirectories = true
         panel.canChooseFiles = false; panel.allowsMultipleSelection = false
         panel.directoryURL = initialURL
-        return panel.runModal() == .OK ? panel.url : nil
+        return panel
     }
     func importReference() {
         guard canImportPhotos, commitRecipe() else { return }
@@ -1397,14 +1403,29 @@ final class AppModel {
         guard !busy, let catalog else { return }
         busy = true
         task = Task {
-            let report = await importer.add(source: source, candidates: candidates, collection: collection, catalog: catalog)
-            perform { try reload() }
-            perform { try completeImport(ids: report.importedPhotoIDs, cancelled: report.cancelled) }
-            reports = report.errors
-            status = L10n.text("app.addedSkippedErrors", defaultValue: "\(report.cancelled ? L10n.text("app.cancelled", defaultValue: "Cancelled") : L10n.text("app.importComplete", defaultValue: "Import Complete")) · Added \(report.indexed) · Skipped \(report.ignored) · \(report.errors.count) errors")
+            _ = await performReferenceImport(source: source, candidates: candidates, collection: collection, catalog: catalog, pairAfterImport: pairAfterImport)
             busy = false
-            if pairAfterImport, !report.cancelled, !report.sourceIDs.isEmpty { openPairing(within:report.sourceIDs) }
         }
+    }
+    func performReferenceImport(source: URL, candidates: [ImportCandidate], collection: String?, catalog: CatalogStore,
+                                pairAfterImport: Bool, recordItems: Bool = false,
+                                progress: @escaping @Sendable (Int) async -> Void = { _ in }) async -> (ScanReport, Bool) {
+        let report = await importer.add(source: source, candidates: candidates, collection: collection, catalog: catalog,
+                                        recordItems: recordItems, progress: progress)
+        let refreshed = refreshAfterImport(ids: report.importedPhotoIDs, cancelled: report.cancelled)
+        reports = report.errors
+        status = L10n.text("app.addedSkippedErrors", defaultValue: "\(report.cancelled ? L10n.text("app.cancelled", defaultValue: "Cancelled") : L10n.text("app.importComplete", defaultValue: "Import Complete")) · Added \(report.indexed) · Skipped \(report.ignored) · \(report.errors.count) errors")
+        if pairAfterImport, !report.cancelled, !report.sourceIDs.isEmpty { openPairing(within: report.sourceIDs) }
+        return (report, refreshed)
+    }
+
+    private func refreshAfterImport(ids: Set<String>, cancelled: Bool) -> Bool {
+        var refreshed = true
+        do { try reload() }
+        catch { self.error = error.localizedDescription; refreshed = false }
+        do { try completeImport(ids: ids, cancelled: cancelled) }
+        catch { self.error = error.localizedDescription; refreshed = false }
+        return refreshed
     }
     private func importCatalogID(_ catalog: CatalogStore) throws -> String {
         guard let id = try catalog.database.read({ try String.fetchOne($0, sql: "SELECT id FROM catalogMeta") }), !id.isEmpty else {
@@ -1492,14 +1513,22 @@ final class AppModel {
         guard !busy, let catalog else { return }
         busy = true; status = L10n.text("app.scanning", defaultValue: "Scanning \(root.label)")
         task = Task {
-            let report = await importer.scan(root: root, catalog: catalog) { [self] count in
-                await MainActor.run { status = L10n.text("app.checkedPhotos", defaultValue: "Checked \(count) photos") }
-            }
-            perform { try reload() }
-            status = L10n.text("app.checkedUnsupportedOrIgnoredErrors", defaultValue: "\(report.cancelled ? L10n.text("app.cancelled", defaultValue: "Cancelled") : L10n.text("app.scanComplete", defaultValue: "Scan complete")) · Checked \(report.indexed) · Unsupported or ignored \(report.ignored) · \(report.errors.count) errors")
-            reports = report.errors
+            _ = await performFolderScan(FolderReviewScope(root: root), includeSubfolders: true, catalog: catalog)
             busy = false
         }
+    }
+    func performFolderScan(_ scope: FolderReviewScope, includeSubfolders: Bool, catalog: CatalogStore,
+                           recordItems: Bool = false) async -> (ScanReport, Bool) {
+        let report = await importer.scan(root: scope.root, catalog: catalog, directory: scope.directory,
+                                         includeSubfolders: includeSubfolders, recordItems: recordItems) { [self] count in
+            await MainActor.run { status = L10n.text("app.checkedPhotos", defaultValue: "Checked \(count) photos") }
+        }
+        let refreshed: Bool
+        do { try reload(); refreshed = true }
+        catch { self.error = error.localizedDescription; refreshed = false }
+        status = L10n.text("app.checkedUnsupportedOrIgnoredErrors", defaultValue: "\(report.cancelled ? L10n.text("app.cancelled", defaultValue: "Cancelled") : L10n.text("app.scanComplete", defaultValue: "Scan complete")) · Checked \(report.indexed) · Unsupported or ignored \(report.ignored) · \(report.errors.count) errors")
+        reports = report.errors
+        return (report, refreshed)
     }
     var currentFolderReviewScope: FolderReviewScope? {
         if let root = roots.first(where: { $0.id == scope }) { return FolderReviewScope(root: root) }
@@ -2839,8 +2868,8 @@ final class AppModel {
     func configureCache() {
         guard catalog != nil, !cacheMaintenance else { return }
         cacheMaintenance = true
-        Task {
-            defer { cacheMaintenance = false }
+        cacheConfigurationTask = Task {
+            defer { cacheMaintenance = false; cacheConfigurationTask = nil }
             do { try await applyCacheQuota() }
             catch { self.error = error.localizedDescription }
         }
@@ -2873,11 +2902,7 @@ final class AppModel {
         guard canLocateOriginal, let photo = active, let catalog, commitRecipe() else { return }
         do {
             guard let source = try catalog.source(photo.sourceKey) else { throw LRCError(L10n.text("app.theSourcePhotoRecordDoesNotExist", defaultValue: "The source photo record does not exist")) }
-            let panel = NSOpenPanel()
-            panel.title = L10n.text("app.locateOriginal", defaultValue: "Locate Original · \(photo.name)"); panel.prompt = L10n.text("app.locateOriginal_146", defaultValue: "Locate Original")
-            panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-            panel.resolvesAliases = false
-            panel.directoryURL = roots.first { $0.id == source.rootID }.map { URL(fileURLWithPath: $0.path) }
+            let panel = Self.originalFilePanel(name: photo.name, directory: roots.first { $0.id == source.rootID }.map { URL(fileURLWithPath: $0.path) })
             guard panel.runModal() == .OK, let file = panel.url else { return }
             let fileAccess = AccessLease(url: file)
             let path = file.standardizedFileURL.resolvingSymlinksInPath().path
@@ -2893,27 +2918,47 @@ final class AppModel {
             task = Task {
                 defer { busy = false; withExtendedLifetime((fileAccess, directoryAccess)) {} }
                 do {
-                    let relocator = RootRelocator()
-                    let proposal = try await relocator.prepare(source, file: file, directory: directory, catalog: catalog)
-                    try await relocator.commit(proposal, catalog: catalog)
-                    folderPhotoCount = -1
-                    try reload(); loadActive()
-                    status = L10n.text("app.originalLocatedRelatedVersionsAndOrganizationPreserved", defaultValue: "Original located · \(file.lastPathComponent) · Related versions and organization preserved")
+                    _ = try await performOriginalRelocation(source, file: file, directory: directory, catalog: catalog)
                 } catch is CancellationError { status = L10n.text("app.locationCancelledTheOriginalLocationWasPreserved", defaultValue: "Location cancelled. The original location was preserved") }
                 catch { self.error = error.localizedDescription; status = L10n.text("app.originalLocationIncomplete", defaultValue: "Original location incomplete") }
             }
         } catch { self.error = error.localizedDescription }
+    }
+    static func originalFilePanel(name: String? = nil, directory: URL? = nil) -> NSOpenPanel {
+        let panel = NSOpenPanel()
+        panel.prompt = L10n.text("app.locateOriginal_146", defaultValue: "Locate Original")
+        panel.title = name.map { L10n.text("app.locateOriginal", defaultValue: "Locate Original · \($0)") } ?? panel.prompt
+        panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        panel.resolvesAliases = false; panel.directoryURL = directory
+        return panel
+    }
+    func performOriginalRelocation(_ source: CatalogSource, file: URL, directory: URL?, catalog: CatalogStore) async throws -> (String, Bool) {
+        let relocator = RootRelocator()
+        let proposal = try await relocator.prepare(source, file: file, directory: directory, catalog: catalog)
+        try await relocator.commit(proposal, catalog: catalog)
+        status = L10n.text("app.originalLocatedRelatedVersionsAndOrganizationPreserved", defaultValue: "Original located · \(file.lastPathComponent) · Related versions and organization preserved")
+        return (proposal.root.id, refreshRelocation())
     }
     func relocate(_ root: StorageRoot) {
         guard !busy, let catalog, let url = chooseDirectory(title: L10n.text("app.reauthorizeLocatePreserveRelativePaths", defaultValue: "Reauthorize / locate \(root.label) · Preserve relative paths")) else { return }
         busy = true
         task = Task {
             do {
-                reports = try await RootRelocator().relocate(root, to: url, catalog: catalog)
-                try reload(); loadActive(); status = L10n.text("app.folderVerificationCompleteIdentitiesNeedConfirmation", defaultValue: "Folder verification complete · \(reports.count) identities need confirmation")
+                _ = try await performRootRelocation(root, to: url, catalog: catalog)
             } catch { self.error = error.localizedDescription }
             busy = false
         }
+    }
+    func performRootRelocation(_ root: StorageRoot, to url: URL, catalog: CatalogStore) async throws -> ([RootRelocator.Issue], Bool) {
+        let results = try await RootRelocator().relocate(root, to: url, catalog: catalog)
+        reports = results.map(\.message)
+        status = L10n.text("app.folderVerificationCompleteIdentitiesNeedConfirmation", defaultValue: "Folder verification complete · \(results.count) identities need confirmation")
+        return (results, refreshRelocation())
+    }
+    private func refreshRelocation() -> Bool {
+        folderPhotoCount = -1
+        do { try reload(); loadActive(); return true }
+        catch { self.error = error.localizedDescription; return false }
     }
     func startCopy(source: URL, target: URL, selectedPaths: Set<String>, includeSubfolders: Bool,
                    layout: DateLayout, dateOverride: String?, includeSidecars: Bool, collection: String?, pairAfterImport: Bool = false) {
@@ -2929,7 +2974,7 @@ final class AppModel {
                     selectedPaths: selectedPaths, includeSubfolders: includeSubfolders, deferConflicts: true, includeSidecars: includeSidecars)
                 try Task.checkCancellation()
                 plan.collectionID = collection; plan.pairAfterImport = pairAfterImport
-                await executeCopy(plan, catalog: catalog)
+                _ = await performCopyImport(plan, catalog: catalog)
             } catch is CancellationError { status = L10n.text("app.importCancelled", defaultValue: "Import cancelled") }
             catch { self.error = error.localizedDescription; status = L10n.text("app.importIncomplete", defaultValue: "Import incomplete") }
         }
@@ -2938,19 +2983,24 @@ final class AppModel {
         guard !busy, let catalog else { return }
         busy = true
         task = Task {
-            await executeCopy(plan, catalog: catalog)
+            _ = await performCopyImport(plan, catalog: catalog)
             busy = false
         }
     }
-    private func executeCopy(_ plan: CopyPlan, catalog: CatalogStore) async {
+    @ObservationIgnored private(set) var activeCopyPlanID: String?
+    func performCopyImport(_ plan: CopyPlan, catalog: CatalogStore,
+                           showError: Bool = true,
+                           groupProgress: (@Sendable (Int, Int) async -> Void)? = nil) async -> (CopyPlan, Set<String>, Bool) {
+        activeCopyPlanID = plan.id
+        defer { activeCopyPlanID = nil }
         if usesPreferences { UserDefaults.standard.set(plan.targetBookmark, forKey: "lastCopyTarget") }
         importingPhotoIDs = []
         let result = await CopyImporter().run(plan, catalog: catalog, resolveConflict: { [weak self] conflict in
             await self?.requestImportConflict(conflict)
-        }, onImported: { [self] id in await MainActor.run { _ = importingPhotoIDs.insert(id) } }) { [self] text in await MainActor.run { status = text } }
-        perform { try reload() }
-        let importedCount = importingPhotoIDs.count
-        perform { try completeImport(ids: importingPhotoIDs, cancelled: result.state == "cancelled") }
+        }, onImported: { [self] id in await MainActor.run { _ = importingPhotoIDs.insert(id) } },
+           groupProgress: groupProgress) { [self] text in await MainActor.run { status = text } }
+        let imported = importingPhotoIDs
+        let refreshed = refreshAfterImport(ids: imported, cancelled: result.state == "cancelled")
         importingPhotoIDs = []
         reports = result.groups.map { group in
             "\(group.members.first?.source.lastPathComponent ?? L10n.text("app.fileGroupsToReview", defaultValue: "File Groups to Review"))：\(group.state) \(group.diagnostic ?? "")"
@@ -2963,26 +3013,32 @@ final class AppModel {
             if !ids.isEmpty { pairingScope = ids; showPairing = true }
         }
         let pending = result.groups.filter { $0.state == "needsReview" }.count
-        status = L10n.text("app.addedPhotosGroupsCompleteSkippedPending", defaultValue: "\(result.state == "cancelled" ? L10n.text("app.importCancelled", defaultValue: "Import cancelled") : L10n.text("app.importFinished", defaultValue: "Import finished")) · Added \(importedCount) photos · \(result.groups.filter { $0.state == "completed" }.count) groups complete · \(result.groups.filter { $0.state == "skippedConflict" }.count) skipped · \(pending) pending")
-        if pending > 0 || result.state == "needsReview" {
+        status = L10n.text("app.addedPhotosGroupsCompleteSkippedPending", defaultValue: "\(result.state == "cancelled" ? L10n.text("app.importCancelled", defaultValue: "Import cancelled") : L10n.text("app.importFinished", defaultValue: "Import finished")) · Added \(imported.count) photos · \(result.groups.filter { $0.state == "completed" }.count) groups complete · \(result.groups.filter { $0.state == "skippedConflict" }.count) skipped · \(pending) pending")
+        if showError && (pending > 0 || result.state == "needsReview") {
             error = (result.groups.filter { $0.state == "needsReview" }.compactMap(\.diagnostic) + result.omitted).joined(separator: "\n")
         }
+        return (result, imported, refreshed)
     }
     private func requestImportConflict(_ conflict: ImportConflict) async -> ImportConflictDecision? {
-        await withTaskCancellationHandler {
+        let token = UUID()
+        return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 guard !Task.isCancelled else { continuation.resume(returning: nil); return }
+                conflictToken = token
                 conflictContinuation = continuation
                 status = L10n.text("app.importPausedResolveFilenameConflicts", defaultValue: "Import paused · Resolve filename conflicts")
                 importConflict = conflict
             }
         } onCancel: {
-            Task { @MainActor [weak self] in self?.resolveImportConflict(nil) }
+            Task { @MainActor [weak self] in
+                guard self?.conflictToken == token else { return }
+                self?.resolveImportConflict(nil)
+            }
         }
     }
     func resolveImportConflict(_ decision: ImportConflictDecision?) {
         let continuation = conflictContinuation
-        conflictContinuation = nil; importConflict = nil
+        conflictContinuation = nil; conflictToken = nil; importConflict = nil
         continuation?.resume(returning: decision)
     }
     func showImportRecovery() {
@@ -3072,7 +3128,7 @@ extension AppModel {
                     defer { busy = false; changingCatalogExtension = false }
                     var renamed: URL?
                     do {
-                        let destination = try await Task.detached(priority: .userInitiated) { try change.perform() }.value
+                        let destination = try await Self.renameCatalogFile(change)
                         renamed = destination
                         busy = false
                         try finishCatalogOpen(destination, request: request)
@@ -3092,8 +3148,13 @@ extension AppModel {
     private func chooseCatalogExtension(_ change: CatalogExtensionChange) -> CatalogExtensionChoice {
         catalogUtilityOpen = true
         defer { catalogUtilityOpen = false }
-        let alert = NSAlert()
+        let alert = Self.catalogExtensionAlert(change)
         defer { alert.window.orderOut(nil) }
+        return Self.catalogExtensionChoice(alert.runModal())
+    }
+
+    static func catalogExtensionAlert(_ change: CatalogExtensionChange) -> NSAlert {
+        let alert = NSAlert()
         alert.messageText = L10n.text("catalogExtension.confirmTitle", defaultValue: "Use the new Phosdeck catalog extension?")
         alert.informativeText = change.source.lastPathComponent + "\n→ " + change.destination.lastPathComponent + "\n\n" +
             L10n.text("catalogExtension.confirmMessage", defaultValue: "Only the filename changes, in the same folder. Photos, adjustments and history stay unchanged. You can also keep the current name and open the catalog.")
@@ -3102,14 +3163,21 @@ extension AppModel {
         alert.addButton(withTitle: L10n.text("app.cancel", defaultValue: "Cancel"))
         alert.buttons[2].keyEquivalent = "\u{1b}"
         alert.window.appearance = NSApp.keyWindow?.effectiveAppearance
-        switch alert.runModal() {
+        return alert
+    }
+    static func catalogExtensionChoice(_ response: NSApplication.ModalResponse) -> CatalogExtensionChoice {
+        switch response {
         case .alertFirstButtonReturn: return .change
         case .alertSecondButtonReturn: return .keepOriginal
         default: return .cancel
         }
     }
 
-    private func finishCatalogOpen(_ url: URL, request: CatalogOpenRequest) throws {
+    static func renameCatalogFile(_ change: CatalogExtensionChange) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) { try change.perform() }.value
+    }
+
+    func finishCatalogOpen(_ url: URL, request: CatalogOpenRequest) throws {
         let renamed = url != request.url
         if renamed {
             if usesPreferences { Self.transferCatalogPreferences(from: request.url, to: url, defaults: .standard) }
@@ -3138,15 +3206,22 @@ extension AppModel {
         catalogRestoreSource = nil; showNewCatalog = true
     }
     func createCatalog(name: String, directory: URL) throws {
-        guard !busy, commitRecipe() else { throw LRCError(L10n.text("app.finishTheCurrentTaskAndSaveAdjustmentsFirst", defaultValue: "Finish the current task and save adjustments first")) }
+        try createCatalog(name: name, directory: directory, restoring: catalogRestoreSource)
+        showNewCatalog = false; catalogRestoreSource = nil
+    }
+    static func catalogFilename(_ name: String) throws -> String {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.contains(":"), !name.contains("\0") else { throw LRCError(L10n.text("app.enterAValidCatalogNameWithoutOr", defaultValue: "Enter a valid catalog name without / or :")) }
-        let filename = CatalogFile.filename(name)
+        return CatalogFile.filename(name)
+    }
+    func createCatalog(name: String, directory: URL, restoring source: URL?) throws {
+        guard !busy, commitRecipe() else { throw LRCError(L10n.text("app.finishTheCurrentTaskAndSaveAdjustmentsFirst", defaultValue: "Finish the current task and save adjustments first")) }
+        let filename = try Self.catalogFilename(name)
         let url = directory.appendingPathComponent(filename)
         let lease = AccessLease(url: directory)
         let bookmark = try AccessLease.bookmark(directory, readOnly: false)
         let next: CatalogStore
-        if let source = catalogRestoreSource {
+        if let source {
             let original = AccessLease(url: source); defer { withExtendedLifetime(original) {} }
             next = try CatalogStore.restore(from: source, toFile: url, access: lease)
         } else {
@@ -3154,15 +3229,18 @@ extension AppModel {
         }
         try activateCatalog(next)
         try rememberCatalog(url, directory: directory, bookmark: bookmark)
-        showNewCatalog = false; catalogRestoreSource = nil
     }
     func openCatalog() {
         guard canSwitchCatalog, commitRecipe() else { return }
+        let panel = Self.catalogFilePanel()
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        openCatalog(url: url)
+    }
+    static func catalogFilePanel() -> NSOpenPanel {
         let panel = NSOpenPanel(); panel.title = L10n.text("app.openAPhosdeckCatalog", defaultValue: "Open a Phosdeck Catalog")
         panel.allowedContentTypes = [CatalogFile.contentType, UTType(filenameExtension: "sqlite") ?? .database]
         panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        openCatalog(url: url)
+        return panel
     }
     func openCatalog(url: URL) {
         // A Finder open takes precedence over automatic recent-catalog restoration.
@@ -3187,13 +3265,21 @@ extension AppModel {
     private func catalogDirectoryAccess(for url: URL) -> AccessLease? {
         // SQLite needs its containing folder for the lock and rollback journal.
         let parent = url.deletingLastPathComponent().resolvingSymlinksInPath()
-        if let recent = recentCatalogs.first(where: { URL(fileURLWithPath: $0.path).deletingLastPathComponent().resolvingSymlinksInPath() == parent }), let lease = try? AccessLease(bookmark: recent.bookmark) { return lease }
-        let panel = NSOpenPanel(); panel.title = L10n.text("app.authorizeCatalogFolder", defaultValue: "Authorize Catalog Folder")
-        panel.message = L10n.text("app.chooseToStoreTheCatalogAndRecoveryLogs", defaultValue: "Choose “\(parent.lastPathComponent)” to store the catalog and recovery logs.")
-        panel.directoryURL = parent; panel.canChooseDirectories = true; panel.canChooseFiles = false
+        if let lease = cachedCatalogDirectoryAccess(parent) { return lease }
+        let panel = Self.catalogDirectoryPanel(parent)
         guard panel.runModal() == .OK, let selected = panel.url else { return nil }
         guard selected.resolvingSymlinksInPath() == parent else { error = L10n.text("app.chooseTheFolderContainingTheCatalogFile", defaultValue: "Choose the folder containing the catalog file"); return nil }
         return AccessLease(url: selected)
+    }
+    func cachedCatalogDirectoryAccess(_ parent: URL) -> AccessLease? {
+        guard let recent = recentCatalogs.first(where: { URL(fileURLWithPath: $0.path).deletingLastPathComponent().resolvingSymlinksInPath() == parent }),
+              let lease = try? AccessLease(bookmark: recent.bookmark), lease.url.resolvingSymlinksInPath() == parent else { return nil }
+        return lease
+    }
+    static func catalogDirectoryPanel(_ parent: URL) -> NSOpenPanel {
+        let panel = directoryPanel(title: L10n.text("app.authorizeCatalogFolder", defaultValue: "Authorize Catalog Folder"), initialURL: parent)
+        panel.message = L10n.text("app.chooseToStoreTheCatalogAndRecoveryLogs", defaultValue: "Choose “\(parent.lastPathComponent)” to store the catalog and recovery logs.")
+        return panel
     }
     func openRecent(_ recent: RecentCatalog) {
         guard canSwitchCatalog, commitRecipe() else { return }

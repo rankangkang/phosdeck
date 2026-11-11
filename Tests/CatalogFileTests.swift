@@ -36,6 +36,15 @@ final class CatalogFileTests: XCTestCase {
         XCTAssertFalse(CatalogFile.isLegacy(folder.appendingPathComponent("旅行.phoscat")))
     }
 
+    func testCreationRefusesANameOccupiedByASymlink() throws {
+        let link = folder.appendingPathComponent("Occupied.phoscat")
+        let target = folder.appendingPathComponent("DoesNotExist.phoscat")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        XCTAssertThrowsError(try CatalogStore(fileURL: link, create: true))
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: link.path), target.path)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
+    }
+
     func testBothLegacyExtensionsRenameWithoutChangingDatabaseBytesOrIdentity() throws {
         for filename in ["用户目录.omlcat", "旧目录.omlrcat"] {
             let source = try fixture(filename)

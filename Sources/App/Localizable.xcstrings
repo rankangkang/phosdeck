@@ -154,6 +154,40 @@
         }
       }
     },
+    "agent.relocateRoot": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authorize the New Location of the Library Folder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "授权图库文件夹的新位置"
+          }
+        }
+      }
+    },
+    "agent.restoreBackup": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a Folder for the Recovered File"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择恢复文件的保存文件夹"
+          }
+        }
+      }
+    },
     "agent.retry": {
       "extractionState": "manual",
       "localizations": {

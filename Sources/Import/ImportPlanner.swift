@@ -32,6 +32,7 @@ struct CopyMember: Codable, Identifiable {
     var staging: URL?
     var stagingCreatedIdentity: FileIdentity?
     var stagedIdentity: FileIdentity?
+    var reusedIdentity: FileIdentity?
     var recovery: URL?
     var state = "planned"
     var recoveryState: String?
@@ -64,6 +65,20 @@ struct CopyPlan: Codable, Identifiable {
     var pairAfterImport = false
     var collectionID: String?
     var state = "planned"
+
+    var canResume: Bool {
+        state != "completed" && groups.contains {
+            $0.selected && !$0.members.isEmpty && !["completed", "skippedConflict"].contains($0.state)
+        }
+    }
+    var resuming: CopyPlan {
+        var plan = self
+        for index in plan.groups.indices where ["cancelled", "needsReview"].contains(plan.groups[index].state) && !plan.groups[index].members.isEmpty {
+            plan.groups[index].state = "planned"
+            plan.groups[index].diagnostic = nil
+        }
+        return plan
+    }
 }
 
 /// Preview-only choices. Execution uses the fully resolved, persisted CopyPlan.
@@ -136,6 +151,10 @@ actor ImportPlanner {
                     group.requiresConflictCheck = true
                     group.allowsRename = unknown.isEmpty && explicit.isEmpty
                     group.allowsOverwrite = sources.count == 1 && unknown.isEmpty && explicit.isEmpty
+                    if exists.contains(true) || batchConflict {
+                        group.diagnostic = L10n.text("app.chooseHowToHandleTheFilenameConflict", defaultValue: "Choose how to handle the filename conflict")
+                    }
+                    for member in members { reserved.insert(Self.nameKey(member.destination)) }
                     groups.append(group)
                     continue
                 }

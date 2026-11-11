@@ -15,6 +15,7 @@ final class AppMCPService {
     @ObservationIgnored private var listener: MCPHTTPListener?
     @ObservationIgnored private var tools: AppMCPTools?
     @ObservationIgnored private var transition: Task<Void, Never>?
+    @ObservationIgnored private var stoppingJob: Task<Void, Never>?
     @ObservationIgnored private var terminating = false
     private let preferences: UserDefaults?
     private let appName: String
@@ -45,7 +46,7 @@ final class AppMCPService {
         }
     }
     var connectionToken: String? { endpoint == nil ? nil : listener?.token }
-    var needsShutdown: Bool { listener != nil || transition != nil }
+    var needsShutdown: Bool { listener != nil || transition != nil || stoppingJob != nil }
 
     func attach(to model: AppModel) {
         guard self.model == nil else { return }
@@ -76,7 +77,7 @@ final class AppMCPService {
     }
 
     private func invalidateConnection() {
-        tools?.stop()
+        if let job = tools?.stop() { stoppingJob = job }
         tools = nil
         endpoint = nil
     }
@@ -92,6 +93,11 @@ final class AppMCPService {
                 status = .stopping
                 await listener.stop()
                 self.listener = nil
+            }
+            if let job = stoppingJob {
+                status = .stopping
+                await job.value
+                stoppingJob = nil
             }
             guard enabled, !terminating, let model else { status = .off; return }
             status = .starting

@@ -15,8 +15,8 @@
 | 工具 | 操作、输入及结果 | 原生入口和边界 |
 |---|---|---|
 | `list_library_sources`、`list_recent_catalogs` | 列出根目录、子目录、集合、特殊来源、近期图库及可用状态。返回 ID、名称和数量 | `AppModel.reload`、`CatalogStore.roots`／`folderPaths`、`recentCatalogs`。只读 |
-| `create_catalog`、`open_catalog` | 名称与位置授权 ID 新建，或用近期图库 ID／位置授权 ID 打开。返回新图库会话 | `AppModel.createCatalog`／`requestCatalogOpen`／`openRecent`。核验位置与 schema，旧后缀沿用改名／保留／取消确认。新建与改名遵守无覆盖语义 |
-| `request_file_access` | 按操作用途打开原生文件或目录面板。返回等待用户的任务，选定后返回本次用途的位置 ID | `chooseDirectory`、`NSOpenPanel`、`NSSavePanel`、`AccessLease`。保留 App 沙箱权限与后续文件校验 |
+| `create_catalog`、`open_catalog` | 名称与位置授权 ID 新建，或用近期图库 ID／位置授权 ID 打开。返回新图库会话 | `AppModel.createCatalog`／`finishCatalogOpen`、`CatalogExtensionChange`。核验位置与 schema，旧后缀沿用改名／保留／取消确认。新建与改名遵守无覆盖语义 |
+| `request_file_access` | 按操作用途打开原生文件或目录面板。返回等待用户的任务，选定后返回本次用途的位置 ID | `AppModel.directoryPanel`、`NSOpenPanel`、`AccessLease`。保留 App 沙箱权限与后续文件校验 |
 | `relocate_library_root`、`locate_photo_original` | 根目录 ID／照片版本 ID 与新位置，返回身份核验、不可用项和更新范围 | `AppModel.relocate`／`locateOriginal`、`RootRelocator.prepare`／`commit`。引用路径变化，身份核验及受影响版本保留 |
 | `plan_photo_import` | 引用／复制、来源、目标、包含子目录、跳过已入库、候选筛选、日期布局、附件映射、同名策略、集合和成对检测。返回候选、阻塞问题及计划 ID | `ImportSheet`、`ReferenceImporter.preview`、`ImportPlanner.plan`。计划只读业务数据，冻结候选与文件身份 |
 | `start_photo_import`、`resolve_import_conflict` | 计划 ID、候选 ID，按冲突 ID 选择独特命名／跳过／受限覆盖，显式指定是否应用到余项。返回任务和逐项结果 | `runReference`／`startCopy`／`runCopy`／`resolveImportConflict`。复制使用现有暂存、回读和旧文件保留 |
@@ -26,7 +26,7 @@
 | `restore_import_backup`、`clean_import_backup` | 计划及成员 ID，恢复到新的授权位置，或按现有确认删除指定的旧文件备份 | `CopyImporter.restoreOld`／`cleanupOld`、`ImportRecoverySheet`。恢复无覆盖，清理沿用原生不可逆确认 |
 | `get_job`、`cancel_job` | 任务 ID，查询阶段、进度、逐项结果和产物，或请求取消后继续查询 | `AppModel.taskProgress`、各服务自己的执行状态和记录。保留已发布结果及失败原因 |
 
-对应回归入口为 `CatalogFileTests`、`ImportTests`、`FolderReviewTests`、`RecoveryTests` 与 `WorkflowTests`。新增 MCP 场景覆盖等待授权、计划失效、重连和单独报告发布与入库结果。
+对应回归入口为 `AgentLibraryTests`、`CatalogFileTests`、`ImportTests`、`FolderReviewTests`、`RecoveryTests` 与 `WorkflowTests`。MCP 场景覆盖等待授权、计划失效、重连和单独报告发布与入库结果。
 
 ### 第四步 浏览 整理和全局编辑
 
@@ -128,6 +128,8 @@
 | `image_access_disabled`、`file_access_required` | 等待用户开启图像共享，或按任务要求完成原生文件授权。 |
 | `rating_conflict`、`undo_conflict` | 回读实际评级和工作区状态。只有用户意图仍匹配时才提交新的修改。 |
 | `request_id_conflict`、`request_expired` | 核对上次调用结果，回读后以新请求标识提交当前动作。 |
+| `stale_plan`、`stale_conflict` | 重新查看计划或任务，依据当前候选或冲突选项提交。 |
+| `job_unavailable`、`import_record_unavailable` | 核对图库及复制记录，确认是否可以继续。 |
 | `service_stopped` | 在设置重新取得连接配置和令牌，再读工作区。 |
 | `operation_failed` | 按结果中的提交状态恢复。保存状态不确定时先回读记录或文件。 |
 
@@ -149,7 +151,7 @@
 
 单次和批次修改沿用现有事务与撤销边界。结果返回实际受影响对象、`commit_state`（`not_committed`、`committed` 或 `unknown`）和可撤销的 `operation_id`。事务已保存、后续界面刷新失败时返回 `warning` 和已提交状态，客户端先回读，避免重复写入。撤销绑定实际 `AppModel.undo` 栈顶动作及其分组身份，遇到其他动作入栈、用户先行撤销、栈清空或切库时拒绝过期请求。相同值返回 `changed: false`，撤销标识为空。文件写入报告发布和回读结果及可用的恢复方式。
 
-写入携带 `get_workspace` 返回的 `request_epoch` 及客户端生成的 `request_id`。同一代次内，同 ID 和相同参数返回已有结果或进行中的状态，同 ID 不同参数报冲突。记录有界，换代前等待在途提交结束，过期代次的请求先回读再用新 ID 提交。HTTP 重连保留业务去重，App 重启后按已有持久化任务回读结果，无法确定的状态先核验实际数据。
+写入携带 `get_workspace` 返回的 `request_epoch` 及客户端生成的 `request_id`。同一代次内，同 ID 和相同参数返回已有结果或已受理的任务 ID，同 ID 不同参数报冲突。切库使旧会话的新写入请求失效，并保留已受理动作的重发结果。去重记录有界，换代前等待在途任务结束，代次过期后先回读再提交。任务控制使用 `job_id`，冲突选择还绑定 `conflict_id`。HTTP 重连保留业务去重，App 重启后按已有持久化任务回读结果，无法确定的状态先核验实际数据。
 
 ### 多步任务
 
@@ -191,6 +193,16 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 | `undo_operation` | `catalog_session_id`、`operation_id`、`request_epoch`、`request_id` | 被撤销的 `operation_id`、受影响照片与恢复值及 `commit_state`。复用 `AppModel.undo` 和评级恢复路径，栈顶身份冲突返回 `undo_conflict` |
 
 第二步沿 `CatalogQueryTests`、`StackTests` 和 `WorkflowTests` 验证分页查询跨页、折叠堆叠两种计数、切库后的旧游标和已保存预览版本。用合成图库的一张明确照片验证评级并回读，重复相同请求只产生一次提交，手动改动触发版本冲突，用户在原生菜单可撤销 MCP 评级，MCP 只能撤销匹配的栈顶动作。验证结果同时核对当前照片、数据库、界面及真实客户端返回。
+
+### 图库和导入接口
+
+具体输入以 `tools/list` 为准。图库打开后，`request_file_access`、`create_catalog` 和 `open_catalog` 同样携带当前 `catalog_session_id`。系统面板返回按用途绑定的 `access_id`，打开新位置的图库文件时还会核对包含它的文件夹。切库和停止服务会使旧授权与计划失效。文件授权、计划和任务结果返回名称、相对名称及业务 ID。[macOS App 沙箱文件授权](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox)
+
+长操作返回 `job_id`，用 `get_job` 查看 `state`、`phase`、进度、`user_action` 和结果。等待复制冲突时，结果提供 `conflict_id`、文件名和当前允许的策略。取消后继续读终态及已保存结果。任务结果和来源列表用 `next_offset` 分页。工作区的 `agent_job` 表示当前进行中的 Agent 任务。
+
+引用导入按候选 ID 选择，复制按组 ID 选择。逐张修改复制组的输入或分配附件时，用 `base_plan_id` 及原计划的候选、附件或组 ID 生成新计划。执行复用保存的源身份及复制命名决策。文件夹差异使用单独的差异与位置 ID，应用时整批重新核验。
+
+复制记录的 `record_id` 随图库持久化。在同一图库中可用它调用 `get_job`，检查文件发布、入库、恢复记录，再继续未完成的工作。内存中的其他任务可跨 HTTP 会话查询。服务重新启动后，从当前图库和复制日志回读状态。
 
 ## 实施顺序
 

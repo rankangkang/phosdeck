@@ -3,12 +3,20 @@ import ImageIO
 import GRDB
 
 struct ScanReport {
+    struct Item {
+        let url: URL
+        var state: String
+        var photoID: String? = nil
+        var errorCode: String? = nil
+    }
     var indexed = 0
     var ignored = 0
     var errors: [String] = []
     var cancelled = false
     var sourceIDs: Set<String> = []
     var importedPhotoIDs: Set<String> = []
+    var items: [Item] = []
+    var wroteCatalog = false
 }
 
 struct ImportCandidate: Identifiable, Sendable {
@@ -20,18 +28,21 @@ struct ImportCandidate: Identifiable, Sendable {
 }
 
 actor ReferenceImporter {
-    func scan(root: StorageRoot, catalog: CatalogStore, progress: @escaping @Sendable (Int) async -> Void) async -> ScanReport {
+    func scan(root: StorageRoot, catalog: CatalogStore, directory: String = "", includeSubfolders: Bool = true,
+              recordItems: Bool = false, progress: @escaping @Sendable (Int) async -> Void) async -> ScanReport {
         var report = ScanReport()
         do {
-            let lease = try AccessLease(bookmark: root.bookmark)
+            let scope = FolderReviewScope(root: root, directory: directory)
+            let lease = try FolderReviewService.access(scope, catalog: catalog)
             defer { withExtendedLifetime(lease) {} }
-            try SourceAvailability.check(root: lease.url, file: lease.url)
             var enumerationErrors = [String]()
             defer { report.errors += enumerationErrors }
             let outputs = try await catalog.database.read { db in Set(try String.fetchAll(db, sql: "SELECT destination FROM exportItem")) }
-            guard let enumerator = FileManager.default.enumerator(at: lease.url,
+            var options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles, .skipsPackageDescendants]
+            if !includeSubfolders { options.insert(.skipsSubdirectoryDescendants) }
+            guard let enumerator = FileManager.default.enumerator(at: scope.url,
                 includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey],
-                options: [.skipsHiddenFiles, .skipsPackageDescendants], errorHandler: { url, error in enumerationErrors.append("\(url.lastPathComponent)：\(error.localizedDescription)"); return true }) else { throw LRCError(L10n.text("app.cannotReadTheFolder", defaultValue: "Cannot read the folder")) }
+                options: options, errorHandler: { url, error in enumerationErrors.append("\(url.lastPathComponent)：\(error.localizedDescription)"); return true }) else { throw LRCError(L10n.text("app.cannotReadTheFolder", defaultValue: "Cannot read the folder")) }
             while let url = enumerator.nextObject() as? URL {
                 try Task.checkCancellation()
                 let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey])
@@ -42,11 +53,17 @@ actor ReferenceImporter {
                 guard values.isRegularFile == true, !outputs.contains(url.path) else { continue }
                 guard ImportPlanner.images.contains(url.pathExtension.lowercased()) else { report.ignored += 1; continue }
                 do {
-                    let photo = try Self.inspect(url: url, root: root, rootURL: lease.url)
-                    try catalog.index(photo)
+                    let photo = try Self.inspect(url: url, root: root, rootURL: URL(fileURLWithPath: root.path))
+                    let added = try catalog.index(photo)
+                    report.wroteCatalog = true
+                    if added { report.importedPhotoIDs.insert(photo.id) }
+                    if recordItems { report.items.append(.init(url: url, state: added ? "indexed" : "already_indexed", photoID: added ? photo.id : nil)) }
                     report.indexed += 1
                 } catch is CancellationError { throw CancellationError() }
-                catch { report.errors.append("\(url.lastPathComponent)：\(error.localizedDescription)") }
+                catch {
+                    report.errors.append("\(url.lastPathComponent)：\(error.localizedDescription)")
+                    if recordItems { report.items.append(.init(url: url, state: "failed", errorCode: "scan_failed")) }
+                }
                 if report.indexed % 25 == 0 { await progress(report.indexed) }
             }
         } catch is CancellationError { report.cancelled = true }
@@ -77,40 +94,72 @@ actor ReferenceImporter {
             }
     }
 
-    func add(source: URL, candidates: [ImportCandidate], collection: String?, catalog: CatalogStore) async -> ScanReport {
+    func add(source: URL, candidates: [ImportCandidate], collection: String?, catalog: CatalogStore, recordItems: Bool = false,
+             progress: @escaping @Sendable (Int) async -> Void = { _ in }) async -> ScanReport {
         var report = ScanReport()
         do {
             let lease = AccessLease(url: source)
             defer { withExtendedLifetime(lease) {} }
             let source = source.resolvingSymlinksInPath().standardizedFileURL
             try SourceAvailability.check(root: source, file: source)
+            try Task.checkCancellation()
             let existing = try catalog.roots()
             let root: StorageRoot
             if let parent = existing.first(where: { source.path == $0.path || source.path.hasPrefix($0.path + "/") }) {
                 root = parent
             } else {
                 root = try catalog.addRoot(url: source, bookmark: AccessLease.bookmark(lease.url, readOnly: true))
+                report.wroteCatalog = true
             }
             let rootURL = URL(fileURLWithPath: root.path)
-            for candidate in candidates {
+            for (index, candidate) in candidates.enumerated() {
                 try Task.checkCancellation()
+                if recordItems && index % 16 == 0 { await progress(index) }
+                var item = ScanReport.Item(url: candidate.url, state: "pending")
+                var failure = "source_changed"
                 do {
                     guard candidate.problem == nil else { throw LRCError(candidate.problem!) }
-                    guard try FileIdentity.read(candidate.url) == candidate.identity else { throw LRCError(L10n.text("app.theFileChangedAfterPreviewImportItAgain", defaultValue: "The file changed after preview. Import it again")) }
+                    guard candidate.url.resolvingSymlinksInPath().standardizedFileURL == candidate.url.standardizedFileURL,
+                          try FileIdentity.read(candidate.url) == candidate.identity else { throw LRCError(L10n.text("app.theFileChangedAfterPreviewImportItAgain", defaultValue: "The file changed after preview. Import it again")) }
+                    failure = "index_failed"
                     let photo = try Self.inspect(url: candidate.url, root: root, rootURL: rootURL)
+                    guard try JSONDecoder().decode(FileIdentity.self, from: photo.identity) == candidate.identity else {
+                        failure = "source_changed"
+                        throw LRCError(L10n.text("app.theFileChangedAfterPreviewImportItAgain", defaultValue: "The file changed after preview. Import it again"))
+                    }
                     let previous = try await catalog.database.read { try String.fetchOne($0, sql: "SELECT id FROM photo WHERE identityKey=?", arguments: [photo.identityKey]) }
-                    if previous == nil, try catalog.index(photo) {
-                        report.indexed += 1
-                        report.importedPhotoIDs.insert(photo.id)
+                    try Task.checkCancellation()
+                    item.state = "already_indexed"
+                    item.photoID = previous
+                    if previous == nil {
+                        let added = try catalog.index(photo)
+                        report.wroteCatalog = true
+                        if added {
+                            report.indexed += 1
+                            report.importedPhotoIDs.insert(photo.id)
+                            item.state = "indexed"
+                            item.photoID = photo.id
+                        } else {
+                            report.ignored += 1
+                            item.state = "needs_review"
+                        }
                     }
                     else { report.ignored += 1 }
                     if let actualSource = try await catalog.database.read({ try String.fetchOne($0,sql:"SELECT id FROM photoSource WHERE identityKey=?",arguments:[photo.identityKey]) }) { report.sourceIDs.insert(actualSource) }
                     if let collection {
-                        let actual = try await catalog.database.read { try String.fetchOne($0, sql: "SELECT id FROM photo WHERE identityKey=?", arguments: [photo.identityKey]) }
-                        if let actual { try catalog.membership(ids: [actual], collection: collection, add: true) }
+                        failure = "collection_update_failed"
+                        if let actual = item.photoID {
+                            try catalog.membership(ids: [actual], collection: collection, add: true)
+                            report.wroteCatalog = true
+                        }
                     }
                 } catch is CancellationError { throw CancellationError() }
-                catch { report.errors.append("\(candidate.url.lastPathComponent)：\(error.localizedDescription)") }
+                catch {
+                    report.errors.append("\(candidate.url.lastPathComponent)：\(error.localizedDescription)")
+                    item.state = item.photoID == nil ? "failed" : "partially_indexed"
+                    item.errorCode = failure
+                }
+                if recordItems { report.items.append(item) }
             }
         } catch is CancellationError { report.cancelled = true }
         catch { report.errors.append(error.localizedDescription) }
