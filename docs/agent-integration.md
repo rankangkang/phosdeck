@@ -137,7 +137,7 @@
 
 当前打开的图库使用 `catalog_session_id`，每次切库或重开时重新生成。`photo_id` 对应版本 `Photo.id`。`source_revision`、`recipe_revision` 分别使用 `Photo.revision`、`Photo.recipeRevision`。虚拟副本独立定位并沿用原片身份校验。MCP 传输会话、服务实例和图库会话各有独立生命周期。
 
-查询沿用 `PhotoQuery` 和 `CatalogStore.page`。`matched_count` 是当前筛选的完整命中数，`visible_count` 是按折叠规则呈现的总数，堆叠行带本次命中组员数及整组数。读取列表保持界面选片和页位置。游标绑定图库会话、当前查询、可见结果代次和页大小。来源、筛选、排序、冻结范围或可见顺序失效时返回 `stale_cursor`。页内数据由同一数据库读取得出。
+查询沿用 `PhotoQuery` 和 `CatalogStore.page`。`matched_count` 是当前筛选的完整命中数，`visible_count` 是按折叠规则呈现的总数，堆叠行带本次命中组员数及整组数。读取列表保持界面选片和页位置。游标绑定图库会话、查询、列表类型、数据库变更和页大小。选择列表还绑定选择代次。发生变化时返回 `stale_cursor`，从首屏重读。页内数据由同一数据库读取得出。
 
 预览绑定图库会话、照片 ID、来源与配方修订号、渲染方式、实际尺寸和 `preview_id`。首批按已保存配方显影，未建立配方的照片在内存中使用原生基线。来源文件身份检查沿用 `ImagePipeline`。工作区显示上张照片、处于临时对比或存在草稿时，仍按请求中的明确版本读取。预览查询不触发 `loadActive` 的保存和元数据刷新。发布前复查图库和修订号，过期结果返回错误。
 
@@ -149,7 +149,7 @@
 
 修改指定图库会话、目标 ID、期望值或版本及请求标识。耗时查询和计算传递不可变快照，业务提交和必要的 UI 状态发布遵守现有隔离约定。来自多个客户端的修改串行执行，在数据库事务中再次核对目标和期望值。用户手动编辑、切换图库或存在未完成手势时，返回冲突原因及刷新／等待的动作。
 
-单次和批次修改沿用现有事务与撤销边界。结果返回实际受影响对象、`commit_state`（`not_committed`、`committed` 或 `unknown`）和可撤销的 `operation_id`。事务已保存、后续界面刷新失败时返回 `warning` 和已提交状态，客户端先回读，避免重复写入。撤销绑定实际 `AppModel.undo` 栈顶动作及其分组身份，遇到其他动作入栈、用户先行撤销、栈清空或切库时拒绝过期请求。相同值返回 `changed: false`，撤销标识为空。文件写入报告发布和回读结果及可用的恢复方式。
+单次和批次修改沿用现有事务与撤销边界。结果返回实际受影响对象、`commit_state`（`not_committed`、`committed` 或 `unknown`）和可撤销的 `operation_id`。事务已保存、后续界面刷新失败时返回 `warning` 和已提交状态，客户端先回读，避免重复写入。撤销绑定实际 `AppModel.undo` 栈顶动作及其分组身份，`redo_operation` 使用通过 MCP 撤销时的同一 ID。其他动作入栈、用户先行撤销、栈清空或切库时，旧操作标识会失效。无值变化时返回空操作标识。文件写入报告发布和回读结果及可用的恢复方式。
 
 写入携带 `get_workspace` 返回的 `request_epoch` 及客户端生成的 `request_id`。同一代次内，同 ID 和相同参数返回已有结果或已受理的任务 ID，同 ID 不同参数报冲突。切库使旧会话的新写入请求失效，并保留已受理动作的重发结果。去重记录有界，换代前等待在途任务结束，代次过期后先回读再提交。任务控制使用 `job_id`，冲突选择还绑定 `conflict_id`。HTTP 重连保留业务去重，App 重启后按已有持久化任务回读结果，无法确定的状态先核验实际数据。
 
@@ -186,11 +186,11 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 | 工具 | 输入 | `data` 与主要原生入口 |
 |---|---|---|
 | `get_capabilities` | `{}` | 应用名称、版本、bundle ID、`instance_id`、各已注册工具的当前可用性及原因，图像共享状态。取自 `Bundle`、服务设置及 `AppModel` 的可用条件 |
-| `get_workspace` | `{}` | `catalog_session_id`、`request_epoch`、图库显示名、当前来源和查询、视图和工具、活动 `photo_id` 与修订号、选择数量及最多 50 个 ID、是否截断、任务和草稿状态。无图库时会话和活动照片为空，仍可读取服务状态。取自 `AppModel`，选择集后续用 `list_selected_photos` 分页 |
-| `list_photos` | `catalog_session_id`，可选 `cursor`、`page_size` | `items`、`matched_count`、`visible_count`、`next_cursor`。每项含 `photo_id`、名称、版本名、源与配方修订号、评级、旗标、颜色标签、源可用性和堆叠信息。使用 `CatalogStore.page`，返回稳定的排序和分页状态 |
+| `get_workspace` | `{}` | `catalog_session_id`、`request_epoch`、图库显示名、当前来源和查询、视图和工具、活动 `photo_id` 与修订号、选择数量及最多 50 个 ID、是否截断、任务和草稿状态。无图库时会话和活动照片为空，仍可读取服务状态。取自 `AppModel`，完整选择用 `list_selected_photos` 分页 |
+| `list_photos` | `catalog_session_id`，可选 `cursor`、`page_size`、`listing` | `items`、`matched_count`、`visible_count`、`next_cursor`。每项含 `photo_id`、名称、版本、源与配方修订号、拍摄信息、评级、旗标、色标、源可用性和堆叠信息。使用 `CatalogStore.page`，返回稳定的排序和分页状态 |
 | `get_photo_preview` | `catalog_session_id`、`photo_id`、`source_revision`、`recipe_revision`，可选 `long_edge` | `preview_id`、目标身份、实际图像尺寸、坐标空间与直方图，另附 PNG。使用 `CatalogStore.photo`、`ImageRequest` 和 `ImagePipeline.render`，校验图像共享、来源及版本 |
-| `set_photo_rating` | `catalog_session_id`、`photo_id`、`expected_rating`、`rating`（两种评级均为 0 至 5 的整数）、`request_epoch`、`request_id` | `photo_id`、`previous_rating`、`rating`、`changed`、`commit_state`、`operation_id`。从 `AppModel.updateOrganization` 提取共享保存和回读，保留 `CatalogStore.setOrganization` 的事务及原生撤销。MCP 明确指定目标，事务校验期望评级，并关闭自动前进 |
-| `undo_operation` | `catalog_session_id`、`operation_id`、`request_epoch`、`request_id` | 被撤销的 `operation_id`、受影响照片与恢复值及 `commit_state`。复用 `AppModel.undo` 和评级恢复路径，栈顶身份冲突返回 `undo_conflict` |
+| `set_photo_rating` | `catalog_session_id`、`photo_id`、`expected_rating`、`rating`（两种评级均为 0 至 5 的整数）、`request_epoch`、`request_id` | `photo_id`、`previous_rating`、`rating`、`changed`、`commit_state`、`operation_id`。复用 `AppModel.updateOrganization` 的保存和回读。MCP 明确指定目标，事务校验期望评级，并关闭自动前进 |
+| `undo_operation` | `catalog_session_id`、`operation_id`、`request_epoch`、`request_id` | 被撤销的 `operation_id`、已核对的恢复结果及 `commit_state`。复用 `AppModel.undo`，栈顶身份或当前值冲突返回 `undo_conflict` |
 
 第二步沿 `CatalogQueryTests`、`StackTests` 和 `WorkflowTests` 验证分页查询跨页、折叠堆叠两种计数、切库后的旧游标和已保存预览版本。用合成图库的一张明确照片验证评级并回读，重复相同请求只产生一次提交，手动改动触发版本冲突，用户在原生菜单可撤销 MCP 评级，MCP 只能撤销匹配的栈顶动作。验证结果同时核对当前照片、数据库、界面及真实客户端返回。
 
@@ -203,6 +203,18 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 引用导入按候选 ID 选择，复制按组 ID 选择。逐张修改复制组的输入或分配附件时，用 `base_plan_id` 及原计划的候选、附件或组 ID 生成新计划。执行复用保存的源身份及复制命名决策。文件夹差异使用单独的差异与位置 ID，应用时整批重新核验。
 
 复制记录的 `record_id` 随图库持久化。在同一图库中可用它调用 `get_job`，检查文件发布、入库、恢复记录，再继续未完成的工作。内存中的其他任务可跨 HTTP 会话查询。服务重新启动后，从当前图库和复制日志回读状态。
+
+### 浏览选片和标记接口
+
+`set_library_query` 接受 `list_library_sources` 返回的 `source_id`、原生筛选条件和排序。传入条件会启用相应筛选分区，也可显式控制 `filter_sections` 和 `filters_enabled`。`filters_open` 只控制筛选器显示。`hold_results` 冻结成员和顺序，`refresh_library_query` 重新计算。根据 `get_workspace` 的 `query_revision` 和 `selection_revision` 可核对全选、增减选择等依赖当前工作区的操作。
+
+`list_photos` 默认 `listing=visible`，`listing=matches` 按查询顺序包含折叠组员。`list_selected_photos` 按版本 ID 分页，包含跨页或折叠的已选版本。`select_photos` 可替换、增加、移除或清空选择，也可选中全部命中或一个堆叠的匹配成员。打开指定版本使用 `open_version`，浏览位置和前后页用 `navigate_library`。
+
+工作区、比较和调查工具返回实际活动照片、参考／候选版本和可见调查页。缩放和平移以对应视口为准，平移返回归一化的当前中心与等待新渲染几何的请求位置。剪切开关只影响界面显示。通过 `get_photo_preview` 查看已保存的显影结果，沿用独立图像共享开关。
+
+`set_photo_ratings` 和 `set_photo_marks` 单次接收最多 200 个明确目标。每张传入所修改字段的当前值，任一不匹配时整批保留，并返回 `marks_conflict` 和对应照片的实际标记。相对星级以各张照片原值步进，越界停在 0 或 5。`advance` 显式开启时，仅从本批目标中的活动照片前进。批量写入返回各版本的前后标记和共同的撤销 ID。
+
+`list_keywords` 可搜索目录词表、返回近期关键词和选中计数，并按 `photo_id` 回读该版本的关键词及题注。添加与移除限定版本，重命名沿用全图库关联校验。题注以 `expected_captions` 核对每张现有内容，遇到 `caption_conflict` 时先核对新值再决定是否重发。关键词和题注变更可通过原生撤销栈撤销。
 
 ## 实施顺序
 

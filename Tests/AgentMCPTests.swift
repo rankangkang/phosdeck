@@ -28,10 +28,10 @@ final class AgentMCPTests: XCTestCase {
         return (directory, catalog)
     }
 
-    @MainActor private func fixture() throws -> (CatalogStore, AppModel, AppMCPTools) {
+    @MainActor private func fixture(ids: [String] = ["a", "b", "c"]) throws -> (CatalogStore, AppModel, AppMCPTools) {
         let (directory, catalog) = try temporaryCatalog()
         let root = try catalog.addRoot(url: directory, bookmark: Data())
-        for id in ["a", "b", "c"] {
+        for id in ids {
             try catalog.index(Photo(id: id, rootID: root.id, relativePath: id + ".jpg", identity: Data(), identityKey: id, width: 1, height: 1))
         }
         let model = AppModel()
@@ -172,6 +172,207 @@ final class AgentMCPTests: XCTestCase {
         XCTAssertEqual(try catalog.photoRating("b"), 0)
         XCTAssertTrue(model.selection.isEmpty)
         XCTAssertNil(model.activeID)
+    }
+
+    @MainActor func testHeldQuerySelectsFoldedAndCrossPageVersions() async throws {
+        let ids = (0..<205).map { String(format: "p%03d", $0) }
+        let (catalog, model, tools) = try fixture(ids: ids)
+        try catalog.setOrganization(ids: ids, rating: 3)
+        try catalog.changeStacks(.group(top: ids[0], members: Array(ids.prefix(2))))
+        try catalog.collection(name: "Subset", id: "subset")
+        try catalog.membership(ids: [ids[0]], collection: "subset", add: true)
+        try model.reload()
+        let workspace = data(await call(tools, .workspace))
+        let session = ["catalog_session_id": try XCTUnwrap(workspace["catalog_session_id"])]
+        let base = session.merging(["request_epoch": try XCTUnwrap(workspace["request_epoch"])]) { _, value in value }
+        func write(_ tool: AppMCPTool, _ args: [String: Value], _ request: String = UUID().uuidString) async -> CallTool.Result {
+            await call(tools, tool, base.merging(args) { _, value in value }.merging(["request_id": .string(request)]) { _, value in value })
+        }
+        let query = await write(.setQuery, ["rating_threshold": 3, "sort": "filename", "hold_results": true])
+        XCTAssertEqual(data(query)["matched_count"], 205)
+        XCTAssertEqual(data(query)["visible_count"], 204)
+        let queryRevision = try XCTUnwrap(data(query)["query_revision"])
+        let visible = data(await call(tools, .listPhotos, session.merging(["page_size": 2]) { _, value in value }))
+        let matches = data(await call(tools, .listPhotos, session.merging(["listing": "matches", "page_size": 2]) { _, value in value }))
+        func photoIDs(_ page: [String: Value]) -> [String] {
+            page["items"]?.arrayValue?.compactMap { $0.objectValue?["photo_id"]?.stringValue } ?? []
+        }
+        XCTAssertEqual(photoIDs(visible), [ids[0], ids[2]])
+        XCTAssertEqual(photoIDs(matches), Array(ids.prefix(2)))
+        let matchedCursor = try XCTUnwrap(matches["next_cursor"])
+        let next = data(await call(tools, .listPhotos, session.merging(["cursor": matchedCursor]) { _, value in value }))
+        XCTAssertEqual(photoIDs(next), Array(ids[2...3]))
+        XCTAssertEqual(next["listing"], "matches")
+        let all = await write(.selectPhotos, ["action": "all", "active_photo_id": .string(ids.last!), "query_revision": queryRevision])
+        XCTAssertEqual(data(all)["selection_count"], 205)
+        XCTAssertEqual(model.pageOffset, 200)
+        XCTAssertTrue(model.selection.contains(ids[1]))
+        XCTAssertEqual(model.activeID, ids.last)
+        let selected = data(await call(tools, .listSelected, session.merging(["page_size": 200]) { _, value in value }))
+        XCTAssertEqual(photoIDs(selected), Array(ids.prefix(200)))
+        let selectedCursor = try XCTUnwrap(selected["next_cursor"])
+        let tail = data(await call(tools, .listSelected, session.merging(["cursor": selectedCursor]) { _, value in value }))
+        XCTAssertEqual(photoIDs(tail), Array(ids.suffix(5)))
+        XCTAssertEqual(tail["next_cursor"], .null)
+
+        let stack = await write(.selectPhotos, ["action": "stack", "photo_id": .string(ids[0]), "active_photo_id": .string(ids[1])])
+        XCTAssertEqual(data(stack)["selection_count"], 2)
+        XCTAssertEqual(model.activeID, ids[1])
+        XCTAssertEqual(model.pageOffset, 0)
+        checkError(await call(tools, .listSelected, session.merging(["cursor": selectedCursor]) { _, value in value }), "stale_cursor")
+        let rated = await write(.rate, ["photo_id": .string(ids[1]), "expected_rating": 3, "rating": 0])
+        XCTAssertFalse(rated.isError ?? true)
+        XCTAssertEqual(model.resultCount, 205)
+        XCTAssertEqual(model.activeID, ids[1], "A saved mark keeps an explicitly active folded member within the held query")
+        let hiddenFilters = await write(.setQuery, ["filters_open": false])
+        XCTAssertEqual(data(hiddenFilters)["query_revision"], queryRevision)
+        XCTAssertEqual(model.resultCount, 205)
+
+        let refreshed = await write(.refreshQuery, [:])
+        XCTAssertEqual(data(refreshed)["matched_count"], 204)
+        checkError(await write(.selectPhotos, ["action": "all", "query_revision": queryRevision]), "stale_query")
+        checkError(await write(.setQuery, ["source_id": "collection:subset", "date_from": "2026-02-30"]), "invalid_arguments")
+        XCTAssertEqual(model.scope, "all")
+        let collection = await write(.setQuery, ["source_id": "collection:subset", "sort": "manual"])
+        XCTAssertEqual(data(collection)["matched_count"], 1)
+        XCTAssertTrue(model.query.isManualCollectionOrder)
+        let back = await write(.navigate, ["action": "back"])
+        XCTAssertEqual(data(back)["source_id"], "all")
+        XCTAssertEqual(data(back)["matched_count"], 204)
+        XCTAssertNotNil(model.query.snapshotID)
+    }
+
+    @MainActor func testBatchMarksAreAtomicDeduplicatedAndRedoUsesNativeStack() async throws {
+        let (catalog, model, tools) = try fixture()
+        model.choose(["a"], active: "a")
+        let state = data(await call(tools, .workspace))
+        let base = ["catalog_session_id": try XCTUnwrap(state["catalog_session_id"]),
+                    "request_epoch": try XCTUnwrap(state["request_epoch"])]
+        func write(_ tool: AppMCPTool, _ args: [String: Value], request: String = UUID().uuidString) async -> CallTool.Result {
+            await call(tools, tool, base.merging(args) { _, value in value }.merging(["request_id": .string(request)]) { _, value in value })
+        }
+        try catalog.setOrganization(ids: ["c"], rating: 4)
+        checkError(await write(.rateBatch, ["rating": 3, "targets": [
+            ["photo_id": "b", "expected_rating": 0], ["photo_id": "c", "expected_rating": 0]
+        ]]), "marks_conflict")
+        XCTAssertEqual(try catalog.photoRating("b"), 0)
+        XCTAssertFalse(model.undo.canUndo)
+
+        let arguments: [String: Value] = ["rating_step": 1, "targets": [["photo_id": "b", "expected_rating": 0], ["photo_id": "c", "expected_rating": 4]]]
+        let saved = await write(.rateBatch, arguments, request: "batch")
+        XCTAssertEqual(data(saved)["changed_count"], 2)
+        let retry = await write(.rateBatch, arguments, request: "batch")
+        XCTAssertEqual(saved.structuredContent, retry.structuredContent)
+        XCTAssertEqual(try catalog.photoRating("b"), 1)
+        XCTAssertEqual(try catalog.photoRating("c"), 5)
+        XCTAssertEqual(model.activeID, "a")
+        let operation = try XCTUnwrap(data(saved)["operation_id"])
+        let undone = await write(.undo, ["operation_id": operation])
+        XCTAssertEqual(data(undone)["commit_state"], "committed")
+        XCTAssertEqual(try catalog.photoRating("b"), 0)
+        XCTAssertEqual(try catalog.photoRating("c"), 4)
+        let redone = await write(.redo, ["operation_id": operation])
+        XCTAssertEqual(data(redone)["commit_state"], "committed")
+        XCTAssertEqual(try catalog.photoRating("b"), 1)
+        XCTAssertEqual(try catalog.photoRating("c"), 5)
+
+        let marked = await write(.marks, ["flag": -1, "color_label": 3, "targets": [
+            ["photo_id": "a", "expected_flag": 0, "expected_color_label": 0],
+            ["photo_id": "b", "expected_flag": 0, "expected_color_label": 0]
+        ], "advance": true])
+        XCTAssertEqual(data(marked)["changed_count"], 2)
+        XCTAssertEqual(try catalog.photo("a")?.flag, -1)
+        XCTAssertEqual(try catalog.photo("b")?.colorLabel, 3)
+        XCTAssertEqual(model.activeID, "b")
+        model.undo.undo()
+        XCTAssertEqual(try catalog.photo("a")?.flag, 0)
+        XCTAssertEqual(try catalog.photo("b")?.colorLabel, 0)
+        checkError(await write(.redo, ["operation_id": try XCTUnwrap(data(marked)["operation_id"])]), "undo_conflict")
+
+        let changed = await write(.rate, ["photo_id": "b", "expected_rating": 1, "rating": 3])
+        try catalog.setOrganization(ids: ["b"], rating: 2)
+        checkError(await write(.undo, ["operation_id": try XCTUnwrap(data(changed)["operation_id"])]), "undo_conflict")
+        XCTAssertEqual(try catalog.photoRating("b"), 2)
+    }
+
+    @MainActor func testComparisonSurveyAndViewportUseNativeWorkspace() async throws {
+        let (_, model, tools) = try fixture()
+        let state = data(await call(tools, .workspace))
+        let base = ["catalog_session_id": try XCTUnwrap(state["catalog_session_id"]),
+                    "request_epoch": try XCTUnwrap(state["request_epoch"])]
+        func write(_ tool: AppMCPTool, _ args: [String: Value]) async -> CallTool.Result {
+            await call(tools, tool, base.merging(args) { _, value in value }.merging(["request_id": .string(UUID().uuidString)]) { _, value in value })
+        }
+        let compared = await write(.compare, ["action": "set", "reference_photo_id": "a", "candidate_photo_id": "b",
+                                              "photo_ids": ["a", "b", "c"], "restrict_to_group": true])
+        XCTAssertEqual(data(compared)["view"], "compare")
+        XCTAssertEqual(model.comparison?.reference.photo?.id, "a")
+        XCTAssertEqual(model.comparison?.candidate.photo?.id, "b")
+        _ = await write(.viewport, ["pane": "candidate", "zoom": "scale", "scale": 2, "x": 0.25, "y": 0.75])
+        XCTAssertEqual(model.comparison?.reference.zoom, 2)
+        XCTAssertEqual(model.comparison?.candidate.viewport.requestedCenter, CGPoint(x: 0.25, y: 0.75))
+        _ = await write(.viewport, ["pane": "reference", "linked": false, "zoom": "fit"])
+        XCTAssertNil(model.comparison?.reference.zoom)
+        XCTAssertEqual(model.comparison?.candidate.zoom, 2)
+        _ = await write(.compare, ["action": "swap"])
+        XCTAssertEqual(model.comparison?.reference.photo?.id, "b")
+        XCTAssertEqual(model.comparison?.candidate.photo?.id, "a")
+
+        let survey = await write(.survey, ["action": "set", "photo_ids": ["a", "b", "c"], "active_photo_id": "c"])
+        XCTAssertEqual(data(survey)["view"], "survey")
+        XCTAssertEqual(model.selection, ["a", "b", "c"])
+        XCTAssertNil(model.comparison)
+        _ = await write(.survey, ["action": "remove", "photo_id": "c"])
+        XCTAssertEqual(model.selection, ["a", "b"])
+        let opened = await write(.survey, ["action": "open", "photo_id": "b"])
+        XCTAssertEqual(data(opened)["view"], "single")
+        XCTAssertEqual(model.selection, ["b"])
+        _ = await write(.viewport, ["zoom": "fill", "locked": true])
+        XCTAssertTrue(model.fillView)
+        XCTAssertTrue(model.lockViewPosition)
+        _ = await write(.clipping, ["shadows": true])
+        XCTAssertTrue(model.showShadowClipping)
+        XCTAssertFalse(model.showHighlightClipping)
+    }
+
+    @MainActor func testKeywordsAndCaptionsUseExplicitVersionsAndUndo() async throws {
+        let (catalog, model, tools) = try fixture()
+        model.choose(["a"], active: "a")
+        let state = data(await call(tools, .workspace))
+        let session = ["catalog_session_id": try XCTUnwrap(state["catalog_session_id"])]
+        let base = session.merging(["request_epoch": try XCTUnwrap(state["request_epoch"])]) { _, value in value }
+        func write(_ tool: AppMCPTool, _ args: [String: Value]) async -> CallTool.Result {
+            await call(tools, tool, base.merging(args) { _, value in value }.merging(["request_id": .string(UUID().uuidString)]) { _, value in value })
+        }
+        let keyword = await write(.editKeywords, ["action": "add", "keywords": ["海岸", "Fog"], "photo_ids": ["b", "c"]])
+        XCTAssertEqual(data(keyword)["changed_count"], 2)
+        XCTAssertEqual(try catalog.photoKeywords(ids: ["a"])["a"], [])
+        let result = data(await call(tools, .keywords, session.merging(["photo_id": "b", "search": "FOG"]) { _, value in value }))
+        XCTAssertEqual(result["photo_keywords"], ["Fog", "海岸"])
+        XCTAssertEqual(result["caption"], "")
+        XCTAssertEqual(result["total"], 1)
+        XCTAssertEqual(result["items"]?.arrayValue?.first?.objectValue?["selected_count"], 0)
+        let rename = await write(.renameKeyword, ["keyword_id": "fog", "name": "Mist"])
+        XCTAssertEqual(data(rename)["affected_version_count"], 2)
+        let renameID = try XCTUnwrap(data(rename)["operation_id"])
+        let reverted = await write(.undo, ["operation_id": renameID])
+        XCTAssertEqual(data(reverted)["keyword_id"], "fog")
+        XCTAssertEqual(try catalog.photoKeywords(ids: ["c"])["c"], ["Fog", "海岸"])
+
+        _ = try catalog.setCaptions(["c": "Native edit"])
+        let conflict = await write(.caption, ["caption": "New caption", "expected_captions": ["b": "", "c": ""]])
+        checkError(conflict, "caption_conflict")
+        XCTAssertEqual(data(conflict)["actual_caption"], "Native edit")
+        XCTAssertEqual(try catalog.photo("b")?.caption, "")
+        let saved = await write(.caption, ["caption": "第一行\r\nSecond line", "expected_captions": ["b": "", "c": "Native edit"]])
+        XCTAssertEqual(data(saved)["caption"], "第一行\nSecond line")
+        XCTAssertEqual(try catalog.photo("c")?.caption, "第一行\nSecond line")
+        let operation = try XCTUnwrap(data(saved)["operation_id"])
+        let undo = await write(.undo, ["operation_id": operation])
+        XCTAssertEqual(data(undo)["commit_state"], "committed")
+        XCTAssertEqual(try catalog.photo("c")?.caption, "Native edit")
+        XCTAssertEqual(try catalog.photo("b")?.caption, "")
+        XCTAssertEqual(model.activeID, "a")
     }
 
     @MainActor func testPreviewSharesOnlyRequestedSavedVersionAndNeverCreatesBaseline() async throws {

@@ -75,21 +75,38 @@ extension CatalogStore {
     }
 
     func keywordSummary(selected ids: Set<String>) throws -> [KeywordSummary] {
-        // ponytail: aggregate on selection changes; cache totals if large keyword catalogs make this slow.
-        let marks = ids.isEmpty ? "NULL" : ids.map { _ in "?" }.joined(separator: ",")
-        return try database.read {
-            try KeywordSummary.fetchAll($0, sql: """
-                SELECT keyword, min(name) AS name, count(*) AS total,
-                       sum(CASE WHEN photoID IN (\(marks)) THEN 1 ELSE 0 END) AS selected
-                FROM photoKeyword WHERE photoID IN (SELECT id FROM photo WHERE deleted=0) GROUP BY keyword ORDER BY keyword
-                """, arguments: StatementArguments(ids))
+        try database.read { try Self.keywordSummary($0, selected: ids) }
+    }
+    func keywordBrowser(selected ids: Set<String>, photoID: String?) throws -> (keywords: [KeywordSummary], terms: [String]?, caption: String?) {
+        try database.read { db in
+            let summary = try Self.keywordSummary(db, selected: ids)
+            guard let photoID else { return (summary, nil, nil) }
+            guard let caption = try String.fetchOne(db, sql: "SELECT caption FROM photo WHERE id=? AND deleted=0", arguments: [photoID]) else {
+                throw OrganizationError.photoUnavailable
+            }
+            let terms = try Self.keywordState(db, ids: [photoID])[photoID]
+            return (summary, terms, caption)
         }
     }
+    private static func keywordSummary(_ db: Database, selected ids: Set<String>) throws -> [KeywordSummary] {
+        // ponytail: aggregate on selection changes; cache totals if large keyword catalogs make this slow.
+        let marks = ids.isEmpty ? "NULL" : ids.map { _ in "?" }.joined(separator: ",")
+        return try KeywordSummary.fetchAll(db, sql: """
+            SELECT keyword, min(name) AS name, count(*) AS total,
+                   sum(CASE WHEN photoID IN (\(marks)) THEN 1 ELSE 0 END) AS selected
+            FROM photoKeyword WHERE photoID IN (SELECT id FROM photo WHERE deleted=0) GROUP BY keyword ORDER BY keyword
+            """, arguments: StatementArguments(ids))
+    }
 
-    private static func keywordState(_ db: Database, ids: Set<String>) throws -> [String: [String]] {
+    func photoKeywords(ids: Set<String>) throws -> [String: [String]] {
+        try database.read { try Self.keywordState($0, ids: ids) }
+    }
+
+    private static func keywordState(_ db: Database, ids: Set<String>, includeRemoved: Bool = false) throws -> [String: [String]] {
         guard !ids.isEmpty else { return [:] }
         let marks = ids.map { _ in "?" }.joined(separator: ","), args = StatementArguments(ids)
-        let found = try String.fetchAll(db, sql: "SELECT id FROM photo WHERE id IN (\(marks))", arguments: args)
+        let live = includeRemoved ? "" : " AND deleted=0"
+        let found = try String.fetchAll(db, sql: "SELECT id FROM photo WHERE id IN (\(marks))" + live, arguments: args)
         guard Set(found) == ids else { throw LRCError(L10n.text("app.thePhotoSelectionChangedKeywordsWereNotSaved", defaultValue: "The photo selection changed. Keywords were not saved")) }
         var result = Dictionary(uniqueKeysWithValues: found.map { ($0, [String]()) })
         for row in try Row.fetchAll(db, sql: "SELECT photoID,name FROM photoKeyword WHERE photoID IN (\(marks)) ORDER BY keyword", arguments: args) {
@@ -131,7 +148,7 @@ extension CatalogStore {
 
     func restoreKeywords(_ states: [String: [String]]) throws -> [String: [String]] {
         try database.write { db in
-            let inverse = try Self.keywordState(db, ids: Set(states.keys))
+            let inverse = try Self.keywordState(db, ids: Set(states.keys), includeRemoved: true)
             for (id, keywords) in states {
                 try db.execute(sql: "DELETE FROM photoKeyword WHERE photoID=?", arguments: [id])
                 for value in keywords {
@@ -157,6 +174,11 @@ enum PhotoCaption {
     }
 }
 
+struct PhotoCaptionConflict: Error {
+    let id: String
+    let actual: String
+}
+
 extension CatalogStore {
     func captions(ids: Set<String>) throws -> [String: String] {
         try database.read { db in
@@ -169,12 +191,13 @@ extension CatalogStore {
         }
     }
     /// Validate the whole batch before writing, returning only changed versions for one undo.
-    func setCaptions(_ values: [String: String]) throws -> [String: String] {
+    func setCaptions(_ values: [String: String], expecting: [String: String]? = nil) throws -> [String: String] {
         let normalized = try values.mapValues { try PhotoCaption.normalized($0) }
         return try database.write { db in
             var old = [String: String]()
             for (id, value) in normalized {
                 guard let photo = try Photo.fetchOne(db, key: id), !photo.deleted else { throw LRCError(L10n.text("app.thePhotoSelectionChangedTheCaptionWasNotSaved", defaultValue: "The photo selection changed. The caption was not saved")) }
+                if let expecting, expecting[id] != photo.caption { throw PhotoCaptionConflict(id: id, actual: photo.caption) }
                 if photo.caption != value { old[id] = photo.caption }
             }
             for id in old.keys { try db.execute(sql: "UPDATE photo SET caption=? WHERE id=?", arguments: [normalized[id]!, id]) }

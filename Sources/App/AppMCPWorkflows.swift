@@ -165,6 +165,8 @@ final class AppMCPWorkflows {
         case .recentCatalogs: return await recentCatalogs()
         case .librarySources:
             return try await librarySources(catalog: model.catalog!, session: session!, arguments: arguments)
+        case .keywords:
+            return try await listKeywords(catalog: model.catalog!, session: session!, arguments: arguments)
         case .job, .importRecords:
             guard let catalog = model.catalog else { throw Self.missingJob }
             let response = try await readImportRecords(catalog: catalog, tool: tool, arguments: arguments)

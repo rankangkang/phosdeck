@@ -4,6 +4,33 @@ import GRDB
 enum OrganizationError: Error {
     case photoUnavailable
     case ratingConflict(actual: Int)
+    case marksConflict(id: String, actual: PhotoMarks)
+}
+
+struct PhotoMarks: Equatable {
+    var rating: Int
+    var flag: Int
+    var colorLabel: Int
+
+    init(_ photo: Photo) {
+        rating = photo.rating
+        flag = photo.flag
+        colorLabel = photo.colorLabel
+    }
+
+    func setting(rating: Int? = nil, flag: Int? = nil, colorLabel: Int? = nil) -> Self {
+        var value = self
+        if let rating { value.rating = rating }
+        if let flag { value.flag = flag }
+        if let colorLabel { value.colorLabel = colorLabel }
+        return value
+    }
+}
+
+struct PhotoMarkChange {
+    let id: String
+    let previous: PhotoMarks
+    let current: PhotoMarks
 }
 
 final class CatalogStore: @unchecked Sendable {
@@ -220,21 +247,34 @@ final class CatalogStore: @unchecked Sendable {
         }
     }
     @discardableResult
-    func setOrganization(ids: [String], rating: Int? = nil, flag: Int? = nil, colorLabel: Int? = nil, expectedRating: Int? = nil) throws -> [Photo] {
+    func setOrganization(ids: [String], rating: Int? = nil, flag: Int? = nil, colorLabel: Int? = nil) throws -> [Photo] {
         if let colorLabel, PhotoColorLabel(rawValue: colorLabel) == nil { throw LRCError(L10n.text("app.invalidColorLabel", defaultValue: "Invalid color label")) }
         return try database.write { db in
             let previous = try Self.photos(ids: Set(ids), in: db)
-            if let expectedRating {
-                guard ids.count == 1, let photo = previous.first else { throw OrganizationError.photoUnavailable }
-                guard photo.rating == expectedRating else { throw OrganizationError.ratingConflict(actual: photo.rating) }
-            }
-            for photo in previous {
-                if let rating, photo.rating != rating { try db.execute(sql: "UPDATE photo SET rating = ? WHERE id = ?", arguments: [rating, photo.id]) }
-                if let flag, photo.flag != flag { try db.execute(sql: "UPDATE photo SET flag = ? WHERE id = ?", arguments: [flag, photo.id]) }
-                if let colorLabel, photo.colorLabel != colorLabel { try db.execute(sql: "UPDATE photo SET colorLabel = ? WHERE id = ?", arguments: [colorLabel, photo.id]) }
-            }
+            _ = try Self.writePhotoMarks(previous, in: db) { _, marks in marks.setting(rating: rating, flag: flag, colorLabel: colorLabel) }
             return previous
         }
+    }
+    func changePhotoMarks(ids: Set<String>, requireAll: Bool,
+                          _ transform: (String, PhotoMarks) throws -> PhotoMarks) throws -> [PhotoMarkChange] {
+        try database.write { db in
+            let photos = try Self.photos(ids: ids, in: db)
+            guard !requireAll || photos.count == ids.count else { throw OrganizationError.photoUnavailable }
+            return try Self.writePhotoMarks(photos, in: db, transform)
+        }
+    }
+    private static func writePhotoMarks(_ photos: [Photo], in db: Database,
+                                        _ transform: (String, PhotoMarks) throws -> PhotoMarks) throws -> [PhotoMarkChange] {
+        let changes = try photos.map { photo in
+            let previous = PhotoMarks(photo)
+            return PhotoMarkChange(id: photo.id, previous: previous, current: try transform(photo.id, previous))
+        }
+        for change in changes where change.previous != change.current {
+            let marks = change.current
+            try db.execute(sql: "UPDATE photo SET rating=?,flag=?,colorLabel=? WHERE id=? AND deleted=0",
+                           arguments: [marks.rating, marks.flag, marks.colorLabel, change.id])
+        }
+        return changes
     }
     func photoRating(_ id: String) throws -> Int? {
         try database.read { try Int.fetchOne($0, sql: "SELECT rating FROM photo WHERE id=? AND deleted=0", arguments: [id]) }

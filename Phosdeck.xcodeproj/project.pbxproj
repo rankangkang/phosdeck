@@ -16,6 +16,8 @@
 		AA7900000000000000000036 /* AppMCPWorkflows.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000046 /* AppMCPWorkflows.swift */; };
 		AA7900000000000000000037 /* AppMCPLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000047 /* AppMCPLibrary.swift */; };
 		AA7900000000000000000038 /* AppMCPImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000048 /* AppMCPImport.swift */; };
+		AA790000000000000000003A /* AppMCPCulling.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004A /* AppMCPCulling.swift */; };
+		AA790000000000000000003B /* AppMCPMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004B /* AppMCPMetadata.swift */; };
 		AA7900000000000000000033 /* MCPHTTPListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000043 /* MCPHTTPListener.swift */; };
 		AA7900000000000000000034 /* mcp-NOTICES.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000044 /* mcp-NOTICES.txt */; };
 		AA7900000000000000000035 /* AgentMCPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000045 /* AgentMCPTests.swift */; };
@@ -250,6 +252,8 @@
 		AA7900000000000000000046 /* AppMCPWorkflows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPWorkflows.swift; sourceTree = "<group>"; };
 		AA7900000000000000000047 /* AppMCPLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPLibrary.swift; sourceTree = "<group>"; };
 		AA7900000000000000000048 /* AppMCPImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPImport.swift; sourceTree = "<group>"; };
+		AA790000000000000000004A /* AppMCPCulling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPCulling.swift; sourceTree = "<group>"; };
+		AA790000000000000000004B /* AppMCPMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPMetadata.swift; sourceTree = "<group>"; };
 		AA7900000000000000000043 /* MCPHTTPListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPHTTPListener.swift; sourceTree = "<group>"; };
 		AA7900000000000000000044 /* mcp-NOTICES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "mcp-NOTICES.txt"; sourceTree = "<group>"; };
 		AA7900000000000000000045 /* AgentMCPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentMCPTests.swift; sourceTree = "<group>"; };
@@ -677,6 +681,8 @@
 				AA7900000000000000000046 /* AppMCPWorkflows.swift */,
 				AA7900000000000000000047 /* AppMCPLibrary.swift */,
 				AA7900000000000000000048 /* AppMCPImport.swift */,
+				AA790000000000000000004A /* AppMCPCulling.swift */,
+				AA790000000000000000004B /* AppMCPMetadata.swift */,
 				AA7900000000000000000043 /* MCPHTTPListener.swift */,
 				D19CCA868344D600A7F11CDD /* InspectionEditing.swift */,
 				751FCC1E508E2CE354177999 /* CollectionOrdering.swift */,
@@ -1070,6 +1076,8 @@
 				AA7900000000000000000036 /* AppMCPWorkflows.swift in Sources */,
 				AA7900000000000000000037 /* AppMCPLibrary.swift in Sources */,
 				AA7900000000000000000038 /* AppMCPImport.swift in Sources */,
+				AA790000000000000000003A /* AppMCPCulling.swift in Sources */,
+				AA790000000000000000003B /* AppMCPMetadata.swift in Sources */,
 				AA7900000000000000000033 /* MCPHTTPListener.swift in Sources */,
 				F49651F836A00B9FF96B73EB /* InspectionEditing.swift in Sources */,
 				697D9CF45E47AEDB0B59398F /* CollectionOrdering.swift in Sources */,

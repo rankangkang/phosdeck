@@ -91,7 +91,7 @@ extension AppMCPWorkflows {
         return .init("Read the library sources.", data: data)
     }
 
-    nonisolated private static func flatten(_ nodes: [FolderNode]) -> [FolderNode] {
+    nonisolated static func flatten(_ nodes: [FolderNode]) -> [FolderNode] {
         nodes.flatMap { [$0] + flatten($0.children ?? []) }
     }
 

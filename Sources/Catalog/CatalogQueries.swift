@@ -220,15 +220,22 @@ extension CatalogStore {
           FROM ranked WHERE \(visibleCondition))
         """
     }
-    func page(_ query: PhotoQuery, offset: Int, limit: Int = 200, expectedChanges: Int? = nil) throws -> PhotoPage {
+    func page(_ query: PhotoQuery, offset: Int, limit: Int = 200, expectedChanges: Int? = nil,
+              includeCollapsed: Bool = false) throws -> PhotoPage {
         let (_, args) = query.predicate, cte = stackCTE(query), size = max(1, min(1000, limit))
         return try database.read { db in
             let changes = db.totalChangesCount
             if let expectedChanges, changes != expectedChanges { throw PhotoPageError.staleCursor }
             let counts = try Row.fetchOne(db,sql:cte+" SELECT (SELECT count(*) FROM base) AS total,(SELECT count(*) FROM visible) AS shown",arguments:args)!
             let count: Int = counts["total"], shown: Int = counts["shown"]
-            let start = min(max(0, offset), max(0, ((shown - 1) / size) * size))
-            let rows = try Row.fetchAll(db,sql:cte+" SELECT photo.*,v.stackID,v.position,v.collapsed,v.matching,(SELECT count(*) FROM stackMember WHERE stackID=v.stackID) AS stackCount FROM visible v JOIN photo ON photo.id=v.id ORDER BY v.displayPosition LIMIT ? OFFSET ?",arguments:args+[size,start])
+            let length = includeCollapsed ? count : shown
+            let start = min(max(0, offset), max(0, ((length - 1) / size) * size))
+            let relation = includeCollapsed ? "ranked" : "visible"
+            let order = includeCollapsed ? "basePosition" : "displayPosition"
+            let rows = try Row.fetchAll(db, sql: cte + """
+                 SELECT photo.*,v.stackID,v.position,v.collapsed,v.matching,(SELECT count(*) FROM stackMember WHERE stackID=v.stackID) AS stackCount
+                 FROM \(relation) v JOIN photo ON photo.id=v.id ORDER BY v.\(order) LIMIT ? OFFSET ?
+                """, arguments: args + [size, start])
             var badges = [String:StackBadge]()
             for row in rows {
                 if let sid: String = row["stackID"] { let id: String = row["id"]; badges[id] = StackBadge(stackID:sid,position:row["position"],count:row["stackCount"],matching:row["matching"],collapsed:row["collapsed"]) }
@@ -236,9 +243,12 @@ extension CatalogStore {
             return PhotoPage(photos:try rows.map { try Photo(row:$0) },total:count,offset:start,visibleTotal:shown,badges:badges,databaseChanges:changes)
         }
     }
-    func offset(of id: String, query: PhotoQuery) throws -> Int? {
+    func offset(of id: String, query: PhotoQuery, includingRepresentative: Bool = false) throws -> Int? {
         let (_,args) = query.predicate
-        return try database.read { try Int.fetchOne($0,sql:stackCTE(query)+" SELECT displayPosition FROM visible WHERE id=?",arguments:args+[id]) }
+        let select = includingRepresentative
+            ? " SELECT v.displayPosition FROM visible v JOIN ranked r ON r.id=? WHERE v.id=r.id OR v.stackID=r.stackID ORDER BY (v.id=r.id) DESC, v.displayPosition LIMIT 1"
+            : " SELECT displayPosition FROM visible WHERE id=?"
+        return try database.read { try Int.fetchOne($0, sql: stackCTE(query) + select, arguments: args + [id]) }
     }
     func representative(of id: String, query: PhotoQuery) throws -> String? {
         let (_,args) = query.predicate
