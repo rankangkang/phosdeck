@@ -209,12 +209,15 @@ private struct AgentSettings: View {
                     Button(L10n.text("agent.copyConfig", defaultValue: "Copy Codex Configuration")) {
                         copy(service.clientConfiguration, feedback: L10n.text("agent.configCopied", defaultValue: "Configuration copied"))
                     }.buttonStyle(.key).accessibilityIdentifier("settings-mcp-copy-config")
+                    Button(L10n.text("agent.copyJSONConfig", defaultValue: "Copy JSON Configuration")) {
+                        copy(service.jsonClientConfiguration, feedback: L10n.text("agent.configCopied", defaultValue: "Configuration copied"))
+                    }.buttonStyle(.key).accessibilityIdentifier("settings-mcp-copy-json-config")
                     Button(L10n.text("agent.copyToken", defaultValue: "Copy Token")) {
                         copy(service.connectionToken, feedback: L10n.text("agent.tokenCopied", defaultValue: "Token copied"))
                     }.buttonStyle(.key).accessibilityIdentifier("settings-mcp-copy-token")
                     if let feedback { Text(feedback).font(.caption11).foregroundStyle(Theme.textSecondary) }
                 }
-                Text(L10n.text("agent.connectionHelp", defaultValue: "Set the token in the client's environment. The address and token change when the server restarts."))
+                Text(L10n.text("agent.connectionHelp", defaultValue: "JSON includes the token. Codex reads it from the environment. The address and token change on restart."))
                     .font(.caption11).foregroundStyle(Theme.textSecondary)
             }
         }

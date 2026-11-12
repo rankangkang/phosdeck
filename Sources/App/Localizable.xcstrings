@@ -41,13 +41,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Set the token in the client's environment. The address and token change when the server restarts."
+            "value": "JSON includes the token. Codex reads it from the environment. The address and token change on restart."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "将令牌提供给客户端的环境变量。服务重启后，地址和令牌会更新。"
+            "value": "JSON 包含令牌。Codex 从环境变量读取令牌。服务重启会更新地址和令牌。"
           }
         }
       }
@@ -65,6 +65,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "复制 Codex 配置"
+          }
+        }
+      }
+    },
+    "agent.copyJSONConfig": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy JSON Configuration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制 JSON 配置"
           }
         }
       }

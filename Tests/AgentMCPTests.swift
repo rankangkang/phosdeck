@@ -422,6 +422,7 @@ final class AgentMCPTests: XCTestCase {
         XCTAssertFalse(service.enabled)
         XCTAssertFalse(service.sharesImages)
         XCTAssertNil(service.endpoint)
+        XCTAssertTrue(service.jsonClientConfiguration == nil)
         service.attach(to: model)
         service.setEnabled(true)
         do {
@@ -433,6 +434,15 @@ final class AgentMCPTests: XCTestCase {
             XCTAssertEqual(token.utf8.count, 64)
             XCTAssertTrue(service.clientConfiguration?.contains(endpoint) == true)
             XCTAssertFalse(service.clientConfiguration?.contains(token) == true)
+            let json = try XCTUnwrap(service.jsonClientConfiguration)
+            let document = try JSONSerialization.jsonObject(with: Data(json.utf8))
+            let configuration = try XCTUnwrap(document as? [String: [String: [String: Any]]])
+            let servers = try XCTUnwrap(configuration["mcpServers"])
+            XCTAssertEqual(Set(servers.keys), ["phosdeck"])
+            let entry = try XCTUnwrap(servers["phosdeck"])
+            XCTAssertEqual(entry["url"] as? String, endpoint)
+            let headers = try XCTUnwrap(entry["headers"] as? [String: String])
+            XCTAssertTrue(headers["Authorization"] == "Bearer \(token)")
             let second = try await MCPHTTPListener.start(name: "phosdeck-test", version: "1", tools: tools(model))
             XCTAssertNotEqual(second.endpoint, endpoint)
             XCTAssertNotEqual(second.token, token)
@@ -445,6 +455,7 @@ final class AgentMCPTests: XCTestCase {
         XCTAssertEqual(service.status, .off)
         XCTAssertNil(service.endpoint)
         XCTAssertNil(service.connectionToken)
+        XCTAssertTrue(service.jsonClientConfiguration == nil)
         XCTAssertFalse(service.needsShutdown)
     }
 

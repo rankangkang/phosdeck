@@ -45,6 +45,16 @@ final class AppMCPService {
             "[mcp_servers.\(configurationName)]\nurl = \"\($0)\"\nbearer_token_env_var = \"\(tokenVariable)\""
         }
     }
+
+    var jsonClientConfiguration: String? {
+        guard let endpoint, let token = connectionToken else { return nil }
+        let entry: [String: Any] = ["url": endpoint, "headers": ["Authorization": "Bearer \(token)"]]
+        let configuration = ["mcpServers": [configurationName: entry]]
+        guard let data = try? JSONSerialization.data(withJSONObject: configuration,
+                                                     options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
     var connectionToken: String? { endpoint == nil ? nil : listener?.token }
     var needsShutdown: Bool { listener != nil || transition != nil || stoppingJob != nil }
 

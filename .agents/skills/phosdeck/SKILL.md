@@ -5,7 +5,9 @@ description: Work in Phosdeck through its local MCP server. Manage catalogs and 
 
 # Phosdeck
 
-Call `get_capabilities` and `get_workspace` before operating on a catalog. Check the App identity when both Phosdeck and Phosdeck Preview are connected. If the server is missing, have the user open **Settings → Agent**, enable **Local MCP Server**, and give the client the copied configuration and the token through the configured environment variable. Use the new address and token after a restart.
+Call `get_capabilities` and `get_workspace` before operating on a catalog. Check the App identity when both Phosdeck and Phosdeck Preview are connected.
+
+If the server is off, have the user enable **Local MCP Server** in **Settings → Agent**. For a client that accepts `mcpServers` JSON with HTTP headers, use **Copy JSON Configuration** for the address and bearer token. For Codex, use **Copy Codex Configuration** and supply the copied token through the named environment variable. Copy fresh connection details after a restart.
 
 - For catalog changes, file access, import, folder review or recovery, read [Library and import workflows](references/library-and-import.md).
 - For filtering, selecting, comparing, marking or editing metadata, read [Culling and photo metadata](references/culling-and-metadata.md).

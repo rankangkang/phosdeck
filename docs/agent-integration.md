@@ -170,7 +170,9 @@
 
 首批 HTTP 响应流随 POST 请求返回。独立 GET 流返回 `405`。每次连接处理一个请求，请求体上限 64 KiB。传输会话空闲 15 分钟或达到消息及响应大小上限时需要重新初始化，业务请求代次在监听运行期间继续有效。分页游标使用数据库读中的变更计数，目录写入后可重新读取工作区与首屏。
 
-首个客户端采用本机 Codex 的 Streamable HTTP 配置。下例端口由设置实际显示值替换，`PHOSDECK_MCP_TOKEN` 由启动客户端的环境提供。设置生成的配置只引用变量名，令牌由用户在设置中单独复制。Preview 使用独立的服务器配置名和令牌环境变量。[OpenAI Docs 的 MCP 配置](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
+“复制 JSON 配置”适用于接受 `mcpServers` 和 `headers` 的 Streamable HTTP 客户端。复制的内容含当前 `url` 和 `Authorization` 请求头。服务重启后重新复制配置。
+
+“复制 Codex 配置”生成 Streamable HTTP 的 TOML 片段。下例端口由设置实际显示值替换，`PHOSDECK_MCP_TOKEN` 由启动客户端的环境提供。Codex 配置引用变量名，令牌由用户在设置中单独复制。Preview 使用独立的服务器配置名和令牌环境变量。[OpenAI Docs 的 MCP 配置](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
 
 ```toml
 [mcp_servers.phosdeck]
