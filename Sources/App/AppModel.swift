@@ -98,6 +98,14 @@ private struct BrowseHistoryEntry {
     let context: ImportBrowseContext
 }
 
+private struct StackComparisonSession {
+    let origin: ImportBrowseContext
+    let originQuery: PhotoQuery
+    var stacks: [PhotoStack]
+    var index: Int
+    var snapshotID: String? = nil
+}
+
 private struct AdjustmentDisplayState {
     let photoID: String
     let recipe: EditRecipe
@@ -369,6 +377,7 @@ final class AppModel {
     var editMode = false { didSet { if !editMode { cancelAutomaticAdjustment(); cancelTargetedAdjustment(); cancelDirectAdjustment(); cancelSmartMask(); cancelWhiteBalanceSampling(); endAdjustmentPreview(); endDevelopReference(); cancelPointColorTools(); cancelZoneSampling(); if !singleView { beforeAfter = .off } } else { endComparison(); endSurvey() } } }
     var singleView = false { didSet { if !singleView { endComparison(); endSurvey(); if !editMode { beforeAfter = .off } } } }
     var comparison: PhotoComparison?
+    private var stackComparison: StackComparisonSession?
     var survey: PhotoSurvey?
     private(set) var developReference: ComparisonPhoto?
     private var pinnedDevelopPhoto: Photo?
@@ -575,6 +584,8 @@ final class AppModel {
     func selectWorkspace(_ mode: WorkspaceMode) {
         guard workspaceAvailable else { return }
         if editMode, mode != .develop, !selectDevelopTool(.adjust) { return }
+        if stackComparison != nil, mode != .compare, mode != .survey,
+           !perform({ try finishStackComparison() }) { return }
         if mode != .survey { endSurvey() }
         switch mode {
         case .grid: editMode = false; singleView = false; librarySingleView = false
@@ -789,6 +800,10 @@ final class AppModel {
     var active: Photo? { activePhoto }
     var filtered: [Photo] { photos }
     var query: PhotoQuery {
+        if let snapshot = stackComparison?.snapshotID { return PhotoQuery(scope: "related:" + snapshot) }
+        return libraryQuery
+    }
+    private var libraryQuery: PhotoQuery {
         var value = PhotoQuery(scope: scope, search: isFilterSectionActive(.text) ? search : "", ratingThreshold: isFilterSectionActive(.attribute) ? ratingThreshold : 0, ratingComparison: isFilterSectionActive(.attribute) ? ratingComparison : .atLeast, flags: isFilterSectionActive(.attribute) ? flagFilter : [], colorLabels: isFilterSectionActive(.attribute) ? colorLabelFilter : [], keyword: isFilterSectionActive(.metadata) ? keywordFilter : "",
                    metadata: isFilterSectionActive(.metadata) ? metadataFilter : LibraryMetadataFilter(), sort: photoSort, descending: sortDescending, snapshotID: heldResultsID)
         value.manualCollectionOrder = manualOrderEnabled && regularCollectionID != nil
@@ -870,6 +885,7 @@ final class AppModel {
         perform { try updateLibraryQuery() }
     }
     func updateLibraryQuery(source: String? = nil, forceRefresh: Bool = true, configure: () -> Void = {}) throws {
+        try finishStackComparison()
         let previous = query, wasHeld = holdFilterResults
         let switching = source.map { $0 != scope } ?? false
         if switching, let source {
@@ -928,14 +944,15 @@ final class AppModel {
         perform { try updateLibraryQuery(source: value) }
     }
     var isViewingRelated: Bool { scope.hasPrefix("related:") }
-    var canBrowseBack: Bool { importBrowseContext != nil || !browseBack.isEmpty }
-    var canBrowseForward: Bool { importBrowseContext == nil && !browseForward.isEmpty }
+    var canBrowseBack: Bool { stackComparison != nil || importBrowseContext != nil || !browseBack.isEmpty }
+    var canBrowseForward: Bool { stackComparison == nil && importBrowseContext == nil && !browseForward.isEmpty }
     var recentBrowseLocations: [BrowseLocation] {
         browseBack.reversed().map(\.location) + browseForward.reversed().map(\.location)
     }
     /// Temporary version groups must never become a persisted recent source.
     private var persistedBrowseContext: ImportBrowseContext? {
         if let original = importBrowseContext, !original.scope.hasPrefix("related:") { return original }
+        if let original = stackComparison?.origin, !original.scope.hasPrefix("related:") { return original }
         guard isViewingRelated || importBrowseContext?.scope.hasPrefix("related:") == true else { return nil }
         return (Array(browseBack.reversed()) + Array(browseForward.reversed())).first {
             !$0.context.scope.hasPrefix("related:") && !$0.context.scope.hasPrefix("import:")
@@ -1028,6 +1045,7 @@ final class AppModel {
     }
     func navigateBrowse(_ delta: Int) {
         guard delta != 0, workspaceAvailable, commitRecipe() else { return }
+        if stackComparison != nil { if delta < 0 { endComparison() }; return }
         if importBrowseContext != nil { if delta < 0 { returnFromImport() }; return }
         if editMode, !selectDevelopTool(.adjust) { return }
         perform {
@@ -1069,6 +1087,7 @@ final class AppModel {
         }
     }
     func navigateBrowse(to id: UUID) {
+        if stackComparison != nil, (!workspaceAvailable || !perform({ try finishStackComparison() })) { return }
         if let index = browseBack.firstIndex(where: { $0.location.id == id }) { navigateBrowse(-(browseBack.count - index)) }
         else if let index = browseForward.firstIndex(where: { $0.location.id == id }) { navigateBrowse(browseForward.count - index) }
     }
@@ -1210,19 +1229,106 @@ final class AppModel {
                 if next >= 0 { candidate = try catalog.page(query, offset: next, limit: 1).photos.first }
             }
             guard let candidate, candidate.id != reference.id else { error = L10n.text("app.selectAtLeastTwoPhotosToCompare", defaultValue: "Select at least two photos to compare"); return }
-            let comparison = makeComparisonRenderer()
-            comparison.groupIDs = group
-            photoSwitchDisplay = nil; retainedEditorDisplay = nil
-            editMode = false; singleView = true; beforeAfter = .off; self.comparison = comparison
-            comparison.update(comparison.reference, photo: reference, roots: roots)
+            installComparison(reference: reference, group: group)
             if let offset = try catalog.offset(of: candidate.id, query: query) { pageOffset = offset / pageSize * pageSize; try reloadPhotos() }
             choose([candidate.id], active: candidate.id)
         }
     }
     func endComparison() {
+        if stackComparison != nil { perform { try finishStackComparison() }; return }
         guard let comparison else { return }
         comparison.cancel(); self.comparison = nil
         loadActive()
+    }
+    private func installComparison(reference: Photo, group: [String]?, restricted: Bool = false) {
+        let next = makeComparisonRenderer()
+        next.groupIDs = group
+        next.restrictToGroup = restricted
+        if let comparison { next.linked = comparison.linked; comparison.cancel() }
+        photoSwitchDisplay = nil; retainedEditorDisplay = nil
+        editMode = false; singleView = true; beforeAfter = .off; comparison = next
+        next.update(next.reference, photo: reference, roots: roots)
+    }
+
+    var canCompareStack: Bool {
+        guard workspaceMode == .grid, selection.count == 1, let id = activeID, selection.contains(id),
+              let badge = stackBadges[id] else { return false }
+        return badge.matching >= 2
+    }
+    var stackComparisonProgress: (current: Int, total: Int)? {
+        stackComparison.map { ($0.index + 1, $0.stacks.count) }
+    }
+    func beginStackComparison() {
+        guard workspaceAvailable, canCompareStack, commitRecipe(), let catalog, let activeID,
+              let badge = stackBadges[activeID] else { return }
+        perform {
+            let stacks = try catalog.comparisonStacks(query)
+            guard let index = stacks.firstIndex(where: { $0.id == badge.stackID }),
+                  stacks[index].members.contains(activeID) else { throw StackStateChanged() }
+            let session = StackComparisonSession(origin: currentBrowseContext(), originQuery: query, stacks: stacks, index: index)
+            try showStackComparison(session, members: stacks[index].members, referenceID: activeID)
+        }
+    }
+    func compareNextStack() {
+        guard workspaceAvailable, let catalog, var session = stackComparison else { return }
+        let next = session.index + 1
+        guard next < session.stacks.count else { return }
+        perform {
+            for index in next..<session.stacks.count {
+                let members = try catalog.liveComparisonMembers(of: session.stacks[index])
+                guard let reference = members.first, members.count >= 2 else { continue }
+                session.stacks.removeSubrange(next..<index)
+                session.index = next
+                try showStackComparison(session, members: members, referenceID: reference)
+                return
+            }
+            session.stacks.removeSubrange(next...)
+            stackComparison = session
+        }
+    }
+    private func showStackComparison(_ session: StackComparisonSession, members: [String], referenceID: String) throws {
+        guard let catalog, let reference = try catalog.photo(referenceID),
+              let candidateIndex = members.firstIndex(where: { $0 != referenceID }),
+              let candidate = try catalog.photo(members[candidateIndex]) else { throw StackStateChanged() }
+        var next = session
+        let snapshot = try catalog.snapshotPhotos(members)
+        next.snapshotID = snapshot
+        let previousSnapshot = stackComparison?.snapshotID
+        do { try loadStackComparison(next, page: candidateIndex / pageSize * pageSize) }
+        catch { try? catalog.releaseResults(snapshot); throw error }
+        installComparison(reference: reference, group: members, restricted: true)
+        choose([candidate.id], active: candidate.id)
+        if let previousSnapshot { try catalog.releaseResults(previousSnapshot) }
+    }
+    private func loadStackComparison(_ session: StackComparisonSession?, page: Int) throws {
+        let previous = stackComparison, previousPage = pageOffset
+        stackComparison = session; pageOffset = page
+        do { try reloadPhotos() }
+        catch {
+            stackComparison = previous; pageOffset = previousPage
+            try? reloadPhotos()
+            throw error
+        }
+    }
+    private func finishStackComparison() throws {
+        guard let session = stackComparison, let catalog else { return }
+        let source = libraryQuery
+        let members = try catalog.liveComparisonMembers(of: session.stacks[session.index])
+        let matching = try catalog.resultIDs(source, within: Set(members))
+        let target = members.first { matching.contains($0) } ?? session.origin.activeID
+        let representative = try target.flatMap { try catalog.representative(of: $0, query: source) }
+        let offset = try representative.flatMap { try catalog.offset(of: $0, query: source) }
+        try loadStackComparison(nil, page: offset.map { $0 / pageSize * pageSize } ?? session.origin.page)
+        comparison?.cancel(); comparison = nil
+        singleView = false; librarySingleView = false
+        let id = representative ?? photos.first?.id
+        let previousActive = activeID
+        choose(id.map { [$0] } ?? [], active: id)
+        if activeID == previousActive { loadActive() }
+        // The candidate can already be the new cover, with the same active ID.
+        for film in [false, true] { scrollActiveIDs[browseScrollKey(film: film)] = nil }
+        persistWorkspace()
+        if let snapshot = session.snapshotID { try catalog.releaseResults(snapshot) }
     }
     private func makeComparisonRenderer() -> PhotoComparison {
         let pipeline = self.pipeline, render = renderPreview
@@ -1280,6 +1386,7 @@ final class AppModel {
         perform {
             let chosen = try ids ?? catalog.exportPhotos(ids: selection, query: query).map(\.id)
             guard ids != nil || chosen.count >= 2 else { error = L10n.text("app.selectAtLeastTwoPhotosForSurvey", defaultValue: "Select at least two photos for Survey"); return }
+            try finishStackComparison()
             endComparison(); endSurvey()
             editMode = false; singleView = true; beforeAfter = .off
             let next = PhotoSurvey(ids: chosen, renderer: makeComparisonRenderer())
@@ -1504,6 +1611,7 @@ final class AppModel {
         guard workspaceAvailable, let batch = lastImport, !batch.photoIDs.isEmpty, commitRecipe() else { return }
         if editMode, !selectDevelopTool(.adjust) { return }
         perform {
+            try finishStackComparison()
             if importBrowseContext == nil {
                 importBrowseContext = currentBrowseContext()
                 heldResultsID = nil
@@ -1527,6 +1635,7 @@ final class AppModel {
         perform { try restoreImportBrowsing(); status = L10n.text("app.returnedToYourPreviousLocation", defaultValue: "Returned to your previous location") }
     }
     private func restoreImportBrowsing() throws {
+        try finishStackComparison()
         guard var original = importBrowseContext, let catalog else { return }
         if let id = heldResultsID { try catalog.releaseResults(id) }
         if !browseSourceExists(original) {
@@ -1638,7 +1747,11 @@ final class AppModel {
     func filterCriteriaChanged() {
         // SwiftUI delivers individual onChange callbacks after a restored context has
         // already been reloaded. Do not refresh its held membership or reset its page.
-        guard query != lastAppliedQuery || holdFilterResults != lastAppliedHold else { return }
+        if let stackComparison {
+            guard libraryQuery != stackComparison.originQuery || holdFilterResults != stackComparison.origin.hold else { return }
+        } else {
+            guard query != lastAppliedQuery || holdFilterResults != lastAppliedHold else { return }
+        }
         filterChanged()
     }
     func toggleFilters() { filtersEnabled.toggle(); filterChanged() }
@@ -1892,7 +2005,7 @@ final class AppModel {
         filterChanged()
     }
     var collectionOrdering: CollectionOrdering? {
-        guard manualOrderEnabled, let collection = regularCollectionID, let catalog else { return nil }
+        guard stackComparison == nil, manualOrderEnabled, let collection = regularCollectionID, let catalog else { return nil }
         let expected = query
         let token = CollectionOrderingToken(catalogPath: catalog.fileURL.path, querySignature: expected.orderingQuerySignature)
         return CollectionOrdering(enabled: workspaceAvailable, token: token) { [weak self, weak catalog] ids, before in
@@ -3359,6 +3472,8 @@ extension AppModel {
         importBrowseContext = nil; lastImport = nil; importCatalog = nil; showImportCompletion = false; importingPhotoIDs = []
         lastExportResult = nil; exportRecordIDs = nil; exportRecordsUnfinishedOnly = false
         if let id = heldResultsID { try catalog?.releaseResults(id) }; heldResultsID = nil
+        if let snapshot = stackComparison?.snapshotID { try catalog?.releaseResults(snapshot) }
+        stackComparison = nil
         comparison?.cancel(); comparison = nil; survey?.cancel(); survey = nil
         cancelDirectAdjustment()
         clearSavedEditPreview(); endAdjustmentPreview(redraw: false); presetListFocused = false; displayPixelReadout = nil; beforeReference = nil; endMaskEffectPreview(redraw: false)
@@ -3478,6 +3593,7 @@ extension AppModel {
     func openVersion(_ id:String) {
         guard workspaceAvailable, commitRecipe(), let catalog else { return }
         perform {
+            try finishStackComparison()
             guard let target = try catalog.photo(id) else { throw LRCError(L10n.text("app.thisVersionWasRemoved", defaultValue: "This version was removed")) }
             if let offset = try catalog.offset(of: id, query: query) {
                 try rememberBrowseDeparture()
@@ -3498,6 +3614,7 @@ extension AppModel {
         if editMode, !selectDevelopTool(.adjust) {
             throw LRCError(L10n.text("merge.revealBlocked", defaultValue:"Finish the current editing tool to view the saved master"))
         }
+        try finishStackComparison()
         try rememberBrowseDeparture()
         try reload()
         let relocated = try catalog.offset(of:id,query:query) == nil
@@ -3517,6 +3634,7 @@ extension AppModel {
     }
     private func beginRelatedBrowsing(ids: [String], active: String, title: String) throws {
         guard let catalog else { return }
+        try finishStackComparison()
         let available = Set(try catalog.photos(ids: Set(ids)).map(\.id))
         guard available.contains(active) else { throw LRCError(L10n.text("app.theGroupTargetWasRemoved", defaultValue: "The group target was removed")) }
         // Preserve source/stack order in the temporary relation. `photos(ids:)`

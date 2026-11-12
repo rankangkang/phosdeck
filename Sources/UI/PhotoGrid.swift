@@ -144,7 +144,8 @@ struct PhotoGrid: NSViewRepresentable {
         let restoringPosition = changedPage && model.scrollPositions[positionKey] != nil
             && model.scrollActiveIDs[positionKey] == model.activeID
         if restoringPosition { c.lastActive = model.activeID }
-        if c.lastActive != model.activeID, let index = photos.firstIndex(where: { $0.id == model.activeID }) {
+        if c.lastActive != model.activeID || (changedPage && !restoringPosition),
+           let index = photos.firstIndex(where: { $0.id == model.activeID }) {
             c.lastActive = model.activeID
             c.collection?.scrollToItems(at: [IndexPath(item: index, section: 0)], scrollPosition: film ? .nearestHorizontalEdge : .nearestVerticalEdge)
         }

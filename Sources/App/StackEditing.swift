@@ -14,10 +14,14 @@ extension AppModel {
         registerStackUndo(change.previous, title: title, closed: closedUndo)
         let refreshed = perform {
             try reloadPhotos()
-            let visible = Set(try catalog.allResultIDs(query,visibleOnly:true))
-            let representative = try activeID.flatMap { try catalog.representative(of:$0,query:query) }
-            let retained = selection.intersection(visible)
-            restoreStackSelection(retained.union(representative.map { [$0] } ?? []),active:representative)
+            if stackComparisonProgress != nil {
+                reconcileVisibleSelection()
+            } else {
+                let visible = Set(try catalog.allResultIDs(query,visibleOnly:true))
+                let representative = try activeID.flatMap { try catalog.representative(of:$0,query:query) }
+                let retained = selection.intersection(visible)
+                restoreStackSelection(retained.union(representative.map { [$0] } ?? []),active:representative)
+            }
             status = L10n.text("app.matchingVersionsVisiblePhotosSelectedVersions", defaultValue: "\(title) · \(resultCount) matching versions / \(visibleCount) visible photos / \(selection.count) selected versions")
         }
         return (change, refreshed)

@@ -10183,6 +10183,23 @@
         }
       }
     },
+    "app.compareThisStack": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compare Stack"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "比较本组"
+          }
+        }
+      }
+    },
     "app.compareWithinThisGroupReturnToPreviousBrowseLocation": {
       "extractionState": "manual",
       "comment": "Sources/App/AppModel.swift: 2924",
@@ -16406,6 +16423,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "完成当前工具（Esc）"
+          }
+        }
+      }
+    },
+    "app.finishStackComparison": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Return to the last compared stack in the library (Esc)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "返回图库中最后比较的堆叠（Esc）"
           }
         }
       }
@@ -24105,6 +24139,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "下一组候选"
+          }
+        }
+      }
+    },
+    "app.nextComparisonStack": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next Stack"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下一组"
           }
         }
       }
@@ -34204,6 +34255,23 @@
         }
       }
     },
+    "app.setAsComparisonReference": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set as Reference"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设为参考"
+          }
+        }
+      }
+    },
     "app.setAsCoverS": {
       "extractionState": "manual",
       "comment": "Sources/UI/StackControls.swift: 14",
@@ -36558,6 +36626,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "污点"
+          }
+        }
+      }
+    },
+    "app.stackComparisonPosition": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stack %lld of %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %lld / %lld 组"
           }
         }
       }

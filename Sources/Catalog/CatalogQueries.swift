@@ -261,6 +261,32 @@ extension CatalogStore {
             return try String.fetchAll(db,sql:"SELECT photo.id FROM "+query.relation+" WHERE "+predicate+" ORDER BY "+query.order,arguments:args)
         }
     }
+    func comparisonStacks(_ query: PhotoQuery) throws -> [PhotoStack] {
+        let (_, args) = query.predicate
+        return try database.read { db in
+            let rows = try Row.fetchCursor(db, sql: stackCTE(query) + """
+                SELECT stackID, id, collapsed FROM ranked
+                WHERE stackID IS NOT NULL AND matching >= 2
+                ORDER BY groupPosition, position
+                """, arguments: args)
+            var stacks = [PhotoStack]()
+            while let row = try rows.next() {
+                let stackID: String = row["stackID"], id: String = row["id"]
+                if stacks.last?.id == stackID { stacks[stacks.count - 1].members.append(id) }
+                else { stacks.append(PhotoStack(id: stackID, members: [id], collapsed: row["collapsed"])) }
+            }
+            return stacks
+        }
+    }
+    func liveComparisonMembers(of stack: PhotoStack) throws -> [String] {
+        let admitted = Set(stack.members)
+        return try database.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT m.photoID FROM stackMember m JOIN photo p ON p.id=m.photoID
+                WHERE m.stackID=? AND p.deleted=0 ORDER BY m.position
+                """, arguments: [stack.id]).filter { admitted.contains($0) }
+        }
+    }
     static func resultIDs(_ db: Database, query: PhotoQuery, within ids: [String]) throws -> [String] {
         guard !ids.isEmpty else { return [] }
         let (predicate, args) = query.predicate

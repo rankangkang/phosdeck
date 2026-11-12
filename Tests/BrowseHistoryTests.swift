@@ -305,6 +305,115 @@ final class BrowseHistoryTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(f.catalog.stacks().first).collapsed)
     }
 
+    @MainActor func testContinuousStackComparisonFollowsFilteredOrderAndReturnsToTheLastStackPage() throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.directory) }
+        let first = PhotoStack(members: [f.firstIDs[402], f.firstIDs[400], f.firstIDs[401]])
+        let partial = PhotoStack(members: [f.firstIDs[351], f.firstIDs[350]])
+        let second = PhotoStack(members: [f.firstIDs[190], f.firstIDs[189]], collapsed: false)
+        let last = PhotoStack(members: [f.firstIDs[6], f.firstIDs[5]])
+        let outside = PhotoStack(members: Array(f.secondIDs.prefix(2)))
+        try f.catalog.restoreStacks([last, second, partial, outside, first])
+        try f.catalog.setOrganization(ids: [partial.members[1]], flag: 1)
+        let model = try makeModel(for: f.catalog)
+        model.scope = f.first.id
+        model.photoSort = .filename
+        model.sortDescending = true
+        model.flagFilter = [0]
+        try model.reload()
+        let source = model.query
+        model.choose([partial.members[0]], active: partial.members[0])
+        XCTAssertFalse(model.canCompareStack, "A single matching member cannot be compared")
+        model.choose([first.members[0]], active: first.members[0])
+        XCTAssertTrue(model.canCompareStack)
+
+        model.beginStackComparison()
+        XCTAssertEqual(model.workspaceMode, .compare)
+        XCTAssertEqual(model.stackComparisonProgress?.current, 1)
+        XCTAssertEqual(model.stackComparisonProgress?.total, 3)
+        XCTAssertEqual(model.photos.map(\.id), first.members)
+        let oldSnapshot = String(model.query.scope.dropFirst(8))
+        XCTAssertEqual(try snapshotCount(f.catalog, id: oldSnapshot), 3)
+        let pair = try XCTUnwrap(model.comparison)
+        XCTAssertEqual(pair.reference.photo?.id, first.members[0])
+        XCTAssertEqual(model.activeID, first.members[1])
+        model.organize(flag: 1, advance: false)
+        XCTAssertEqual(model.activeID, first.members[1], "Marking a frame must not remove it during this comparison")
+        model.move(1)
+        model.move(1)
+        XCTAssertEqual(model.activeID, first.members[2], "Candidate navigation stops at the group boundary")
+        pair.setLinked(false)
+        pair.selectZoom(1, in: pair.candidate)
+
+        model.compareNextStack()
+        XCTAssertEqual(model.stackComparisonProgress?.current, 2)
+        XCTAssertEqual(model.comparison?.reference.photo?.id, second.members[0])
+        XCTAssertEqual(model.activeID, second.members[1])
+        XCTAssertEqual(model.comparison?.linked, false)
+        XCTAssertNil(model.comparison?.candidate.zoom)
+        XCTAssertEqual(try snapshotCount(f.catalog, id: oldSnapshot), 0)
+        model.compareNextStack()
+        XCTAssertEqual(model.stackComparisonProgress?.current, 3)
+        XCTAssertEqual(model.comparison?.reference.photo?.id, last.members[0])
+        XCTAssertEqual(model.activeID, last.members[1])
+        let finalSnapshot = String(model.query.scope.dropFirst(8))
+        model.compareNextStack()
+        XCTAssertEqual(model.stackComparisonProgress?.current, 3)
+        model.stackAction(.cover(last.members[1]), title: "Cover")
+        XCTAssertEqual(model.activeID, last.members[1])
+
+        model.endComparison()
+        XCTAssertEqual(model.workspaceMode, .grid)
+        XCTAssertNil(model.stackComparisonProgress)
+        XCTAssertEqual(model.query, source)
+        XCTAssertEqual(model.selection, [last.members[1]])
+        XCTAssertEqual(model.activeID, last.members[1])
+        XCTAssertEqual(model.pageOffset, 200)
+        XCTAssertTrue(model.photos.contains { $0.id == last.members[1] })
+        XCTAssertFalse(model.canBrowseBack)
+        XCTAssertEqual(try snapshotCount(f.catalog, id: finalSnapshot), 0)
+        XCTAssertEqual(try f.catalog.photo(first.members[1])?.flag, 1)
+        XCTAssertEqual(try f.catalog.photo(last.members[1])?.flag, 0)
+        let saved = try f.catalog.stacks()
+        XCTAssertEqual(saved.first { $0.id == first.id }, first)
+        XCTAssertEqual(saved.first { $0.id == second.id }, second)
+        XCTAssertEqual(saved.first { $0.id == last.id }?.members, last.members.reversed().map { $0 })
+    }
+
+    @MainActor func testContinuousStackComparisonSkipsDissolvedStackAndPreservesTheHeldImport() throws {
+        let f = try fixture(firstCount: 7, secondCount: 2)
+        defer { try? FileManager.default.removeItem(at: f.directory) }
+        let first = PhotoStack(members: Array(f.firstIDs[0...1]))
+        let removed = PhotoStack(members: Array(f.firstIDs[2...3]))
+        let last = PhotoStack(members: Array(f.firstIDs[4...6]))
+        try f.catalog.restoreStacks([removed, first, last])
+        let model = try makeModel(for: f.catalog)
+        model.setScope(f.second.id)
+        try model.completeImport(ids: Set(f.firstIDs), cancelled: false)
+        model.showLastImport()
+        model.holdFilterResults = true
+        try model.reloadPhotos()
+        let source = model.query
+        let held = try XCTUnwrap(source.snapshotID)
+        model.beginStackComparison()
+        XCTAssertEqual(model.stackComparisonProgress?.total, 3)
+        var updatedFirst = first, updatedLast = last
+        updatedFirst.members.append(updatedLast.members.removeFirst())
+        try f.catalog.restoreStacks([updatedFirst, updatedLast])
+        model.compareNextStack()
+        XCTAssertEqual(model.stackComparisonProgress?.current, 2)
+        XCTAssertEqual(model.stackComparisonProgress?.total, 2)
+        XCTAssertEqual(model.comparison?.reference.photo?.id, updatedLast.members[0])
+        model.selectWorkspace(.grid)
+        XCTAssertEqual(model.query, source)
+        XCTAssertEqual(model.activeID, updatedLast.members[0])
+        XCTAssertEqual(try snapshotCount(f.catalog, id: held), 7)
+        XCTAssertTrue(model.isViewingImport)
+        model.returnFromImport()
+        XCTAssertEqual(model.scope, f.second.id)
+        XCTAssertEqual(try snapshotCount(f.catalog, id: held), 0)
+    }
+
     @MainActor func testSwitchingCatalogReleasesHeldHistoryAndRelatedSnapshots() throws {
         let f = try fixture(firstCount: 3, secondCount: 2)
         defer { try? FileManager.default.removeItem(at: f.directory) }

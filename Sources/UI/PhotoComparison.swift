@@ -275,23 +275,44 @@ struct ComparisonToolbarControls: View {
     @ObservedObject var comparison: PhotoComparison
     var compact = false
     var body: some View {
-        HStack(spacing: 8) {
-            Menu {
-                Button(L10n.text("app.allCurrentResults", defaultValue: "All Current Results")) { model.restrictComparisonToGroup(false) }
-                if let group = comparison.groupIDs { Button(L10n.text("app.onlyThePhotosSelectedWhenEnteringCompare", defaultValue: "Only the \(group.count) Photos Selected When Entering Compare")) { model.restrictComparisonToGroup(true) } }
-            } label: { Text(comparison.restrictToGroup ? L10n.text("app.selectedPhotos", defaultValue: "\(comparison.groupIDs?.count ?? 0) selected photos") : L10n.text("app.allResults", defaultValue: "All Results")) }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().keySurface(height: 22)
-                .accessibilityLabel(L10n.text("app.compareScope", defaultValue: "Compare Scope"))
-            Toggle(compact ? L10n.text("app.linked", defaultValue: "Linked") : L10n.text("app.syncZoom", defaultValue: "Sync Zoom"), isOn: Binding(get: { comparison.linked }, set: comparison.setLinked))
-                .toggleStyle(.instrument).help(L10n.text("app.synchronizeZoomAndPanOnBothSides", defaultValue: "Synchronize zoom and pan on both sides")).accessibilityIdentifier("comparison-link")
+        let stack = model.stackComparisonProgress
+        HStack(spacing: compact && stack != nil ? 5 : 8) {
+            if stack == nil {
+                Menu {
+                    Button(L10n.text("app.allCurrentResults", defaultValue: "All Current Results")) { model.restrictComparisonToGroup(false) }
+                    if let group = comparison.groupIDs { Button(L10n.text("app.onlyThePhotosSelectedWhenEnteringCompare", defaultValue: "Only the \(group.count) Photos Selected When Entering Compare")) { model.restrictComparisonToGroup(true) } }
+                } label: { Text(comparison.restrictToGroup ? L10n.text("app.selectedPhotos", defaultValue: "\(comparison.groupIDs?.count ?? 0) selected photos") : L10n.text("app.allResults", defaultValue: "All Results")) }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().keySurface(height: 22)
+                    .accessibilityLabel(L10n.text("app.compareScope", defaultValue: "Compare Scope"))
+            }
+            let sync = compact && stack == nil ? L10n.text("app.linked", defaultValue: "Linked") : L10n.text("app.syncZoom", defaultValue: "Sync Zoom")
+            Toggle(isOn: Binding(get: { comparison.linked }, set: comparison.setLinked)) {
+                if compact && stack != nil { Image(systemName: "link") } else { Text(sync) }
+            }.toggleStyle(.instrument).accessibilityLabel(sync)
+                .help(L10n.text("app.synchronizeZoomAndPanOnBothSides", defaultValue: "Synchronize zoom and pan on both sides")).accessibilityIdentifier("comparison-link")
             Button(action: model.swapComparison) { if compact { Image(systemName: "arrow.down") } else { Text(L10n.text("app.swap", defaultValue: "Swap")) } }
                 .buttonStyle(.key(height: 22)).accessibilityLabel(L10n.text("app.swapReferenceAndCandidate", defaultValue: "Swap Reference and Candidate"))
                 .help(L10n.text("app.swapReferenceAndCandidate_1708", defaultValue: "Swap reference and candidate (↓)"))
                 .disabled(comparison.reference.photo == nil || comparison.candidate.photo == nil)
-            Button(action: model.promoteComparisonCandidate) { if compact { Image(systemName: "arrow.up") } else { Text(L10n.text("app.keepAndContinue", defaultValue: "Keep and Continue")) } }
-                .buttonStyle(.key(height: 22)).accessibilityLabel(L10n.text("app.keepCandidateAndContinue", defaultValue: "Keep Candidate and Continue"))
+            let promote = stack == nil ? L10n.text("app.keepAndContinue", defaultValue: "Keep and Continue")
+                : L10n.text("app.setAsComparisonReference", defaultValue: "Set as Reference")
+            Button(action: model.promoteComparisonCandidate) { if compact { Image(systemName: "arrow.up") } else { Text(promote) } }
+                .buttonStyle(.key(height: 22)).accessibilityLabel(stack == nil ? L10n.text("app.keepCandidateAndContinue", defaultValue: "Keep Candidate and Continue") : promote)
                 .help(L10n.text("app.promoteTheCandidateToReferenceAndCompareTheNext", defaultValue: "Promote the candidate to reference and compare the next photo (↑)")).disabled(comparison.candidate.photo == nil)
-            Button(L10n.text("app.done", defaultValue: "Done"), action: model.endComparison).buttonStyle(.key(height: 22)).help(L10n.text("app.exitCompareEscE", defaultValue: "Exit Compare (Esc / E)"))
+            if let stack {
+                let position = L10n.text("app.stackComparisonPosition", defaultValue: "Stack \(stack.current) of \(stack.total)")
+                Text(compact ? "\(stack.current)/\(stack.total)" : position)
+                    .font(.caption11).foregroundStyle(Theme.textSecondary).monospacedDigit()
+                    .accessibilityLabel(position).accessibilityIdentifier("stack-comparison-position")
+                Button(L10n.text("app.nextComparisonStack", defaultValue: "Next Stack"), action: model.compareNextStack)
+                    .buttonStyle(.key(height: 22, padding: 6))
+                    .accessibilityIdentifier("stack-comparison-next")
+                    .disabled(stack.current >= stack.total || !model.workspaceAvailable)
+            }
+            Button(L10n.text("app.done", defaultValue: "Done"), action: model.endComparison)
+                .buttonStyle(.key(height: 22))
+                .help(stack == nil ? L10n.text("app.exitCompareEscE", defaultValue: "Exit Compare (Esc / E)")
+                      : L10n.text("app.finishStackComparison", defaultValue: "Return to the last compared stack in the library (Esc)"))
                 .accessibilityIdentifier("comparison-done")
         }.fixedSize()
     }

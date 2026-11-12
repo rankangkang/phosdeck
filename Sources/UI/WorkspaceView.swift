@@ -176,7 +176,7 @@ struct WorkspaceView: View {
             // sidebar sizing repeatedly probes the entire toolbar and canvas.
             GeometryReader { center in
                 VStack(spacing: 0) {
-                    if !model.editMode && model.libraryFiltersOpen {
+                    if !model.editMode && model.libraryFiltersOpen && model.stackComparisonProgress == nil {
                         filterbar
                         if viewMode.wrappedValue != .grid { Seam() }
                     }
@@ -372,6 +372,7 @@ struct WorkspaceView: View {
     // MARK: Left panel
 
     private var sourceName: String {
+        if model.stackComparisonProgress != nil { return L10n.text("app.stackMembers", defaultValue: "Stack Members") }
         if let title = model.relatedBrowseTitle, model.isViewingRelated { return L10n.text("app.temporary", defaultValue: "Temporary · ") + title }
         if model.scope == "all" { return L10n.text("app.allPhotos", defaultValue: "All Photos") }
         if model.isViewingImport { return L10n.text("app.thisImport", defaultValue: "This Import") }
@@ -1099,6 +1100,11 @@ struct WorkspaceView: View {
                 KeyOption(.survey, L10n.text("app.surveyPhotos_2150", defaultValue: "Survey Photos"), help: L10n.text("app.surveyPhotosNViewTheSelectedGroupRemovingCandidates", defaultValue: "Survey photos (N): view the selected group; removing candidates preserves originals"), icon: "square.grid.3x3", identifier: "survey-start", enabled: model.selection.count >= 2 || model.survey != nil),
                 ], selection: viewMode, lamps: false, height: Self.toolKey, padding: 7).fixedSize().disabled(!model.workspaceAvailable)
             }
+            if model.canCompareStack {
+                Button(L10n.text("app.compareThisStack", defaultValue: "Compare Stack"), action: model.beginStackComparison)
+                    .buttonStyle(.key(height: Self.toolKey, padding: 6)).fixedSize()
+                    .accessibilityIdentifier("stack-comparison-start").disabled(!model.workspaceAvailable)
+            }
             if !narrow { organizationControls; advanceControl }
             if model.comparison == nil, model.survey == nil {
                 adjustmentsMenu.menuStyle(.borderlessButton).tint(Theme.text).menuIndicator(.hidden).fixedSize().keySurface(height: Self.toolKey, enabled: !model.busy)
@@ -1109,7 +1115,9 @@ struct WorkspaceView: View {
                 .disabled(model.catalog == nil || !model.workspaceAvailable)
                 .popover(isPresented: $keywordPopover) { KeywordEditor(model: model) }
             Spacer(minLength: 4)
-            if !model.editMode, model.survey == nil { resultControls(compact:compact, narrow:narrow) }
+            if !model.editMode, model.survey == nil, model.stackComparisonProgress == nil {
+                resultControls(compact:compact, narrow:narrow)
+            }
             if let survey = model.survey {
                 SurveyToolbarControls(model: model, survey: survey)
             } else if let comparison = model.comparison {
@@ -1388,12 +1396,12 @@ struct WorkspaceView: View {
                 .help(sourceName).accessibilityLabel(L10n.text("app.sourcesAndSelection", defaultValue: "Sources and Selection"))
             Text(L10n.text("app.matchingVisible", defaultValue: "Matching \(model.resultCount) / Visible \(model.visibleCount) / \(model.survey == nil ? L10n.text("app.selected", defaultValue: "Selected") : L10n.text("app.candidate_1903", defaultValue: "Candidate")) \(model.selection.count)")).monospacedDigit().fixedSize()
                 .help(model.survey == nil ? L10n.text("app.matchingCountsBaseQueryVersionsVisibleCountsCardsAfter", defaultValue: "Matching counts base query versions; Visible counts cards after stack expansion / collapse; Selected counts actual action targets. All query versions include collapsed members.") : L10n.text("app.candidatesBelongToTheCurrentSurveyGroupRatingsFlags", defaultValue: "Candidates belong to the current Survey group. Ratings, flags, and Quick Collection affect the active photo only. Other batch commands use the scope stated in their menus."))
-            if model.isViewingImport {
+            if model.isViewingImport, model.stackComparisonProgress == nil {
                 Button(L10n.text("app.returnToPreviousBrowseLocation_2202", defaultValue: "Return to Previous Browse Location")) { model.returnFromImport() }
                     .buttonStyle(.key(height: 20, padding: 6)).disabled(!model.workspaceAvailable)
                     .help(L10n.text("app.restoreTheSourceFiltersPageAndSelectionFromBefore", defaultValue: "Restore the source, filters, page, and selection from before this import"))
             }
-            if model.isViewingRelated {
+            if model.isViewingRelated, model.stackComparisonProgress == nil {
                 Button(L10n.text("app.returnToPreviousBrowseLocation_2202", defaultValue: "Return to Previous Browse Location")) { model.navigateBrowse(-1) }
                     .buttonStyle(.key(height: 20, padding: 6)).disabled(!model.workspaceAvailable)
                     .help(L10n.text("app.leaveTheTemporaryGroupAndRestoreThePreviousSource", defaultValue: "Leave the temporary group and restore the previous source, filters, and position"))
@@ -1412,17 +1420,19 @@ struct WorkspaceView: View {
             Spacer(minLength: 4)
             if model.editMode { resultControls(compact: true, narrow: true) }
             if model.editMode { flagFilterKeys }
-            Button {
-                if model.editMode { filterPopover.toggle() }
-                else { model.libraryFiltersOpen.toggle(); model.persistWorkspace() }
-            } label: {
-                Label(model.editMode ? (hasFilter ? L10n.text("app.filtered", defaultValue: "Filtered") : L10n.text("app.filter_2208", defaultValue: "Filter")) : L10n.text("app.libraryFilters", defaultValue: "Library Filters"), systemImage: "line.3.horizontal.decrease")
+            if model.stackComparisonProgress == nil {
+                Button {
+                    if model.editMode { filterPopover.toggle() }
+                    else { model.libraryFiltersOpen.toggle(); model.persistWorkspace() }
+                } label: {
+                    Label(model.editMode ? (hasFilter ? L10n.text("app.filtered", defaultValue: "Filtered") : L10n.text("app.filter_2208", defaultValue: "Filter")) : L10n.text("app.libraryFilters", defaultValue: "Library Filters"), systemImage: "line.3.horizontal.decrease")
+                }
+                .buttonStyle(.key(selected: model.editMode ? filterPopover : model.libraryFiltersOpen, height: 22, padding: 6))
+                .accessibilityLabel(model.editMode ? L10n.text("app.filmstripFilters", defaultValue: "Filmstrip Filters") : L10n.text("app.showLibraryFilterBar", defaultValue: "Show Library Filter Bar"))
+                .accessibilityValue(model.editMode ? (filterPopover ? L10n.text("app.expand", defaultValue: "Expand") : L10n.text("app.collapse", defaultValue: "Collapse")) : (model.libraryFiltersOpen ? L10n.text("app.expand", defaultValue: "Expand") : L10n.text("app.collapse", defaultValue: "Collapse")))
+                .help(model.editMode ? L10n.text("app.openFilmstripFilters", defaultValue: "Open Filmstrip Filters") : L10n.text("app.showOrHideTheEntireLibraryFilterBarBackslash", defaultValue: "Show or hide the entire Library filter bar (Backslash); hiding preserves conditions"))
+                .popover(isPresented: $filterPopover) { filterbar.frame(width: 520).padding(8) }
             }
-            .buttonStyle(.key(selected: model.editMode ? filterPopover : model.libraryFiltersOpen, height: 22, padding: 6))
-            .accessibilityLabel(model.editMode ? L10n.text("app.filmstripFilters", defaultValue: "Filmstrip Filters") : L10n.text("app.showLibraryFilterBar", defaultValue: "Show Library Filter Bar"))
-            .accessibilityValue(model.editMode ? (filterPopover ? L10n.text("app.expand", defaultValue: "Expand") : L10n.text("app.collapse", defaultValue: "Collapse")) : (model.libraryFiltersOpen ? L10n.text("app.expand", defaultValue: "Expand") : L10n.text("app.collapse", defaultValue: "Collapse")))
-            .help(model.editMode ? L10n.text("app.openFilmstripFilters", defaultValue: "Open Filmstrip Filters") : L10n.text("app.showOrHideTheEntireLibraryFilterBarBackslash", defaultValue: "Show or hide the entire Library filter bar (Backslash); hiding preserves conditions"))
-            .popover(isPresented: $filterPopover) { filterbar.frame(width: 520).padding(8) }
         }.font(.caption11).padding(.horizontal, 12).frame(height: Metrics.filmBar).background(InstrumentPlate())
     }
     private var statusBar: some View {

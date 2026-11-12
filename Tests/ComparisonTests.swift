@@ -1210,6 +1210,60 @@ final class ComparisonTests: XCTestCase {
         try key("c"); try key("g"); XCTAssertNil(model.comparison); XCTAssertFalse(model.singleView)
     }
 
+    @MainActor func testStackComparisonToolbarAtWorkspaceWidthsInBothThemes() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let landscape = try bitmap()
+        let portrait = RenderedImage(image: try bitmap(28).image, fullSize: CGSize(width: 2800, height: 4000),
+                                     orientedSourceSize: CGSize(width: 2800, height: 4000), histogram: nil, elapsed: 0)
+        let model = try model(in: folder, count: 4) { request, _, _ in
+            ["001", "003"].contains(request.photo.id) ? portrait : landscape
+        }
+        let catalog = try XCTUnwrap(model.catalog)
+        try catalog.restoreStacks([PhotoStack(members: ["000", "001"]), PhotoStack(members: ["002", "003"])])
+        try model.reloadPhotos()
+        let suite = "stack-comparison-layout-" + UUID().uuidString
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { preferences.removePersistentDomain(forName: suite); model.endComparison(); model.choose([], active: nil) }
+        for key in ["showLeftPanel", "showRightPanel", "showFilmstrip"] { preferences.set(true, forKey: key) }
+        func canvases(_ view: NSView) -> [PhotoMetalCanvas] {
+            (view as? PhotoMetalCanvas).map { [$0] } ?? view.subviews.flatMap(canvases)
+        }
+        func capture(_ host: NSView, _ name: String) throws {
+            host.layoutSubtreeIfNeeded()
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let image = XCTAttachment(data: try XCTUnwrap(bitmap.representation(using: .png, properties: [:])), uniformTypeIdentifier: "public.png")
+            image.name = name; image.lifetime = .keepAlways; add(image)
+        }
+        for theme in [ChromeTheme.ivory, .graphite] {
+            preferences.set(theme.rawValue, forKey: "chromeTheme")
+            for size in [CGSize(width: 1000, height: 640), CGSize(width: 1280, height: 800), CGSize(width: 1440, height: 900)] {
+                let host = NSHostingView(rootView: WorkspaceView(model: model).defaultAppStorage(preferences))
+                let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+                window.title = "Stack comparison test — Phosdeck"
+                window.appearance = NSAppearance(named: theme == .ivory ? .aqua : .darkAqua)
+                let container = NSView(frame: CGRect(origin: .zero, size: size))
+                host.frame = container.bounds; container.addSubview(host); window.contentView = container
+                defer { window.contentView = nil }
+                model.choose(["000"], active: "000")
+                XCTAssertTrue(model.canCompareStack)
+                if size.width == 1000 { try capture(host, "stack-entry-\(theme.rawValue)") }
+                model.beginStackComparison()
+                try await waitUntil { canvases(host).count == 2 && canvases(host).allSatisfy { $0.source != nil } }
+                XCTAssertEqual(Set(canvases(host).compactMap(\.photoID)), ["000", "001"])
+                XCTAssertLessThanOrEqual(host.fittingSize.width, size.width + 1)
+                try capture(host, "stack-compare-\(Int(size.width))-\(theme.rawValue)")
+                model.compareNextStack()
+                let escape = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 53))
+                XCTAssertNil(WorkspaceKeyboard.handle(escape, model: model))
+                XCTAssertEqual(model.workspaceMode, .grid)
+                XCTAssertEqual(model.activeID, "002")
+            }
+        }
+    }
+
     @MainActor func testPublicRAWComparisonUsesSavedEditsAndOriginalPixels() async throws {
         let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let sample = support.appendingPathComponent("OhMyLRC/FeatureValidation/public.ARW")
