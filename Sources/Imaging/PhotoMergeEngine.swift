@@ -138,7 +138,7 @@ actor PhotoMergeEngine {
         try MergeMasterCodec.write(image,to:staging,provenance:provenance,context:context,stagingIdentity:stagingIdentity)
         try checkpoint("staged")
         guard try FileIdentity.read(staging).key == stagingKey else { throw MergeMasterCodec.invalid }
-        for request in value.requests { try await pipeline.verifyMergeSource(request) }
+        for request in value.requests { try await pipeline.verifySource(request) }
         try catalog.validateMergeInputs(value.requests)
         let identity = try FileIdentity.read(staging),digest = try SafeFileWriter.sha256(staging)
         var recipe = EditRecipe(sourceDigest:digest,decoderVersion:EditRecipe.linearCompositeDecoderVersion,

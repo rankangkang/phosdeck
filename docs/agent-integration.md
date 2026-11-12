@@ -229,6 +229,18 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 `list_raw_jpeg_pairs` 查询已有关系，`listing=sources` 列出物理 RAW 与 JPEG 来源及目录记录的可用状态。自动配对依次调用 `plan_raw_jpeg_pairs` 的 `detect`、`verify`，再以核验后的 `plan_id` 和 `candidate_ids` 调用 `apply_raw_jpeg_pairs`。已明确是同一次拍摄时，也可用 `action=manual`、两侧来源 ID 与 `same_capture=true` 生成核验计划。每步任务均通过 `get_job` 回读。应用时复查原片和已存关系，整批提交并返回配对 ID 和撤销标识。过期时重新检测或核验。解绑保留双方原片和编辑版本。配对任一侧可用其物理来源 ID 查版本，再通过已有工具定位、比较或加入堆叠。
 
+### 全局显影、前后对照与编辑记录接口
+
+`get_photo_recipe` 按照片版本读取全局参数及修订号，也可用同版本的历史或快照 ID 读取保存值。各参数的范围随 `tools/list` 发布。参数工具只更新传入字段。曝光使用 EV，对比度和饱和度以 1 为中性，温度使用 K。RAW 细节参数可传 `null` 使用解码器默认值。`reset_adjustments` 可重置一组参数，`group=all` 复用原生完整重置，包含几何、蒙版与污点。
+
+参数修改、自动分析、恢复历史、批量曝光和传递返回任务 ID。单张提交核对 `source_revision` 和 `recipe_revision`，批量按 `expected_revisions` 核对每个显式照片 ID。原片不可用或参数不适用时返回单张错误或逐项跳过原因。提交前复查版本，成功项整批保存并在原生撤销栈登记一次。用 `get_job` 查看状态、已保存修订号与 `operation_id`，再通过配方或预览核验结果。
+
+`set_before_after` 切换活动照片的整幅原样、并排或分割显示，并可绑定历史或快照。通过 `get_workspace` 读取两侧和加载状态。`preview_adjustment` 在原生窗口临时预览编辑记录、预设或隐藏单个显影组。客户端取图使用 `get_photo_preview`。默认返回保存版本，`preview_variant=original` 返回未裁剪基线，`before` 将基线或指定记录对齐到当前保存版本的几何。默认模式也可预览记录、预设或隐藏单个组。取图沿用图像共享开关。
+
+`list_adjustment_presets` 按名称、分组和收藏查找预设，预设变更和应用使用返回的 ID 与修订标识。`transfer_adjustments` 支持 App 内复制粘贴、同步、沿用上一张和按强度应用预设。选择明确的参数组。预设未指定组时沿用它保存的选择。XMP 通过 `request_file_access(purpose=xmp_presets)` 由用户选择文件，经 `plan_xmp_preset_import` 查看转换诊断后导入选定候选，沿用原生稀疏参数和重复检查。
+
+`list_edit_records` 分页返回历史与快照。`apply_edit_record` 将历史或快照恢复为一条新编辑记录。创建及改名快照沿用原生保存行为，改名和删除核对 `snapshot_revision`。删除快照、修改已有预设及导入 XMP 可用返回的操作 ID 撤销。
+
 ## 实施顺序
 
 ### 第一步 核定操作清单和接口契约

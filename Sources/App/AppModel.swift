@@ -12,7 +12,7 @@ struct TaskProgress: Equatable {
     var total: Int
 }
 
-enum BeforeAfterLayout { case off, sideBySide, split }
+enum BeforeAfterLayout: String { case off, sideBySide = "side_by_side", split }
 enum AdjustmentAction: String {
     case paste = "粘贴调整", sync = "同步调整", previous = "沿用上一张调整", save = "保存预设", update = "更新预设", preset = "应用预设"
     var title: String {
@@ -149,6 +149,7 @@ private struct BeforeImageKey: Equatable {
 }
 struct SavedEditComparison {
     let photoID: String
+    let key: String?
     let title: String
     let recipe: EditRecipe
 }
@@ -398,7 +399,7 @@ final class AppModel {
     var beforeStatus = ""
     private(set) var savedEditPreview: ComparisonPhoto?
     private(set) var savedEditPreviewTitle = ""
-    private var savedEditPreviewKey: String?
+    private(set) var savedEditPreviewKey: String?
     private(set) var beforeReference: SavedEditComparison?
     var beforeLabel: String { beforeReference.map { L10n.text("app.reference", defaultValue: "Reference · ") + $0.title } ?? L10n.text("app.before", defaultValue: "Before") }
     @ObservationIgnored private var beforeTask: Task<Void, Never>?
@@ -2154,7 +2155,7 @@ final class AppModel {
         guard workspaceAvailable, !canEdit, !loadingPhoto, active != nil, comparison == nil, survey == nil else { return }
         loadActive()
     }
-    private func loadActive() {
+    private func loadActive(persistBaseline: Bool = true) {
         previewTask?.cancel(); previewGeneration = UUID(); pendingPreview = nil; pendingQualityPreview = nil; qualityRender?.cancel()
         interactivePreview = false; previewCurrent = false; canEdit = false
         loadingPhoto = false
@@ -2175,7 +2176,7 @@ final class AppModel {
                 else if photo.supportsEditing { value = try await pipeline.baseline(ImageRequest(photo: photo, root: root, recipe: nil)) }
                 let defaults = photo.isRAW ? try await pipeline.rawDefaults(ImageRequest(photo: photo, root: root, recipe: value)) : nil
                 guard token == previewGeneration, !Task.isCancelled else { return }
-                if photo.recipe == nil, let value {
+                if persistBaseline, photo.recipe == nil, let value {
                     try catalog?.saveRecipe(id: photo.id, recipe: value)
                     try reloadPhotos(); try reloadEditContext()
                 }
@@ -2284,20 +2285,21 @@ final class AppModel {
     }
     func deleteSnapshot(_ snapshot: EditSnapshot) {
         guard workspaceAvailable, canEdit, snapshot.photoID == activeID, let catalog else { return }
-        setSnapshotPresence(snapshot, present: false, catalog: catalog)
+        perform { try setSnapshotPresence(snapshot, present: false, catalog: catalog) }
     }
-    private func setSnapshotPresence(_ snapshot: EditSnapshot, present: Bool, catalog expectedCatalog: CatalogStore) {
-        guard workspaceAvailable, let catalog, catalog === expectedCatalog else { return }
-        perform {
-            if present { try catalog.restoreSnapshot(snapshot) }
-            else { try catalog.deleteSnapshot(snapshot); clearSavedEditPreview(key: "snapshot:" + snapshot.id) }
-            // Snapshot metadata never commits the current recipe draft. A comparison
-            // reference already owns its frozen recipe and remains usable after deletion.
-            undo.registerUndo(withTarget: self) { $0.setSnapshotPresence(snapshot, present: !present, catalog: expectedCatalog) }
-            undo.setActionName(L10n.text("app.deleteSnapshot", defaultValue: "Delete Snapshot"))
-            try reloadEditContext()
-            status = present ? L10n.text("app.restoredSnapshot", defaultValue: "Restored snapshot “\(snapshot.title)”") : L10n.text("app.deletedSnapshotUndoAvailable", defaultValue: "Deleted snapshot “\(snapshot.title)” · Undo available")
+    @discardableResult func setSnapshotPresence(_ snapshot: EditSnapshot, present: Bool, catalog expectedCatalog: CatalogStore,
+                                                closedUndo: Bool = false) throws -> Bool {
+        guard workspaceAvailable, let catalog, catalog === expectedCatalog else {
+            throw LRCError(L10n.text("app.actionIncomplete", defaultValue: "Action Incomplete"))
         }
+        if present { try catalog.restoreSnapshot(snapshot) }
+        else { try catalog.deleteSnapshot(snapshot); clearSavedEditPreview(key: "snapshot:" + snapshot.id) }
+        // A comparison reference owns its frozen recipe and remains usable after deletion.
+        registerCatalogUndo(L10n.text("app.deleteSnapshot", defaultValue: "Delete Snapshot"), closed: closedUndo) { model in
+            model.perform { try model.setSnapshotPresence(snapshot, present: !present, catalog: expectedCatalog) }
+        }
+        status = present ? L10n.text("app.restoredSnapshot", defaultValue: "Restored snapshot “\(snapshot.title)”") : L10n.text("app.deletedSnapshotUndoAvailable", defaultValue: "Deleted snapshot “\(snapshot.title)” · Undo available")
+        return snapshot.photoID != activeID || perform { try reloadEditContext() }
     }
     func applySavedEdit(data: Data, photoID: String, title: String) {
         guard canEdit, photoID == activeID, commitRecipe() else { return }
@@ -2333,12 +2335,12 @@ final class AppModel {
         guard key == nil || key == savedEditPreviewKey else { return }
         savedEditPreview?.cancel(); savedEditPreview = nil; savedEditPreviewKey = nil; savedEditPreviewTitle = ""
     }
-    func setBeforeReference(data: Data, photoID: String, title: String) {
+    func setBeforeReference(data: Data, photoID: String, key: String? = nil, title: String) {
         guard workspaceAvailable, canEdit, canShowBeforeAfter else { return }
         perform {
             let value = try validatedSavedEdit(data: data, photoID: photoID)
             clearSavedEditPreview()
-            beforeReference = SavedEditComparison(photoID: photoID, title: title, recipe: value)
+            beforeReference = SavedEditComparison(photoID: photoID, key: key, title: title, recipe: value)
             resetBeforeImage()
             if before { requestPreview() }
             else { showBeforeAfter(beforeAfter == .off ? .sideBySide : beforeAfter); refreshBeforeImage() }
@@ -2351,12 +2353,12 @@ final class AppModel {
     }
     var displayPreviewRecipe: EditRecipe? { adjustmentDisplayRecipe ?? maskEffectPreviewRecipe }
     var isPreviewingAdjustment: Bool { adjustmentDisplayRecipe != nil }
-    func previewPreset(_ preset: AdjustmentPreset) {
+    func previewPreset(_ preset: AdjustmentPreset, amount: Double = 1, options: RecipePasteOptions? = nil) {
         guard workspaceAvailable, editMode, developTool == .adjust, canEdit, !before,
               let current = recipe, let photo = active, image != nil,
               previewingPresetID != preset.id else { return }
         do {
-            var value = try preset.previewRecipe(on: current)
+            var value = try preset.previewRecipe(on: current, amount: amount, options: options)
             if photo.isRAW, let rawDefaults { value.rawDetails = value.rawDetails.supported(by: rawDefaults) }
             try value.validate(for: photo)
             startAdjustmentPreview(recipe: value, title: L10n.text("app.presetPreview", defaultValue: "Preset preview · ") + preset.name, preset: preset.id)
@@ -2472,8 +2474,11 @@ final class AppModel {
     }
     func copyAdjustments() {
         guard workspaceAvailable, canEdit, commitRecipe(), let recipe else { return }
-        copiedRecipe = recipe; copiedPhotoName = active?.displayName ?? L10n.text("app.photo", defaultValue: "Photo")
-        copiedAdjustmentPhoto = activeID.flatMap { try? catalog?.photo($0) } ?? active
+        storeCopiedAdjustments(recipe, photo: activeID.flatMap { try? catalog?.photo($0) } ?? active)
+    }
+    func storeCopiedAdjustments(_ recipe: EditRecipe, photo: Photo?) {
+        copiedRecipe = recipe; copiedPhotoName = photo?.displayName ?? L10n.text("app.photo", defaultValue: "Photo")
+        copiedAdjustmentPhoto = photo
         status = L10n.text("app.copiedAdjustmentsFrom", defaultValue: "Copied adjustments from \(copiedPhotoName)")
     }
     var canUsePreviousAdjustments: Bool {
@@ -2579,14 +2584,10 @@ final class AppModel {
                         catch { results.append(L10n.text("app.skipped", defaultValue: "Skipped \(photo.name): \(error.localizedDescription)")) }
                     }
                     try Task.checkCancellation()
-                    try catalog.saveRecipes(changes, title: title)
+                    try publishRecipeBatch(changes, title: title, catalog: catalog)
                     published = true
                     if !changes.isEmpty {
-                        let old = changes.map(\.photo)
-                        undo.beginUndoGrouping()
-                        undo.registerUndo(withTarget: self) { $0.restoreRecipeBatch(old, title: title) }
-                        undo.setActionName(title); undo.endUndoGrouping()
-                        try refreshAfterBatch(ids: Set(old.map(\.id)))
+                        try refreshAfterBatch(ids: Set(changes.map { $0.photo.id }))
                     }
                     reports = changes.map { L10n.text("app.succeeded", defaultValue: "Succeeded: \($0.photo.name)") } + results
                     status = L10n.text("app.completeUpdatedPhotos", defaultValue: "\(title) complete · Updated \(changes.count)/\(targets.count) photos") + (changes.isEmpty ? "" : L10n.text("app.undoTheEntireBatch", defaultValue: " · Undo the entire batch"))
@@ -2613,7 +2614,7 @@ final class AppModel {
     @discardableResult func applyRelativeExposure(delta: Double, ids: Set<String>, title: String? = nil) -> Bool {
         let title = title ?? L10n.text("app.relativeExposure", defaultValue: "Relative Exposure")
         guard !busy, canEdit, !ids.isEmpty, delta.isFinite, (-5...5).contains(delta), delta != 0,
-              let catalog, commitRecipe() else { return false }
+              catalog != nil, commitRecipe() else { return false }
         return applyExposureBatch(ids: ids, title: title) { _, original in
             (min(5, max(-5, original.exposure + delta)), false)
         }
@@ -2673,13 +2674,9 @@ final class AppModel {
                     }
                     try Task.checkCancellation()
                     if !changes.isEmpty {
-                        try catalog.saveRecipes(changes, title: title)
+                        try publishRecipeBatch(changes, title: title, catalog: catalog)
                         published = true
-                        let old = changes.map(\.photo)
-                        undo.beginUndoGrouping()
-                        undo.registerUndo(withTarget: self) { $0.restoreRecipeBatch(old, title: title) }
-                        undo.setActionName(title); undo.endUndoGrouping()
-                        try refreshAfterBatch(ids: Set(old.map(\.id)))
+                        try refreshAfterBatch(ids: Set(changes.map { $0.photo.id }))
                     }
                     reports = changes.map { L10n.text("app.succeeded", defaultValue: "Succeeded: \($0.photo.name)") } + results
                     status = L10n.text("app.completeUpdatedPhotos", defaultValue: "\(title) complete · Updated \(changes.count)/\(targets.count) photos") + (changes.isEmpty ? "" : L10n.text("app.undoTheEntireBatch", defaultValue: " · Undo the entire batch"))
@@ -2696,13 +2693,30 @@ final class AppModel {
         } catch { self.error = error.localizedDescription; return false }
     }
 
-    private func refreshAfterBatch(ids: Set<String>) throws {
-        try reloadPhotos(); try reloadEditContext()
+    func publishRecipeBatch(_ changes: [(photo: Photo, recipe: EditRecipe)], title: String, catalog: CatalogStore,
+                            expecting: [Photo] = [], closedUndo: Bool = false) throws {
+        try catalog.saveRecipes(changes, title: title, expecting: expecting)
+        guard !changes.isEmpty else { return }
+        let previous = changes.map(\.photo)
+        if !closedUndo { undo.beginUndoGrouping() }
+        registerCatalogUndo(title, closed: closedUndo) { $0.restoreRecipeBatch(previous, title: title) }
+        if !closedUndo { undo.endUndoGrouping() }
+    }
+
+    func refreshAfterBatch(ids: Set<String>) throws {
+        if let id = ids.first, ids.count == 1 {
+            try reloadSavedRecipe(id: id)
+            if id == activeID { try reloadEditHistory(keepingLoaded: true) }
+        } else {
+            try reloadPhotos()
+            try reloadEditContext()
+        }
         if let activeID, ids.contains(activeID) {
-            if let data = activePhoto?.recipe {
-                recipe = try JSONDecoder().decode(EditRecipe.self, from: data); savedRecipe = recipe; dirty = false; before = false
-                requestPreview(prepareInteractive: true)
-            } else { loadActive() }
+            clearSavedEditPreview()
+            // Undo can restore an untouched row. Its display baseline must not write a new revision.
+            guard let data = activePhoto?.recipe, !loadingPhoto else { loadActive(persistBaseline: false); return }
+            recipe = try JSONDecoder().decode(EditRecipe.self, from: data); savedRecipe = recipe; dirty = false; before = false
+            requestPreview(prepareInteractive: true)
         }
     }
     private func restoreRecipeBatch(_ states: [Photo], title: String) {

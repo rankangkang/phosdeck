@@ -302,10 +302,17 @@ final class CatalogStore: @unchecked Sendable {
     }
 
     /// Prepare image baselines outside the transaction; publish the successful subset together.
-    func saveRecipes(_ changes: [(photo: Photo, recipe: EditRecipe)], title: String) throws {
+    func saveRecipes(_ changes: [(photo: Photo, recipe: EditRecipe)], title: String, expecting: [Photo] = []) throws {
         try database.write { db in
+            for expected in expecting {
+                guard let current = try Photo.fetchOne(db, key: expected.id), !current.deleted,
+                      current.revision == expected.revision, current.recipeRevision == expected.recipeRevision,
+                      current.identity == expected.identity, current.availability == expected.availability else {
+                    throw OrganizationError.versionConflict
+                }
+            }
             for change in changes {
-                guard let current = try Photo.fetchOne(db, key: change.photo.id),
+                guard let current = try Photo.fetchOne(db, key: change.photo.id), !current.deleted,
                       current.recipeRevision == change.photo.recipeRevision, current.revision == change.photo.revision,
                       current.identity == change.photo.identity else { throw LRCError(L10n.text("app.aPhotoChangedDuringSynchronizationBatchAdjustmentsWereNot", defaultValue: "A photo changed during synchronization. Batch adjustments were not saved")) }
                 try Self.saveRecipe(db: db, id: current.id, recipe: change.recipe, title: title)
@@ -342,12 +349,16 @@ final class CatalogStore: @unchecked Sendable {
         }
     }
 
+    func preset(_ id: String) throws -> AdjustmentPreset? {
+        try database.read { try AdjustmentPreset.fetchOne($0, key: id) }
+    }
+
     /// Save only the selected parameter groups. Geometry, masks and repair
     /// locations continue to follow the existing `baseline().pasting` contract.
     /// The optional group is intentionally a storage concern so the existing
     /// save dialog remains source-compatible until its caller grows a group
     /// picker.
-    func savePreset(name: String, recipe: EditRecipe, options: RecipePasteOptions, groupName: String? = nil) throws {
+    @discardableResult func savePreset(name: String, recipe: EditRecipe, options: RecipePasteOptions, groupName: String? = nil) throws -> AdjustmentPreset {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let group = Self.normalizedPresetGroup(groupName)
         guard !name.isEmpty, name.count <= 100, options.hasSelection else {
@@ -360,6 +371,7 @@ final class CatalogStore: @unchecked Sendable {
                                       options: try JSONEncoder().encode(options),
                                       groupName: group)
         try database.write { try preset.insert($0) }
+        return preset
     }
 
     func renamePreset(id: String, name: String) throws {
@@ -497,6 +509,11 @@ final class CatalogStore: @unchecked Sendable {
     func snapshots(photoID: String) throws -> [EditSnapshot] {
         try database.read { try EditSnapshot.fetchAll($0, sql: "SELECT * FROM editSnapshot WHERE photoID=? ORDER BY createdAt DESC,id", arguments: [photoID]) }
     }
+    func snapshot(id: String, photoID: String) throws -> EditSnapshot? {
+        try database.read {
+            try EditSnapshot.fetchOne($0, sql: "SELECT * FROM editSnapshot WHERE photoID=? AND id=?", arguments: [photoID, id])
+        }
+    }
     func savedEdit(photoID: String, historyID: Int64?, snapshotID: String?) throws -> (data: Data, title: String)? {
         try database.read { db in
             if let historyID {
@@ -510,15 +527,17 @@ final class CatalogStore: @unchecked Sendable {
             return nil
         }
     }
-    func createSnapshot(photoID: String, title: String) throws {
+    @discardableResult func createSnapshot(photoID: String, title: String) throws -> EditSnapshot {
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name.count <= 100 else { throw LRCError(L10n.text("app.snapshotNamesMustContain1100Characters", defaultValue: "Snapshot names must contain 1–100 characters")) }
-        try database.write { db in
+        return try database.write { db in
             guard let photo = try Photo.fetchOne(db, key: photoID), photo.availability == "available", let data = photo.recipe else { throw LRCError(L10n.text("app.noAdjustmentsToSave", defaultValue: "No adjustments to save")) }
             let recipe = try JSONDecoder().decode(EditRecipe.self, from: data)
             try recipe.validate()
             guard recipe.sourceDigest == photo.digest else { throw LRCError(L10n.text("app.sourceIdentityMismatch", defaultValue: "Source identity mismatch")) }
-            try EditSnapshot(id: UUID().uuidString, photoID: photoID, title: name, createdAt: Date().timeIntervalSince1970, recipe: data).insert(db)
+            let snapshot = EditSnapshot(id: UUID().uuidString, photoID: photoID, title: name, createdAt: Date().timeIntervalSince1970, recipe: data)
+            try snapshot.insert(db)
+            return snapshot
         }
     }
     func renameSnapshot(id: String, photoID: String, title: String) throws {

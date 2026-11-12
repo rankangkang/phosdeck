@@ -34,7 +34,7 @@ targets:
     sources:
       # Includes automatic image analysis (Imaging/AutomaticAdjustments.swift, App/AutomaticAdjustmentEditing.swift) and folder comparison (Import/FolderReview.swift, UI/FolderReviewSheet.swift) and native direct adjustments.
       # Includes Imaging/ManualDefringe.swift.
-      # Includes the local MCP service and AppMCPCollections, AppMCPVersions and AppMCPPairs under App/.
+      # Includes the local MCP service, organization and Develop tools under App/.
       # Includes MergePanoramaFinish.swift and MergeDNGCodec.swift for float panorama finishing and linear DNG masters.
       # Includes native multiframe merge registration, MergeCameraRefinement, depth-gated FocusStackFusion, float masters and UI.
       - path: Sources
@@ -116,7 +116,7 @@ targets:
       # Includes ManualDefringeTests.swift, AutomaticAdjustmentTests.swift, FolderReviewTests.swift, DirectAdjustmentTests.swift and TargetedAdjustmentTests.swift.
       # Includes PhotoMergeFinishTests.swift for levelling, boundary warp/fill, DNG readback, import and publication.
       # Includes PhotoMergeTests.swift and FocusStackRegressionTests.swift for merge algorithms, float masters, safe publication and clipped focus selection.
-      # Includes AgentMCPTests.swift, AgentLibraryTests.swift and AgentOrganizationTests.swift for MCP checks.
+      # Includes AgentMCPTests.swift, AgentLibraryTests.swift, AgentOrganizationTests.swift and AgentDevelopTests.swift for MCP checks.
       - path: Tests
         excludes: [test_calibration_paths.py]
     dependencies:

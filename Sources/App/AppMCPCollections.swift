@@ -25,7 +25,7 @@ extension AppMCPTool {
         case .listVersions:
             ("List saved versions of the same physical original. Pass a photo_id or a physical source_id from list_photos or list_raw_jpeg_pairs.", "source_id, name, items with version IDs and revisions, total and next_offset")
         case .listEditRecords:
-            ("List saved history or snapshots of an explicit photo. Use a returned history_id or snapshot_id to create a virtual copy from that edit.", "photo_id, source_revision, recipe_revision, record_type, items and next_offset")
+            ("List saved history or snapshots of an explicit photo. Use a history_id or snapshot_id for preview, restoration, comparison or virtual copies. Use snapshot_revision for snapshot rename or deletion.", "photo_id, source_revision, recipe_revision, record_type, items and next_offset")
         case .createCopies:
             ("Create independent virtual copies of explicit photo_ids. With one target, pass either history_id or snapshot_id to use its saved edit. Optional expected_revisions must cover every target.", "items with new photo_id, copied_from_photo_id and shared source_id, operation_id and commit_state")
         case .renameVersion:

@@ -370,10 +370,10 @@ extension CatalogStore {
         }
     }
     func photo(_ id: String) throws -> Photo? { try database.read { try Photo.fetchOne($0, sql: "SELECT * FROM photo WHERE id=? AND deleted=0", arguments:[id]) } }
-    func matchesPhotoRevisions(id: String, source: Int, recipe: Int) throws -> Bool {
+    func matchesPhotoRevisions(id: String, source: Int, recipe: Int, requiringAvailable: Bool = true) throws -> Bool {
         try database.read {
-            try Int.fetchOne($0, sql: "SELECT 1 FROM photo WHERE id=? AND deleted=0 AND revision=? AND recipeRevision=? AND availability='available'",
-                             arguments: [id, source, recipe]) != nil
+            try Int.fetchOne($0, sql: "SELECT 1 FROM photo WHERE id=? AND deleted=0 AND revision=? AND recipeRevision=? AND (?=0 OR availability='available')",
+                             arguments: [id, source, recipe, requiringAvailable]) != nil
         }
     }
     func photos(ids: Set<String>) throws -> [Photo] {

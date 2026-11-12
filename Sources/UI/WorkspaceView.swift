@@ -471,7 +471,7 @@ struct WorkspaceView: View {
                                                 .onDisappear { model.clearSavedEditPreview(key: "snapshot:" + entry.id) }
                                                 .contextMenu {
                                                     Button(L10n.text("app.previewInNavigator", defaultValue: "Preview in Navigator")) { model.previewSavedEdit(data: entry.recipe, photoID: entry.photoID, key: "snapshot:" + entry.id, title: entry.title) }
-                                                    Button(L10n.text("app.useAsComparisonBaseline", defaultValue: "Use as Comparison Baseline")) { model.setBeforeReference(data: entry.recipe, photoID: entry.photoID, title: entry.title) }.disabled(!model.canShowBeforeAfter)
+                                                    Button(L10n.text("app.useAsComparisonBaseline", defaultValue: "Use as Comparison Baseline")) { model.setBeforeReference(data: entry.recipe, photoID: entry.photoID, key: "snapshot:" + entry.id, title: entry.title) }.disabled(!model.canShowBeforeAfter)
                                                     Button(L10n.text("app.createVirtualCopyFromThisState", defaultValue: "Create Virtual Copy from This State")) { model.createVirtualCopy(data: entry.recipe, photoID: entry.photoID, title: entry.title) }
                                                     Divider()
                                                     Button(L10n.text("app.rename", defaultValue: "Rename…")) { snapshotRenameID = entry.id; snapshotName = entry.title; snapshotDialog = true }
@@ -508,7 +508,7 @@ struct WorkspaceView: View {
                                     .onDisappear { model.clearSavedEditPreview(key: "history:\(entry.id)") }
                                     .contextMenu {
                                         Button(L10n.text("app.previewInNavigator", defaultValue: "Preview in Navigator")) { model.previewSavedEdit(data: entry.recipe, photoID: entry.photoID, key: "history:\(entry.id)", title: entry.title) }
-                                        Button(L10n.text("app.useAsComparisonBaseline", defaultValue: "Use as Comparison Baseline")) { model.setBeforeReference(data: entry.recipe, photoID: entry.photoID, title: entry.title) }.disabled(!model.canShowBeforeAfter)
+                                        Button(L10n.text("app.useAsComparisonBaseline", defaultValue: "Use as Comparison Baseline")) { model.setBeforeReference(data: entry.recipe, photoID: entry.photoID, key: "history:\(entry.id)", title: entry.title) }.disabled(!model.canShowBeforeAfter)
                                         Button(L10n.text("app.createVirtualCopyFromThisState", defaultValue: "Create Virtual Copy from This State")) { model.createVirtualCopy(data: entry.recipe, photoID: entry.photoID, title: entry.title) }
                                     }
                             }

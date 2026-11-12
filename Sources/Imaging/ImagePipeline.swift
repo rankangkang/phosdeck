@@ -222,7 +222,7 @@ actor ImagePipeline {
             return MergeFrame(image:pixels,exposure:exposure,focal35mm:metadata?.focal35mm,nativeWidth:Int(native.width.rounded()),nativeHeight:Int(native.height.rounded()),raw:request.photo.isRAW,focalLength:metadata?.focalLength,cameraModel:request.photo.camera)
         }
     }
-    func verifyMergeSource(_ request: ImageRequest) throws {
+    func verifySource(_ request: ImageRequest) throws {
         let (lease,_) = try source(request)
         withExtendedLifetime(lease) {}
     }

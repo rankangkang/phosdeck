@@ -35,6 +35,14 @@ enum AppMCPTool: String, CaseIterable {
     case renameVersion = "rename_photo_version", removeVersions = "remove_photo_versions"
     case listStacks = "list_photo_stacks", editStack = "edit_photo_stack", planStacks = "plan_auto_stacks", applyStacks = "apply_auto_stacks"
     case listPairs = "list_raw_jpeg_pairs", planPairs = "plan_raw_jpeg_pairs", applyPairs = "apply_raw_jpeg_pairs", unlinkPair = "unlink_raw_jpeg_pair"
+    case photoRecipe = "get_photo_recipe", globalAdjustments = "set_global_adjustments", resetAdjustments = "reset_adjustments"
+    case toneCurve = "set_tone_curve", zoneLighting = "set_zone_lighting", colorAdjustments = "set_color_adjustments"
+    case detailAdjustments = "set_detail_adjustments", effects = "set_effects"
+    case automaticAdjustment = "run_automatic_adjustment", relativeExposure = "apply_relative_exposure", matchExposure = "match_total_exposures"
+    case transferAdjustments = "transfer_adjustments", beforeAfter = "set_before_after", adjustmentPreview = "preview_adjustment"
+    case listPresets = "list_adjustment_presets", editPreset = "edit_adjustment_preset"
+    case planXMP = "plan_xmp_preset_import", importXMP = "import_xmp_presets"
+    case applyEditRecord = "apply_edit_record", saveSnapshot = "save_edit_snapshot", deleteSnapshot = "delete_edit_snapshot"
 
     enum Field: String {
         case catalog = "catalog_session_id", photo = "photo_id", cursor, pageSize = "page_size"
@@ -61,6 +69,9 @@ enum AppMCPTool: String, CaseIterable {
         case versionRevisions = "expected_revisions", historyID = "history_id", snapshotID = "snapshot_id", recordType = "record_type"
         case stackID = "stack_id", stackIDs = "stack_ids", stackRevision = "stack_revision", direction, scope
         case interval = "interval_seconds", pairID = "pair_id", rawSource = "raw_source_id", jpegSource = "jpeg_source_id", sameCapture = "same_capture"
+        case adjustments, group, groups, channel, points, pointIndex = "point_index", gains, amount, delta
+        case presetID = "preset_id", presetRevision = "preset_revision", snapshotRevision = "snapshot_revision"
+        case presetGroup = "preset_group", favorite, favoritesOnly = "favorites_only", previewVariant = "preview_variant", beforeLayout = "before_layout"
 
         private var range: ClosedRange<Int>? {
             switch self {
@@ -73,6 +84,7 @@ enum AppMCPTool: String, CaseIterable {
             case .sourceRevision, .recipeRevision: 0...Int.max
             case .offset: 0...Int.max
             case .historyID: 1...Int.max
+            case .pointIndex: 0...(ToneCurves.maxPoints - 1)
             default: nil
             }
         }
@@ -93,15 +105,19 @@ enum AppMCPTool: String, CaseIterable {
             case .pane: ["main", "reference", "candidate", "develop_reference"]
             case .zoom: ["fit", "fill", "scale"]
             case .action: tool.actions
+            case .group: MCPDevelopParameters.groups.map(\.rawValue) + (tool == .resetAdjustments ? ["all"] : [])
+            case .channel: MCPDevelopParameters.channels
+            case .previewVariant: ["saved", "original", "before"]
+            case .beforeLayout: ["off", "original", "side_by_side", "split"]
             default: nil
             }
         }
         private var isBoolean: Bool {
             [.recursive, .skipCataloged, .sidecars, .pair, .all, .remaining, .descending, .hold, .filtersEnabled,
              .filtersOpen, .clearFilters, .linked, .locked, .restricted, .highlights, .shadows, .advance,
-             .manualOrder, .fromQuery, .sameCapture].contains(self)
+             .manualOrder, .fromQuery, .sameCapture, .favorite, .favoritesOnly].contains(self)
         }
-        private var textCriteria: Bool { [.search, .keyword, .camera, .lens, .dateFrom, .dateThrough].contains(self) }
+        private var textCriteria: Bool { [.search, .keyword, .camera, .lens, .dateFrom, .dateThrough, .presetGroup].contains(self) }
         private var maxString: Int {
             switch self {
             case .folder, .source: 4096
@@ -111,6 +127,9 @@ enum AppMCPTool: String, CaseIterable {
             case .dateFrom, .dateThrough: 10
             default: 128
             }
+        }
+        private func isDevelopName(for tool: AppMCPTool) -> Bool {
+            self == .presetGroup || (self == .name && (tool == .editPreset || tool == .saveSnapshot))
         }
         private var identifierSchema: Value { ["type": "string", "minLength": 1, "maxLength": 128] }
         func schema(for tool: AppMCPTool) -> Value {
@@ -124,6 +143,14 @@ enum AppMCPTool: String, CaseIterable {
             if let options = options(for: tool) { return ["type": "string", "enum": .array(options.map(Value.string))] }
             if isBoolean { return ["type": "boolean"] }
             switch self {
+            case .adjustments: return MCPDevelopParameters.schema(tool)
+            case .points: return MCPDevelopParameters.pointsSchema
+            case .gains: return MCPDevelopParameters.gainsSchema
+            case .groups:
+                return ["type": "array", "minItems": 1, "maxItems": .int(MCPRecipeGroups.keys.count), "uniqueItems": true,
+                        "items": ["enum": .array(MCPRecipeGroups.keys.map(Value.string))]]
+            case .amount: return MCPDevelopParameters.numberSchema(0...2)
+            case .delta: return MCPDevelopParameters.numberSchema(-5...5)
             case .scale: return ["type": "number", "enum": .array(AppModel.zoomScales.map(Value.double))]
             case .x, .y: return ["type": "number", "minimum": 0, "maximum": 1]
             case .ratingStep: return ["type": "integer", "enum": [-1, 1]]
@@ -166,6 +193,7 @@ enum AppMCPTool: String, CaseIterable {
             if self == .attachments || self == .locations {
                 return ["type": "object", "maxProperties": 1000, "propertyNames": identifierSchema, "additionalProperties": identifierSchema]
             }
+            if isDevelopName(for: tool) { return ["type": "string", "minLength": textCriteria ? 0 : 1, "maxLength": 100] }
             return ["type": "string", "minLength": textCriteria ? 0 : 1, "maxLength": .int(maxString)]
         }
         func accepts(_ value: Value, for tool: AppMCPTool) -> Bool {
@@ -181,6 +209,14 @@ enum AppMCPTool: String, CaseIterable {
                 return values.allSatisfy { Self.isID($0.key) && ($0.value.stringValue.map(Self.isID) ?? false) }
             }
             switch self {
+            case .adjustments: return MCPDevelopParameters.accepts(value, for: tool)
+            case .points: return (try? MCPDevelopParameters.points(value)) != nil
+            case .gains: return (try? MCPDevelopParameters.gains(value)) != nil
+            case .groups:
+                guard let items = value.arrayValue, !items.isEmpty, Set(items).count == items.count else { return false }
+                return items.allSatisfy { $0.stringValue.map(MCPRecipeGroups.keys.contains) == true }
+            case .amount: return value.number.map((0...2).contains) ?? false
+            case .delta: return value.number.map((-5...5).contains) ?? false
             case .interval: return value.number.map((0...86400).contains) ?? false
             case .rules: return value.objectValue != nil
             case .versionRevisions:
@@ -226,6 +262,9 @@ enum AppMCPTool: String, CaseIterable {
             default: break
             }
             guard let text = value.stringValue else { return false }
+            if isDevelopName(for: tool) {
+                return ((textCriteria ? 0 : 1)...100).contains(text.count) && !text.contains("\0")
+            }
             return options(for: tool)?.contains(text) ?? (((textCriteria ? 0 : 1)...maxString).contains(text.utf8.count) && !text.contains("\0"))
         }
         private static func isID(_ text: String) -> Bool { (1...128).contains(text.utf8.count) && !text.contains("\0") }
@@ -244,6 +283,11 @@ enum AppMCPTool: String, CaseIterable {
         case .reorderCollection: ["set_manual_order", "move"]
         case .editStack: ["group", "remove", "ungroup", "cover", "move", "split", "collapse", "expand"]
         case .planPairs: ["detect", "verify", "manual"]
+        case .toneCurve: ["set", "insert", "move", "remove", "reset"]
+        case .automaticAdjustment: ["white_balance", "tone"]
+        case .transferAdjustments: ["copy", "paste", "sync", "previous", "preset"]
+        case .adjustmentPreview: ["saved_edit", "preset", "hide_group", "clear"]
+        case .editPreset: ["create", "update", "rename", "delete", "favorite", "move"]
         default: nil
         }
     }
@@ -275,6 +319,25 @@ enum AppMCPTool: String, CaseIterable {
         case .applyStacks: [.catalog, .plan]
         case .applyPairs: [.catalog, .plan, .candidates]
         case .unlinkPair: [.catalog, .pairID]
+        case .photoRecipe: [.catalog, .photo]
+        case .globalAdjustments, .detailAdjustments, .effects, .colorAdjustments:
+            [.catalog, .photo, .sourceRevision, .recipeRevision, .adjustments]
+        case .toneCurve: [.catalog, .photo, .sourceRevision, .recipeRevision, .action, .channel]
+        case .zoneLighting: [.catalog, .photo, .sourceRevision, .recipeRevision, .gains]
+        case .resetAdjustments: [.catalog, .photo, .sourceRevision, .recipeRevision, .group]
+        case .automaticAdjustment: [.catalog, .photo, .sourceRevision, .recipeRevision, .action]
+        case .relativeExposure: [.catalog, .photoIDs, .versionRevisions, .delta]
+        case .matchExposure: [.catalog, .photo, .photoIDs, .versionRevisions]
+        case .transferAdjustments: [.catalog, .action, .versionRevisions]
+        case .beforeAfter: [.catalog, .photo, .sourceRevision, .recipeRevision, .beforeLayout]
+        case .adjustmentPreview: [.catalog, .photo, .sourceRevision, .recipeRevision, .action]
+        case .listPresets: [.catalog]
+        case .editPreset: [.catalog, .action]
+        case .planXMP: [.catalog, .access]
+        case .importXMP: [.catalog, .plan]
+        case .applyEditRecord: [.catalog, .photo, .sourceRevision, .recipeRevision]
+        case .saveSnapshot: [.catalog, .photo, .sourceRevision, .recipeRevision, .name]
+        case .deleteSnapshot: [.catalog, .photo, .sourceRevision, .recipeRevision, .snapshotID, .snapshotRevision]
         case .fileAccess: [.purpose]
         case .createCatalog: [.access, .name]
         case .openCatalog: []
@@ -328,7 +391,16 @@ enum AppMCPTool: String, CaseIterable {
         case .planStacks: [.scope, .photoIDs, .queryRevision, .selectionRevision]
         case .listPairs: [.photo, .source, .listing, .offset, .pageSize]
         case .planPairs: [.plan, .candidates, .scope, .photoIDs, .queryRevision, .selectionRevision, .rawSource, .jpegSource, .sameCapture]
-        case .preview: [.longEdge]
+        case .preview: [.longEdge, .previewVariant, .historyID, .snapshotID, .presetID, .presetRevision, .amount, .groups, .group]
+        case .photoRecipe: [.historyID, .snapshotID]
+        case .toneCurve: [.points, .pointIndex, .x, .y]
+        case .transferAdjustments: [.photo, .photoIDs, .groups, .presetID, .presetRevision, .amount]
+        case .beforeAfter, .applyEditRecord: [.historyID, .snapshotID]
+        case .adjustmentPreview: [.historyID, .snapshotID, .group, .presetID, .presetRevision, .amount, .groups]
+        case .listPresets: [.search, .presetGroup, .favoritesOnly, .offset, .pageSize]
+        case .editPreset: [.presetID, .presetRevision, .name, .presetGroup, .favorite, .photo, .sourceRevision, .recipeRevision, .groups]
+        case .importXMP: [.candidates, .all]
+        case .saveSnapshot: [.snapshotID, .snapshotRevision]
         case .job, .librarySources, .importRecords: [.offset, .pageSize]
         case .fileAccess, .createCatalog: [.catalog]
         case .openCatalog: [.catalog, .access, .recent]
@@ -343,7 +415,7 @@ enum AppMCPTool: String, CaseIterable {
     var writes: Bool {
         switch self {
         case .capabilities, .workspace, .listPhotos, .listSelected, .preview, .librarySources, .recentCatalogs, .importRecords, .job, .keywords,
-             .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs: false
+             .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs, .photoRecipe, .listPresets: false
         default: true
         }
     }
@@ -360,12 +432,12 @@ enum AppMCPTool: String, CaseIterable {
             output = "app_name, version, bundle_id, instance_id, image_sharing, and tools with enabled and reason."
         case .workspace:
             description = "Read the current catalog, query, active photo, selection and native task state before working on photos."
-            output = "catalog_session_id, request_epoch, catalog_name, source, query, view, tool, active_photo, selected_photo_ids, selection_count, selection_truncated, busy, modal, draft, and task."
+            output = "catalog_session_id, request_epoch, catalog_name, source, query, view, tool, active_photo, selected_photo_ids, selection_count, selection_truncated, busy, modal, draft, task, before_after, adjustment_preview, and adjustment transfer sources."
         case .listPhotos:
             description = "Page through the current source, filters and sort. listing=visible (default) respects stack folding; listing=matches includes folded members in query order. Reuse next_cursor for the next page."
             output = "items with photo_id, name, version_name, source_revision, recipe_revision, rating, flag, color_label, source_status, and stack. matched_count includes folded members. visible_count and next_cursor describe the displayed rows."
         case .preview:
-            description = "Render the specified saved photo version as an sRGB PNG, when the user has enabled image sharing. Use revisions from list_photos or get_workspace."
+            description = "Render an explicit saved version as an sRGB PNG when image sharing is on. preview_variant=original renders the baseline, before aligns a baseline or saved edit to current geometry. In saved mode optionally preview one history_id, snapshot_id, preset_id with preset_revision and amount/groups, or hide one adjustment group. Use the current photo revisions."
             output = "preview_id, photo_id, source_revision, recipe_revision, width, height, coordinate_space, and histogram, plus a PNG content block."
         case .rate:
             description = "Set the rating of one explicit photo. Pass its current expected_rating and the request_epoch from get_workspace. Reuse request_id with identical arguments only when retrying the same operation."
@@ -376,12 +448,13 @@ enum AppMCPTool: String, CaseIterable {
                 : "Redo an operation undone with undo_operation if it is still Phosdeck's current redo action."
             output = "operation_id, the verified restored values, and commit_state."
         default:
-            (description, output) = cullingDescription ?? organizationDescription ?? workflowDescription
+            (description, output) = cullingDescription ?? organizationDescription ?? developDescription ?? workflowDescription
         }
         let required = required + (needsRequestID ? [.epoch, .request] : [])
         let properties = Dictionary(uniqueKeysWithValues: (required + optional).map { ($0.rawValue, $0.schema(for: self)) })
         let destructive = [.startImport, .resolveConflict, .resumeImport, .cleanBackup,
-                           .deleteCollection, .deleteSmartCollection, .removeVersions, .unlinkPair].contains(self)
+                           .deleteCollection, .deleteSmartCollection, .removeVersions, .unlinkPair, .resetAdjustments,
+                           .editPreset, .deleteSnapshot].contains(self)
         return Tool(name: rawValue, description: description, inputSchema: [
             "type": "object", "properties": .object(properties), "additionalProperties": false,
             "required": .array(required.map { .string($0.rawValue) })
@@ -484,6 +557,7 @@ final class AppMCPTools {
         let data: [String: Value]
         let name: String
         let png: String
+        let selection: MCPDevelopPreview
     }
     private struct UndoReceipt {
         let id = UUID().uuidString
@@ -657,6 +731,7 @@ final class AppMCPTools {
             "redo_operation_id": undoAvailable(model, redo: true) ? .string(currentUndo!.id) : .null
         ]
         data.merge(Self.browseState(model)) { _, value in value }
+        data.merge(Self.developViewState(model)) { _, value in value }
         return .init("Current Phosdeck workspace.", data: data)
     }
 
@@ -763,8 +838,11 @@ final class AppMCPTools {
             guard let photo = try catalog.photo(id) else { throw MCPToolProblem.photoUnavailable }
             guard photo.revision == sourceRevision, photo.recipeRevision == recipeRevision else { throw MCPToolProblem.stalePhoto }
             guard photo.availability == "available", let root = roots.first(where: { $0.id == photo.rootID }) else { throw MCPToolProblem.fileAccess }
-            var recipe = try photo.recipe.map { try JSONDecoder().decode(EditRecipe.self, from: $0) }
-            if recipe == nil, photo.supportsEditing { recipe = try await pipeline.baseline(.init(photo: photo, root: root, recipe: nil)) }
+            let selection = try MCPDevelopPreview(arguments, photo: photo, catalog: catalog)
+            let current: EditRecipe?
+            if photo.supportsEditing { current = try await MCPDevelopPhoto.recipe(for: photo, root: root, pipeline: pipeline) }
+            else { current = nil }
+            let recipe = try await selection.recipe(current, photo: photo, root: root, pipeline: pipeline)
             let rendered = try await pipeline.render(.init(photo: photo, root: root, recipe: recipe), longEdge: edge)
             try Task.checkCancellation()
             let png = NSMutableData()
@@ -772,11 +850,13 @@ final class AppMCPTools {
             CGImageDestinationAddImage(destination, rendered.image, nil)
             guard CGImageDestinationFinalize(destination) else { throw MCPToolProblem.failed }
             let histogram = rendered.histogram.map { Value.array($0.channels.map { .array($0.map(Value.double)) }) } ?? .null
-            return Preview(data: [
+            var data: [String: Value] = [
                 "preview_id": .string(UUID().uuidString), "photo_id": .string(id), "source_revision": .int(sourceRevision),
                 "recipe_revision": .int(recipeRevision), "width": .int(rendered.image.width), "height": .int(rendered.image.height),
                 "coordinate_space": "normalized_top_left", "histogram": histogram
-            ], name: String(photo.displayName.prefix(256)), png: png.base64EncodedString())
+            ]
+            data.merge(selection.description) { _, value in value }
+            return Preview(data: data, name: String(photo.displayName.prefix(256)), png: png.base64EncodedString(), selection: selection)
         }
         previewWorker = worker
         defer { previewWorker = nil }
@@ -786,7 +866,8 @@ final class AppMCPTools {
         guard model.catalogSessionID == session else { throw MCPToolProblem.catalogChanged }
         let preview = try result.get()
         guard try catalog.matchesPhotoRevisions(id: id, source: sourceRevision, recipe: recipeRevision) else { throw MCPToolProblem.stalePreview }
-        return .init("Rendered the saved photo preview.", data: preview.data,
+        try preview.selection.verify(arguments, catalog: catalog)
+        return .init("Rendered the requested photo preview.", data: preview.data,
                      artifacts: [["type": "photo_preview", "id": preview.data["preview_id"]!, "name": .string(preview.name)]], image: preview.png)
     }
 
@@ -827,6 +908,11 @@ final class AppMCPTools {
                 result = try writeStacks(tool, args: arguments, model: model, catalog: model.catalog!)
             case .planPairs, .applyPairs, .unlinkPair:
                 result = try writePairs(tool, args: arguments, model: model, catalog: model.catalog!)
+            case .globalAdjustments, .resetAdjustments, .toneCurve, .zoneLighting, .colorAdjustments, .detailAdjustments, .effects,
+                 .automaticAdjustment, .relativeExposure, .matchExposure, .transferAdjustments, .applyEditRecord:
+                result = try writeRecipes(tool, args: arguments, model: model, catalog: model.catalog!)
+            case .beforeAfter, .adjustmentPreview, .editPreset, .planXMP, .importXMP, .saveSnapshot, .deleteSnapshot:
+                result = try writeEditContext(tool, args: arguments, model: model, catalog: model.catalog!)
             case .undo, .redo: result = try replay(model, redo: tool == .redo)
             default:
                 if tool.cullingDescription != nil {
@@ -864,7 +950,7 @@ final class AppMCPTools {
     private func nativeInteraction(_ model: AppModel) -> Bool {
         let window = NSApp?.keyWindow
         let typing = window.map(WorkspaceKeyboard.isWorkspaceWindow) == true && window?.firstResponder is NSTextView
-        return model.dirty || model.maskGesture != nil || model.spotGesture != nil || model.directAdjustment != nil
+        return model.dirty || model.maskGesture != nil || model.spotGesture != nil || model.directAdjustment != nil || model.automaticAdjustmentKind != nil
             || model.perspectiveGuideDragOriginal != nil || model.smartMaskSession != nil || model.whiteBalanceSamplingBusy || typing
     }
     private func nativeModal(_ model: AppModel) -> Bool {

@@ -53,26 +53,31 @@ extension AppMCPWorkflows {
 
     nonisolated private static func listEditRecords(catalog: CatalogStore, args: Arguments) throws -> MCPToolResult {
         let id = args["photo_id"]!.stringValue!
-        guard let photo = try catalog.photo(id) else { throw MCPToolProblem.photoUnavailable }
         let type = args["record_type"]?.stringValue ?? "history"
         let offset = args["offset"]?.intValue ?? 0, size = args["page_size"]?.intValue ?? 50
-        var data: Arguments
-        if type == "snapshots" {
-            data = page(try catalog.snapshots(photoID: id).map {
-                ["snapshot_id": .string($0.id), "title": .string($0.title), "created_at": .double($0.createdAt)]
-            }, arguments: args)
-        } else {
-            let records = try catalog.editHistory(photoID: id, limit: size + 1, offset: offset)
-            let items: [Value] = records.prefix(size).map {
-                ["history_id": .int(Int($0.id)), "title": .string($0.title), "created_at": .double($0.createdAt)]
+        return try catalog.database.read { db in
+            guard let photo = try Row.fetchOne(db, sql: "SELECT revision, recipeRevision FROM photo WHERE id=? AND deleted=0", arguments: [id]) else {
+                throw MCPToolProblem.photoUnavailable
             }
-            data = ["items": .array(items), "next_offset": records.count > size ? .int(offset + size) : .null]
+            var data: Arguments = ["photo_id": .string(id), "record_type": .string(type),
+                                   "source_revision": .int(photo["revision"]), "recipe_revision": .int(photo["recipeRevision"])]
+            let records: [Row], items: [Value]
+            if type == "snapshots" {
+                records = try Row.fetchAll(db, sql: "SELECT id,title,createdAt FROM editSnapshot WHERE photoID=? ORDER BY createdAt DESC,id LIMIT ? OFFSET ?",
+                                           arguments: [id, size + 1, offset])
+                items = records.prefix(size).map { snapshotRow(id: $0["id"], title: $0["title"], createdAt: $0["createdAt"]) }
+                data["total"] = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM editSnapshot WHERE photoID=?", arguments: [id]).map(Value.int)
+            } else {
+                records = try Row.fetchAll(db, sql: "SELECT id,title,createdAt FROM editHistory WHERE photoID=? ORDER BY id DESC LIMIT ? OFFSET ?",
+                                           arguments: [id, size + 1, offset])
+                items = records.prefix(size).map {
+                    ["history_id": .int($0["id"]), "title": .string($0["title"]), "created_at": .double($0["createdAt"])]
+                }
+            }
+            data["items"] = .array(items)
+            data["next_offset"] = records.count > size ? .int(offset + size) : .null
+            return .init("Read saved edit records.", data: data)
         }
-        data["photo_id"] = .string(id)
-        data["record_type"] = .string(type)
-        data["source_revision"] = .int(photo.revision)
-        data["recipe_revision"] = .int(photo.recipeRevision)
-        return .init("Read saved edit records.", data: data)
     }
 
     nonisolated private static func listStacks(catalog: CatalogStore, query: PhotoQuery, queryRevision: UUID, args: Arguments) throws -> MCPToolResult {

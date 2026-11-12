@@ -192,7 +192,7 @@ struct PresetBrowser: View {
 
     /// Pure filtering helper kept internal for regression tests and for any
     /// future compact preset picker that shares the browser's Unicode rules.
-    static func filtered(_ presets: [AdjustmentPreset], search: String,
+    nonisolated static func filtered(_ presets: [AdjustmentPreset], search: String,
                          groups: Set<String> = [], favoritesOnly: Bool = false) -> [AdjustmentPreset] {
         let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
             .precomposedStringWithCanonicalMapping

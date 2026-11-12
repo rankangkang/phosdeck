@@ -1,10 +1,12 @@
 import AppKit
 import MCP
+import UniformTypeIdentifiers
 
 enum MCPFilePurpose: String, CaseIterable {
     case createCatalog = "create_catalog", openCatalog = "open_catalog"
     case importSource = "import_source", importDestination = "import_destination"
     case relocateRoot = "relocate_root", locateOriginal = "locate_original", restoreBackup = "restore_import_backup"
+    case xmpPresets = "xmp_presets"
 
     var needsCatalog: Bool { self != .createCatalog && self != .openCatalog }
 
@@ -17,6 +19,12 @@ enum MCPFilePurpose: String, CaseIterable {
         case .importDestination: return AppModel.directoryPanel(title: L10n.text("app.chooseCopyDestination", defaultValue: "Choose Copy Destination"))
         case .relocateRoot: return AppModel.directoryPanel(title: L10n.text("agent.relocateRoot", defaultValue: "Authorize the New Location of the Library Folder"))
         case .restoreBackup: return AppModel.directoryPanel(title: L10n.text("agent.restoreBackup", defaultValue: "Choose a Folder for the Recovered File"))
+        case .xmpPresets:
+            let panel = NSOpenPanel()
+            panel.title = L10n.text("app.chooseXMPFiles", defaultValue: "Choose XMP Files…")
+            panel.allowedContentTypes = [UTType(filenameExtension: "xmp") ?? .xml]
+            panel.allowsMultipleSelection = true
+            return panel
         }
     }
 }
@@ -109,6 +117,7 @@ final class AppMCPWorkflows {
         let lease: AccessLease
         var directory: AccessLease?
         var identity: FileIdentity?
+        var additionalFiles: [AccessLease] = []
         var url: URL { lease.url }
     }
 
@@ -123,6 +132,7 @@ final class AppMCPWorkflows {
     var folderPlans: [String: MCPFolderPlan] = [:]
     var stackPlans: [String: MCPAutoStackPlan] = [:]
     var pairPlans: [String: MCPPairPlan] = [:]
+    var xmpPlans: [String: [XMPPresetImportItem]] = [:]
     private var activeReads = 0
 
     init(model: AppModel, chooseFile: FilePicker?) {
@@ -148,6 +158,7 @@ final class AppMCPWorkflows {
             folderPlans[job.id] = nil
             stackPlans[job.id] = nil
             pairPlans[job.id] = nil
+            xmpPlans[job.id] = nil
         }
     }
 
@@ -173,6 +184,10 @@ final class AppMCPWorkflows {
             return try await listKeywords(catalog: model.catalog!, session: session!, arguments: arguments)
         case .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs:
             return try await readOrganization(tool, catalog: model.catalog!, session: session!, args: arguments)
+        case .photoRecipe:
+            return try await readRecipe(arguments, catalog: model.catalog!, session: session!)
+        case .listPresets:
+            return try await listPresets(arguments, catalog: model.catalog!, session: session!)
         case .job, .importRecords:
             guard let catalog = model.catalog else { throw Self.missingJob }
             let response = try await readImportRecords(catalog: catalog, tool: tool, arguments: arguments)
@@ -233,6 +248,7 @@ final class AppMCPWorkflows {
             folderPlans[oldest.id] = nil
             stackPlans[oldest.id] = nil
             pairPlans[oldest.id] = nil
+            xmpPlans[oldest.id] = nil
         }
         if let action { wait(job, action: action) }
         jobs.append(job)
@@ -355,9 +371,17 @@ final class AppMCPWorkflows {
     }
 
     private func requestAccess(_ purpose: MCPFilePurpose, job: Job) async throws {
-        guard let url = try await pick(purpose.panel(), job: job, action: purpose.rawValue) else { throw CancellationError() }
+        let urls = try await pickURLs(purpose.panel(), job: job, action: purpose.rawValue)
+        guard let url = urls.first else { throw CancellationError() }
+        guard purpose != .xmpPresets || urls.count <= XMPPresetReader.maximumFiles else {
+            throw MCPToolProblem.invalid("Select up to 128 XMP files.")
+        }
         let lease = AccessLease(url: url)
         var grant = Grant(purpose: purpose, lease: lease)
+        if purpose == .xmpPresets {
+            grant.additionalFiles = urls.dropFirst().map(AccessLease.init(url:))
+            job.data["file_count"] = .int(urls.count)
+        }
         if purpose == .openCatalog || purpose == .locateOriginal {
             grant.identity = try FileIdentity.read(url)
             let parent = url.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
@@ -387,17 +411,21 @@ final class AppMCPWorkflows {
     }
 
     private func pick(_ panel: NSOpenPanel, job: Job, action: String) async throws -> URL? {
+        try await pickURLs(panel, job: job, action: action).first
+    }
+
+    private func pickURLs(_ panel: NSOpenPanel, job: Job, action: String) async throws -> [URL] {
         wait(job, action: action)
-        let url: URL?
-        if let chooseFile { url = await chooseFile(panel) }
+        let urls: [URL]
+        if let chooseFile { urls = await chooseFile(panel).map { [$0] } ?? [] }
         else {
             cancelPanel = { panel.cancel(nil) }
             defer { cancelPanel = nil }
             NSApp.activate()
-            url = await panel.begin() == .OK ? panel.url : nil
+            urls = await panel.begin() == .OK ? panel.urls : []
         }
         try Task.checkCancellation()
-        return url
+        return urls
     }
 
     func confirm(_ alert: NSAlert, job: Job, action: String) async throws -> NSApplication.ModalResponse {
