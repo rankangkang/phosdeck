@@ -26,7 +26,7 @@ import CoreGraphics
     @ObservationIgnored private var displayToken = UUID()
 
     init(catalog: CatalogStore,ids: Set<String>,kind: PhotoMergeKind,collectionID: String? = nil) {
-        self.catalog = catalog; self.collectionID = collectionID; options.kind = kind; options.align = kind.defaultAlignment; options.autoCrop = kind.isPanorama
+        self.catalog = catalog; self.collectionID = collectionID; options = .defaults(for: kind)
         working = true; phase = L10n.text("merge.loading", defaultValue:"Loading selected originals…")
         job = Task {
             do {
@@ -133,18 +133,24 @@ extension AppModel {
         mergeSession = PhotoMergeSession(catalog:catalog,ids:selection,kind:kind,collectionID:regularCollectionID)
     }
     func completePhotoMerge(_ result: MergeSaved) {
+        _ = completePhotoMerge(result, closedUndo: false)
+    }
+    func completePhotoMerge(_ result: MergeSaved, closedUndo: Bool) -> Bool {
         mergeSession = nil
         if let stacks = result.previousStacks {
             let previous = selection,active = activeID
-            undo.registerUndo(withTarget:self) { $0.restoreStackUndo(stacks,selection:previous,active:active) }
-            undo.setActionName(L10n.text("merge.stackUndo", defaultValue:"Stack Merged Photo"))
+            registerCatalogUndo(L10n.text("merge.stackUndo", defaultValue:"Stack Merged Photo"), closed: closedUndo) {
+                $0.restoreStackUndo(stacks,selection:previous,active:active)
+            }
         }
         do {
             let relocated = try revealMergedPhoto(result.photo.id)
             status = L10n.text("merge.completed", defaultValue:"Float master saved and added: \(result.url.lastPathComponent)")
             if relocated { status += L10n.text("merge.revealedAll", defaultValue:" · Shown in All Photos; return to your previous location with Back") }
+            return true
         } catch {
             self.error = L10n.text("merge.savedRefreshFailed", defaultValue:"The master is saved and cataloged at \(result.url.path), but the workspace could not refresh: \(error.localizedDescription)")
+            return false
         }
     }
 }

@@ -1,9 +1,7 @@
 import AppKit
 import Combine
 import GRDB
-import ImageIO
 import MCP
-import UniformTypeIdentifiers
 
 enum AppMCPTool: String, CaseIterable {
     case capabilities = "get_capabilities"
@@ -53,6 +51,12 @@ enum AppMCPTool: String, CaseIterable {
     case transferLocal = "transfer_local_adjustments", listLocalPresets = "list_local_adjustment_presets"
     case editLocalPreset = "edit_local_adjustment_preset"
     case smartStart = "start_smart_mask", smartEdit = "edit_smart_mask_selection", smartApply = "apply_smart_mask"
+    case planMerge = "plan_photo_merge", renderMerge = "render_merge_preview", getMergePreview = "get_merge_preview"
+    case saveMerge = "save_photo_merge"
+    case listExportPresets = "list_export_presets", editExportPreset = "edit_export_preset"
+    case planExport = "plan_export", getExportPreview = "get_export_preview", runExport = "run_export"
+    case exportRecords = "list_export_records", retryExport = "verify_or_retry_export", reauthorizeExport = "reauthorize_export_location"
+    case revealFile = "reveal_file_in_finder"
 
     enum Field: String {
         case catalog = "catalog_session_id", photo = "photo_id", cursor, pageSize = "page_size"
@@ -95,6 +99,11 @@ enum AppMCPTool: String, CaseIterable {
         case workflow, smartSessionID = "smart_session_id", smartOverlay = "smart_overlay"
         case candidateIndex = "candidate_index", personIndices = "person_indices", faceIndex = "face_index", part
         case separate, wholePerson = "whole_person"
+        case mergeKind = "merge_kind", outputOptions = "options", displayEV = "display_ev"
+        case masterFormat = "master_format", filename, stackWithSources = "stack_with_sources"
+        case specifications, outputID = "output_id", recordIDs = "record_ids"
+        case unfinishedOnly = "unfinished_only", includeCompleted = "include_completed"
+        case fileID = "file_id", revealKind = "kind"
 
         private var range: ClosedRange<Int>? {
             switch self {
@@ -148,6 +157,9 @@ enum AppMCPTool: String, CaseIterable {
             case .overlayColor: MCPMaskOverlay.colors
             case .workflow: ["object", "people"]
             case .part: SmartMaskPart.allCases.map(\.rawValue)
+            case .mergeKind: PhotoMergeKind.allCases.map(\.rawValue)
+            case .masterFormat: MergeMasterFormat.allCases.map(\.rawValue)
+            case .revealKind: ["catalog", "export", "merge", "import_backup"]
             default: nil
             }
         }
@@ -156,12 +168,14 @@ enum AppMCPTool: String, CaseIterable {
              .filtersOpen, .clearFilters, .linked, .locked, .restricted, .highlights, .shadows, .advance,
              .manualOrder, .fromQuery, .sameCapture, .favorite, .favoritesOnly, .flipHorizontal, .flipVertical,
              .spotGuides, .affectedRange, .enabled, .inverted, .erase, .autoMask, .overlay, .guides, .hideEffect,
-             .separate, .wholePerson].contains(self)
+             .separate, .wholePerson, .stackWithSources, .unfinishedOnly, .includeCompleted].contains(self)
         }
         private var textCriteria: Bool { [.search, .keyword, .camera, .lens, .dateFrom, .dateThrough, .presetGroup].contains(self) }
         private var maxString: Int {
             switch self {
             case .folder, .source: 4096
+            case .filename: 240
+            case .outputID: 300
             case .name, .expectedName: 255
             case .search, .camera, .lens: 512
             case .keyword, .keywordID: 1024
@@ -170,7 +184,7 @@ enum AppMCPTool: String, CaseIterable {
             }
         }
         private func nameLimit(for tool: AppMCPTool) -> Int {
-            if self == .presetGroup || (self == .name && [.editPreset, .saveSnapshot, .editLocalPreset].contains(tool)) { return 100 }
+            if self == .presetGroup || (self == .name && [.editPreset, .saveSnapshot, .editLocalPreset, .editExportPreset].contains(tool)) { return 100 }
             if self == .name && [.maskGroup, .maskComponent].contains(tool) { return 200 }
             return maxString
         }
@@ -187,6 +201,9 @@ enum AppMCPTool: String, CaseIterable {
             if isBoolean { return ["type": "boolean"] }
             switch self {
             case .adjustments: return tool == .pointColor ? MCPCanvasFields.pointColorSchema : MCPDevelopParameters.schema(tool)
+            case .outputOptions: return tool == .planMerge ? MCPMergeOptions.schema : MCPExportOptions.schema
+            case .specifications: return MCPExportOptions.specificationsSchema
+            case .displayEV: return MCPDevelopParameters.numberSchema(-5...5)
             case .start, .end: return tool == .maskShape ? MCPCanvasFields.gradientPointSchema : MCPCanvasFields.pointSchema
             case .point, .sourcePoint: return MCPCanvasFields.pointSchema
             case .path: return MCPCanvasFields.pathSchema
@@ -221,8 +238,10 @@ enum AppMCPTool: String, CaseIterable {
                 default: LibraryFilterSection.allCases.map { .string($0.rawValue) }
                 }
                 return ["type": "array", "uniqueItems": true, "items": ["enum": .array(values)]]
-            case .photoIDs, .stackIDs:
-                return ["type": "array", "minItems": 1, "maxItems": 1000, "uniqueItems": true, "items": identifierSchema]
+            case .photoIDs, .stackIDs, .recordIDs:
+                let count = tool == .planMerge ? 2...128 : 1...1000
+                return ["type": "array", "minItems": .int(count.lowerBound), "maxItems": .int(count.upperBound),
+                        "uniqueItems": true, "items": identifierSchema]
             case .interval:
                 return ["type": "number", "minimum": 0, "maximum": 86400]
             case .rules: return MCPCollectionState.rulesSchema
@@ -258,8 +277,9 @@ enum AppMCPTool: String, CaseIterable {
         func accepts(_ value: Value, for tool: AppMCPTool) -> Bool {
             if let range { return value.intValue.map(range.contains) ?? false }
             if isBoolean { return value.boolValue != nil }
-            if self == .candidates || self == .differences || self == .photoIDs || self == .stackIDs {
-                guard let values = value.arrayValue, (1...1000).contains(values.count) else { return false }
+            if [.candidates, .differences, .photoIDs, .stackIDs, .recordIDs].contains(self) {
+                let count = tool == .planMerge ? 2...128 : 1...1000
+                guard let values = value.arrayValue, count.contains(values.count) else { return false }
                 let ids = values.compactMap(\.stringValue)
                 return Set(ids).count == values.count && ids.allSatisfy(Self.isID)
             }
@@ -268,6 +288,9 @@ enum AppMCPTool: String, CaseIterable {
                 return values.allSatisfy { Self.isID($0.key) && ($0.value.stringValue.map(Self.isID) ?? false) }
             }
             switch self {
+            case .outputOptions: return MCPDevelopParameters.accepts(value, schema: schema(for: tool))
+            case .specifications: return MCPExportOptions.acceptsSpecifications(value)
+            case .displayEV: return value.number.map((-5...5).contains) ?? false
             case .adjustments:
                 return tool == .pointColor ? MCPDevelopParameters.accepts(value, schema: MCPCanvasFields.pointColorSchema)
                     : MCPDevelopParameters.accepts(value, for: tool)
@@ -383,6 +406,7 @@ enum AppMCPTool: String, CaseIterable {
         case .smartEdit:
             ["include", "exclude", "box", "undo_prompt", "select_candidate", "select_people", "select_all_people", "select_whole_person",
              "toggle_part", "select_face", "face_box", "reset_face", "set_separate", "cancel"]
+        case .editExportPreset: ["create", "update", "rename", "delete", "restore_defaults"]
         default: nil
         }
     }
@@ -444,6 +468,18 @@ enum AppMCPTool: String, CaseIterable {
         case .smartStart: [.catalog, .photo, .sourceRevision, .recipeRevision, .workflow]
         case .smartEdit: [.catalog, .photo, .sourceRevision, .recipeRevision, .smartSessionID, .selectionRevision, .action]
         case .smartApply: [.catalog, .photo, .sourceRevision, .recipeRevision, .smartSessionID, .selectionRevision]
+        case .planMerge: [.catalog, .photoIDs, .versionRevisions, .mergeKind]
+        case .renderMerge: [.catalog, .plan]
+        case .getMergePreview: [.catalog, .previewID]
+        case .saveMerge: [.catalog, .previewID, .destinationAccess]
+        case .listExportPresets: []
+        case .editExportPreset: [.action]
+        case .planExport: [.catalog, .photoIDs, .versionRevisions, .destinationAccess]
+        case .getExportPreview, .runExport: [.catalog, .plan]
+        case .exportRecords: [.catalog]
+        case .retryExport: [.catalog, .recordIDs]
+        case .reauthorizeExport: [.catalog, .recordIDs, .access]
+        case .revealFile: [.catalog, .revealKind]
         case .solvePerspective: [.catalog, .photo, .sourceRevision, .recipeRevision, .mode]
         case .canvasGuides: [.catalog]
         case .samplePreview: [.catalog, .previewID, .point]
@@ -524,6 +560,16 @@ enum AppMCPTool: String, CaseIterable {
         case .editLocalPreset: [.photo, .sourceRevision, .recipeRevision, .maskID, .presetID, .presetRevision, .name]
         case .smartStart: [.maskID, .componentID, .maskOperation]
         case .smartEdit: [.previewID, .point, .rect, .candidateIndex, .personIndices, .faceIndex, .part, .separate, .wholePerson]
+        case .planMerge: [.outputOptions, .collection]
+        case .getMergePreview: [.displayEV, .longEdge]
+        case .saveMerge: [.filename, .masterFormat, .stackWithSources]
+        case .listExportPresets: [.offset, .pageSize]
+        case .editExportPreset: [.name, .presetID, .presetRevision, .outputOptions]
+        case .planExport: [.outputOptions, .presetID, .presetRevision, .specifications]
+        case .getExportPreview: [.offset, .pageSize, .outputID, .longEdge]
+        case .exportRecords: [.offset, .pageSize, .unfinishedOnly, .recordIDs]
+        case .retryExport: [.includeCompleted]
+        case .revealFile: [.recordIDs, .record, .member, .fileID, .photo]
         case .photoRecipe: [.historyID, .snapshotID]
         case .toneCurve: [.points, .pointIndex, .x, .y]
         case .transferAdjustments: [.photo, .photoIDs, .groups, .presetID, .presetRevision, .amount]
@@ -548,7 +594,7 @@ enum AppMCPTool: String, CaseIterable {
         switch self {
         case .capabilities, .workspace, .listPhotos, .listSelected, .preview, .librarySources, .recentCatalogs, .importRecords, .job, .keywords,
              .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs, .photoRecipe, .listPresets,
-             .samplePreview, .spotRepairs, .maskState, .listLocalPresets: false
+             .samplePreview, .spotRepairs, .maskState, .listLocalPresets, .getMergePreview, .listExportPresets, .getExportPreview, .exportRecords: false
         default: true
         }
     }
@@ -582,7 +628,7 @@ enum AppMCPTool: String, CaseIterable {
             output = "operation_id, the verified restored values, and commit_state."
         default:
             (description, output) = cullingDescription ?? organizationDescription ?? developDescription ?? canvasDescription
-                ?? maskDescription ?? smartMaskDescription ?? workflowDescription
+                ?? maskDescription ?? smartMaskDescription ?? mergeDescription ?? exportDescription ?? workflowDescription
         }
         let required = required + (needsRequestID ? [.epoch, .request] : [])
         let properties = Dictionary(uniqueKeysWithValues: (required + optional).map { ($0.rawValue, $0.schema(for: self)) })
@@ -805,6 +851,14 @@ final class AppMCPTools {
                                             selectionOnly: tool == .listSelected)
             case .preview:
                 return try await preview(model, catalog: model.catalog!, session: catalogSession!, arguments: arguments)
+            case .getMergePreview, .getExportPreview:
+                let withImage = tool == .getMergePreview || arguments["output_id"] != nil
+                guard !withImage || sharesImages else { throw MCPToolProblem.imageDisabled }
+                let accessGeneration = imageAccessGeneration
+                let result = try await workflows.read(tool, arguments: arguments)
+                try verifyCanvasRead(catalogSession!, model: model)
+                guard !withImage || (sharesImages && imageAccessGeneration == accessGeneration) else { throw MCPToolProblem.imageDisabled }
+                return result
             case .samplePreview:
                 return try await sampleCanvas(arguments, model: model, catalog: model.catalog!, session: catalogSession!)
             case .spotRepairs:
@@ -846,7 +900,7 @@ final class AppMCPTools {
             switch tool {
             case .capabilities, .workspace, .recentCatalogs, .job, .cancelJob: problem = nil
             case .listPhotos, .listSelected: problem = model.catalog == nil ? .noCatalog : nil
-            case .preview, .samplePreview: problem = model.catalog == nil ? .noCatalog : sharesImages ? nil : .imageDisabled
+            case .preview, .samplePreview, .getMergePreview: problem = model.catalog == nil ? .noCatalog : sharesImages ? nil : .imageDisabled
             case .rate: problem = model.catalog == nil ? .noCatalog : writeProblem(model)
             case .undo, .redo:
                 problem = model.catalog == nil ? .noCatalog : writeProblem(model, tool: tool) ?? (undoAvailable(model, redo: tool == .redo) ? nil : .undoConflict)
@@ -1030,10 +1084,7 @@ final class AppMCPTools {
             let canvas = MCPCanvasPreview(photo: photo, image: image, region: actualRegion,
                                           sourceSize: rendered.orientedSourceSize, variant: editable ? selection.variant : nil,
                                           spotOffsets: rendered.spotOffsets)
-            let png = NSMutableData()
-            guard let destination = CGImageDestinationCreateWithData(png, UTType.png.identifier as CFString, 1, nil) else { throw MCPToolProblem.failed }
-            CGImageDestinationAddImage(destination, image, nil)
-            guard CGImageDestinationFinalize(destination) else { throw MCPToolProblem.failed }
+            let png = try MCPOutputImage.png(image)
             let histogram = (region == nil ? rendered.histogram : ImageHistogram.calculate(image))
                 .map { Value.array($0.channels.map { .array($0.map(Value.double)) }) } ?? .null
             var data: [String: Value] = [
@@ -1046,7 +1097,7 @@ final class AppMCPTools {
             if let overlay { data["mask_overlay"] = overlay.description }
             if let withoutMask { data["without_mask_id"] = .string(withoutMask.uuidString) }
             if let smartOverlay { data["smart_overlay"] = .object(smartOverlay.fields) }
-            return Preview(data: data, name: String(photo.displayName.prefix(256)), png: png.base64EncodedString(), selection: selection, canvas: canvas)
+            return Preview(data: data, name: String(photo.displayName.prefix(256)), png: png, selection: selection, canvas: canvas)
         }
         previewWorker = worker
         defer { previewWorker = nil }
@@ -1134,6 +1185,8 @@ final class AppMCPTools {
                 result = try writeMasks(tool, args: arguments, model: model, catalog: model.catalog!)
             case .smartStart, .smartEdit, .smartApply:
                 result = try writeSmartMask(tool, args: arguments, model: model, catalog: model.catalog!)
+            case .saveMerge:
+                result = try saveMerge(arguments, model: model, catalog: model.catalog!)
             case .undo, .redo: result = try replay(model, redo: tool == .redo)
             default:
                 if tool.cullingDescription != nil {

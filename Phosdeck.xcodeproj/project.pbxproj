@@ -30,6 +30,10 @@
 		AA7900000000000000000057 /* AppMCPMask.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000067 /* AppMCPMask.swift */; };
 		AA7900000000000000000058 /* AppMCPLocalPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000068 /* AppMCPLocalPresets.swift */; };
 		AA7900000000000000000059 /* AppMCPSmartMask.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000069 /* AppMCPSmartMask.swift */; };
+		AA7900000000000000000070 /* AppMCPOutput.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000080 /* AppMCPOutput.swift */; };
+		AA7900000000000000000071 /* AppMCPMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000081 /* AppMCPMerge.swift */; };
+		AA7900000000000000000072 /* AppMCPExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000082 /* AppMCPExport.swift */; };
+		AA7900000000000000000073 /* AgentOutputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000083 /* AgentOutputTests.swift */; };
 		AA790000000000000000003F /* AgentOrganizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004F /* AgentOrganizationTests.swift */; };
 		AA7900000000000000000033 /* MCPHTTPListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000043 /* MCPHTTPListener.swift */; };
 		AA7900000000000000000034 /* mcp-NOTICES.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000044 /* mcp-NOTICES.txt */; };
@@ -279,6 +283,10 @@
 		AA7900000000000000000067 /* AppMCPMask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPMask.swift; sourceTree = "<group>"; };
 		AA7900000000000000000068 /* AppMCPLocalPresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPLocalPresets.swift; sourceTree = "<group>"; };
 		AA7900000000000000000069 /* AppMCPSmartMask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPSmartMask.swift; sourceTree = "<group>"; };
+		AA7900000000000000000080 /* AppMCPOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPOutput.swift; sourceTree = "<group>"; };
+		AA7900000000000000000081 /* AppMCPMerge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPMerge.swift; sourceTree = "<group>"; };
+		AA7900000000000000000082 /* AppMCPExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPExport.swift; sourceTree = "<group>"; };
+		AA7900000000000000000083 /* AgentOutputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentOutputTests.swift; sourceTree = "<group>"; };
 		AA790000000000000000004F /* AgentOrganizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentOrganizationTests.swift; sourceTree = "<group>"; };
 		AA7900000000000000000043 /* MCPHTTPListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPHTTPListener.swift; sourceTree = "<group>"; };
 		AA7900000000000000000044 /* mcp-NOTICES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "mcp-NOTICES.txt"; sourceTree = "<group>"; };
@@ -669,6 +677,7 @@
 				AA7900000000000000000049 /* AgentLibraryTests.swift */,
 				AA790000000000000000004F /* AgentOrganizationTests.swift */,
 				AA7900000000000000000064 /* AgentDevelopTests.swift */,
+				AA7900000000000000000083 /* AgentOutputTests.swift */,
 				9A239B718941D84CDC85C2F2 /* SmartMaskTests.swift */,
 			);
 			path = Tests;
@@ -722,6 +731,9 @@
 				AA7900000000000000000067 /* AppMCPMask.swift */,
 				AA7900000000000000000068 /* AppMCPLocalPresets.swift */,
 				AA7900000000000000000069 /* AppMCPSmartMask.swift */,
+				AA7900000000000000000080 /* AppMCPOutput.swift */,
+				AA7900000000000000000081 /* AppMCPMerge.swift */,
+				AA7900000000000000000082 /* AppMCPExport.swift */,
 				AA7900000000000000000043 /* MCPHTTPListener.swift */,
 				D19CCA868344D600A7F11CDD /* InspectionEditing.swift */,
 				751FCC1E508E2CE354177999 /* CollectionOrdering.swift */,
@@ -1069,6 +1081,7 @@
 				AA7900000000000000000039 /* AgentLibraryTests.swift in Sources */,
 				AA790000000000000000003F /* AgentOrganizationTests.swift in Sources */,
 				AA7900000000000000000054 /* AgentDevelopTests.swift in Sources */,
+				AA7900000000000000000073 /* AgentOutputTests.swift in Sources */,
 				FDB12FE8C1C91C4A371A52E6 /* SmartMaskTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1130,6 +1143,9 @@
 				AA7900000000000000000057 /* AppMCPMask.swift in Sources */,
 				AA7900000000000000000058 /* AppMCPLocalPresets.swift in Sources */,
 				AA7900000000000000000059 /* AppMCPSmartMask.swift in Sources */,
+				AA7900000000000000000070 /* AppMCPOutput.swift in Sources */,
+				AA7900000000000000000071 /* AppMCPMerge.swift in Sources */,
+				AA7900000000000000000072 /* AppMCPExport.swift in Sources */,
 				AA7900000000000000000033 /* MCPHTTPListener.swift in Sources */,
 				F49651F836A00B9FF96B73EB /* InspectionEditing.swift in Sources */,
 				697D9CF45E47AEDB0B59398F /* CollectionOrdering.swift in Sources */,

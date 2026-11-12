@@ -70,6 +70,9 @@ struct PhotoMergeOptions: Codable, Equatable {
     var bracketSize = 3
     /// Explicit source resolution, never an automatic reduction on memory failure. Zero means original.
     var sourceLongEdge = 0
+    static func defaults(for kind: PhotoMergeKind) -> Self {
+        Self(kind: kind, align: kind.defaultAlignment, autoCrop: kind.isPanorama)
+    }
     func validate(count: Int) throws {
         guard (2...128).contains(count), (0...3).contains(deghost), (2...9).contains(bracketSize),
               boundaryWarp.isFinite, (0...100).contains(boundaryWarp),

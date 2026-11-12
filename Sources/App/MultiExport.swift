@@ -44,25 +44,7 @@ extension AppModel {
                         taskProgress = TaskProgress(title: L10n.text("app.prepareMultipleSizeOutput", defaultValue: "Prepare Multiple-Size Output"), done: index, total: snapshots.count)
                         frozen.append(try await pipeline.freezeExport(snapshot))
                     }
-                    try Task.checkCancellation()
-                    // Check again after source freezing, including symlink resolution and files
-                    // that arrived during preparation. The existing queue still refuses late races.
-                    let checked = try ExportBatchPlanner.plan(photos: plan.groups[0].requests.map(\.photo), specifications: plan.specifications, directory: directory, originalURLs: plan.protectedOriginals)
-                    guard checked.isReady, checked.requests.map(\.destination) == plan.requests.map(\.destination) else {
-                        throw LRCError(L10n.text("app.aDestinationConflictAroseDuringPreparationReopenExportTo", defaultValue: "A destination conflict arose during preparation. Reopen Export to review it"))
-                    }
-                    for group in plan.groups {
-                        let folder = directory.appendingPathComponent(group.specification.subfolder, isDirectory: true)
-                        if !FileManager.default.fileExists(atPath: folder.path) {
-                            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
-                        }
-                        guard try folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { throw LRCError(L10n.text("app.theDestinationSubfolderIsUnavailable", defaultValue: "The destination subfolder is unavailable")) }
-                    }
-                    let ready = try ExportBatchPlanner.plan(photos: plan.groups[0].requests.map(\.photo), specifications: plan.specifications,
-                                                            directory: directory, originalURLs: plan.protectedOriginals)
-                    guard ready.isReady, ready.requests.map(\.destination) == plan.requests.map(\.destination) else {
-                        throw LRCError(L10n.text("app.theDestinationChangedWhileCreatingSubfoldersNothingQueued", defaultValue: "The destination changed while creating subfolders; nothing queued"))
-                    }
+                    try ExportBatchPlanner.prepareDestinations(plan)
                     exportOperationCounts = ExportOperationCounts()
                     reports = await ExportService(pipeline: pipeline).run(frozen, catalog: catalog, step: { [self] done, total in
                         await MainActor.run { taskProgress = TaskProgress(title: L10n.text("app.multipleSizeOutput", defaultValue: "Multiple-Size Output"), done: done, total: total) }

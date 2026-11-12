@@ -7,6 +7,7 @@ enum MCPFilePurpose: String, CaseIterable {
     case importSource = "import_source", importDestination = "import_destination"
     case relocateRoot = "relocate_root", locateOriginal = "locate_original", restoreBackup = "restore_import_backup"
     case xmpPresets = "xmp_presets"
+    case mergeDestination = "merge_destination", exportDestination = "export_destination"
 
     var needsCatalog: Bool { self != .createCatalog && self != .openCatalog }
 
@@ -19,6 +20,8 @@ enum MCPFilePurpose: String, CaseIterable {
         case .importDestination: return AppModel.directoryPanel(title: L10n.text("app.chooseCopyDestination", defaultValue: "Choose Copy Destination"))
         case .relocateRoot: return AppModel.directoryPanel(title: L10n.text("agent.relocateRoot", defaultValue: "Authorize the New Location of the Library Folder"))
         case .restoreBackup: return AppModel.directoryPanel(title: L10n.text("agent.restoreBackup", defaultValue: "Choose a Folder for the Recovered File"))
+        case .mergeDestination: return AppModel.directoryPanel(title: L10n.text("merge.chooseDestination", defaultValue: "Choose Destination…"))
+        case .exportDestination: return AppModel.directoryPanel(title: L10n.text("app.chooseOutputDestination", defaultValue: "Choose Output Destination"))
         case .xmpPresets:
             let panel = NSOpenPanel()
             panel.title = L10n.text("app.chooseXMPFiles", defaultValue: "Choose XMP Files…")
@@ -72,6 +75,8 @@ extension AppMCPTool {
             ("Read a job by job_id, or a durable copy import by its record_id. Page individual results with next_offset. Follow user_action or conflict while waiting and check commit_state at completion.", "job_id, state, phase, progress, cancel_requested, results, items, next_offset")
         case .cancelJob:
             ("Request cancellation of an Agent job in Phosdeck. Poll get_job for its final state and any results already saved.", "job_id, state and cancel_requested")
+        case .revealFile:
+            ("Reveal the current catalog or explicit export records, a merge master, or an import backup in Finder. Use record_ids for export, file_id or photo_id for merge, and record_id and member_id for import_backup.", "job_id, then revealed and unavailable counts")
         default: preconditionFailure("Use the core tool description.")
         }
     }
@@ -98,6 +103,7 @@ final class AppMCPWorkflows {
         var errorCode: String?
         var cancelRequested = false
         var onCancel: (() -> Void)?
+        var outputObservations: [String: ExportObservation] = [:]
         var progress: TaskProgress?
         var conflictReplies: [String: ImportConflictDecision] = [:]
 
@@ -134,6 +140,15 @@ final class AppMCPWorkflows {
     var stackPlans: [String: MCPAutoStackPlan] = [:]
     var pairPlans: [String: MCPPairPlan] = [:]
     var xmpPlans: [String: [XMPPresetImportItem]] = [:]
+    var mergePlans: [String: MCPMergePlan] = [:]
+    var mergePreview: MCPPreparedMerge?
+    var mergeFiles: [String: MCPPublishedMerge] = [:]
+    var makeMergeEngine: () -> PhotoMergeEngine = { PhotoMergeEngine() }
+    var exportPlans: [String: MCPExportPlan] = [:]
+    var exportDefaults: UserDefaults = .standard
+    lazy var outputPreviewPipeline = ImagePipeline(qualityCacheLimit: 0)
+    var makeExportService: (ImagePipeline) -> ExportService = { ExportService(pipeline: $0) }
+    var activateFilesInFinder: ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) }
     private var activeReads = 0
 
     init(model: AppModel, chooseFile: FilePicker?) {
@@ -153,6 +168,7 @@ final class AppMCPWorkflows {
 
     func catalogChanged() {
         let current = model.catalogSessionID
+        mergePreview = nil
         for job in jobs where job.session != current {
             grants[job.id] = nil
             importPlans[job.id] = nil
@@ -160,6 +176,9 @@ final class AppMCPWorkflows {
             stackPlans[job.id] = nil
             pairPlans[job.id] = nil
             xmpPlans[job.id] = nil
+            mergePlans[job.id] = nil
+            mergeFiles[job.id] = nil
+            exportPlans[job.id] = nil
         }
     }
 
@@ -189,6 +208,14 @@ final class AppMCPWorkflows {
             return try await readRecipe(arguments, catalog: model.catalog!, session: session!)
         case .listPresets:
             return try await listPresets(arguments, catalog: model.catalog!, session: session!)
+        case .getMergePreview:
+            return try await readMergePreview(arguments, catalog: model.catalog!)
+        case .listExportPresets:
+            return try listExportPresets(arguments)
+        case .getExportPreview:
+            return try await readExportPreview(arguments, catalog: model.catalog!)
+        case .exportRecords:
+            return try await readExportRecords(arguments, catalog: model.catalog!)
         case .job, .importRecords:
             guard let catalog = model.catalog else { throw Self.missingJob }
             let response = try await readImportRecords(catalog: catalog, tool: tool, arguments: arguments)
@@ -204,6 +231,14 @@ final class AppMCPWorkflows {
             let purpose = MCPFilePurpose(rawValue: arguments["purpose"]!.stringValue!)!
             if purpose.needsCatalog && model.catalog == nil { throw MCPToolProblem.noCatalog }
             return start(tool, waitingFor: purpose.rawValue) { job in try await self.requestAccess(purpose, job: job) }
+        case .planMerge: return try planMerge(arguments, catalog: model.catalog!)
+        case .renderMerge: return try renderMerge(arguments, catalog: model.catalog!)
+        case .editExportPreset: return try editExportPreset(arguments)
+        case .planExport: return try planExport(arguments, catalog: model.catalog!)
+        case .runExport: return try runExport(arguments, catalog: model.catalog!)
+        case .retryExport: return try retryExport(arguments, catalog: model.catalog!)
+        case .reauthorizeExport: return try reauthorizeExport(arguments, catalog: model.catalog!)
+        case .revealFile: return try revealFile(arguments, catalog: model.catalog!)
         case .createCatalog:
             let grant = try grant(arguments["access_id"], purpose: .createCatalog)
             let name = arguments["name"]!.stringValue!
@@ -250,6 +285,9 @@ final class AppMCPWorkflows {
             stackPlans[oldest.id] = nil
             pairPlans[oldest.id] = nil
             xmpPlans[oldest.id] = nil
+            mergePlans[oldest.id] = nil
+            mergeFiles[oldest.id] = nil
+            exportPlans[oldest.id] = nil
         }
         if let action { wait(job, action: action) }
         jobs.append(job)

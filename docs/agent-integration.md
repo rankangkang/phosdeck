@@ -81,16 +81,16 @@
 
 | 工具 | 操作、输入及结果 | 原生入口和边界 |
 |---|---|---|
-| `plan_photo_merge` | 明确源照片版本及顺序，选择全景、HDR、HDR 全景、对焦、平均、中值、加法、变亮、变暗或滤色。校验对齐、去鬼影、投影、裁剪、自动调平、边界变形、填边、包围曝光张数及源尺寸 | `PhotoMergeSession`、`PhotoMergeOptions.validate`、`PhotoMergeEngine`。计划绑定原片身份与集合范围 |
-| `render_merge_preview`、`get_merge_preview` | 计划 ID 生成预览，可调整显示 EV 并回读对应图像和预览代次 | `PhotoMergeSession.makePreview`／`updateDisplay`。复用取消和失效语义，显示 EV 单独记录 |
-| `save_photo_merge` | 预览 ID、TIFF32／DNG、授权位置和文件名，设置与来源堆叠。返回文件 ID、入库版本 ID、当前普通集合的加入状态和堆叠结果 | `PhotoMergeSession.save`、`completePhotoMerge`。分别报告发布、核验和入库，只有堆叠等原生可撤销动作返回撤销 ID |
+| `plan_photo_merge` | 明确源照片版本及顺序，选择全景、HDR、HDR 全景、对焦、平均、中值、加法、变亮、变暗或滤色。校验对齐、去鬼影、投影、裁剪、自动调平、边界变形、填边、包围曝光张数及源尺寸 | `PhotoMergeOptions.validate`、`PhotoMergeEngine`。计划绑定原片身份与集合范围 |
+| `render_merge_preview`、`get_merge_preview` | 用计划 ID 生成预览，按 `preview_id`、显示 EV 和长边回读对应图像 | `PhotoMergeEngine.prepare`／`display`。复用原生引擎的取消和失效语义 |
+| `save_photo_merge` | 预览 ID、TIFF32／DNG、授权位置和文件名，设置与来源堆叠。返回文件 ID、入库版本 ID、普通集合 ID 和堆叠结果 | `PhotoMergeEngine.save`、`completePhotoMerge`。分别报告发布、核验和入库，可撤销堆叠时返回撤销 ID |
 | `list_export_presets`、`edit_export_preset` | 列出内置／自定义预设，另存、改名、删除和恢复默认。返回导出选项 | `ExportPreferences`、`ExportSheet`。沿用内置预设限制 |
-| `plan_export`、`get_export_preview` | 明确照片、授权位置、单／多规格、预设、JPEG／PNG／TIFF16、质量、长边、铺底、命名组件、序列、子目录、元数据。返回命名／同名检查和铺底预览 | `prepareExport`／`prepareMultiExport`、`ExportBatchPlanner`、`ExportSheet`。预览沿用已显影图，输出保存冻结配方 |
-| `run_export` | 计划 ID，返回任务及每个版本／规格的实际输出 | `AppModel.export`、`ExportService.run`。同卷暂存、无覆盖发布并回读，原片受保护 |
+| `plan_export`、`get_export_preview` | 明确照片、授权位置、单／多规格、预设、JPEG／PNG／TIFF16、质量、长边、铺底、命名组件、序列、子目录、元数据。返回命名／同名检查和铺底预览 | `ExportBatchPlanner`、`ImagePipeline`。预览沿用已保存的显影，输出冻结配方 |
+| `run_export` | 计划 ID，返回任务及每个版本／规格的实际输出 | `ImagePipeline.freezeExport`、`ExportService.run`。同卷暂存、无覆盖发布并回读，原片受保护 |
 | `list_export_records`、`verify_or_retry_export`、`reauthorize_export_location` | 过滤未完成记录、单项／整批校验并重试、重授原始目标。返回冻结名称、结果与错误 | `ExportRecoverySheet`、`retryExports`、`ExportService.history`／`reauthorizeTarget`。保持原目标和方案，核验已发布文件 |
 | `reveal_file_in_finder` | 按当前图库、导入旧文件备份或输出 ID 在 Finder 显示已解析文件 | `WorkspaceCommands`、`ImportRecoverySheet`、`revealExports`。通过已有对象与访问权限解析位置 |
 
-对应回归包括 `PhotoMergeTests`、`PhotoMergeFinishTests`、`FocusStackRegressionTests`、`ExportTests`、`MultiExportTests`、`ExportNamingTests`、`ExportMetadataTests` 和 `RecoveryTests`。合成母版发布后入库失败与导出部分成功分别验证。
+`AgentOutputTests` 覆盖 MCP 合成、入库、导出、核验和恢复。原生回归包括 `PhotoMergeTests`、`PhotoMergeFinishTests`、`FocusStackRegressionTests`、`ExportTests`、`MultiExportTests`、`ExportNamingTests`、`ExportMetadataTests` 和 `RecoveryTests`。
 
 ### 第七步 设置 诊断和维护
 
@@ -252,6 +252,16 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 `get_mask_state` 按照片版本返回组，指定组和组件 ID 后读取细节。画笔、渐变和颜色／亮度范围可分别编辑。用 `get_photo_preview(mask_overlay={mask_id,style,color})` 读取覆盖图，或用 `without_mask_id` 对比临时隐藏的局部效果。`set_mask_display` 控制活动窗口的覆盖图和引导线。局部参数编辑、传递及应用局部预设保留目标选区，按实际保存修订返回原生撤销标识。
 
 智能蒙版在活动照片的蒙版工作区运行。`get_capabilities` 的 `smart_mask_models` 返回本机可用能力。调用 `start_smart_mask` 后用 `get_job` 查询分析，`get_mask_state` 返回选择修订、候选、人物、部位、脸框和失败原因。编辑或提交使用当前 `smart_session_id` 和 `selection_revision`。用 `smart_overlay` 查看指定候选或已选覆盖，用 `apply_smart_mask` 按原生分组提交。运行中的分析可由 `cancel_job` 取消，空闲会话可在选择工具中取消。
+
+### 照片合成与导出接口
+
+`plan_photo_merge` 和 `plan_export` 接受有序 `photo_ids` 与每张照片的 `expected_revisions`，其中包含 `source_revision` 和 `recipe_revision`。用 `get_job` 读取计划、进度与分页结果。图库切换或服务重启后重新规划，照片修订变化后先回读当前状态。运行中的合成和导出可用 `cancel_job` 取消，随后查看已经发布的结果。
+
+合成计划支持 `panorama`、`hdr`、`hdrPanorama`、`focus`、`average`、`median`、`additive`、`lighten`、`darken`、`screen`。HDR 全景按 `bracket_size` 将连续来源分组。`render_merge_preview` 返回可供 `get_merge_preview` 查看和 `save_photo_merge` 保存的 `preview_id`，重新渲染会替换已准备的预览。`display_ev` 仅影响回读图像。保存前在原生面板授权 `merge_destination`，选择 `tiff` 或 `dng` 母版和新文件名。结果的 `published`、`verified` 和 `indexed` 分别记录发布、核验和入库。堆叠可用返回的 `operation_id` 撤销，母版保留。若文件已发布但未入库，用返回的 `file_id` 定位母版并检查，再按需要引用导入。
+
+导出使用 `export_destination` 授权。单规格可直接传 `options`，多规格各自指定 `title`、`subfolder` 及所需选项。可通过 `preset_id` 和 `preset_revision` 选用内置或自定义预设，再覆盖单项选项。`jpeg` 必须选 `black` 或 `white` 铺底。`png` 和 `tiff` 保留透明度，TIFF 使用 16 位。`metadata_policy` 支持 `none`、`capture`、`description` 和 `captureAndDescription`。题注和关键词取自计划时的图库，相机数据仅写入原生允许的拍摄字段。`get_export_preview` 分页显示名称和冲突，传 `output_id` 时返回像素预览。所有像素预览均需要开启照片预览共享。
+
+仅对 `ready: true` 的计划调用 `run_export`。运行前重新核对修订和目标，再冻结配方、原片身份和元数据。任务分别报告 `published_count`、`verified_count`、`completed_count` 及每个输出的 `record_id`。连接中断时先回读任务，服务重启后可用 `list_export_records` 查询持久记录。`verify_or_retry_export` 校验已发布文件的摘要，缺失时用原冻结设置重新生成，遇到同名外部文件会保留原文件。授权失效时用原生面板选择每条记录的原始父目录，再调用 `reauthorize_export_location`。`reveal_file_in_finder` 按导出记录、已入库母版、临时母版文件 ID、当前图库或导入备份定位文件。
 
 ## 实施顺序
 

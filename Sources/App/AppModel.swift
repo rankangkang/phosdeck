@@ -3001,7 +3001,10 @@ final class AppModel {
     func recordExportResult(ids: Set<String>) throws {
         guard let catalog else { return }
         let history = try ExportService.history(catalog: catalog, ids: ids)
-        lastExportResult = ExportBatchResult(ids: ids, logs: history.logs, rejected: history.rejected, reports: reports, operationCounts: exportOperationCounts)
+        recordExportResult(ExportBatchResult(ids: ids, logs: history.logs, rejected: history.rejected, reports: reports, operationCounts: exportOperationCounts))
+    }
+    func recordExportResult(_ result: ExportBatchResult) {
+        lastExportResult = result
     }
     func openExportRecords(ids: Set<String>? = nil, unfinishedOnly: Bool = false) {
         guard workspaceAvailable, catalog != nil else { return }

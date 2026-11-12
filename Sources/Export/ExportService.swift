@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import ImageIO
 
 struct ExportLog: Identifiable {
     let id: String
@@ -10,6 +11,12 @@ struct ExportLog: Identifiable {
 }
 
 enum ExportOutcome: Sendable { case published, verified }
+
+struct ExportObservation: Sendable {
+    let id: String
+    let outcome: ExportOutcome
+    let dimensions: (width: Int, height: Int)?
+}
 
 struct ExportOperationCounts {
     var published = 0
@@ -57,6 +64,10 @@ actor ExportService {
     /// Renew permission for the exact frozen destination. Never relocate or re-plan an existing job.
     @discardableResult
     static func reauthorizeTarget(id: String, directory: URL, catalog: CatalogStore) throws -> ExportSnapshot {
+        try reauthorizeTargets(ids: [id], directory: directory, catalog: catalog)[0]
+    }
+
+    static func reauthorizeTargets(ids: [String], directory: URL, catalog: CatalogStore) throws -> [ExportSnapshot] {
         let lease = AccessLease(url: directory)
         defer { withExtendedLifetime(lease) {} }
         guard try directory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { throw LRCError(L10n.text("app.chooseTheOriginalDestinationFolder", defaultValue: "Choose the original destination folder")) }
@@ -65,17 +76,19 @@ actor ExportService {
         let checked = try AccessLease(bookmark: bookmark)
         guard checked.url.standardizedFileURL.resolvingSymlinksInPath() == canonical else { throw LRCError(L10n.text("app.destinationAuthorizationDiffersOnReadback", defaultValue: "Destination authorization differs on readback")) }
         return try catalog.database.write { db in
-            guard let data = try Data.fetchOne(db, sql: "SELECT snapshot FROM exportItem WHERE id=?", arguments: [id]) else {
-                throw LRCError(L10n.text("app.theOutputRecordNoLongerExists", defaultValue: "The output record no longer exists"))
+            try ids.map { id in
+                guard let row = try Row.fetchOne(db, sql: "SELECT * FROM exportItem WHERE id=?", arguments: [id]) else {
+                    throw LRCError(L10n.text("app.theOutputRecordNoLongerExists", defaultValue: "The output record no longer exists"))
+                }
+                let frozen = try log(row).snapshot
+                guard frozen.destination.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path == canonical.path else {
+                    throw LRCError(L10n.text("app.chooseTheOriginalDestinationFolderReauthorizationPreservesTheFrozen", defaultValue: "Choose the original destination folder: \(frozen.destination.deletingLastPathComponent().path). Reauthorization preserves the frozen export destination."))
+                }
+                let renewed = ExportSnapshot(id: frozen.id, request: frozen.request, destination: frozen.destination,
+                                             targetBookmark: bookmark, options: frozen.options, retainedStaging: frozen.retainedStaging, metadata: frozen.metadata)
+                try db.execute(sql: "UPDATE exportItem SET snapshot=? WHERE id=?", arguments: [try JSONEncoder().encode(renewed), id])
+                return renewed
             }
-            let frozen = try JSONDecoder().decode(ExportSnapshot.self, from: data)
-            guard frozen.id == id, frozen.destination.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath() == canonical else {
-                throw LRCError(L10n.text("app.chooseTheOriginalDestinationFolderReauthorizationPreservesTheFrozen", defaultValue: "Choose the original destination folder: \(frozen.destination.deletingLastPathComponent().path). Reauthorization preserves the frozen export destination."))
-            }
-            let renewed = ExportSnapshot(id: frozen.id, request: frozen.request, destination: frozen.destination,
-                                         targetBookmark: bookmark, options: frozen.options, retainedStaging: frozen.retainedStaging, metadata: frozen.metadata)
-            try db.execute(sql: "UPDATE exportItem SET snapshot=? WHERE id=?", arguments: [try JSONEncoder().encode(renewed), id])
-            return renewed
         }
     }
     /// Unsupported snapshots are errors, never upgraded or silently rewritten.
@@ -86,18 +99,48 @@ actor ExportService {
                 ?? Row.fetchAll(db, sql: "SELECT * FROM exportItem ORDER BY rowid")
             for row in rows {
                 do {
-                    let snapshot = try JSONDecoder().decode(ExportSnapshot.self, from: row["snapshot"])
-                    guard snapshot.id == row["id"] as String, snapshot.destination.path == row["destination"] as String else {
-                        throw LRCError(L10n.text("app.frozenTaskIdentityOrLocationMismatch", defaultValue: "Frozen task identity or location mismatch"))
-                    }
-                    logs.append(ExportLog(id: row["id"], snapshot: snapshot, state: row["state"], error: row["error"]))
+                    logs.append(try log(row))
                 } catch { rejected.append(L10n.text("app.taskUnsupportedOrDamagedStructureRetryRefusedOriginalRecord", defaultValue: "Task \(row["id"] as String): unsupported or damaged structure. Retry refused; original record preserved")) }
             }
             return (logs, rejected)
         }
     }
+    static func historyPage(catalog: CatalogStore, unfinishedOnly: Bool, offset: Int, limit: Int) throws -> (logs: [ExportLog], rejectedIDs: [String], total: Int) {
+        try catalog.database.read { db in
+            let filter = unfinishedOnly ? " WHERE state <> 'completed'" : ""
+            let total = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM exportItem" + filter) ?? 0
+            let rows = try Row.fetchAll(db, sql: "SELECT * FROM exportItem" + filter + " ORDER BY rowid DESC LIMIT ? OFFSET ?",
+                                        arguments: [limit, offset])
+            var logs = [ExportLog](), rejected = [String]()
+            for row in rows {
+                if let item = try? log(row) { logs.append(item) }
+                else { rejected.append(row["id"]) }
+            }
+            return (logs, rejected, total)
+        }
+    }
+
+    private static func log(_ row: Row) throws -> ExportLog {
+        let snapshot = try JSONDecoder().decode(ExportSnapshot.self, from: row["snapshot"])
+        guard snapshot.id == row["id"] as String, snapshot.destination.path == row["destination"] as String else {
+            throw LRCError(L10n.text("app.frozenTaskIdentityOrLocationMismatch", defaultValue: "Frozen task identity or location mismatch"))
+        }
+        return ExportLog(id: row["id"], snapshot: snapshot, state: row["state"], error: row["error"])
+    }
+
+    static func authorizedFolder(for destination: URL, scope: URL) throws -> URL {
+        let parent = destination.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath()
+        let authorized = scope.standardizedFileURL.resolvingSymlinksInPath().path
+        let prefix = authorized == "/" ? "/" : authorized + "/"
+        guard parent.path == authorized || parent.path.hasPrefix(prefix) else {
+            throw LRCError(L10n.text("app.chooseTheOriginalDestinationFolder", defaultValue: "Choose the original destination folder"))
+        }
+        return parent
+    }
+
     func run(_ snapshots: [ExportSnapshot], catalog: CatalogStore, step: @escaping @Sendable (Int, Int) async -> Void = { _, _ in },
              outcome: @escaping @MainActor @Sendable (ExportOutcome) -> Void = { _ in },
+             observe: (@MainActor @Sendable (ExportObservation) -> Void)? = nil,
              progress: @escaping @Sendable (String) async -> Void) async -> [String] {
         var reports = [String]()
         do {
@@ -127,6 +170,7 @@ actor ExportService {
                 try frozen.metadata.validate(policy: frozen.options.metadataPolicy)
                 let lease = try AccessLease(bookmark: frozen.targetBookmark)
                 defer { withExtendedLifetime(lease) {} }
+                let folder = try Self.authorizedFolder(for: frozen.destination, scope: lease.url)
                 // A journal entry is not evidence that its external output still exists.
                 // Verify before preparing the source, so intact output can be checked offline.
                 if FileManager.default.fileExists(atPath: frozen.destination.path) {
@@ -134,6 +178,10 @@ actor ExportService {
                     if let digest = existing?.digest, try SafeFileWriter.sha256(frozen.destination) == digest {
                         try state(frozen.id, "completed", catalog: catalog)
                         await outcome(.verified)
+                        if let observe {
+                            await observe(ExportObservation(id: frozen.id, outcome: .verified,
+                                                           dimensions: Self.dimensions(at: frozen.destination)))
+                        }
                         reports.append(previouslyCompleted ? L10n.text("app.verifiedWithoutWritingAgain", defaultValue: "Verified without writing again: \(frozen.destination.lastPathComponent)") :
                             L10n.text("app.verifiedTheOutputPublishedBeforeInterruption", defaultValue: "Verified the output published before interruption: \(frozen.destination.lastPathComponent)"))
                         continue
@@ -156,13 +204,23 @@ actor ExportService {
                 try state(snapshot.id, "rendering", catalog: catalog, staging: staging.path)
                 try checkpoint("rendering")
                 await progress(L10n.text("app.writing", defaultValue: "Writing \(index + 1)/\(snapshots.count) · \(snapshot.request.photo.displayName)"))
-                _ = try await pipeline.export(snapshot.request, staging: staging, options: snapshot.options, metadata: snapshot.metadata)
+                let dimensions = try await pipeline.export(snapshot.request, staging: staging, options: snapshot.options, metadata: snapshot.metadata)
+                let renderedIdentity = try FileIdentity.read(staging)
                 let digest = try SafeFileWriter.sha256(staging)
                 try await catalog.database.write { try $0.execute(sql: "UPDATE exportItem SET state='verified', digest=? WHERE id=?", arguments: [digest, snapshotID]) }
                 try checkpoint("verified")
                 try Task.checkCancellation()
+                guard try Self.authorizedFolder(for: snapshot.destination, scope: lease.url).path == folder.path,
+                      try FileIdentity.read(staging) == renderedIdentity else {
+                    throw LRCError(L10n.text("app.theDestinationChangedWhileCreatingSubfoldersNothingQueued", defaultValue: "The destination changed before publication"))
+                }
                 try SafeFileWriter.publish(staging, to: snapshot.destination)
                 published = true
+                let sameFile = (try? FileIdentity.read(snapshot.destination)) == renderedIdentity
+                if let observe {
+                    await observe(ExportObservation(id: snapshot.id, outcome: .published, dimensions: sameFile ? dimensions : nil))
+                }
+                guard sameFile else { throw LRCError(L10n.text("app.frozenTaskIdentityOrLocationMismatch", defaultValue: "Frozen task identity or location mismatch")) }
                 try checkpoint("publishedBeforeJournal")
                 try state(snapshot.id, "completed", catalog: catalog)
                 await outcome(.published)
@@ -181,6 +239,13 @@ actor ExportService {
             }
         }
         return reports
+    }
+    private static func dimensions(at url: URL) -> (Int, Int)? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let info = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+              let width = info[kCGImagePropertyPixelWidth as String] as? Int,
+              let height = info[kCGImagePropertyPixelHeight as String] as? Int else { return nil }
+        return (width, height)
     }
     private static func journal(_ catalog: CatalogStore, _ changes: (Database) throws -> Void) throws {
         try catalog.database.write(changes)

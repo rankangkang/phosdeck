@@ -18,7 +18,7 @@ struct ExportSpecification: Identifiable, Codable, Equatable {
         self.options = options
     }
 
-    func validate() throws {
+    func validate(allowParent: Bool = false) throws {
         guard !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw LRCError(L10n.text("app.anOutputVariantIdentifierIsMissing", defaultValue: "An output variant identifier is missing"))
         }
@@ -26,7 +26,7 @@ struct ExportSpecification: Identifiable, Codable, Equatable {
               title.precomposedStringWithCanonicalMapping.utf8.count <= 100 else {
             throw LRCError(L10n.text("app.variantNamesMustContain1100Characters", defaultValue: "Variant names must contain 1–100 characters"))
         }
-        try ExportBatchPlanner.validateSubfolder(subfolder)
+        if !allowParent || !subfolder.isEmpty { try ExportBatchPlanner.validateSubfolder(subfolder) }
         try options.validate()
         if options.format == .jpeg && options.jpegMatte == .unselected {
             throw LRCError(L10n.text("app.chooseAJPEGMatteColorForVariant", defaultValue: "Choose a JPEG matte color for variant “\(title)”"))
@@ -112,11 +112,14 @@ enum ExportBatchPlanner {
     /// pass the resolved original URLs when it submits the plan so the planner can flag an output
     /// that would point at a managed original before any snapshot is frozen.
     static func plan(photos: [Photo], specifications: [ExportSpecification], directory: URL,
-                     originalURLs: [URL] = []) throws -> ExportBatchPlan {
+                     originalURLs: [URL] = [], singleDestination: Bool = false) throws -> ExportBatchPlan {
         guard !photos.isEmpty else { throw LRCError(L10n.text("app.noPhotosToExport", defaultValue: "No photos to export")) }
         guard !specifications.isEmpty else { throw LRCError(L10n.text("app.selectAtLeastOneExportVariant", defaultValue: "Select at least one export variant")) }
         guard Set(specifications.map(\.id)).count == specifications.count else {
             throw LRCError(L10n.text("app.duplicateOutputVariantIdentifiers", defaultValue: "Duplicate output variant identifiers"))
+        }
+        if singleDestination, specifications.count != 1 || specifications.first?.subfolder != "" {
+            throw LRCError(L10n.text("app.selectAtLeastOneExportVariant", defaultValue: "Choose one specification for a single destination"))
         }
         guard try directory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {
             throw LRCError(L10n.text("app.chooseAnExistingParentDestinationFolder", defaultValue: "Choose an existing parent destination folder"))
@@ -130,7 +133,7 @@ enum ExportBatchPlanner {
         var usedSubfolders = [String: ExportSpecification]()
 
         for specification in specifications {
-            try specification.validate()
+            try specification.validate(allowParent: singleDestination)
             let folder = specification.subfolder.precomposedStringWithCanonicalMapping
             let folderKey = ExportNamingPlanner.collisionKey(folder)
             if let previous = usedSubfolders[folderKey] {
@@ -139,9 +142,9 @@ enum ExportBatchPlanner {
                 usedSubfolders[folderKey] = specification
             }
 
-            let destinationFolder = directory.appendingPathComponent(folder, isDirectory: true)
+            let destinationFolder = singleDestination ? directory : directory.appendingPathComponent(folder, isDirectory: true)
             let resolvedFolderKey = canonicalKey(destinationFolder)
-            guard isStrictDescendant(resolvedFolderKey, of: parentKey) else {
+            guard singleDestination || isStrictDescendant(resolvedFolderKey, of: parentKey) else {
                 throw LRCError(L10n.text("app.theSubfolderForResolvesOutsideTheSelectedParentSymbolic", defaultValue: "The subfolder for “\(specification.title)” resolves outside the selected parent. Symbolic links are not allowed"))
             }
             var names: [ExportName]
@@ -193,6 +196,33 @@ enum ExportBatchPlanner {
 
         return ExportBatchPlan(directory: directory, protectedOriginals: originalURLs, specifications: specifications, groups: groups,
                                requests: allRequests, issues: issues)
+    }
+
+    /// Check the frozen names before and after creating any requested subfolders.
+    static func prepareDestinations(_ plan: ExportBatchPlan) throws {
+        let photos = plan.groups[0].requests.map(\.photo)
+        let single = plan.specifications.count == 1 && plan.specifications[0].subfolder.isEmpty
+        func recheck() throws {
+            try Task.checkCancellation()
+            let checked = try Self.plan(photos: photos, specifications: plan.specifications, directory: plan.directory,
+                                        originalURLs: plan.protectedOriginals, singleDestination: single)
+            guard checked.isReady, checked.requests.map(\.destination) == plan.requests.map(\.destination) else {
+                throw LRCError(L10n.text("app.aDestinationConflictAroseDuringPreparationReopenExportTo", defaultValue: "A destination conflict arose during preparation. Reopen Export to review it"))
+            }
+        }
+        try recheck()
+        if single { return }
+        for group in plan.groups {
+            try Task.checkCancellation()
+            let folder = plan.directory.appendingPathComponent(group.specification.subfolder.precomposedStringWithCanonicalMapping, isDirectory: true)
+            if !FileManager.default.fileExists(atPath: folder.path) {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+            }
+            guard try folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {
+                throw LRCError(L10n.text("app.theDestinationSubfolderIsUnavailable", defaultValue: "The destination subfolder is unavailable"))
+            }
+        }
+        try recheck()
     }
 
     static func validateSubfolder(_ value: String) throws {

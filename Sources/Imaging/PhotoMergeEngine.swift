@@ -14,6 +14,17 @@ struct MergeSaved {
     let previousStacks: [PhotoStack]?
 }
 
+struct MergePublicationError: LocalizedError {
+    let url: URL
+    let identity: FileIdentity
+    let verified: Bool
+    let cause: Error
+
+    var errorDescription: String? {
+        L10n.text("merge.savedButNotIndexed", defaultValue:"The master was preserved at \(url.path). Catalog registration or final verification failed: \(cause.localizedDescription)")
+    }
+}
+
 /// Serialized, separate from interactive previews. Analysis is bounded to 1000 px;
 /// full-size fusion reads one source (or one HDR bracket) at a time.
 actor PhotoMergeEngine {
@@ -62,11 +73,7 @@ actor PhotoMergeEngine {
     func prepare(_ inputs: [ImageRequest],options: PhotoMergeOptions,progress: Progress) async throws -> MergePreview {
         prepared = nil
         try options.validate(count:inputs.count)
-        guard Set(inputs.map { $0.photo.sourceKey }).count == inputs.count,
-              Set(inputs.map { $0.photo.identityKey }).count == inputs.count,
-              inputs.allSatisfy({ $0.photo.supportsEditing && $0.photo.isRAW == inputs[0].photo.isRAW }) else {
-            throw LRCError(L10n.text("merge.distinctSources", defaultValue:"Choose distinct originals, using either all RAW or all JPEG/TIFF/PNG sources"))
-        }
+        try Self.validateSources(inputs.map(\.photo))
         var requests = [ImageRequest](),frames = [MergeFrame]()
         var whiteBalance = WhiteBalanceValue(temperature:5500,tint:0)
         for (index,input) in inputs.enumerated() {
@@ -95,23 +102,40 @@ actor PhotoMergeEngine {
         prepared = value
         return try display(value,ev:0)
     }
-    func display(_ id: UUID,ev: Double) throws -> MergePreview {
-        guard let value = prepared,value.id == id else { throw stale }
-        return try display(value,ev:ev)
+    static func validateSources(_ photos: [Photo]) throws {
+        guard let first = photos.first, Set(photos.map(\.sourceKey)).count == photos.count,
+              Set(photos.map(\.identityKey)).count == photos.count,
+              photos.allSatisfy({ $0.supportsEditing && $0.isRAW == first.isRAW }) else {
+            throw LRCError(L10n.text("merge.distinctSources", defaultValue:"Choose distinct originals, using either all RAW or all JPEG/TIFF/PNG sources"))
+        }
     }
-    private func display(_ value: Prepared,ev: Double) throws -> MergePreview {
+
+    func display(_ id: UUID,ev: Double,longEdge: Int = 1400) throws -> MergePreview {
+        guard let value = prepared,value.id == id else { throw stale }
+        return try display(value,ev:ev,longEdge:longEdge)
+    }
+    private func display(_ value: Prepared,ev: Double,longEdge: Int = 1400) throws -> MergePreview {
         try Task.checkCancellation()
-        guard ev.isFinite,(-5...5).contains(ev) else { throw stale }
-        let small = try value.preview.resized(longEdge:1400)
+        guard ev.isFinite,(-5...5).contains(ev),(1...1400).contains(longEdge) else { throw stale }
+        let small = try value.preview.resized(longEdge:longEdge)
         let ci = small.ciImage().applyingFilter("CIExposureAdjust",parameters:["inputEV":ev])
         guard let image = context.createCGImage(ci,from:ci.extent,format:.RGBA8,colorSpace:ImagePipeline.outputSpace) else { throw MergeMasterCodec.invalid }
         return MergePreview(id:value.id,image:image,width:value.plan.size.0,height:value.plan.size.1)
     }
-    func save(_ id: UUID,to directoryBookmark: Data,filename: String,catalog: CatalogStore,stackWithSources: Bool = false,collectionID: String? = nil,progress: Progress) async throws -> MergeSaved {
+    static func validFilename(_ filename: String, format: MergeMasterFormat) -> Bool {
+        filename == URL(fileURLWithPath:filename).lastPathComponent && !filename.hasPrefix(".") &&
+        !filename.contains(":") && filename.rangeOfCharacter(from:.controlCharacters) == nil &&
+        (format == .tiff ? ["tif","tiff"] : ["dng"]).contains(URL(fileURLWithPath:filename).pathExtension.lowercased()) && filename.utf8.count <= 240
+    }
+
+    func save(_ id: UUID,to directoryBookmark: Data,filename: String,catalog: CatalogStore,stackWithSources: Bool = false,collectionID: String? = nil,
+              masterFormat: MergeMasterFormat? = nil,progress: Progress) async throws -> MergeSaved {
         guard let value = prepared,value.id == id else { throw stale }
-        guard filename == URL(fileURLWithPath:filename).lastPathComponent,!filename.hasPrefix("."),
-              !filename.contains(":"),filename.rangeOfCharacter(from:.controlCharacters) == nil,
-              (value.options.masterFormat == .tiff ? ["tif","tiff"] : ["dng"]).contains(URL(fileURLWithPath:filename).pathExtension.lowercased()),filename.utf8.count <= 240 else { throw LRCError(L10n.text("merge.invalidFilename", defaultValue:"Enter a filename matching the master format, without folder separators")) }
+        var options = value.options
+        if let masterFormat { options.masterFormat = masterFormat }
+        guard Self.validFilename(filename, format: options.masterFormat) else {
+            throw LRCError(L10n.text("merge.invalidFilename", defaultValue:"Enter a filename matching the master format, without folder separators"))
+        }
         let lease = try AccessLease(bookmark:directoryBookmark)
         defer { withExtendedLifetime(lease) {} }
         let directory = lease.url.resolvingSymlinksInPath().standardizedFileURL
@@ -128,7 +152,7 @@ actor PhotoMergeEngine {
         try SafeFileWriter.requireCapacity(in:directory,bytes:Int64(canvas)*16+1_048_576)
         let image = try await fullResult(value,progress:progress)
         await progress(0.86,L10n.text("merge.writing", defaultValue:"Writing and verifying float master…"))
-        let provenance = MergeProvenance(options:value.options,sources:value.requests.map {
+        let provenance = MergeProvenance(options:options,sources:value.requests.map {
             MergeProvenance.Source(photoID:$0.photo.id,digest:$0.recipe!.sourceDigest,recipeRevision:$0.photo.recipeRevision)
         })
         let staging = try SafeFileWriter.stage(in:directory)
@@ -155,14 +179,16 @@ actor PhotoMergeEngine {
         // Publication is the commit point. Cancellation after it must not strand an
         // unreported file or delete a master that another process could already see.
         let registered: (photo: Photo,previousStacks: [PhotoStack]?)
+        var verified = false
         do {
             try checkpoint("published")
             guard try FileIdentity.read(destination) == identity else { throw MergeMasterCodec.invalid }
             let readback = try MergeMasterCodec.read(destination,context:context,honorCancellation:false)
             guard readback.provenance == provenance,readback.image.width == image.width,readback.image.height == image.height else { throw MergeMasterCodec.invalid }
+            verified = true
             registered = try catalog.registerMergedPhoto(photo,root:root,inputs:value.requests,stackWithSources:stackWithSources,collectionID:collectionID)
         } catch {
-            throw LRCError(L10n.text("merge.savedButNotIndexed", defaultValue:"The master was preserved at \(destination.path). Catalog registration or final verification failed: \(error.localizedDescription)"))
+            throw MergePublicationError(url: destination, identity: identity, verified: verified, cause: error)
         }
         prepared = nil
         return MergeSaved(photo:registered.photo,url:destination,previousStacks:registered.previousStacks)

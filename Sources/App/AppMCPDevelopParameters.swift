@@ -134,13 +134,21 @@ enum MCPDevelopParameters {
         case "number":
             guard let number = value.number, let lower = fields["minimum"]?.number, let upper = fields["maximum"]?.number else { return false }
             return (lower...upper).contains(number)
+        case "integer":
+            guard let number = value.intValue else { return false }
+            if let choices = fields["enum"]?.arrayValue { return choices.contains(.int(number)) }
+            let lower = fields["minimum"]?.intValue ?? Int.min, upper = fields["maximum"]?.intValue ?? Int.max
+            return (lower...upper).contains(number)
         case "array":
             if schema == pointsSchema { return (try? points(value)) != nil }
             if schema == gainsSchema { return (try? gains(value)) != nil }
             return false
         case "boolean": return value.boolValue != nil
         case "null": return value == .null
-        case "string": return fields["enum"]?.arrayValue?.contains(value) == true
+        case "string":
+            if let choices = fields["enum"]?.arrayValue { return choices.contains(value) }
+            guard let string = value.stringValue, !string.contains("\0") else { return false }
+            return ((fields["minLength"]?.intValue ?? 0)...(fields["maxLength"]?.intValue ?? Int.max)).contains(string.utf8.count)
         default: return false
         }
     }
