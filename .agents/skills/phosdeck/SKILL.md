@@ -1,6 +1,6 @@
 ---
 name: phosdeck
-description: Work in Phosdeck through its local MCP server. Import, cull, organize and edit photos. Create masks, merge HDR, panoramas and focus stacks, and export, verify or retry JPEG, PNG and TIFF batches.
+description: Work in Phosdeck through its local MCP server. Import, cull, organize, edit, merge and export photos. Manage settings, language packs and thumbnail storage, back up or restore catalogs, and run local RAW diagnostics.
 ---
 
 # Phosdeck
@@ -15,6 +15,7 @@ If the server is off, have the user enable **Local MCP Server** in **Settings â†
 - For development, before/after, adjustment transfer, presets or saved edits, read [Development and edit records](references/development.md).
 - For crop, perspective, pixel sampling, spot repair or local and smart masks, read [Canvas and local editing](references/canvas.md).
 - For merging originals, saving float TIFF or DNG masters, export presets, multi-size delivery and output recovery, read [Photo merge and export](references/output.md).
+- For preferences, language packs, cache, catalog backup and restore, or RAW compatibility checks, read [Settings and maintenance](references/maintenance.md).
 - For visual review, use `get_photo_preview` with the exact `photo_id`, `source_revision` and `recipe_revision` from the list or active photo. The default PNG shows the saved edit. If preview sharing is off, the user can enable **Share Photo Previews** in Settings. Refresh the target and revisions if the preview is stale.
 - Use the returned `operation_id` with `undo_operation` if the user wants to undo the current action. Use `redo_operation` with the same operation ID after an MCP undo. Each uses the current catalog session and request epoch and a new request ID. If the action is no longer at the top of the native stack, reread the affected items before deciding how to proceed.
 

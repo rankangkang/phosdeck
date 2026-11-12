@@ -8,8 +8,14 @@ enum MCPFilePurpose: String, CaseIterable {
     case relocateRoot = "relocate_root", locateOriginal = "locate_original", restoreBackup = "restore_import_backup"
     case xmpPresets = "xmp_presets"
     case mergeDestination = "merge_destination", exportDestination = "export_destination"
+    case languagePack = "language_pack"
+    case catalogBackupDestination = "catalog_backup_destination", catalogBackupSource = "catalog_backup_source"
+    case catalogManifestDestination = "catalog_manifest_destination"
+    case cameraSamples = "camera_samples", cameraReportDestination = "camera_report_destination"
 
-    var needsCatalog: Bool { self != .createCatalog && self != .openCatalog }
+    var needsCatalog: Bool {
+        ![.createCatalog, .openCatalog, .languagePack, .catalogBackupSource, .cameraSamples, .cameraReportDestination].contains(self)
+    }
 
     @MainActor func panel() -> NSOpenPanel {
         switch self {
@@ -22,6 +28,16 @@ enum MCPFilePurpose: String, CaseIterable {
         case .restoreBackup: return AppModel.directoryPanel(title: L10n.text("agent.restoreBackup", defaultValue: "Choose a Folder for the Recovered File"))
         case .mergeDestination: return AppModel.directoryPanel(title: L10n.text("merge.chooseDestination", defaultValue: "Choose Destination…"))
         case .exportDestination: return AppModel.directoryPanel(title: L10n.text("app.chooseOutputDestination", defaultValue: "Choose Output Destination"))
+        case .languagePack: return LanguagePackSettings.makeOpenPanel()
+        case .catalogBackupSource: return AppModel.catalogBackupPanel()
+        case .catalogBackupDestination:
+            return AppModel.directoryPanel(title: L10n.text("app.backUpCatalogExcludesOriginalPhotosAndOutputs", defaultValue: "Back Up Catalog (excludes original photos and outputs)"))
+        case .catalogManifestDestination:
+            return AppModel.directoryPanel(title: L10n.text("app.exportManagementManifestExcludesAccessBookmarks", defaultValue: "Export management manifest (excludes access bookmarks)"))
+        case .cameraSamples:
+            return AppModel.directoryPanel(title: L10n.text("camera.choose", defaultValue: "Choose Sample Folder…"))
+        case .cameraReportDestination:
+            return AppModel.directoryPanel(title: L10n.text("camera.save", defaultValue: "Save Local Report…"))
         case .xmpPresets:
             let panel = NSOpenPanel()
             panel.title = L10n.text("app.chooseXMPFiles", defaultValue: "Choose XMP Files…")
@@ -149,6 +165,8 @@ final class AppMCPWorkflows {
     lazy var outputPreviewPipeline = ImagePipeline(qualityCacheLimit: 0)
     var makeExportService: (ImagePipeline) -> ExportService = { ExportService(pipeline: $0) }
     var activateFilesInFinder: ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) }
+    var makeLanguagePackStore: () throws -> LanguagePackStore = { try LanguagePackStore() }
+    var cameraReport: MCPCameraReport?
     private var activeReads = 0
 
     init(model: AppModel, chooseFile: FilePicker?) {
@@ -216,6 +234,14 @@ final class AppMCPWorkflows {
             return try await readExportPreview(arguments, catalog: model.catalog!)
         case .exportRecords:
             return try await readExportRecords(arguments, catalog: model.catalog!)
+        case .getPreferences:
+            return .init("Read Phosdeck preferences.", data: ["preferences": .object(MCPPreferences.read(model))])
+        case .listLanguagePacks:
+            return try await listLanguagePacks(arguments)
+        case .storageUsage:
+            return try await readStorageUsage()
+        case .getCameraDiagnosticPreview:
+            return try await readCameraDiagnosticPreview(arguments)
         case .job, .importRecords:
             guard let catalog = model.catalog else { throw Self.missingJob }
             let response = try await readImportRecords(catalog: catalog, tool: tool, arguments: arguments)
@@ -239,6 +265,14 @@ final class AppMCPWorkflows {
         case .retryExport: return try retryExport(arguments, catalog: model.catalog!)
         case .reauthorizeExport: return try reauthorizeExport(arguments, catalog: model.catalog!)
         case .revealFile: return try revealFile(arguments, catalog: model.catalog!)
+        case .setPreferences: return try MCPPreferences.apply(arguments["preferences"]!.objectValue!, to: model)
+        case .showAppPanel: return try showAppPanel(arguments)
+        case .editLanguagePack, .selectLanguage: return try changeLanguage(tool, args: arguments)
+        case .setCacheQuota, .clearThumbnailCache: return changeCache(tool, args: arguments)
+        case .backupCatalog, .exportCatalogManifest: return try writeCatalogOutput(tool, args: arguments, catalog: model.catalog!)
+        case .restoreCatalogBackup: return try restoreCatalogBackup(arguments)
+        case .runCameraDiagnostics: return try runCameraDiagnostics(arguments)
+        case .saveCameraDiagnosticReport: return try saveCameraDiagnosticReport(arguments)
         case .createCatalog:
             let grant = try grant(arguments["access_id"], purpose: .createCatalog)
             let name = arguments["name"]!.stringValue!
@@ -418,6 +452,7 @@ final class AppMCPWorkflows {
         }
         let lease = AccessLease(url: url)
         var grant = Grant(purpose: purpose, lease: lease)
+        if purpose == .catalogBackupSource { grant.identity = try FileIdentity.read(url) }
         if purpose == .xmpPresets {
             grant.additionalFiles = urls.dropFirst().map(AccessLease.init(url:))
             job.data["file_count"] = .int(urls.count)
@@ -516,7 +551,7 @@ final class AppMCPWorkflows {
         job.finish(.succeeded, "Catalog opened.", committed: previous == model.catalogSessionID ? "not_committed" : "committed")
     }
 
-    private func activate(_ job: Job, _ work: () throws -> Void) async throws {
+    func activate(_ job: Job, _ work: () throws -> Void) async throws {
         // The native catalog activation is synchronous and checks the busy flag.
         model.busy = false
         let previous = model.catalogSessionID
@@ -555,6 +590,6 @@ final class AppMCPWorkflows {
     }
 
     nonisolated static let missingJob = MCPToolProblem(code: "job_unavailable", summary: "The job is no longer available.", next: "For a saved copy import, open its catalog and use list_import_records.")
-    static let accessExpired = MCPToolProblem(code: "file_access_required", summary: "This file authorization expired, changed, or is for a different purpose.", next: "Request file access for this operation again.")
-    static let catalogExists = MCPToolProblem(code: "catalog_exists", summary: "A file already has this catalog name.", next: "Choose another name or open the existing catalog.")
+    nonisolated static let accessExpired = MCPToolProblem(code: "file_access_required", summary: "This file authorization expired, changed, or is for a different purpose.", next: "Request file access for this operation again.")
+    nonisolated static let catalogExists = MCPToolProblem(code: "catalog_exists", summary: "A file already has this catalog name.", next: "Choose another name or open the existing catalog.")
 }

@@ -97,13 +97,13 @@
 | 工具 | 操作、输入及结果 | 原生入口和边界 |
 |---|---|---|
 | `get_preferences`、`set_preferences` | 外观、观片底、左右栏／胶片带及大小、导航器、筛选条、集合／预设／历史／快照／蒙版面板展开、单分组和已修改筛选、缩略图大小及自动前进 | `SettingsSheet`、`WorkspaceView`、`DevelopPanel`、`AppModel.persistWorkspace`。按现有控件约束及作用域更新 |
-| `show_app_panel` | 打开指定的设置页、快捷键、任务结果、导入或输出恢复面板。返回打开后的状态 | `WorkspaceCommands`、`SettingsPane`、`WorkspaceView`。沿用当前窗口与模态约束 |
+| `show_app_panel` | 打开指定的设置页、快捷键、任务结果、导入或输出恢复、相机诊断面板。返回实际显示状态 | `SettingsPane`、`WorkspaceView`。沿用当前窗口与模态约束 |
 | `list_language_packs`、`edit_language_pack`、`select_language` | 查看、从授权文件导入、选择或移除语言包。返回选择及重启生效提示 | `LanguagePackSettings`、`LanguagePackStore`。沿用解析和文件写入约定 |
 | `get_storage_usage`、`set_cache_quota`、`clear_thumbnail_cache` | 度量图库、缓存、任务暂存和恢复文件，设置原生容量档位或清理当前图库缩略图。返回实际值、不可访问项数与完成状态 | `StorageInspector`、`updateCacheQuota`／`clearThumbnailCache`。跟随缓存维护锁 |
-| `back_up_catalog`、`restore_catalog_backup`、`export_catalog_manifest` | 选择授权目标，备份当前图库，或从授权备份恢复为新图库，或导出 JSON 管理清单。回读目标及新图库会话 | `AppModel.backup`／`restoreBackup`／`createCatalog`、`CatalogStore`。新建及发布无覆盖 |
-| `run_camera_diagnostics`、`save_camera_diagnostics_report` | 授权目录、本地相机诊断、取消及保存报告。返回每张检查与预览结果及报告 ID | `CameraDiagnosticsView`、`CameraDiagnostics.files`／`inspect`／`save`。沿用本地处理和样本范围 |
+| `back_up_catalog`、`restore_catalog_backup`、`export_catalog_manifest` | 选择授权目标，备份当前图库，或从授权备份恢复为新图库，或导出 JSON 管理清单。回读目标及新图库会话 | `CatalogStore`、`AppModel.activateCreatedCatalog`。新建及发布无覆盖 |
+| `run_camera_diagnostics`、`get_camera_diagnostic_preview`、`save_camera_diagnostics_report` | 授权目录、本地相机诊断、取消及保存报告。返回每张检查、可用预览及报告 ID | `CameraDiagnosticsView`、`CameraDiagnostics.files`／`inspect`／`save`。沿用本地处理和样本范围 |
 
-对应回归包括 `LocalizationTests`、`FoundationTests`、`WorkflowReuseTests`、`CameraDiagnosticsTests` 与 `CatalogFileTests`，设置和报告另在固定体验 App 实窗核对。检查名单同时覆盖菜单、网格与胶片带上下文动作、左栏、右栏、画布、设置和任务面板。
+`AgentMaintenanceTests` 覆盖偏好、语言包、缓存并发、备份恢复与诊断报告。原生回归包括 `LocalizationTests`、`FoundationTests`、`WorkflowTests`、`CameraDiagnosticsTests` 与 `CatalogFileTests`，设置与报告另在固定体验 App 实窗核对。
 
 ## 接口设计
 
@@ -262,6 +262,29 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 导出使用 `export_destination` 授权。单规格可直接传 `options`，多规格各自指定 `title`、`subfolder` 及所需选项。可通过 `preset_id` 和 `preset_revision` 选用内置或自定义预设，再覆盖单项选项。`jpeg` 必须选 `black` 或 `white` 铺底。`png` 和 `tiff` 保留透明度，TIFF 使用 16 位。`metadata_policy` 支持 `none`、`capture`、`description` 和 `captureAndDescription`。题注和关键词取自计划时的图库，相机数据仅写入原生允许的拍摄字段。`get_export_preview` 分页显示名称和冲突，传 `output_id` 时返回像素预览。所有像素预览均需要开启照片预览共享。
 
 仅对 `ready: true` 的计划调用 `run_export`。运行前重新核对修订和目标，再冻结配方、原片身份和元数据。任务分别报告 `published_count`、`verified_count`、`completed_count` 及每个输出的 `record_id`。连接中断时先回读任务，服务重启后可用 `list_export_records` 查询持久记录。`verify_or_retry_export` 校验已发布文件的摘要，缺失时用原冻结设置重新生成，遇到同名外部文件会保留原文件。授权失效时用原生面板选择每条记录的原始父目录，再调用 `reauthorize_export_location`。`reveal_file_in_finder` 按导出记录、已入库母版、临时母版文件 ID、当前图库或导入备份定位文件。
+
+### 设置、诊断与图库维护接口
+
+`get_preferences` 返回当前界面偏好。`set_preferences` 的 `preferences` 只更新指定字段。`develop_groups` 可指定要展开或折叠的分组，单分组模式一次展开一个调整分组。左右栏宽和胶片带高度用原生点数，图库缩略图大小按原生滑块范围保存。筛选条在临时浏览范围内沿用原生的返回行为。`show_app_panel` 可打开 `settings`、`task_results`、`import_recovery`、`output_recovery` 或 `camera_diagnostics`，用 `get_job` 或 `get_workspace` 的 `open_panel` 核对可见面板。设置页用 `pane` 选择 `appearance`、`storage`、`shortcuts` 或 `agent`。Agent 的服务、共享和令牌继续在原生设置管理。
+
+语言包通过 `request_file_access` 的 `language_pack` 授权，经 `edit_language_pack(action=import)` 校验、安装并选为下次启动语言。用 `list_language_packs` 取得 ID 和当前运行状态。`select_language` 的 `official` 跟随 macOS，`community` 使用明确的 `pack_id`。移除也使用明确的 `pack_id`。查看 `restart_required`，由用户重新打开 App 以应用语言选择。
+
+`get_storage_usage` 返回图库、缩略图、任务暂存和恢复文件的字节数及不可访问项数。`set_cache_quota` 支持 1、5、10 GiB。`clear_thumbnail_cache` 返回本次删除的字节数，继续浏览时缩略图可重新生成。两种操作沿用原生维护锁。
+
+备份和清单分别授权 `catalog_backup_destination`、`catalog_manifest_destination`，使用新文件名并检查 `published` 和 `verified`。备份保存图库数据库。JSON 清单省略沙箱书签，仍含图库的照片路径和编辑信息。恢复使用 `catalog_backup_source` 和 `create_catalog` 两种授权，写入新的 `.phoscat`，核验后打开并返回新的 `catalog_session_id`。切换后重新读取工作区及目标对象。若文件已发布但打开失败，先检查返回的文件名，已有文件由原生无覆盖发布保护。
+
+相机检查使用 `camera_samples` 目录授权。检查按名称排序的前 32 个受支持 RAW 候选，只查看所选目录的第一层。任务区分完成分析与单个样片的检查结论。用 `report_id` 和 `sample_index` 回读可用的显影或嵌入预览，图像共享开关控制像素返回。保存报告需 `camera_report_destination` 授权，JSON 省略样片名、路径和像素。取消后可保存已检查的部分。结果只适用于本机及相应样片。
+
+### 原生操作覆盖复核
+
+| 原生入口 | 对应操作及回归入口 |
+|---|---|
+| 文件菜单与任务恢复 | 图库打开、导入和文件夹核对对应第三步，合成与输出记录对应第六步，图库维护和恢复面板对应第七步。用 `AgentLibraryTests`、`AgentOutputTests` 和 `AgentMaintenanceTests` 核对。 |
+| 照片与显示菜单、网格及胶片带 | 选片、标记、版本、堆叠、配对、比较及工作区对应第四步。用 `AgentOrganizationTests`、`AgentDevelopTests` 和浏览相关回归核对。 |
+| 左栏、右栏和画布 | 文件夹和集合、历史及预设对应第三至四步，几何、取样、修复与蒙版对应第五步，布局与面板展开对应第七步。 |
+| 设置与帮助菜单 | 偏好、社区语言包、缓存、快捷键和相机检查对应第七步。相机检查面板可查看本次 Agent 结果。 |
+
+连续堆叠比较的开始、切组及退出定位仍由原生工作区操作。MCP 可按明确版本比较，覆盖单组堆叠成员。原生表单关闭、窗口管理、系统剪贴板、系统语言选择和授权确认仍使用本机交互。跨客户端与手工操作交替的整体验收在第八步进行。
 
 ## 实施顺序
 

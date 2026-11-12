@@ -150,6 +150,7 @@ enum LocalizationFormat {
 
 final class LanguagePackStore {
     static let selectionKey = "communityLanguagePack"
+    static let installedPacksChanged = Notification.Name("PhosdeckInstalledLanguagePacksChanged")
     private static let removalsKey = "removedCommunityLanguagePacks"
     let directory: URL
     let defaults: UserDefaults
@@ -196,11 +197,21 @@ final class LanguagePackStore {
 
     func remove(id: String, activeID: String?) throws {
         let url = try location(id)
-        if defaults.string(forKey: Self.selectionKey) == id { defaults.removeObject(forKey: Self.selectionKey) }
         if activeID == id {
             var pending = Set(defaults.stringArray(forKey: Self.removalsKey) ?? [])
             pending.insert(id); defaults.set(pending.sorted(), forKey: Self.removalsKey)
         } else { try FileManager.default.removeItem(at: url) }
+        if defaults.string(forKey: Self.selectionKey) == id { defaults.removeObject(forKey: Self.selectionKey) }
+    }
+
+    func select(id: String?) throws {
+        if let id {
+            guard defaults.stringArray(forKey: Self.removalsKey)?.contains(id) != true else { throw LanguagePackError.invalid }
+            _ = try read(id: id)
+            defaults.set(id, forKey: Self.selectionKey)
+        } else {
+            defaults.removeObject(forKey: Self.selectionKey)
+        }
     }
 
     func cleanPendingRemovals() throws {

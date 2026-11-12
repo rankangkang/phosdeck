@@ -40,7 +40,11 @@ struct LanguagePackSettings: View {
             }
             Text(L10n.text("language.help", defaultValue: "Community authors maintain and distribute their translations. Missing entries use English. macOS dialogs use the system's language settings."))
                 .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
-        }.task { await refresh() }
+        }
+        .task { await refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: LanguagePackStore.installedPacksChanged)) { _ in
+            Task { await refresh() }
+        }
     }
 
     @MainActor private func refresh() async {

@@ -1133,6 +1133,7 @@ actor ImagePipeline {
 }
 
 actor ThumbnailService {
+    static let quotaOptions = [1, 5, 10]
     private let cache = NSCache<NSString, CGImage>()
     private var disk: PreviewDiskCache?
     private var generation = UUID()
@@ -1147,7 +1148,7 @@ actor ThumbnailService {
         cache.totalCostLimit = 128 * 1024 * 1024
     }
     func configure(catalogID: String, gigabytes: Int) throws {
-        guard [1, 5, 10].contains(gigabytes), UUID(uuidString: catalogID) != nil else { throw LRCError(L10n.text("app.invalidCacheSettings", defaultValue: "Invalid cache settings")) }
+        guard Self.quotaOptions.contains(gigabytes), UUID(uuidString: catalogID) != nil else { throw LRCError(L10n.text("app.invalidCacheSettings", defaultValue: "Invalid cache settings")) }
         let base = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         generation = UUID(); cache.removeAllObjects()
         pending.values.forEach { $0.cancel() }; pending.removeAll()
@@ -1172,7 +1173,13 @@ actor ThumbnailService {
         if photo.recipe != nil || photo.isRAW || URL(fileURLWithPath: photo.relativePath).pathExtension.lowercased() == "png" {
             let recipe = try photo.recipe.map { try JSONDecoder().decode(EditRecipe.self, from: $0) }
             try recipe?.validate(for: photo)
-            if let work = pending[key as String] { return try await work.value }
+            if let work = pending[key as String] {
+                let token = generation
+                let result = try await work.value
+                try Task.checkCancellation()
+                guard token == generation else { throw CancellationError() }
+                return result
+            }
             let prefix = Self.sourceKey(photo: photo, edge: edge) + ":"
             for previous in Array(pending.keys) where previous.hasPrefix(prefix) {
                 pending.removeValue(forKey: previous)?.cancel()
@@ -1233,8 +1240,10 @@ actor ThumbnailService {
         }
         throw LRCError(L10n.text("app.transparentThumbnailEncodingFailed", defaultValue: "Transparent thumbnail encoding failed"))
     }
-    func clear() throws {
+    @discardableResult func clear() throws -> Int64 {
+        try Task.checkCancellation()
         generation = UUID(); pending.values.forEach { $0.cancel() }; pending.removeAll()
-        cache.removeAllObjects(); try disk?.clear()
+        cache.removeAllObjects()
+        return try disk?.clear() ?? 0
     }
 }

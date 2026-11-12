@@ -132,8 +132,13 @@ struct DevelopPanel: View {
             }
             }
         }
-        .contextMenu { Toggle(L10n.text("app.expandOneAdjustmentPanelAtATime", defaultValue: "Expand One Adjustment Panel at a Time"), isOn: $solo) }
-        .onChange(of: solo) { if solo { basicOpen = true; mixerOpen = false; gradingOpen = false; detailsOpen = false; curvesOpen = false; zonesOpen = false; vignetteOpen = false; grainOpen = false; blackWhiteOpen = false; sharpenOpen = false; noiseOpen = false; pointOpen = false; defringeOpen = false } }
+        .contextMenu {
+            Toggle(L10n.text("app.expandOneAdjustmentPanelAtATime", defaultValue: "Expand One Adjustment Panel at a Time"),
+                   isOn: Binding(get: { solo }, set: { enabled in
+                       solo = enabled
+                       if enabled { setExpansion(0, open: true, collapseOthers: true) }
+                   }))
+        }
         .onChange(of: mixerTab) { if let target = model.targetedAdjustment, [.hue, .saturation, .luminance].contains(target) { model.cancelTargetedAdjustment() } }
         .onChange(of: mixerOpen) { if !mixerOpen, let target = model.targetedAdjustment, [.hue, .saturation, .luminance].contains(target) { model.cancelTargetedAdjustment() } }
         .onChange(of: curvesOpen) { if !curvesOpen, model.targetedAdjustment?.isCurve == true { model.cancelTargetedAdjustment() } }
@@ -215,23 +220,26 @@ struct DevelopPanel: View {
     }
     private func expansion(_ panel: Int) -> Binding<Bool> {
         Binding(get: { [basicOpen, mixerOpen, gradingOpen, detailsOpen, curvesOpen, zonesOpen, vignetteOpen, grainOpen, blackWhiteOpen, sharpenOpen, noiseOpen, pointOpen, defringeOpen][panel] }, set: { open in
-            if open && solo {
-                basicOpen = false; mixerOpen = false; gradingOpen = false; detailsOpen = false; curvesOpen = false; zonesOpen = false; vignetteOpen = false; grainOpen = false; blackWhiteOpen = false; sharpenOpen = false; noiseOpen = false; pointOpen = false; defringeOpen = false
-            }
-            if panel == 0 { basicOpen = open }
-            else if panel == 1 { mixerOpen = open }
-            else if panel == 2 { gradingOpen = open }
-            else if panel == 3 { detailsOpen = open }
-            else if panel == 4 { curvesOpen = open }
-            else if panel == 5 { zonesOpen = open }
-            else if panel == 6 { vignetteOpen = open }
-            else if panel == 7 { grainOpen = open }
-            else if panel == 8 { blackWhiteOpen = open }
-            else if panel == 9 { sharpenOpen = open }
-            else if panel == 10 { noiseOpen = open }
-            else if panel == 11 { pointOpen = open }
-            else { defringeOpen = open }
+            setExpansion(panel, open: open, collapseOthers: open && solo)
         })
+    }
+    private func setExpansion(_ panel: Int, open: Bool, collapseOthers: Bool) {
+        if collapseOthers {
+            basicOpen = false; mixerOpen = false; gradingOpen = false; detailsOpen = false; curvesOpen = false; zonesOpen = false; vignetteOpen = false; grainOpen = false; blackWhiteOpen = false; sharpenOpen = false; noiseOpen = false; pointOpen = false; defringeOpen = false
+        }
+        if panel == 0 { basicOpen = open }
+        else if panel == 1 { mixerOpen = open }
+        else if panel == 2 { gradingOpen = open }
+        else if panel == 3 { detailsOpen = open }
+        else if panel == 4 { curvesOpen = open }
+        else if panel == 5 { zonesOpen = open }
+        else if panel == 6 { vignetteOpen = open }
+        else if panel == 7 { grainOpen = open }
+        else if panel == 8 { blackWhiteOpen = open }
+        else if panel == 9 { sharpenOpen = open }
+        else if panel == 10 { noiseOpen = open }
+        else if panel == 11 { pointOpen = open }
+        else { defringeOpen = open }
     }
     private func note(_ text: String) -> some View {
         Text(text).font(.caption11).foregroundStyle(Theme.textSecondary)

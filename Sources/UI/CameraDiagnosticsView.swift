@@ -179,8 +179,7 @@ struct CameraDiagnosticsView: View {
         task?.cancel(); task = nil; running = false; currentFile = ""; generation = UUID()
     }
     private func choose() {
-        let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
+        let panel = AppModel.directoryPanel(title: L10n.text("camera.choose", defaultValue: "Choose Sample Folder…"))
         guard panel.runModal() == .OK, let folder = panel.url else { return }
         cancel(); results = []; selectedID = nil; report = .empty(); message = ""; messageIsError = false
         total = 0; folderName = folder.lastPathComponent; stopped = false
@@ -191,10 +190,10 @@ struct CameraDiagnosticsView: View {
             do {
                 let files = try await CameraDiagnostics.files(in: folder)
                 guard !Task.isCancelled, generation == token else { return }
-                total = min(files.count,32); report.requestedFiles = total
+                total = min(files.count, CameraDiagnostics.maximumSamples); report.requestedFiles = total
                 if files.isEmpty { message = L10n.text("camera.noSamples", defaultValue: "No supported RAW candidates in this folder."); return }
                 let service = CameraDiagnostics()
-                for (index, url) in files.prefix(32).enumerated() {
+                for (index, url) in files.prefix(CameraDiagnostics.maximumSamples).enumerated() {
                     currentFile = url.lastPathComponent
                     let result = try await service.inspect(url, index: index+1)
                     guard !Task.isCancelled, generation == token else { return }
@@ -209,8 +208,7 @@ struct CameraDiagnosticsView: View {
     }
     private func save() {
         guard !running, !saving else { return }
-        let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
+        let panel = AppModel.directoryPanel(title: L10n.text("camera.save", defaultValue: "Save Local Report…"))
         guard panel.runModal() == .OK, let folder = panel.url else { return }
         let snapshot = report
         saving = true; message = ""; messageIsError = false

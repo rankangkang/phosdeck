@@ -735,15 +735,45 @@ final class CatalogStore: @unchecked Sendable {
         let statement = try db.makeStatement(sql: "INSERT INTO membership(collectionID,photoID) VALUES (?,?)")
         for photoID in order { try statement.execute(arguments: [id, photoID]) }
     }
-    func backup(to destination: URL) throws {
+    @discardableResult func backup(to destination: URL) throws -> FileIdentity {
+        try Self.publishDatabase(database, to: destination)
+    }
+
+    private static func publishDatabase(_ source: DatabaseQueue, to destination: URL, restoring: Bool = false,
+                                        verifySource: () throws -> Void = {}) throws -> FileIdentity {
+        try Task.checkCancellation()
         let staging = try SafeFileWriter.stage(in: destination.deletingLastPathComponent())
         do {
             let target = try DatabaseQueue(path: staging.path)
-            try database.backup(to: target)
-            try Self.validate(target)
+            defer { try? target.close() }
+            try source.backup(to: target)
+            if restoring {
+                // A working copy has its own thumbnail namespace even when opened next to the original.
+                try target.write { try $0.execute(sql: "UPDATE catalogMeta SET id=?", arguments: [UUID().uuidString]) }
+            }
+            try validate(target)
             try target.close()
+            let identity = try FileIdentity.read(staging)
+            try verifySource()
+            try Task.checkCancellation()
             try SafeFileWriter.publish(staging, to: destination)
+            return identity
         } catch { try? FileManager.default.removeItem(at: staging); throw error }
+    }
+
+    static func verifyBackup(_ destination: URL, identity: FileIdentity) throws {
+        try requireIdentity(identity, at: destination)
+        var config = Configuration(); config.readonly = true
+        let published = try DatabaseQueue(path: destination.path, configuration: config)
+        defer { try? published.close() }
+        try validate(published)
+        try requireIdentity(identity, at: destination)
+    }
+
+    private static func requireIdentity(_ identity: FileIdentity, at url: URL) throws {
+        guard try FileIdentity.read(url) == identity else {
+            throw LRCError(L10n.text("app.sourceChanged", defaultValue: "Source changed"))
+        }
     }
     static func validate(_ queue: DatabaseQueue) throws {
         try queue.read { db in
@@ -764,30 +794,28 @@ final class CatalogStore: @unchecked Sendable {
     /// Recovery always creates a fresh working directory; never overwrites the open catalog.
     static func restore(from source: URL, to directory: URL) throws -> CatalogStore {
         guard !FileManager.default.fileExists(atPath: directory.path) else { throw LRCError(L10n.text("app.restoreIntoANewWorkingDirectory", defaultValue: "Restore into a new working directory")) }
-        var config = Configuration(); config.readonly = true
-        let original = try DatabaseQueue(path: source.path, configuration: config)
-        try validate(original)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let destination = try DatabaseQueue(path: directory.appendingPathComponent("Catalog.sqlite").path)
-        try original.backup(to: destination)
-        try validate(destination)
-        try destination.close(); try original.close()
-        return try CatalogStore(directory: directory)
+        let destination = directory.appendingPathComponent("Catalog.sqlite")
+        let identity = try publishRestoredBackup(from: source, to: destination, createParent: true)
+        try requireIdentity(identity, at: destination)
+        return try CatalogStore(fileURL: destination)
     }
     static func restore(from source: URL, toFile destination: URL, access: AccessLease? = nil) throws -> CatalogStore {
+        let identity = try publishRestoredBackup(from: source, to: destination)
+        try requireIdentity(identity, at: destination)
+        return try CatalogStore(fileURL: destination, access: access)
+    }
+    static func publishRestoredBackup(from source: URL, to destination: URL, expectedSource: FileIdentity? = nil,
+                                      createParent: Bool = false) throws -> FileIdentity {
+        let identity = try expectedSource ?? FileIdentity.read(source)
+        try requireIdentity(identity, at: source)
         var config = Configuration(); config.readonly = true
         let original = try DatabaseQueue(path: source.path, configuration: config)
         defer { try? original.close() }
         try validate(original)
-        let staging = try SafeFileWriter.stage(in: destination.deletingLastPathComponent())
-        do {
-            let copy = try DatabaseQueue(path: staging.path)
-            try original.backup(to: copy); try validate(copy); try copy.close()
-            try SafeFileWriter.publish(staging, to: destination)
-        } catch { try? FileManager.default.removeItem(at: staging); throw error }
-        return try CatalogStore(fileURL: destination, access: access)
+        if createParent { try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true) }
+        return try publishDatabase(original, to: destination, restoring: true) { try requireIdentity(identity, at: source) }
     }
-    func exportManifest(to url: URL) throws {
+    @discardableResult func exportManifest(to url: URL) throws -> Data {
         // One database snapshot, with readable recipe objects and no sandbox bookmarks.
         let data = try database.read { db -> Data in
             let photos = try Photo.fetchAll(db)
@@ -827,7 +855,9 @@ final class CatalogStore: @unchecked Sendable {
                 }, "memberships": memberships, "attachments": attachments]
             return try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys])
         }
+        try Task.checkCancellation()
         try SafeFileWriter.write(data, to: url)
+        return data
     }
 }
 

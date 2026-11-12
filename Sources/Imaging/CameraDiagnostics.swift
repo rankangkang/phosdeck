@@ -52,10 +52,19 @@ struct CameraDiagnosticResult {
     let embedded: CGImage?
 }
 
+struct CameraDiagnosticPublicationError: LocalizedError {
+    let filename: String
+    var errorDescription: String? {
+        L10n.text("camera.reportReadback", defaultValue: "Report read-back verification failed.")
+    }
+}
+
 /// A dedicated actor keeps full RAW validation, file hashing and pixel comparisons off MainActor.
 /// Camera Bench's evidence/check separation is inspired by Redlamp 21ff73eb (2026-11-01);
 /// this is a native implementation of our Apple RAW and current rendering contract.
 actor CameraDiagnostics {
+    static let maximumSamples = 32
+
     static func files(in folder: URL) async throws -> [URL] {
         try await Task.detached(priority: .userInitiated) {
             let urls = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey], options: [.skipsHiddenFiles])
@@ -67,16 +76,18 @@ actor CameraDiagnostics {
     }
 
     static func save(_ report: CameraDiagnosticReport, in folder: URL) async throws -> String {
-        try await Task.detached(priority: .utility) {
+        let worker = Task.detached(priority: .utility) {
             let lease = AccessLease(url: folder)
             defer { withExtendedLifetime(lease) {} }
             let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(report), name = "Phosdeck-camera-check-\(UUID().uuidString).json"
             let destination = folder.appendingPathComponent(name)
+            try Task.checkCancellation()
             try SafeFileWriter.write(data, to: destination)
-            guard try Data(contentsOf: destination) == data else { throw LRCError(L10n.text("camera.reportReadback", defaultValue: "Report read-back verification failed.")) }
+            guard (try? Data(contentsOf: destination)) == data else { throw CameraDiagnosticPublicationError(filename: name) }
             return name
-        }.value
+        }
+        return try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
     }
 
     func inspect(_ url: URL, index: Int) async throws -> CameraDiagnosticResult {

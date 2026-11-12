@@ -57,6 +57,12 @@ enum AppMCPTool: String, CaseIterable {
     case planExport = "plan_export", getExportPreview = "get_export_preview", runExport = "run_export"
     case exportRecords = "list_export_records", retryExport = "verify_or_retry_export", reauthorizeExport = "reauthorize_export_location"
     case revealFile = "reveal_file_in_finder"
+    case getPreferences = "get_preferences", setPreferences = "set_preferences", showAppPanel = "show_app_panel"
+    case listLanguagePacks = "list_language_packs", editLanguagePack = "edit_language_pack", selectLanguage = "select_language"
+    case storageUsage = "get_storage_usage", setCacheQuota = "set_cache_quota", clearThumbnailCache = "clear_thumbnail_cache"
+    case backupCatalog = "back_up_catalog", restoreCatalogBackup = "restore_catalog_backup", exportCatalogManifest = "export_catalog_manifest"
+    case runCameraDiagnostics = "run_camera_diagnostics", getCameraDiagnosticPreview = "get_camera_diagnostic_preview"
+    case saveCameraDiagnosticReport = "save_camera_diagnostics_report"
 
     enum Field: String {
         case catalog = "catalog_session_id", photo = "photo_id", cursor, pageSize = "page_size"
@@ -104,8 +110,9 @@ enum AppMCPTool: String, CaseIterable {
         case specifications, outputID = "output_id", recordIDs = "record_ids"
         case unfinishedOnly = "unfinished_only", includeCompleted = "include_completed"
         case fileID = "file_id", revealKind = "kind"
+        case preferences, panel, packID = "pack_id", quotaGiB = "quota_gib", reportID = "report_id", previewKind = "preview_kind"
 
-        private var range: ClosedRange<Int>? {
+        private func range(for tool: AppMCPTool) -> ClosedRange<Int>? {
             switch self {
             case .pageSize: 1...200
             case .longEdge: 1...1024
@@ -118,7 +125,7 @@ enum AppMCPTool: String, CaseIterable {
             case .historyID: 1...Int.max
             case .pointIndex: 0...(ToneCurves.maxPoints - 1)
             case .turns: -3...3
-            case .sampleIndex: 0...15
+            case .sampleIndex: tool == .getCameraDiagnosticPreview ? 1...CameraDiagnostics.maximumSamples : 0...15
             case .candidateIndex, .faceIndex: 0...255
             default: nil
             }
@@ -137,7 +144,7 @@ enum AppMCPTool: String, CaseIterable {
             case .scope: tool == .planPairs ? ["catalog", "query", "selection"] : ["query", "selection"]
             case .view: WorkspaceMode.allCases.map(\.rawValue)
             case .tool: DevelopTool.allCases.map(\.rawValue)
-            case .pane: ["main", "reference", "candidate", "develop_reference"]
+            case .pane: tool == .showAppPanel ? MCPAppPanel.settingsPanes.keys.sorted() : ["main", "reference", "candidate", "develop_reference"]
             case .zoom: ["fit", "fill", "scale"]
             case .action: tool.actions
             case .group:
@@ -160,6 +167,8 @@ enum AppMCPTool: String, CaseIterable {
             case .mergeKind: PhotoMergeKind.allCases.map(\.rawValue)
             case .masterFormat: MergeMasterFormat.allCases.map(\.rawValue)
             case .revealKind: ["catalog", "export", "merge", "import_backup"]
+            case .panel: MCPAppPanel.allCases.map(\.rawValue)
+            case .previewKind: ["rendered", "embedded"]
             default: nil
             }
         }
@@ -190,7 +199,7 @@ enum AppMCPTool: String, CaseIterable {
         }
         private var identifierSchema: Value { ["type": "string", "minLength": 1, "maxLength": 128] }
         func schema(for tool: AppMCPTool) -> Value {
-            if let range {
+            if let range = range(for: tool) {
                 var schema: [String: Value] = ["type": "integer", "minimum": .int(range.lowerBound)]
                 if range.upperBound != Int.max { schema["maximum"] = .int(range.upperBound) }
                 if self == .pageSize { schema["default"] = 50 }
@@ -201,6 +210,8 @@ enum AppMCPTool: String, CaseIterable {
             if isBoolean { return ["type": "boolean"] }
             switch self {
             case .adjustments: return tool == .pointColor ? MCPCanvasFields.pointColorSchema : MCPDevelopParameters.schema(tool)
+            case .preferences: return MCPPreferences.schema
+            case .quotaGiB: return ["type": "integer", "enum": .array(ThumbnailService.quotaOptions.map(Value.int))]
             case .outputOptions: return tool == .planMerge ? MCPMergeOptions.schema : MCPExportOptions.schema
             case .specifications: return MCPExportOptions.specificationsSchema
             case .displayEV: return MCPDevelopParameters.numberSchema(-5...5)
@@ -275,7 +286,7 @@ enum AppMCPTool: String, CaseIterable {
             return ["type": "string", "minLength": textCriteria ? 0 : 1, "maxLength": .int(nameLimit(for: tool))]
         }
         func accepts(_ value: Value, for tool: AppMCPTool) -> Bool {
-            if let range { return value.intValue.map(range.contains) ?? false }
+            if let range = range(for: tool) { return value.intValue.map(range.contains) ?? false }
             if isBoolean { return value.boolValue != nil }
             if [.candidates, .differences, .photoIDs, .stackIDs, .recordIDs].contains(self) {
                 let count = tool == .planMerge ? 2...128 : 1...1000
@@ -288,6 +299,8 @@ enum AppMCPTool: String, CaseIterable {
                 return values.allSatisfy { Self.isID($0.key) && ($0.value.stringValue.map(Self.isID) ?? false) }
             }
             switch self {
+            case .preferences: return MCPDevelopParameters.accepts(value, schema: MCPPreferences.schema)
+            case .quotaGiB: return value.intValue.map(ThumbnailService.quotaOptions.contains) ?? false
             case .outputOptions: return MCPDevelopParameters.accepts(value, schema: schema(for: tool))
             case .specifications: return MCPExportOptions.acceptsSpecifications(value)
             case .displayEV: return value.number.map((-5...5).contains) ?? false
@@ -407,6 +420,8 @@ enum AppMCPTool: String, CaseIterable {
             ["include", "exclude", "box", "undo_prompt", "select_candidate", "select_people", "select_all_people", "select_whole_person",
              "toggle_part", "select_face", "face_box", "reset_face", "set_separate", "cancel"]
         case .editExportPreset: ["create", "update", "rename", "delete", "restore_defaults"]
+        case .editLanguagePack: ["import", "remove"]
+        case .selectLanguage: ["official", "community"]
         default: nil
         }
     }
@@ -480,6 +495,17 @@ enum AppMCPTool: String, CaseIterable {
         case .retryExport: [.catalog, .recordIDs]
         case .reauthorizeExport: [.catalog, .recordIDs, .access]
         case .revealFile: [.catalog, .revealKind]
+        case .getPreferences, .listLanguagePacks, .storageUsage: []
+        case .setPreferences: [.preferences]
+        case .showAppPanel: [.panel]
+        case .editLanguagePack, .selectLanguage: [.action]
+        case .setCacheQuota: [.quotaGiB]
+        case .clearThumbnailCache: [.catalog]
+        case .backupCatalog, .exportCatalogManifest: [.catalog, .destinationAccess]
+        case .restoreCatalogBackup: [.sourceAccess, .destinationAccess, .name]
+        case .runCameraDiagnostics: [.access]
+        case .getCameraDiagnosticPreview: [.reportID, .sampleIndex]
+        case .saveCameraDiagnosticReport: [.reportID, .destinationAccess]
         case .solvePerspective: [.catalog, .photo, .sourceRevision, .recipeRevision, .mode]
         case .canvasGuides: [.catalog]
         case .samplePreview: [.catalog, .previewID, .point]
@@ -570,6 +596,13 @@ enum AppMCPTool: String, CaseIterable {
         case .exportRecords: [.offset, .pageSize, .unfinishedOnly, .recordIDs]
         case .retryExport: [.includeCompleted]
         case .revealFile: [.recordIDs, .record, .member, .fileID, .photo]
+        case .showAppPanel: [.catalog, .pane, .recordIDs, .unfinishedOnly]
+        case .listLanguagePacks: [.offset, .pageSize]
+        case .editLanguagePack: [.access, .packID]
+        case .selectLanguage: [.packID]
+        case .storageUsage, .setCacheQuota, .restoreCatalogBackup: [.catalog]
+        case .backupCatalog, .exportCatalogManifest: [.filename]
+        case .getCameraDiagnosticPreview: [.previewKind]
         case .photoRecipe: [.historyID, .snapshotID]
         case .toneCurve: [.points, .pointIndex, .x, .y]
         case .transferAdjustments: [.photo, .photoIDs, .groups, .presetID, .presetRevision, .amount]
@@ -594,7 +627,8 @@ enum AppMCPTool: String, CaseIterable {
         switch self {
         case .capabilities, .workspace, .listPhotos, .listSelected, .preview, .librarySources, .recentCatalogs, .importRecords, .job, .keywords,
              .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs, .photoRecipe, .listPresets,
-             .samplePreview, .spotRepairs, .maskState, .listLocalPresets, .getMergePreview, .listExportPresets, .getExportPreview, .exportRecords: false
+             .samplePreview, .spotRepairs, .maskState, .listLocalPresets, .getMergePreview, .listExportPresets, .getExportPreview, .exportRecords,
+             .getPreferences, .listLanguagePacks, .storageUsage, .getCameraDiagnosticPreview: false
         default: true
         }
     }
@@ -628,13 +662,13 @@ enum AppMCPTool: String, CaseIterable {
             output = "operation_id, the verified restored values, and commit_state."
         default:
             (description, output) = cullingDescription ?? organizationDescription ?? developDescription ?? canvasDescription
-                ?? maskDescription ?? smartMaskDescription ?? mergeDescription ?? exportDescription ?? workflowDescription
+                ?? maskDescription ?? smartMaskDescription ?? mergeDescription ?? exportDescription ?? maintenanceDescription ?? workflowDescription
         }
         let required = required + (needsRequestID ? [.epoch, .request] : [])
         let properties = Dictionary(uniqueKeysWithValues: (required + optional).map { ($0.rawValue, $0.schema(for: self)) })
         let destructive = [.startImport, .resolveConflict, .resumeImport, .cleanBackup,
                            .deleteCollection, .deleteSmartCollection, .removeVersions, .unlinkPair, .resetAdjustments,
-                           .editPreset, .deleteSnapshot].contains(self)
+                           .editPreset, .deleteSnapshot, .editLanguagePack, .clearThumbnailCache].contains(self)
         return Tool(name: rawValue, description: description, inputSchema: [
             "type": "object", "properties": .object(properties), "additionalProperties": false,
             "required": .array(required.map { .string($0.rawValue) })
@@ -851,12 +885,16 @@ final class AppMCPTools {
                                             selectionOnly: tool == .listSelected)
             case .preview:
                 return try await preview(model, catalog: model.catalog!, session: catalogSession!, arguments: arguments)
-            case .getMergePreview, .getExportPreview:
-                let withImage = tool == .getMergePreview || arguments["output_id"] != nil
+            case .getMergePreview, .getExportPreview, .getCameraDiagnosticPreview:
+                let withImage = tool != .getExportPreview || arguments["output_id"] != nil
                 guard !withImage || sharesImages else { throw MCPToolProblem.imageDisabled }
                 let accessGeneration = imageAccessGeneration
                 let result = try await workflows.read(tool, arguments: arguments)
-                try verifyCanvasRead(catalogSession!, model: model)
+                if tool == .getCameraDiagnosticPreview {
+                    guard !stopped, !Task.isCancelled else { throw MCPToolProblem.stopped }
+                } else {
+                    try verifyCanvasRead(catalogSession!, model: model)
+                }
                 guard !withImage || (sharesImages && imageAccessGeneration == accessGeneration) else { throw MCPToolProblem.imageDisabled }
                 return result
             case .samplePreview:
@@ -884,7 +922,7 @@ final class AppMCPTools {
     private func checkCatalog(_ tool: AppMCPTool, arguments: [String: Value], model: AppModel) throws {
         if tool.needsCatalog && model.catalog == nil { throw MCPToolProblem.noCatalog }
         let session = arguments["catalog_session_id"]?.stringValue
-        let catalogBound = tool.needsCatalog || [.fileAccess, .createCatalog, .openCatalog].contains(tool)
+        let catalogBound = tool.needsCatalog || [.fileAccess, .createCatalog, .openCatalog, .restoreCatalogBackup].contains(tool) || session != nil
         if catalogBound && session != model.catalogSessionID {
             throw MCPToolProblem.catalogChanged
         }
@@ -901,6 +939,7 @@ final class AppMCPTools {
             case .capabilities, .workspace, .recentCatalogs, .job, .cancelJob: problem = nil
             case .listPhotos, .listSelected: problem = model.catalog == nil ? .noCatalog : nil
             case .preview, .samplePreview, .getMergePreview: problem = model.catalog == nil ? .noCatalog : sharesImages ? nil : .imageDisabled
+            case .getCameraDiagnosticPreview: problem = sharesImages ? nil : .imageDisabled
             case .rate: problem = model.catalog == nil ? .noCatalog : writeProblem(model)
             case .undo, .redo:
                 problem = model.catalog == nil ? .noCatalog : writeProblem(model, tool: tool) ?? (undoAvailable(model, redo: tool == .redo) ? nil : .undoConflict)
@@ -941,6 +980,7 @@ final class AppMCPTools {
         data["canvas"] = .object(Self.canvasState(model))
         data["mask_display"] = .object(Self.maskState(model))
         data["smart_session_id"] = model.smartMaskSession.map { .string($0.id.uuidString) } ?? .null
+        data["open_panel"] = MCPAppPanel.visible(in: model).map { $0.describe(model) } ?? .null
         return .init("Current Phosdeck workspace.", data: data)
     }
 

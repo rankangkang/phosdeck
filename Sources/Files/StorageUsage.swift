@@ -26,6 +26,7 @@ actor StorageInspector {
             if recovery { usage.recovery += info.st_size } else { usage.staging += info.st_size }
         }
         for plan in try CopyImporter.savedPlans(catalog: catalog) {
+            try Task.checkCancellation()
             do {
                 let lease = try AccessLease(bookmark: plan.targetBookmark)
                 defer { withExtendedLifetime(lease) {} }
@@ -35,7 +36,10 @@ actor StorageInspector {
                 }
             } catch { usage.inaccessible += 1 }
         }
-        for log in try ExportService.logs(catalog: catalog) {
+        let exports = try ExportService.history(catalog: catalog)
+        usage.inaccessible += exports.rejected.count
+        for log in exports.logs {
+            try Task.checkCancellation()
             do {
                 let lease = try AccessLease(bookmark: log.snapshot.targetBookmark)
                 defer { withExtendedLifetime(lease) {} }

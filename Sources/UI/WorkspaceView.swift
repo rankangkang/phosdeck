@@ -12,6 +12,7 @@ private struct WorkspaceRegion<Content: View>: View {
 
 struct WorkspaceView: View {
     @Bindable var model: AppModel
+    @Environment(\.openSettings) private var openSettings
     @AppStorage("showLeftPanel") private var left = true
     @AppStorage("showRightPanel") private var right = true
     @AppStorage("showFilmstrip") private var film = true
@@ -56,10 +57,9 @@ struct WorkspaceView: View {
     @State private var versionRename = false
     @State private var versionName = ""
     @State private var versionID = ""
-    @State private var reports = false
     @StateObject private var clippingPreview = ClippingPreviewSession()
     private var utilityOpen: Bool {
-        smartDraft != nil || versionRename || collectionDialog || snapshotDialog || pasteDialog || relativeExposureDialog || presetRenameDialog || reports
+        smartDraft != nil || versionRename || collectionDialog || snapshotDialog || pasteDialog || relativeExposureDialog || presetRenameDialog || model.showTaskResults
     }
     var body: some View { presentations(workspace) }
     // Bound each expression for Xcode 26.6 without adding an Observation boundary.
@@ -147,7 +147,8 @@ struct WorkspaceView: View {
         .frame(minWidth: 1000, minHeight: 640)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in endTemporaryInspection() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in endTemporaryInspection() }
-        .onDisappear { endTemporaryInspection() }
+        .onAppear { model.openSettingsWindow = { [openSettings] in openSettings() } }
+        .onDisappear { model.openSettingsWindow = nil; endTemporaryInspection() }
     }
     private func endTemporaryInspection() {
         model.clearSavedEditPreview(); model.endMaskEffectPreview(); model.endAdjustmentPreview()
@@ -244,7 +245,10 @@ struct WorkspaceView: View {
         }
         .sheet(isPresented: $model.showOutputRecovery) { ExportRecoverySheet(model: model) }
         .sheet(isPresented: $model.showCopyRecovery) { ImportRecoverySheet(model: model) }
-        .sheet(isPresented: $model.showCameraDiagnostics) { CameraDiagnosticsView() }
+        .sheet(isPresented: $model.showCameraDiagnostics, onDismiss: { model.cameraDiagnosticPresentation = nil }) {
+            let snapshot = model.cameraDiagnosticPresentation
+            CameraDiagnosticsView(report: snapshot?.report ?? .empty(), results: snapshot?.results ?? [])
+        }
         .sheet(isPresented: $model.showNewCatalog) { NewCatalogSheet(model: model) }
         .sheet(item: $model.importConflict) { conflict in
             ImportConflictSheet(model: model, conflict: conflict).id(conflict.id).interactiveDismissDisabled()
@@ -257,11 +261,11 @@ struct WorkspaceView: View {
             if let catalog = model.catalog { XMPPresetImportSheet(model: model, catalog: catalog) }
         }
         .sheet(isPresented: $model.showExport) { ExportSheet(model: model) }
-        .sheet(isPresented: $reports) {
+        .sheet(isPresented: $model.showTaskResults) {
             VStack(alignment: .leading) {
                 Text(L10n.text("app.taskResults", defaultValue: "Task Results")).font(.headline)
                 ScrollView { Text(model.reports.isEmpty ? L10n.text("app.noPendingResults", defaultValue: "No pending results") : model.reports.joined(separator: "\n")).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-                HStack { Spacer(); Button(L10n.text("app.close", defaultValue: "Close")) { reports = false }.keyboardShortcut(.cancelAction) }
+                HStack { Spacer(); Button(L10n.text("app.close", defaultValue: "Close")) { model.showTaskResults = false }.keyboardShortcut(.cancelAction) }
             }.padding(20).frame(width: 620, height: 420).instrumentForm()
         }
     }
@@ -1170,8 +1174,8 @@ struct WorkspaceView: View {
                 }
             } else {
                 Image(systemName: "square.grid.2x2").font(.system(size: 10)).foregroundStyle(Theme.textSecondary)
-                GradientAdjustmentSlider(value: model.thumbnailSize, range: 100...240, step: 1, neutral: 156, track: .tonal,
-                                         label: L10n.text("app.thumbnailSize", defaultValue: "Thumbnail Size"), change: { model.thumbnailSize = $0 }, commit: {})
+                GradientAdjustmentSlider(value: model.thumbnailSize, range: Double(AppModel.thumbnailSizeRange.lowerBound)...Double(AppModel.thumbnailSizeRange.upperBound), step: 1, neutral: 156, track: .tonal,
+                                         label: L10n.text("app.thumbnailSize", defaultValue: "Thumbnail Size"), change: { model.thumbnailSize = $0 }, commit: model.persistThumbnailSize)
                     .frame(width: 90, height: 28).help(L10n.text("app.thumbnailSize", defaultValue: "Thumbnail Size"))
             }
         }.padding(.horizontal, 12).frame(height: Metrics.toolbar).background(InstrumentPlate())
@@ -1481,7 +1485,7 @@ struct WorkspaceView: View {
                 }
                 Button(L10n.text("app.cancel", defaultValue: "Cancel")) { model.task?.cancel() }.buttonStyle(.key(height: 18, padding: 8))
             }
-            Button(L10n.text("app.taskResults_2221", defaultValue: "Task results \(model.reports.count)")) { reports = true }
+            Button(L10n.text("app.taskResults_2221", defaultValue: "Task results \(model.reports.count)")) { model.showTaskResults = true }
                 .buttonStyle(.plain).foregroundStyle(model.reports.isEmpty ? Theme.textSecondary : Theme.text)
                 .help(L10n.text("app.viewIndividualResultsFromTheLatestTask", defaultValue: "View individual results from the latest task"))
         }

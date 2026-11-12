@@ -54,6 +54,7 @@ struct SettingsSheet: View {
                 Text(L10n.text("app.wClose", defaultValue: "⌘W Close")).font(.caption11).foregroundStyle(Theme.textSecondary)
             }.padding(16)
         }.frame(width: 660, height: 500).instrumentForm()
+        .background(SettingsWindowReader(model: model))
         .task(id: model.catalog?.fileURL) { await refreshStorage() }
     }
     private var appearance: some View {
@@ -73,7 +74,7 @@ struct SettingsSheet: View {
     private var storage: some View {
         VStack(alignment: .leading, spacing: 16) {
             SubgroupLabel(L10n.text("app.localCacheQuota", defaultValue: "Local Cache Quota"))
-            DetentSlider(title: L10n.text("app.diskThumbnailQuota", defaultValue: "Disk Thumbnail Quota"), options: [1, 5, 10].map { KeyOption($0, "\($0) GiB") },
+            DetentSlider(title: L10n.text("app.diskThumbnailQuota", defaultValue: "Disk Thumbnail Quota"), options: ThumbnailService.quotaOptions.map { KeyOption($0, "\($0) GiB") },
                          selection: Binding(get: { model.cacheGigabytes }, set: updateQuota), reset: 5)
                 .disabled(unavailable).accessibilityIdentifier("settings-cache-quota")
             Text(L10n.text("app.eachCatalogUsesThisQuotaSeparatelyRebuildableThumbnailsAre", defaultValue: "Each catalog uses this quota separately. Rebuildable thumbnails are evicted when it is exceeded; originals and outputs are preserved."))
@@ -171,6 +172,29 @@ struct SettingsSheet: View {
                 await refreshStorage()
                 feedback = L10n.text("app.rebuildableCacheClearedForTheCurrentCatalog", defaultValue: "Rebuildable cache cleared for the current catalog.")
             } catch { failure = error.localizedDescription }
+        }
+    }
+}
+
+private struct SettingsWindowReader: NSViewRepresentable {
+    let model: AppModel
+
+    func makeNSView(context: Context) -> Reader { Reader(model) }
+    func updateNSView(_ view: Reader, context: Context) {}
+
+    final class Reader: NSView {
+        weak var model: AppModel?
+
+        init(_ model: AppModel) {
+            self.model = model
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window { model?.settingsWindow = window }
         }
     }
 }

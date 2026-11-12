@@ -52,8 +52,12 @@ final class PreviewDiskCache {
         for (url, bytes, _) in values where total > limit { try FileManager.default.removeItem(at: url); total -= bytes }
         knownBytes = total
     }
-    func clear() throws {
-        for (url, _, _) in try files() { try FileManager.default.removeItem(at: url) }
+    @discardableResult func clear() throws -> Int64 {
+        let entries = try files()
+        // Recompute usage if removal fails after deleting only part of the cache.
+        knownBytes = nil
+        for (url, _, _) in entries { try FileManager.default.removeItem(at: url) }
         knownBytes = 0
+        return entries.reduce(0) { $0 + $1.1 }
     }
 }

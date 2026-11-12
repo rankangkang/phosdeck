@@ -192,6 +192,7 @@ final class AppModel {
         return try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
     }
     var showCameraDiagnostics = false
+    @ObservationIgnored var cameraDiagnosticPresentation: (report: CameraDiagnosticReport, results: [CameraDiagnosticResult])?
     var maskMode = false { didSet { if maskMode { cancelAutomaticAdjustment(); cancelTargetedAdjustment(); cancelWhiteBalanceSampling(); cancelPointColorTools(); spotMode = false; beforeAfter = .off; cancelZoneSampling() } else if oldValue { endMaskEffectPreview(); cancelSmartMask() } } }
     var spotMode = false {
         didSet {
@@ -497,6 +498,7 @@ final class AppModel {
     var dirty = false
     var canEdit = false { didSet { if !canEdit { cancelAutomaticAdjustment() } } }
     var collectionMembers: Set<String> = []
+    nonisolated static let thumbnailSizeRange = 100...240
     var thumbnailSize = 156.0
     var cacheBytes: Int64 = 0
     var cacheGigabytes = 5
@@ -504,6 +506,9 @@ final class AppModel {
     @ObservationIgnored private(set) var cacheConfigurationTask: Task<Void, Never>?
     @ObservationIgnored var exportOperationCounts = ExportOperationCounts()
     var settingsPane = SettingsPane.appearance
+    @ObservationIgnored var openSettingsWindow: (() -> Void)?
+    @ObservationIgnored weak var settingsWindow: NSWindow?
+    var showTaskResults = false
     var showExport = false
     var requestedExportPreset: ExportPreset?
     var showOutputRecovery = false
@@ -531,7 +536,7 @@ final class AppModel {
     @ObservationIgnored lazy var mcp = AppMCPService()
     let pipeline: ImagePipeline
     private let renderPreview: (ImageRequest, Bool, Int?) async throws -> RenderedImage
-    let thumbnails = ThumbnailService()
+    let thumbnails: ThumbnailService
     let importer = ReferenceImporter()
     @ObservationIgnored private(set) var catalogSessionID: String?
     @ObservationIgnored private(set) var browseGeneration = UUID()
@@ -540,7 +545,7 @@ final class AppModel {
     }
     var catalogName: String { catalog?.fileURL.deletingPathExtension().lastPathComponent ?? L10n.text("app.noCatalogOpen", defaultValue: "No catalog open") }
     /// Menu-bar commands stay reachable while a sheet is up, so they must not stack a second sheet.
-    var presentingSheet: Bool { showCameraDiagnostics || showImport || folderReview != nil || mergeSession != nil || showXMPPresetImport || showExport || showNewCatalog || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
+    var presentingSheet: Bool { showCameraDiagnostics || showTaskResults || showImport || folderReview != nil || mergeSession != nil || showXMPPresetImport || showExport || showNewCatalog || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
     var canSwitchCatalog: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var workspaceAvailable: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var canLocateOriginal: Bool { catalog != nil && active != nil && workspaceAvailable && comparison == nil && survey == nil }
@@ -700,20 +705,30 @@ final class AppModel {
     private var savedRecipe: EditRecipe?
     private var renderedCropRecipe: EditRecipe?
     private let usesPreferences = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+    let workspacePreferences: UserDefaults?
     private let cachePreferences: UserDefaults?
     private let importPreferences: UserDefaults?
     @ObservationIgnored private weak var importCatalog: CatalogStore?
 
-    init(previewRenderer: ((ImageRequest, Bool, Int?) async throws -> RenderedImage)? = nil, cachePreferences: UserDefaults? = nil, adjustmentPreferences: UserDefaults? = nil, importPreferences: UserDefaults? = nil) {
+    init(previewRenderer: ((ImageRequest, Bool, Int?) async throws -> RenderedImage)? = nil, cachePreferences: UserDefaults? = nil, adjustmentPreferences: UserDefaults? = nil, importPreferences: UserDefaults? = nil, workspacePreferences: UserDefaults? = nil,
+         thumbnails: ThumbnailService = ThumbnailService()) {
+        self.thumbnails = thumbnails
+        self.workspacePreferences = workspacePreferences ?? (ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil ? .standard : nil)
         self.adjustmentPreferences = adjustmentPreferences ?? (ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil ? .standard : nil)
         self.cachePreferences = cachePreferences ?? (ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil ? .standard : nil)
         self.importPreferences = importPreferences ?? (ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil ? .standard : nil)
         let quota = self.cachePreferences?.integer(forKey: "cacheGB") ?? 5
-        cacheGigabytes = [1, 5, 10].contains(quota) ? quota : 5
+        cacheGigabytes = ThumbnailService.quotaOptions.contains(quota) ? quota : 5
         let pipeline = ImagePipeline()
         self.pipeline = pipeline
         let interactivePipeline = ImagePipeline(cacheIntermediates: true)
         self.renderPreview = previewRenderer ?? Self.makePreviewRenderer(quality: pipeline, draft: interactivePipeline)
+        if let defaults = self.workspacePreferences {
+            autoAdvance = defaults.bool(forKey: "autoAdvance")
+            libraryFiltersOpen = defaults.object(forKey: "libraryFiltersOpen") as? Bool ?? true
+            let size = defaults.integer(forKey: "thumbnailSize")
+            if Self.thumbnailSizeRange.contains(size) { thumbnailSize = Double(size) }
+        }
         if let data = self.adjustmentPreferences?.data(forKey: "confirmedAdjustmentOptions"),
            let options = try? JSONDecoder().decode(RecipePasteOptions.self, from: data), options.hasSelection {
             confirmedAdjustmentOptions = options
@@ -861,9 +876,11 @@ final class AppModel {
         persistWorkspace()
     }
     private func workspaceKey(_ key: String) -> String { (catalog?.fileURL.path ?? "none") + ":" + key }
+    func persistThumbnailSize() {
+        workspacePreferences?.set(Int(thumbnailSize.rounded()), forKey: "thumbnailSize")
+    }
     func persistWorkspace() {
-        guard usesPreferences else { return }
-        let defaults = UserDefaults.standard
+        guard let defaults = workspacePreferences else { return }
         let original = persistedBrowseContext
         defaults.set(original?.scope ?? scope, forKey: workspaceKey("lastScope")); defaults.set(original?.search ?? search, forKey: workspaceKey("lastSearch"))
         defaults.set((original?.ratingComparison ?? ratingComparison).rawValue, forKey: workspaceKey("ratingComparison"))
@@ -3053,7 +3070,8 @@ final class AppModel {
     }
     /// A machine preference can be saved before the first catalog is created.
     func updateCacheQuota(_ value: Int) async throws {
-        guard [1, 5, 10].contains(value) else { throw LRCError(L10n.text("app.cacheQuotaMustBe15Or10GiB", defaultValue: "Cache quota must be 1, 5, or 10 GiB")) }
+        try Task.checkCancellation()
+        guard ThumbnailService.quotaOptions.contains(value) else { throw LRCError(L10n.text("app.cacheQuotaMustBe15Or10GiB", defaultValue: "Cache quota must be 1, 5, or 10 GiB")) }
         guard !cacheMaintenance, !busy, !applyingAdjustments else { throw LRCError(L10n.text("app.waitForTheCurrentTaskToFinishBeforeChanging", defaultValue: "Wait for the current task to finish before changing the cache quota")) }
         cacheMaintenance = true
         defer { cacheMaintenance = false }
@@ -3067,13 +3085,14 @@ final class AppModel {
         try await thumbnails.configure(catalogID: id, gigabytes: cacheGigabytes)
         cacheBytes = try await thumbnails.usage()
     }
-    func clearThumbnailCache() async throws {
+    @discardableResult func clearThumbnailCache() async throws -> Int64 {
         guard catalog != nil else { throw LRCError(L10n.text("app.openACatalogFirst", defaultValue: "Open a catalog first")) }
         guard !cacheMaintenance, !busy, !applyingAdjustments else { throw LRCError(L10n.text("app.waitForTheCurrentTaskToFinishBeforeClearing", defaultValue: "Wait for the current task to finish before clearing the cache")) }
         cacheMaintenance = true
         defer { cacheMaintenance = false }
-        try await thumbnails.clear()
-        cacheBytes = try await thumbnails.usage()
+        let removed = try await thumbnails.clear()
+        cacheBytes = 0
+        return removed
     }
     func locateOriginal() {
         guard canLocateOriginal, let photo = active, let catalog, commitRecipe() else { return }
@@ -3243,10 +3262,15 @@ final class AppModel {
     }
     func restoreBackup() {
         guard canSwitchCatalog, commitRecipe() else { return }
-        let panel = NSOpenPanel(); panel.title = L10n.text("app.chooseCatalogBackup", defaultValue: "Choose Catalog Backup")
-        panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        let panel = Self.catalogBackupPanel()
         guard panel.runModal() == .OK, let source = panel.url else { return }
         catalogRestoreSource = source; showNewCatalog = true
+    }
+    static func catalogBackupPanel() -> NSOpenPanel {
+        let panel = NSOpenPanel(); panel.title = L10n.text("app.chooseCatalogBackup", defaultValue: "Choose Catalog Backup")
+        panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        panel.resolvesAliases = false
+        return panel
     }
 }
 
@@ -3404,8 +3428,11 @@ extension AppModel {
         } else {
             next = try CatalogStore(fileURL: url, create: true, access: lease)
         }
+        try activateCreatedCatalog(next, directory: directory, bookmark: bookmark)
+    }
+    func activateCreatedCatalog(_ next: CatalogStore, directory: URL, bookmark: Data) throws {
         try activateCatalog(next)
-        try rememberCatalog(url, directory: directory, bookmark: bookmark)
+        try rememberCatalog(next.fileURL, directory: directory, bookmark: bookmark)
     }
     func openCatalog() {
         guard canSwitchCatalog, commitRecipe() else { return }
