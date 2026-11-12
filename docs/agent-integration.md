@@ -73,7 +73,7 @@
 | `transfer_local_adjustments`、`list_local_adjustment_presets`、`edit_local_adjustment_preset` | 复制／粘贴、列出／保存／应用／重命名／删除局部参数预设。返回参数或实际改动 | `MaskEditing`、`CatalogLocalPresets`。只改变局部参数，保留选区几何 |
 | `start_smart_mask`、`edit_smart_mask_selection`、`apply_smart_mask` | 对象点／框、增减提示及提示撤销、候选；人物单选／多选／全选、整人、部位、脸框与细化、拆分或合并。返回分析任务、当前候选、叠加预览及新增组件 | `SmartMaskEditing`、`SmartMaskEngine`。绑定候选代次、照片及配方，缺模型返回条件，取消复用任务接口 |
 | `get_spot_repairs`、`edit_spot_repair` | 查看和选中污点，点／路径、模式、半径／羽化／不透明度、移动、选择／重算来源、禁用和删除 | `SpotEditing`、`SpotRepair`。目标与采样源各自校验，回读实际 ID、来源和修订号 |
-| `edit_photo_draft` | 开始、提交或取消单张照片的试修。普通蒙版、局部参数和污点可共用一个草稿 | 用同一显影管线渲染草稿。提交时核对保存版本，只写一条历史并注册一次原生撤销 |
+| `edit_photo_draft` | 开始、提交或取消单张照片的试修。曝光、色彩、普通蒙版、局部参数和污点可共用一个草稿 | 用同一显影管线渲染草稿。提交时核对保存版本，只写一条历史并注册一次原生撤销 |
 | `set_canvas_guides` | 设置构图辅助线、裁剪引导及污点引导显示，返回当前显示状态 | `cycleCropGuide`、`PhotoCanvas`、`SpotPanel`。只改变显示 |
 
 对应回归包括 `PerspectiveTests`、`UprightTests`、`FlipTests`、`InspectionWorkflowTests`、`TargetedAdjustmentTests`、`DirectAdjustmentTests`、`PointColorTests`、`ManualDefringeTests`、`MaskingTests`、`SmartMaskTests`、`LocalParameterPresetTests` 和 `SpotRepairTests`。关键验收用有方向标记的合成图核对 Agent 输入的位置和原生结果。
@@ -244,6 +244,8 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 ### 全局显影、前后对照与编辑记录接口
 
 `get_photo_recipe` 按照片版本读取全局参数及修订号，也可用同版本的历史或快照 ID 读取保存值。各参数的范围随 `tools/list` 发布。参数工具只更新传入字段。曝光使用 EV，对比度和饱和度以 1 为中性，温度使用 K。RAW 细节参数可传 `null` 使用解码器默认值。`reset_adjustments` 可重置一组参数，`group=all` 复用原生完整重置，包含几何、蒙版与污点。
+
+用 `edit_photo_draft(action=begin)` 开启单张草稿。给 `set_global_adjustments` 和 `set_color_adjustments` 传入 `draft_id`、`draft_revision` 及保存版本的修订号，在同一草稿里调整曝光、白平衡、饱和度、HSL 和色彩分级。每次修改后从 `get_job` 取最新草稿修订，用草稿字段调用 `get_photo_recipe` 回读参数，或调用 `get_photo_preview` 取图。用 `long_edge` 且省略区域字段可预览整幅编辑画面。满意后用 `edit_photo_draft(action=commit)` 提交整份草稿，或用 `action=cancel` 丢弃。
 
 参数修改、自动分析、恢复历史、批量曝光和传递返回任务 ID。单张提交核对 `source_revision` 和 `recipe_revision`，批量按 `expected_revisions` 核对每个显式照片 ID。原片不可用或参数不适用时返回单张错误或逐项跳过原因。提交前复查版本，成功项整批保存并在原生撤销栈登记一次。用 `get_job` 查看状态、已保存修订号与 `operation_id`，再通过配方或预览核验结果。
 

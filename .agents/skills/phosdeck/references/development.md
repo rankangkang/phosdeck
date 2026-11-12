@@ -2,6 +2,13 @@
 
 Use `get_photo_recipe` for the current global settings and the photo's source and recipe revisions. A `photo_id` identifies an edit version. You can read and save a specific version without selecting it in the App. For a history entry or snapshot, pass its ID from `list_edit_records` on the same version.
 
+## Try exposure and color before saving
+
+1. Open a draft with `edit_photo_draft(action=begin)`, the photo ID, and the saved source and recipe revisions. Poll `get_job` for the draft ID and revision.
+2. Pass both draft fields and the saved version identity to `set_global_adjustments` or `set_color_adjustments`. Poll each job and use the returned draft revision for the next call. Pass the draft fields and `photo_id` to `get_photo_recipe` to read the trial values.
+3. Pass the same draft and saved version fields to `get_photo_preview`. Set `long_edge` and omit the region to see the whole edited photo. To compare against the saved version, request the same preview size with the saved version fields alone.
+4. Commit or cancel with `edit_photo_draft` and the current draft ID and revision. A changed draft creates one history entry and one undo action on commit. Cancel discards the in-memory draft. After committing, verify the saved recipe and preview at the same size.
+
 ## Edit and verify
 
 - Send only the fields you intend to change in `set_global_adjustments`, `set_color_adjustments`, `set_detail_adjustments` or `set_effects`. Use the registered input schemas for names and ranges. Exposure is in EV. Contrast and saturation are multipliers with neutral 1. Temperature is in kelvin. `as_shot_white_balance=true` restores both baseline values. Set `pipeline_version=2` to switch to current development when requested.

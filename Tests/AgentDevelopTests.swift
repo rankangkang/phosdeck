@@ -70,6 +70,20 @@ final class AgentDevelopTests: XCTestCase {
         func recipe(_ id: String) throws -> EditRecipe {
             try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(catalog.photo(id)?.recipe))
         }
+
+        func draftFields(_ job: [String: Value]) throws -> [String: Value] {
+            ["draft_id": try XCTUnwrap(job["draft_id"]), "draft_revision": try XCTUnwrap(job["draft_revision"])]
+        }
+
+        func adjustDraft(_ tool: AppMCPTool, photo: String, draft: [String: Value], adjustments: Value,
+                         line: UInt = #line) async throws -> [String: Value] {
+            let args = try edits(photo, draft.merging(["adjustments": adjustments]) { _, new in new })
+            let result = try await job(await call(tool, args), line: line)
+            XCTAssertEqual(result["state"], "succeeded", String(describing: result), line: line)
+            XCTAssertEqual(result["commit_state"], "not_committed", line: line)
+            XCTAssertNil(result["operation_id"], line: line)
+            return try draftFields(result)
+        }
     }
 
     private func catalog(ids: [String] = ["a", "b"], withRecipes: Bool = true,
@@ -129,6 +143,93 @@ final class AgentDevelopTests: XCTestCase {
         client.model.undo.undo()
         XCTAssertEqual(try client.recipe("a"), original)
         XCTAssertEqual(try SafeFileWriter.sha256(folder.appendingPathComponent("a.png")), original.sourceDigest)
+    }
+
+    @MainActor func testCancelGlobalDraftKeepsTheSavedWholePreviewAndHistory() async throws {
+        let (catalog, _) = try await catalog()
+        let client = try await Client(catalog)
+        client.tools.setSharesImages(true)
+        let savedArgs = try client.edits("a", ["long_edge": 96])
+        let before = await client.call(.preview, savedArgs)
+        let beforeData = try client.data(before)
+        let history = try catalog.editHistory(photoID: "a").count
+        let started = try await client.job(await client.call(.editPhotoDraft, client.edits("a", ["action": "begin"])))
+        let initial = try client.draftFields(started)
+        let exposure = try await client.adjustDraft(.globalAdjustments, photo: "a", draft: initial,
+                                                   adjustments: ["exposure": 0.65])
+        let color = try await client.adjustDraft(.colorAdjustments, photo: "a", draft: exposure,
+                                               adjustments: ["grading": ["global": ["hue": 235, "saturation": 18]]])
+        let readArgs = color.merging(["photo_id": "a"]) { _, new in new }
+        let readback = try client.data(await client.call(.photoRecipe, readArgs))
+        XCTAssertEqual(readback["saved"], false)
+        XCTAssertEqual(readback["draft_revision"], 2)
+        XCTAssertEqual(readback["recipe"]?.objectValue?["global"]?.objectValue?["exposure"], 0.65)
+        XCTAssertEqual(readback["recipe"]?.objectValue?["color"]?.objectValue?["grading"]?.objectValue?["global"]?.objectValue?["hue"], .double(235))
+        client.error(await client.call(.photoRecipe, exposure.merging(["photo_id": "a"]) { _, new in new }), "stale_draft")
+        client.error(await client.call(.photoRecipe, readArgs.merging(["photo_id": "b"]) { _, new in new }), "stale_photo")
+        client.error(await client.call(.photoRecipe, readArgs.merging(["history_id": 1]) { _, new in new }), "invalid_arguments")
+        let trial = await client.call(.preview, savedArgs.merging(color) { _, new in new })
+        let trialData = try client.data(trial)
+        XCTAssertEqual(trialData["region"], beforeData["region"])
+        XCTAssertEqual(trialData["height"], 96)
+        XCTAssertNotEqual(trial.content.last, before.content.last)
+        XCTAssertEqual(try catalog.editHistory(photoID: "a").count, history)
+        XCTAssertEqual(try client.recipe("a").exposure, 0)
+        XCTAssertFalse(client.model.undo.canUndo)
+
+        let discarded = try client.data(await client.call(.editPhotoDraft, color.merging(["action": "cancel"]) { _, new in new }))
+        XCTAssertEqual(discarded["discarded"], true)
+        client.error(await client.call(.photoRecipe, readArgs), "stale_draft")
+        let after = await client.call(.preview, savedArgs)
+        XCTAssertEqual(after.content.last, before.content.last)
+        XCTAssertEqual(try catalog.editHistory(photoID: "a").count, history)
+        XCTAssertFalse(client.model.undo.canUndo)
+    }
+
+    @MainActor func testCommitGlobalRAWDraftMatchesTheLastWholePreview() async throws {
+        let sample = try MoreRAWTests.sample("a7iii_12bit_compressed.ARW")
+        let (catalog, folder) = try await catalog(ids: [])
+        let root = try XCTUnwrap(catalog.roots().first)
+        let url = folder.appendingPathComponent("public.ARW")
+        try FileManager.default.copyItem(at: sample, to: url)
+        let photo = try ReferenceImporter.inspect(url: url, root: root, rootURL: folder)
+        try catalog.index(photo)
+        let client = try await Client(catalog)
+        client.tools.setSharesImages(true)
+        let previewArgs = try client.edits(photo.id, ["long_edge": 768])
+        let started = try await client.job(await client.call(.editPhotoDraft, client.edits(photo.id, ["action": "begin"])))
+        let exposure = try await client.adjustDraft(.globalAdjustments, photo: photo.id, draft: client.draftFields(started),
+                                                   adjustments: ["exposure": 0.4, "temperature": 5900])
+        let first = await client.call(.preview, previewArgs.merging(exposure) { _, new in new })
+        XCTAssertEqual(try client.data(first)["width"], 768)
+        let color = try await client.adjustDraft(.colorAdjustments, photo: photo.id, draft: exposure,
+                                               adjustments: ["hsl": ["aqua": ["hue": 18]],
+                                                             "grading": ["midtones": ["hue": 43, "saturation": 16]]])
+        let finalTrial = await client.call(.preview, previewArgs.merging(color) { _, new in new })
+        let lastData = try client.data(finalTrial)
+        XCTAssertEqual(lastData["draft_revision"], 2)
+        XCTAssertEqual(lastData["height"], 512)
+        XCTAssertNotEqual(finalTrial.content.last, first.content.last)
+        let lastRecipe = try client.data(await client.call(.photoRecipe, color.merging(["photo_id": .string(photo.id)]) { _, new in new }))
+        XCTAssertNotNil(lastRecipe["recipe"]?.objectValue?["raw_defaults"]?.objectValue)
+        XCTAssertTrue(try catalog.editHistory(photoID: photo.id).isEmpty)
+
+        let commit = color.merging(["action": "commit"]) { _, new in new }
+        let request = "commit-global-raw-draft"
+        let submitted = await client.call(.editPhotoDraft, commit, request: request)
+        let saved = try await client.job(submitted)
+        XCTAssertEqual(saved["commit_state"], "committed", String(describing: saved))
+        let repeated = await client.call(.editPhotoDraft, commit, request: request)
+        XCTAssertEqual(repeated.structuredContent, submitted.structuredContent)
+        XCTAssertEqual(try catalog.editHistory(photoID: photo.id).count, 1)
+        let savedRecipe = try client.data(await client.call(.photoRecipe, ["photo_id": .string(photo.id)]))
+        XCTAssertEqual(savedRecipe["recipe"], lastRecipe["recipe"])
+        let after = await client.call(.preview, try client.edits(photo.id, ["long_edge": 768]))
+        _ = try client.data(after)
+        XCTAssertEqual(after.content.last, finalTrial.content.last)
+        _ = try client.data(await client.call(.undo, ["operation_id": try XCTUnwrap(saved["operation_id"])]))
+        XCTAssertNil(try catalog.photo(photo.id)?.recipe)
+        XCTAssertEqual(try SafeFileWriter.sha256(url), try SafeFileWriter.sha256(sample))
     }
 
     @MainActor func testCanvasRegionSamplesTheSamePixelsAndInvalidatesOldCoordinates() async throws {

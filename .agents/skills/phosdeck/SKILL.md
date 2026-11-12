@@ -13,7 +13,7 @@ If the server is off, have the user enable **Local MCP Server** in **Settings â†
 - For catalog changes, file access, import, folder review or recovery, read [Library and import workflows](references/library-and-import.md).
 - For filtering, selecting, comparing, marking or editing metadata, read [Culling and photo metadata](references/culling-and-metadata.md).
 - For collections, virtual copies, display stacks or RAW/JPEG pairs, read [Photo organization](references/organization.md).
-- For development, before/after, adjustment transfer, presets or saved edits, read [Development and edit records](references/development.md).
+- For development, exposure and color trials, before/after, adjustment transfer, presets or saved edits, read [Development and edit records](references/development.md).
 - For crop, perspective, pixel sampling, spot repair or local and smart masks, read [Canvas and local editing](references/canvas.md). Use a photo draft to try local edits on a 1:1 preview before saving.
 - For merging originals, saving float TIFF or DNG masters, export presets, multi-size delivery and output recovery, read [Photo merge and export](references/output.md).
 - For preferences, language packs, cache, catalog backup and restore, or RAW compatibility checks, read [Settings and maintenance](references/maintenance.md).

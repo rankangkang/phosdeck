@@ -206,7 +206,7 @@ final class AppMCPWorkflows {
         return model.task
     }
 
-    func read(_ tool: AppMCPTool, arguments: Arguments) async throws -> MCPToolResult {
+    func read(_ tool: AppMCPTool, arguments: Arguments, draft: MCPPhotoDraft? = nil) async throws -> MCPToolResult {
         if tool == .job, let job = jobs.first(where: { $0.id == arguments["job_id"]?.stringValue }) {
             return result(job, arguments: arguments)
         }
@@ -223,7 +223,7 @@ final class AppMCPWorkflows {
         case .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs:
             return try await readOrganization(tool, catalog: model.catalog!, session: session!, args: arguments)
         case .photoRecipe:
-            return try await readRecipe(arguments, catalog: model.catalog!, session: session!)
+            return try await readRecipe(arguments, catalog: model.catalog!, session: session!, draft: draft)
         case .listPresets:
             return try await listPresets(arguments, catalog: model.catalog!, session: session!)
         case .getMergePreview:

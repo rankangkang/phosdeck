@@ -4,11 +4,12 @@ import MCP
 extension AppMCPTool {
     var developDescription: (String, String)? {
         let recipeJob = "job_id, then items with actual photo revisions and results, operation_id and commit_state"
+        let draftRecipeJob = recipeJob + ". A draft edit returns its current draft_id and draft_revision with commit_state=not_committed."
         switch self {
         case .photoRecipe:
-            return ("Read the global parameters of an explicit photo version, or one saved history_id or snapshot_id. Use tools/list for writable ranges. Reports RAW decoder defaults when available.", "photo_id, source_revision, recipe_revision, recipe, saved and optional record")
+            return ("Read the global parameters of an explicit photo version, a draft, or one saved history_id or snapshot_id. Omit record IDs for a draft. Use tools/list for writable ranges. Reports RAW decoder defaults when available.", "photo_id, source_revision, recipe_revision, recipe, saved, optional record and draft fields when requested")
         case .globalAdjustments:
-            return ("Patch global parameters on an explicit photo version. Exposure is in EV; contrast and saturation are multipliers with neutral 1. Temperature in K or tint selects custom white balance. as_shot_white_balance=true restores both baseline values. Set pipeline_version=2 only to explicitly switch to current development.", recipeJob)
+            return ("Patch global parameters on an explicit photo version. Exposure is in EV; contrast and saturation are multipliers with neutral 1. Temperature in K or tint selects custom white balance. as_shot_white_balance=true restores both baseline values. Set pipeline_version=2 only to explicitly switch to current development.", draftRecipeJob)
         case .resetAdjustments:
             return ("Reset one Develop group. group=all performs Phosdeck's full Reset, including geometry, masks and repairs, to the current pipeline. Poll get_job.", recipeJob)
         case .toneCurve:
@@ -16,7 +17,7 @@ extension AppMCPTool {
         case .zoneLighting:
             return ("Set all five zone gains in EV, ordered deep shadows, shadows, midtones, lights, highlights. Each is between -1 and +1.", recipeJob)
         case .colorAdjustments:
-            return ("Patch HSL bands, black-and-white mixing or color grading. Omitted fields are preserved. Change color or monochrome mode with set_global_adjustments.", recipeJob)
+            return ("Patch HSL bands, black-and-white mixing or color grading. Omitted fields are preserved. Change color or monochrome mode with set_global_adjustments.", draftRecipeJob)
         case .detailAdjustments:
             return ("Patch general sharpening, denoise, manual defringe or supported RAW decoder controls. For RAW controls null selects the decoder default. Purple and green hue endpoints need at least 10 degrees of spacing.", recipeJob)
         case .effects:
@@ -169,20 +170,29 @@ struct MCPPhotoDraft: Sendable {
 }
 
 extension AppMCPWorkflows {
-    func readRecipe(_ args: Arguments, catalog: CatalogStore, session: String) async throws -> MCPToolResult {
+    func readRecipe(_ args: Arguments, catalog: CatalogStore, session: String, draft: MCPPhotoDraft?) async throws -> MCPToolResult {
+        guard draft == nil || (args["history_id"] == nil && args["snapshot_id"] == nil) else {
+            throw MCPToolProblem.invalid("Choose a draft or a saved edit record.")
+        }
         let roots = model.roots, pipeline = model.pipeline
         let worker = Task.detached {
             let photo = try MCPDevelopPhoto.current(args, catalog: catalog)
-            let root = roots.first { $0.id == photo.rootID }
+            if let draft, !draft.matches(photo) { throw MCPToolProblem.stalePhoto }
             let record = try MCPDevelopPhoto.record(args, photo: photo, catalog: catalog)
             let recipe: EditRecipe
-            if let record { recipe = try record.recipe(for: photo) }
-            else { recipe = try await MCPDevelopPhoto.recipe(for: photo, root: root, pipeline: pipeline) }
             let defaults: RAWDetailSettings?
-            if photo.isRAW, let root { defaults = try? await pipeline.rawDefaults(.init(photo: photo, root: root, recipe: recipe)) }
-            else { defaults = nil }
-            var data = MCPDevelopPhoto.revisions(photo)
-            data["saved"] = .bool(record != nil || photo.recipe != nil)
+            if let draft {
+                recipe = draft.recipe
+                defaults = draft.rawDefaults
+            } else {
+                let root = roots.first { $0.id == photo.rootID }
+                if let record { recipe = try record.recipe(for: photo) }
+                else { recipe = try await MCPDevelopPhoto.recipe(for: photo, root: root, pipeline: pipeline) }
+                if photo.isRAW, let root { defaults = try? await pipeline.rawDefaults(.init(photo: photo, root: root, recipe: recipe)) }
+                else { defaults = nil }
+            }
+            var data = draft?.data ?? MCPDevelopPhoto.revisions(photo)
+            data["saved"] = .bool(draft == nil && (record != nil || photo.recipe != nil))
             data["record"] = record?.description ?? .null
             data["recipe"] = .object(MCPDevelopParameters.describe(recipe, rawDefaults: defaults))
             return data
@@ -191,7 +201,7 @@ extension AppMCPWorkflows {
         guard model.catalogSessionID == session else { throw MCPToolProblem.catalogChanged }
         guard try catalog.matchesPhotoRevisions(id: data["photo_id"]!.stringValue!, source: data["source_revision"]!.intValue!,
                                                 recipe: data["recipe_revision"]!.intValue!, requiringAvailable: false) else { throw MCPToolProblem.stalePhoto }
-        return .init("Read the photo's development parameters.", data: data)
+        return .init(draft == nil ? "Read the photo's development parameters." : "Read the draft's development parameters.", data: data)
     }
 }
 
@@ -341,6 +351,7 @@ extension AppMCPTools {
         default: break
         }
         let photo = try MCPDevelopPhoto.current(args, catalog: catalog)
+        let draft = try requestedDraft(args, photo: photo)
         let edit: RecipeEdit
         let title: String
         switch tool {
@@ -358,7 +369,7 @@ extension AppMCPTools {
             edit = .parameters(tool, args)
             title = L10n.text("app.adjustPhoto", defaultValue: "Adjust Photo")
         }
-        return startRecipeEdit(tool, model: model, catalog: catalog, targets: [photo], title: title) { edit }
+        return startRecipeEdit(tool, model: model, catalog: catalog, targets: [photo], title: title, draft: draft) { edit }
     }
 
     private func writeRecipeBatch(_ tool: AppMCPTool, args: [String: Value], model: AppModel, catalog: CatalogStore) throws -> MCPToolResult {
