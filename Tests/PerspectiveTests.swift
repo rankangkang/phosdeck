@@ -324,6 +324,37 @@ final class PerspectiveTests: XCTestCase {
         XCTAssertTrue(projected.boundingBoxOfPath.contains(CGPoint(x: target.x*g.output.width, y: target.y*g.output.height)))
     }
 
+    func testSourceInverseReadsActualPixelsWithOddQuarterTurns() throws {
+        let input = grid()
+        let size = input.extent.size
+        func pixel(_ image: CIImage, x: Int, y: Int) -> [Float] {
+            var values = [Float](repeating: 0, count: 4)
+            context.render(image, toBitmap: &values, rowBytes: 16, bounds: CGRect(x: x, y: y, width: 1, height: 1),
+                           format: .RGBAf, colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!)
+            return values
+        }
+        for turn in [1, 3] {
+            for flip in 0...3 {
+                var r = recipe()
+                r.quarterTurns = turn
+                r.crop = Crop(x: 0.11, y: 0.24, width: 0.69, height: 0.63)
+                r.flipHorizontal = flip & 1 != 0
+                r.flipVertical = flip & 2 != 0
+                let output = try ImagePipeline.geometry(input, recipe: r)
+                for (x, y) in [(5, 17), (24, 35), (59, 68)] {
+                    let displayed = CGPoint(x: (Double(x) + 0.5) / output.extent.width,
+                                            y: (Double(y) + 0.5) / output.extent.height)
+                    let mapped = try XCTUnwrap(MaskGeometry.sourcePoint(displayed, size: size, recipe: r))
+                    let source = pixel(input, x: PhotoGeometry.pixelIndex(mapped.x, dimension: Int(size.width)),
+                                       y: PhotoGeometry.pixelIndex(mapped.y, dimension: Int(size.height)))
+                    for (actual, expected) in zip(pixel(output, x: x, y: y), source) {
+                        XCTAssertEqual(actual, expected, accuracy: 0.00001, "turn=\(turn) flip=\(flip) at \(x),\(y)")
+                    }
+                }
+            }
+        }
+    }
+
     func testSameSizePreviewExportAlphaAndTIFF16Precision() async throws {
         let source = try fixture("export"), pipeline = ImagePipeline()
         var r = try await pipeline.baseline(source)

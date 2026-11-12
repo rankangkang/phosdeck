@@ -1,6 +1,19 @@
 import CoreImage
 import Foundation
 
+func zoneExposure(_ image: CGImage, at point: CGPoint, context: CIContext) -> Double? {
+    guard MaskPoint(point.x, point.y).valid else { return nil }
+    let x = PhotoGeometry.pixelIndex(point.x, dimension: image.width)
+    let y = PhotoGeometry.pixelIndex(point.y, dimension: image.height)
+    var pixel = [Float](repeating: 0, count: 4)
+    context.render(CIImage(cgImage: image), toBitmap: &pixel, rowBytes: 16,
+        bounds: CGRect(x: x, y: y, width: 1, height: 1), format: .RGBAf,
+        colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!)
+    guard pixel[0].isFinite, pixel[3] > 0 else { return nil }
+    let ev = Double(pixel[0] / pixel[3])
+    return ev.isFinite ? ev : nil
+}
+
 extension AppModel {
     func cancelZoneSampling() {
         guard zoneSampling || zoneReference != nil || zoneReferenceTask != nil else { return }
@@ -34,14 +47,7 @@ extension AppModel {
     func sampleZone(at point: CGPoint) {
         guard zoneSampling, canEdit, canvasCoordinatesCurrent, MaskPoint(point.x, point.y).valid, let reference = zoneReference,
               let recipe, let size = orientedSourceSize, MaskGeometry.sourcePoint(point, size: size, recipe: recipe) != nil else { return }
-        let x = PhotoGeometry.pixelIndex(point.x,dimension:reference.width)
-        let y = PhotoGeometry.pixelIndex(point.y,dimension:reference.height)
-        var pixel = [Float](repeating: 0, count: 4)
-        CIContext().render(CIImage(cgImage: reference), toBitmap: &pixel, rowBytes: 16,
-            bounds: CGRect(x: x, y: y, width: 1, height: 1), format: .RGBAf,
-            colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!)
-        guard pixel[0].isFinite, pixel[3] > 0 else { return }
-        let ev = Double(pixel[0]/pixel[3])
+        guard let ev = zoneExposure(reference, at: point, context: CIContext()) else { return }
         selectedZone = ToneZones.nearest(to: ev); sampledZoneEV = ev
         cancelZoneSampling()
     }

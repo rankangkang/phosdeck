@@ -87,6 +87,24 @@ struct MaskSample: Codable, Equatable {
     var red: Double
     var green: Double
     var blue: Double
+
+    static func read(at point: MaskPoint, from image: CGImage, context: CIContext) -> Self? {
+        guard point.valid else { return nil }
+        var pixel = [Float](repeating: 0, count: 4)
+        let x = PhotoGeometry.pixelIndex(point.x, dimension: image.width)
+        let y = PhotoGeometry.pixelIndex(point.y, dimension: image.height)
+        context.render(CIImage(cgImage: image), toBitmap: &pixel, rowBytes: 16,
+                       bounds: CGRect(x: x, y: y, width: 1, height: 1), format: .RGBAf,
+                       colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!)
+        guard pixel.allSatisfy(\.isFinite), pixel[3] > 0 else { return nil }
+        func channel(_ index: Int) -> Double { Double(min(1, max(0, pixel[index] / pixel[3]))) }
+        return Self(point: point, red: channel(0), green: channel(1), blue: channel(2))
+    }
+
+    var luminanceRange: ClosedRange<Double> {
+        let lightness = min(1, max(0, PerceptualColor.lab(SIMD3(red, green, blue)).x))
+        return max(0, lightness - 0.1)...min(1, lightness + 0.1)
+    }
 }
 struct MaskStroke: Codable, Equatable {
     var points: [MaskPoint]
@@ -150,6 +168,13 @@ struct MaskComponent: Codable, Equatable, Identifiable {
             tolerance = radius
             smoothness = radius
         }
+    }
+    static func drawing(_ tool: MaskTool, operation: MaskOperation, number: Int) -> Self {
+        var value = Self(tool: tool, operation: operation)
+        if tool == .linear { value.end = value.start }
+        if tool == .radial { value.radiusX = 0.001; value.radiusY = 0.001 }
+        value.name = "\(tool.title) \(number)"
+        return value
     }
     func validate() throws {
         let values = [radiusX, radiusY, angle, feather, tolerance, lower, upper, smoothness]
@@ -224,6 +249,23 @@ struct LocalAdjustment: Codable, Equatable, Identifiable {
         r.temperature = settings.temperature; r.tint = settings.tint; r.asShotWhiteBalance = settings.asShotWhiteBalance
         r.exposure = exposure; r.contrast = contrast; r.saturation = saturation; r.develop = settings.develop
         return r
+    }
+    mutating func updateDevelop(_ local: EditRecipe) {
+        exposure = local.exposure; contrast = local.contrast; saturation = local.saturation
+        let values = LocalDevelopSettings(temperature: local.temperature, tint: local.tint,
+                                         asShotWhiteBalance: local.asShotWhiteBalance, develop: local.develop)
+        settings = settings == nil && values.isNeutral ? nil : values
+    }
+    func duplicated() -> Self {
+        var copy = self
+        copy.id = UUID()
+        copy.name += L10n.text("app.copy_213", defaultValue: " Copy")
+        copy.components = components.map { component in
+            var copy = component
+            copy.id = UUID()
+            return copy
+        }
+        return copy
     }
     func validate() throws {
         guard !name.isEmpty, name.count <= 200, !components.isEmpty, components.count <= 128,
@@ -353,6 +395,12 @@ enum MaskPipeline {
         if group.inverted { result = try combine(black(extent), result, operation: .replace, invert: true) }
         result = try refine(result, settings: group.refinement, baseline: baseline)
         return try combine(black(extent), result, operation: .replace, amount: group.amount)
+    }
+    static func overlayCoverage(_ group: LocalAdjustment, recipe: EditRecipe, sourceSize: CGSize, reference: CGImage?) throws -> CIImage {
+        let scale = min(1, 1536 / max(sourceSize.width, sourceSize.height))
+        let extent = CGRect(x: 0, y: 0, width: max(1, floor(sourceSize.width * scale)), height: max(1, floor(sourceSize.height * scale)))
+        let selection = try mask(group, extent: extent, baseline: reference.map { CIImage(cgImage: $0) })
+        return try ImagePipeline.geometry(selection, recipe: recipe, referenceSize: sourceSize)
     }
     private static func fittedBaseline(_ image: CIImage, extent: CGRect) -> CIImage {
         ImagePipeline.originZero(image)

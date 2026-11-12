@@ -172,6 +172,8 @@ extension AppMCPWorkflows {
 }
 
 extension AppMCPTools {
+    typealias CanvasRecipeEdit = @Sendable (ImageRequest, EditRecipe, ImagePipeline) async throws -> (EditRecipe, [String: Value])
+
     private enum RecipeEdit {
         case parameters(AppMCPTool, [String: Value])
         case automatic(AutomaticAdjustmentKind)
@@ -179,11 +181,13 @@ extension AppMCPTools {
         case transfer(EditRecipe, RecipePasteOptions, Double?)
         case relative(Double)
         case match(TotalExposureMatch)
+        case canvas(CanvasRecipeEdit)
 
-        func result(on photo: Photo, root: StorageRoot, pipeline: ImagePipeline) async throws -> (EditRecipe?, [String]) {
+        func result(on photo: Photo, root: StorageRoot, pipeline: ImagePipeline) async throws -> (EditRecipe?, [String], [String: Value]) {
             let (original, defaults) = try await MCPDevelopPhoto.editRecipe(for: photo, root: root, pipeline: pipeline)
             var value = original
             var notes: [String] = []
+            var details: [String: Value] = [:]
             switch self {
             case let .parameters(tool, args): try MCPDevelopParameters.change(tool, args: args, recipe: &value)
             case .automatic(let kind):
@@ -205,10 +209,16 @@ extension AppMCPTools {
                 let exposure = try match.exposure(metadata: photo.details, recipe: original)
                 value.exposure = exposure.value
                 if exposure.limited { notes.append("Exposure was limited to ±5 EV.") }
+            case .canvas(let edit):
+                (value, details) = try await edit(.init(photo: photo, root: root, recipe: original), original, pipeline)
+                if value == original { return (nil, notes, details) }
+                value.schemaVersion = max(value.schemaVersion, value.localAdjustments.isEmpty ? 2 : 3)
+                if value.localAdjustments.contains(where: { $0.settings != nil }) { value.maskVersion = max(value.maskVersion, 2) }
+                if value.localAdjustments.contains(where: { $0.components.contains(where: { $0.raster != nil }) }) { value.maskVersion = 3 }
             }
-            if value == original { return (nil, notes) }
+            if value == original { return (nil, notes, details) }
             try await MCPDevelopPhoto.validate(value, previous: original, photo: photo, root: root, defaults: defaults, pipeline: pipeline)
-            return (value, notes)
+            return (value, notes, details)
         }
     }
 
@@ -217,9 +227,31 @@ extension AppMCPTools {
         // Undo/redo adds history and advances recipeRevision. Verify the restored contents.
         static func == (lhs: Self, rhs: Self) -> Bool {
             let a = lhs.photo, b = rhs.photo
-            return a.id == b.id && a.revision == b.revision && a.identity == b.identity && a.availability == b.availability
-                && a.recipe == b.recipe && a.digest == b.digest
+            guard a.id == b.id, a.revision == b.revision, a.identity == b.identity,
+                  a.availability == b.availability, a.digest == b.digest else { return false }
+            if a.recipe == b.recipe { return true }
+            // A native single-photo undo can re-encode the same recipe with different JSON key order.
+            guard let first = a.recipe, let second = b.recipe,
+                  let left = try? JSONDecoder().decode(EditRecipe.self, from: first),
+                  let right = try? JSONDecoder().decode(EditRecipe.self, from: second) else { return false }
+            return left == right
         }
+    }
+
+    func startCanvasEdit(_ tool: AppMCPTool, model: AppModel, catalog: CatalogStore, photo: Photo, title: String,
+                         preview: MCPCanvasPreview? = nil, beforeSave: @escaping () throws -> Void = {},
+                         edit: @escaping CanvasRecipeEdit) -> MCPToolResult {
+        startRecipeEdit(tool, model: model, catalog: catalog, targets: [photo], title: title, beforeSave: {
+            if let preview { _ = try self.canvasPreview(.string(preview.id), catalog: catalog, photo: photo) }
+            try beforeSave()
+        }) { .canvas(edit) }
+    }
+
+    func recordRecipeUndo(before: [Photo], after: [Photo]) -> Value {
+        let ids = Set(before.map(\.id))
+        return recordUndo(before: before.map { RecipeState(photo: $0) }, after: after.map { RecipeState(photo: $0) },
+                          describe: { states in ["items": .array(states.map { .object(MCPDevelopPhoto.revisions($0.photo)) })] },
+                          read: { try $0.photos(ids: ids).sorted { $0.id < $1.id }.map { RecipeState(photo: $0) } })
     }
 
     func writeRecipes(_ tool: AppMCPTool, args: [String: Value], model: AppModel, catalog: CatalogStore) throws -> MCPToolResult {
@@ -331,10 +363,10 @@ extension AppMCPTools {
     }
 
     private func startRecipeEdit(_ tool: AppMCPTool, model: AppModel, catalog: CatalogStore, targets: [Photo], source: Photo? = nil,
-                                 title: String, prepare: @escaping () async throws -> RecipeEdit) -> MCPToolResult {
+                                 title: String, beforeSave: @escaping () throws -> Void = {}, prepare: @escaping () async throws -> RecipeEdit) -> MCPToolResult {
         let roots = Dictionary(uniqueKeysWithValues: model.roots.map { ($0.id, $0) })
         let pipeline = model.pipeline
-        let singleEdit = tool.required.contains(.sourceRevision)
+        let singleEdit = tool.required.contains(.sourceRevision) || tool == .editLocalPreset
         return workflows.start(tool) { [self] job in
             model.applyingAdjustments = true
             defer { model.applyingAdjustments = false }
@@ -349,10 +381,11 @@ extension AppMCPTools {
                 do {
                     guard photo.availability == "available", let root = roots[photo.rootID] else { throw MCPToolProblem.fileAccess }
                     let worker = Task.detached { try await edit.result(on: photo, root: root, pipeline: pipeline) }
-                    let (value, notes) = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                    let (value, notes, details) = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                     if let value { changes.append((photo, value)) }
                     item["state"] = value == nil ? "unchanged" : "updated"
                     item["notes"] = .array(notes.map(Value.string))
+                    if !details.isEmpty { item["result"] = .object(details) }
                 } catch is CancellationError { throw CancellationError() }
                 catch {
                     let problem = error as? MCPToolProblem ?? .invalidEdit
@@ -366,6 +399,7 @@ extension AppMCPTools {
             try Task.checkCancellation()
             guard model.catalog === catalog, model.catalogSessionID == job.session else { throw MCPToolProblem.catalogChanged }
             guard !model.dirty, model.undo.groupingLevel == 0, model.undo.isUndoRegistrationEnabled else { throw MCPToolProblem.nativeInteraction }
+            try beforeSave()
             do {
                 try model.publishRecipeBatch(changes, title: title, catalog: catalog, expecting: targets + [source].compactMap { $0 }, closedUndo: true)
             } catch OrganizationError.versionConflict { throw MCPToolProblem.stalePhoto }
@@ -379,10 +413,7 @@ extension AppMCPTools {
             job.data["workspace_refreshed"] = .bool(refreshed)
             job.data["changed_count"] = .int(changes.count)
             if singleEdit, let saved = changes.first?.recipe { job.data["recipe"] = .object(MCPDevelopParameters.describe(saved)) }
-            job.data["operation_id"] = changes.isEmpty ? .null : recordUndo(
-                before: changes.map { RecipeState(photo: $0.photo) }, after: after.map { RecipeState(photo: $0) },
-                describe: { states in ["items": .array(states.map { .object(MCPDevelopPhoto.revisions($0.photo)) })] },
-                read: { try $0.photos(ids: changedIDs).sorted { $0.id < $1.id }.map { RecipeState(photo: $0) } })
+            job.data["operation_id"] = changes.isEmpty ? .null : recordRecipeUndo(before: changes.map(\.photo), after: after)
             job.items = items.map { item in
                 var value = item
                 if let id = item["photo_id"]?.stringValue, let revision = revisions[id] { value["recipe_revision"] = .int(revision) }

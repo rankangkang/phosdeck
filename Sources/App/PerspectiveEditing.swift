@@ -148,7 +148,7 @@ extension AppModel {
     }
 
     func addPerspectiveGuide(start: MaskPoint, end: MaskPoint) {
-        guard let tool = perspectiveGuideTool, workspaceAvailable, canEdit, canvasCoordinatesCurrent,
+        guard let tool = perspectiveGuideTool, workspaceAvailable, canEdit,
               let size = orientedSourceSize, let current = recipe, let base = perspectiveGuideBase,
               let line = UprightCorrection.classified(start: start, end: end, size: size, recipe: current) else { return }
         var lines = perspectiveGuides

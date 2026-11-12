@@ -79,6 +79,7 @@ struct SmartMaskSession {
     var dragEnd: MaskPoint?
     var busy = false
     var combining = false
+    var analysisError: String?
     var message = L10n.text("app.clickOrDrawABoxAroundTheSubject", defaultValue: "Click or draw a box around the subject")
     var canCreate: Bool { !busy && !combining && (wholePerson || !analyzingParts) && preview != nil }
     var canResetFace: Bool {
@@ -239,7 +240,10 @@ extension AppModel {
         smartMaskSession?.inspection.clear()
         smartMaskSession?.busy = false; smartMaskSession?.analyzingParts = false; smartMaskSession?.combining = false; smartMaskTask = nil
         if smartMaskSession?.workflow == .object { smartMaskSession?.preview = nil; smartMaskSession?.candidates = [] }
-        if !(failure is CancellationError) { smartMaskSession?.message = failure.localizedDescription; error = failure.localizedDescription }
+        if !(failure is CancellationError) {
+            smartMaskSession?.analysisError = failure.localizedDescription
+            smartMaskSession?.message = failure.localizedDescription; error = failure.localizedDescription
+        }
     }
     func smartMaskPointer(_ point: MaskPoint?, phase: MaskPointerPhase, modifiers: NSEvent.ModifierFlags) {
         guard var session = smartMaskSession, session.ready, !session.combining,
@@ -278,6 +282,7 @@ extension AppModel {
         session.inspection.clear()
         smartMaskPreviewTask?.cancel(); smartMaskPreviewGeneration = UUID()
         session.combining = false
+        session.analysisError = nil
         session.prompts = previous; session.parts = nil; session.instance = nil; session.preview = nil
         session.candidates = []; smartMaskSession = session
         if !previous.isEmpty { runSmartSelection() }
@@ -289,6 +294,7 @@ extension AppModel {
         smartMaskTask?.cancel(); smartMaskPreviewTask?.cancel()
         let token = UUID(); smartMaskGeneration = token
         smartMaskSession?.busy = true; smartMaskSession?.message = L10n.text("app.recognizingObject", defaultValue: "Recognizing object…")
+        smartMaskSession?.analysisError = nil
         smartMaskTask = Task {
             do {
                 let candidates = try await engine.select(image: image, source: session.source, prompts: session.prompts)
@@ -304,6 +310,7 @@ extension AppModel {
         session.inspection.didSelect(.candidate(index))
         let candidate = session.candidates[index]
         smartMaskSession?.candidate = index; smartMaskSession?.preview = candidate.selectedPixels > 0 ? candidate.raster : nil
+        smartMaskSession?.analysisError = nil
         smartMaskSession?.instance = candidate.selectedPixels > 0 ? candidate.raster : nil
         smartMaskSession?.parts = nil
         smartMaskSession?.message = candidate.selectedPixels > 0 ? L10n.text("app.selectionUpdatedContinueClickingToRefineItOrCreate", defaultValue: "Selection updated · Continue clicking to refine it or create a mask") : L10n.text("app.thisCandidateHasNoSelectedAreaChooseAnotherCandidate", defaultValue: "This candidate has no selected area. Choose another candidate or draw a new box")
@@ -332,6 +339,7 @@ extension AppModel {
         let instance = indices.isEmpty ? nil : indices.count == session.people.count ? session.allPeople
             : indices.count == 1 ? session.people[indices.first!].raster : nil
         smartMaskSession?.selectedPeople = indices; smartMaskSession?.wholePerson = useWhole
+        smartMaskSession?.analysisError = nil
         smartMaskSession?.instance = instance; smartMaskSession?.preview = useWhole ? instance : nil
         smartMaskSession?.parts = nil; smartMaskSession?.faces = []; smartMaskSession?.selectedFace = nil
         smartMaskSession?.faceRefined = false; smartMaskSession?.unrefinedPeople = []; smartMaskSession?.faceFailure = nil
@@ -348,6 +356,7 @@ extension AppModel {
         smartMaskSession?.inspection.didSelect(.wholePerson)
         smartMaskPreviewTask?.cancel(); smartMaskPreviewGeneration = UUID()
         smartMaskSession?.wholePerson = true; smartMaskSession?.combining = false; smartMaskSession?.preview = instance
+        smartMaskSession?.analysisError = nil
     }
     func analyzeSmartParts(face manual: CGRect? = nil) {
         guard var session = smartMaskSession, session.workflow == .people, let image = session.image, !session.selectedPeople.isEmpty,
@@ -361,6 +370,7 @@ extension AppModel {
         smartMaskTask?.cancel(); smartMaskPreviewTask?.cancel()
         let token = UUID(); smartMaskGeneration = token
         smartMaskSession?.analyzingParts = session.models.hasParts
+        smartMaskSession?.analysisError = nil
         smartMaskSession?.faceFailure = nil
         smartMaskSession?.message = L10n.text("app.fullPersonSelectionReadyAnalyzingBodyParts", defaultValue: "Full-person selection ready. Analyzing body parts…")
         smartMaskTask = Task {
@@ -438,6 +448,7 @@ extension AppModel {
     private func refreshSmartPartsPreview() {
         guard let session = smartMaskSession, let parts = session.parts, let engine = smartMaskEngine else { return }
         smartMaskPreviewTask?.cancel(); let token = UUID(); smartMaskPreviewGeneration = token
+        smartMaskSession?.analysisError = nil
         let rasters = SmartMaskPart.allCases.filter { session.selectedParts.contains($0) }.compactMap { parts[$0] }
         guard !rasters.isEmpty else { smartMaskSession?.combining = false; smartMaskSession?.preview = nil; return }
         smartMaskSession?.combining = true
@@ -448,12 +459,16 @@ extension AppModel {
                 smartMaskSession?.preview = preview; smartMaskSession?.combining = false; smartMaskPreviewTask = nil
             } catch {
                 guard !Task.isCancelled, smartMaskSession?.id == session.id, smartMaskPreviewGeneration == token else { return }
+                smartMaskSession?.analysisError = error.localizedDescription
                 smartMaskSession?.combining = false; smartMaskSession?.message = error.localizedDescription
             }
         }
     }
     var smartMaskPreviewGroup: LocalAdjustment? {
         guard let session = smartMaskSession, let raster = session.displayedRaster else { return nil }
+        return smartMaskPreviewGroup(for: raster, in: session)
+    }
+    func smartMaskPreviewGroup(for raster: SmartMaskRaster, in session: SmartMaskSession) -> LocalAdjustment? {
         var component = MaskComponent(tool: .object); component.id = session.id; component.raster = raster
         switch session.target {
         case .newMask:

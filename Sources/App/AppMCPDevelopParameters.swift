@@ -34,6 +34,7 @@ enum MCPDevelopParameters {
     static let channels = ["luminance", "red", "green", "blue"]
     private static let bands = ["red", "orange", "yellow", "green", "aqua", "blue", "purple", "magenta"]
     static let groups = DevelopGroup.adjustmentCases.filter { $0 != .pointColor }
+    static let localGroups: [DevelopGroup] = [.basic, .curves, .zones, .mixer, .blackWhite, .grading]
     private static let global: Numbers<EditRecipe> = [
         "exposure": (\.exposure, -5...5), "contrast": (\.contrast, 0...2), "saturation": (\.saturation, 0...2),
         "temperature": (\.temperature, 2000...50000), "tint": (\.tint, -150...150),
@@ -111,13 +112,18 @@ enum MCPDevelopParameters {
                 "black_white_mixer": objectSchema(Dictionary(uniqueKeysWithValues: bands.map { ($0, numberSchema(signed)) })),
                 "grading": objectSchema(ranges)
             ])
+        case .localAdjustments:
+            var basic = schema(.globalAdjustments).objectValue!["properties"]!.objectValue!
+            basic.removeValue(forKey: "pipeline_version")
+            return objectSchema(["basic": objectSchema(basic), "color": schema(.colorAdjustments), "zone_gains": gainsSchema,
+                                 "curves": objectSchema(Dictionary(uniqueKeysWithValues: channels.map { ($0, pointsSchema) }))])
         default: preconditionFailure("Only adjustment patches have a parameter schema.")
         }
     }
     static func accepts(_ value: Value, for tool: AppMCPTool) -> Bool {
         accepts(value, schema: schema(tool))
     }
-    private static func accepts(_ value: Value, schema: Value) -> Bool {
+    static func accepts(_ value: Value, schema: Value) -> Bool {
         let fields = schema.objectValue ?? [:]
         if let choices = fields["anyOf"]?.arrayValue { return choices.contains { accepts(value, schema: $0) } }
         if let types = fields["type"]?.arrayValue { return types.contains { accepts(value, schema: ["type": $0]) } }
@@ -128,6 +134,10 @@ enum MCPDevelopParameters {
         case "number":
             guard let number = value.number, let lower = fields["minimum"]?.number, let upper = fields["maximum"]?.number else { return false }
             return (lower...upper).contains(number)
+        case "array":
+            if schema == pointsSchema { return (try? points(value)) != nil }
+            if schema == gainsSchema { return (try? gains(value)) != nil }
+            return false
         case "boolean": return value.boolValue != nil
         case "null": return value == .null
         case "string": return fields["enum"]?.arrayValue?.contains(value) == true
@@ -195,8 +205,35 @@ enum MCPDevelopParameters {
             ],
             "baseline": ["exposure": .double(recipe.baselineExposure), "temperature": .double(recipe.baselineTemperature), "tint": .double(recipe.baselineTint)],
             "pipeline_version": .int(recipe.pipelineVersion), "raw": .bool(!recipe.isRaster),
+            "geometry": MCPCanvasFields.geometry(recipe), "point_colors": .array(recipe.develop.pointColors.map(MCPCanvasFields.pointColor)),
             "raw_defaults": rawDefaults == nil ? .null : .object(available)
         ]
+    }
+
+    static func describeLocal(_ group: LocalAdjustment, source: EditRecipe) -> Value {
+        let data = describe(group.editingRecipe(from: source))
+        return ["basic": data["global"]!, "color": data["color"]!, "curves": data["curves"]!, "zone_gains": data["zone_gains"]!]
+    }
+
+    static func changeLocal(_ args: [String: Value], source: EditRecipe, group: inout LocalAdjustment) throws {
+        let action = args["action"]!.stringValue!
+        var local = group.editingRecipe(from: source)
+        if action == "reset" {
+            let groups = args["group"]?.stringValue.flatMap(DevelopGroup.init(rawValue:)).map { [$0] } ?? localGroups
+            for section in groups { local = section.previewRecipe(in: local) }
+        } else {
+            let values = args["adjustments"]?.objectValue ?? [:]
+            if let basic = values["basic"] { try change(.globalAdjustments, args: ["adjustments": basic], recipe: &local) }
+            if let color = values["color"] { try change(.colorAdjustments, args: ["adjustments": color], recipe: &local) }
+            if let gains = values["zone_gains"] { try change(.zoneLighting, args: ["gains": gains], recipe: &local) }
+            for channel in channels {
+                if let points = values["curves"]?.objectValue?[channel] {
+                    try changeCurve(["action": "set", "channel": .string(channel), "points": points], recipe: &local)
+                }
+            }
+        }
+        group.updateDevelop(local)
+        if let amount = args["amount"]?.number { group.amount = amount }
     }
 
     static func change(_ tool: AppMCPTool, args: [String: Value], recipe: inout EditRecipe) throws {

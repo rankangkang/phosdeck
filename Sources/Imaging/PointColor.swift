@@ -17,6 +17,10 @@ struct PointColor:Codable,Equatable,Identifiable {
     var saturationRange = 50.0
     var luminanceRange = 50.0
     var isNeutral:Bool { hueShift == 0 && saturationShift == 0 && luminanceShift == 0 && variance == 0 }
+    mutating func resetAdjustments() {
+        hueShift = 0; saturationShift = 0; luminanceShift = 0; variance = 0
+        range = 50; hueRange = 50; saturationRange = 50; luminanceRange = 50
+    }
     func validate() throws {
         guard lightness.isFinite, (-16...16).contains(lightness), chroma.isFinite, (0...16).contains(chroma), hue.isFinite, (0..<360).contains(hue),
             [hueShift,saturationShift,luminanceShift,variance].allSatisfy({ $0.isFinite && (-100...100).contains($0) }),

@@ -93,10 +93,7 @@ extension AppModel {
     func resetPointColor(_ id:UUID) {
         changeRecipe({ r in
             guard let index = r.develop.pointColors.firstIndex(where:{$0.id == id}) else { return }
-            var sample = r.develop.pointColors[index]
-            sample.hueShift = 0; sample.saturationShift = 0; sample.luminanceShift = 0; sample.variance = 0
-            sample.range = 50; sample.hueRange = 50; sample.saturationRange = 50; sample.luminanceRange = 50
-            r.develop.pointColors[index] = sample
+            r.develop.pointColors[index].resetAdjustments()
         },title:L10n.text("app.resetPointColorSample", defaultValue: "Reset Point Color Sample"))
     }
 }

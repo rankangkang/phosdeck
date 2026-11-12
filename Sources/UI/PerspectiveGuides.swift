@@ -81,7 +81,7 @@ struct PerspectiveGuides: View {
             }.onEnded { value in
                 switch interaction {
                 case .some(.drawing):
-                    if let a = frame.source(value.startLocation), let b = frame.source(value.location),
+                    if model.canvasCoordinatesCurrent, let a = frame.source(value.startLocation), let b = frame.source(value.location),
                        hypot(value.location.x - value.startLocation.x, value.location.y - value.startLocation.y) >= 5 {
                         model.addPerspectiveGuide(start: a, end: b)
                     }

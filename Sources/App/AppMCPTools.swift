@@ -43,6 +43,16 @@ enum AppMCPTool: String, CaseIterable {
     case listPresets = "list_adjustment_presets", editPreset = "edit_adjustment_preset"
     case planXMP = "plan_xmp_preset_import", importXMP = "import_xmp_presets"
     case applyEditRecord = "apply_edit_record", saveSnapshot = "save_edit_snapshot", deleteSnapshot = "delete_edit_snapshot"
+    case setCrop = "set_crop", photoGeometry = "set_photo_geometry", solvePerspective = "solve_perspective"
+    case perspectiveGuides = "edit_perspective_guides", canvasGuides = "set_canvas_guides"
+    case samplePreview = "sample_preview", adjustPreview = "adjust_from_preview", pointColor = "edit_point_color"
+    case spotRepairs = "get_spot_repairs", editSpot = "edit_spot_repair"
+    case maskState = "get_mask_state", maskGroup = "edit_mask_group", maskComponent = "edit_mask_component"
+    case brushStroke = "apply_mask_brush_stroke", maskShape = "set_mask_shape", maskRange = "set_mask_range"
+    case maskDisplay = "set_mask_display", localAdjustments = "set_local_adjustments"
+    case transferLocal = "transfer_local_adjustments", listLocalPresets = "list_local_adjustment_presets"
+    case editLocalPreset = "edit_local_adjustment_preset"
+    case smartStart = "start_smart_mask", smartEdit = "edit_smart_mask_selection", smartApply = "apply_smart_mask"
 
     enum Field: String {
         case catalog = "catalog_session_id", photo = "photo_id", cursor, pageSize = "page_size"
@@ -72,6 +82,19 @@ enum AppMCPTool: String, CaseIterable {
         case adjustments, group, groups, channel, points, pointIndex = "point_index", gains, amount, delta
         case presetID = "preset_id", presetRevision = "preset_revision", snapshotRevision = "snapshot_revision"
         case presetGroup = "preset_group", favorite, favoritesOnly = "favorites_only", previewVariant = "preview_variant", beforeLayout = "before_layout"
+        case previewID = "preview_id", region, point, rect, aspectRatio = "aspect_ratio", turns
+        case straighten, flipHorizontal = "flip_horizontal", flipVertical = "flip_vertical", perspective
+        case cropGuide = "crop_guide", spotGuides = "spot_guides", guideMode = "guide_mode", endpoint
+        case start, end, sampleID = "sample_id", affectedRange = "affected_range", histogramRegion = "histogram_region"
+        case spotID = "spot_id", spotMode = "spot_mode", sourcePoint = "source_point", path, radius, feather, opacity, enabled
+        case maskID = "mask_id", componentID = "component_id", maskKind = "mask_kind", maskOperation = "mask_operation"
+        case inverted, refinement, flow, density, erase, autoMask = "auto_mask", radiusX = "radius_x", radiusY = "radius_y", angle
+        case sampleIndex = "sample_index", refine, lower, upper, smoothness
+        case overlay, guides, overlayStyle = "overlay_style", overlayColor = "overlay_color", hideEffect = "hide_effect"
+        case maskOverlay = "mask_overlay", withoutMaskID = "without_mask_id"
+        case workflow, smartSessionID = "smart_session_id", smartOverlay = "smart_overlay"
+        case candidateIndex = "candidate_index", personIndices = "person_indices", faceIndex = "face_index", part
+        case separate, wholePerson = "whole_person"
 
         private var range: ClosedRange<Int>? {
             switch self {
@@ -85,13 +108,16 @@ enum AppMCPTool: String, CaseIterable {
             case .offset: 0...Int.max
             case .historyID: 1...Int.max
             case .pointIndex: 0...(ToneCurves.maxPoints - 1)
+            case .turns: -3...3
+            case .sampleIndex: 0...15
+            case .candidateIndex, .faceIndex: 0...255
             default: nil
             }
         }
         private func options(for tool: AppMCPTool) -> [String]? {
             switch self {
             case .purpose: MCPFilePurpose.allCases.map(\.rawValue)
-            case .mode: ["reference", "copy"]
+            case .mode: tool == .solvePerspective ? UprightMode.allCases.map(\.rawValue) : ["reference", "copy"]
             case .layout: DateLayout.allCases.map(\.rawValue)
             case .policy: ["ask"] + ConflictPolicy.allCases.map(\.rawValue)
             case .ratingComparison: RatingComparison.allCases.map(\.rawValue)
@@ -105,17 +131,32 @@ enum AppMCPTool: String, CaseIterable {
             case .pane: ["main", "reference", "candidate", "develop_reference"]
             case .zoom: ["fit", "fill", "scale"]
             case .action: tool.actions
-            case .group: MCPDevelopParameters.groups.map(\.rawValue) + (tool == .resetAdjustments ? ["all"] : [])
+            case .group:
+                tool == .localAdjustments ? MCPDevelopParameters.localGroups.map(\.rawValue) + ["all"]
+                    : MCPDevelopParameters.groups.map(\.rawValue) + (tool == .resetAdjustments ? ["all"] : [])
             case .channel: MCPDevelopParameters.channels
-            case .previewVariant: ["saved", "original", "before"]
+            case .previewVariant: ["saved", "original", "before", "crop_canvas"]
             case .beforeLayout: ["off", "original", "side_by_side", "split"]
+            case .cropGuide: CropGuide.allCases.map(\.rawValue)
+            case .guideMode: ["straighten", "perspective"]
+            case .endpoint: ["start", "end"]
+            case .histogramRegion: MCPCanvasFields.histogramRegions
+            case .spotMode: SpotRepairMode.allCases.map(\.rawValue)
+            case .maskKind: MaskTool.allCases.filter { $0 != .object }.map(\.rawValue)
+            case .maskOperation: MaskOperation.allCases.filter { $0 != .replace }.map(\.rawValue)
+            case .overlayStyle: MCPMaskOverlay.styles
+            case .overlayColor: MCPMaskOverlay.colors
+            case .workflow: ["object", "people"]
+            case .part: SmartMaskPart.allCases.map(\.rawValue)
             default: nil
             }
         }
         private var isBoolean: Bool {
             [.recursive, .skipCataloged, .sidecars, .pair, .all, .remaining, .descending, .hold, .filtersEnabled,
              .filtersOpen, .clearFilters, .linked, .locked, .restricted, .highlights, .shadows, .advance,
-             .manualOrder, .fromQuery, .sameCapture, .favorite, .favoritesOnly].contains(self)
+             .manualOrder, .fromQuery, .sameCapture, .favorite, .favoritesOnly, .flipHorizontal, .flipVertical,
+             .spotGuides, .affectedRange, .enabled, .inverted, .erase, .autoMask, .overlay, .guides, .hideEffect,
+             .separate, .wholePerson].contains(self)
         }
         private var textCriteria: Bool { [.search, .keyword, .camera, .lens, .dateFrom, .dateThrough, .presetGroup].contains(self) }
         private var maxString: Int {
@@ -128,8 +169,10 @@ enum AppMCPTool: String, CaseIterable {
             default: 128
             }
         }
-        private func isDevelopName(for tool: AppMCPTool) -> Bool {
-            self == .presetGroup || (self == .name && (tool == .editPreset || tool == .saveSnapshot))
+        private func nameLimit(for tool: AppMCPTool) -> Int {
+            if self == .presetGroup || (self == .name && [.editPreset, .saveSnapshot, .editLocalPreset].contains(tool)) { return 100 }
+            if self == .name && [.maskGroup, .maskComponent].contains(tool) { return 200 }
+            return maxString
         }
         private var identifierSchema: Value { ["type": "string", "minLength": 1, "maxLength": 128] }
         func schema(for tool: AppMCPTool) -> Value {
@@ -143,14 +186,31 @@ enum AppMCPTool: String, CaseIterable {
             if let options = options(for: tool) { return ["type": "string", "enum": .array(options.map(Value.string))] }
             if isBoolean { return ["type": "boolean"] }
             switch self {
-            case .adjustments: return MCPDevelopParameters.schema(tool)
+            case .adjustments: return tool == .pointColor ? MCPCanvasFields.pointColorSchema : MCPDevelopParameters.schema(tool)
+            case .start, .end: return tool == .maskShape ? MCPCanvasFields.gradientPointSchema : MCPCanvasFields.pointSchema
+            case .point, .sourcePoint: return MCPCanvasFields.pointSchema
+            case .path: return MCPCanvasFields.pathSchema
+            case .radius: return MCPDevelopParameters.numberSchema(0.001...1)
+            case .feather, .opacity, .flow, .density, .lower, .upper, .smoothness: return MCPCanvasFields.unit
+            case .radiusX, .radiusY: return MCPDevelopParameters.numberSchema(0.001...100)
+            case .angle: return MCPDevelopParameters.numberSchema(-180...180)
+            case .refine: return MCPDevelopParameters.numberSchema(0...100)
+            case .refinement: return MCPMask.refinementSchema
+            case .maskOverlay: return MCPMaskOverlay.schema
+            case .smartOverlay: return MCPSmartOverlay.schema
+            case .personIndices:
+                return ["type": "array", "maxItems": 64, "uniqueItems": true, "items": Field.candidateIndex.schema(for: tool)]
+            case .region, .rect: return MCPCanvasFields.rectSchema
+            case .perspective: return MCPCanvasFields.perspectiveSchema
+            case .aspectRatio: return MCPDevelopParameters.numberSchema(0.1...10)
+            case .straighten: return MCPDevelopParameters.numberSchema(-45...45)
             case .points: return MCPDevelopParameters.pointsSchema
             case .gains: return MCPDevelopParameters.gainsSchema
             case .groups:
                 return ["type": "array", "minItems": 1, "maxItems": .int(MCPRecipeGroups.keys.count), "uniqueItems": true,
                         "items": ["enum": .array(MCPRecipeGroups.keys.map(Value.string))]]
-            case .amount: return MCPDevelopParameters.numberSchema(0...2)
-            case .delta: return MCPDevelopParameters.numberSchema(-5...5)
+            case .amount: return MCPDevelopParameters.numberSchema(tool == .localAdjustments ? 0...1 : 0...2)
+            case .delta: return MCPDevelopParameters.numberSchema(tool == .adjustPreview ? -200...200 : -5...5)
             case .scale: return ["type": "number", "enum": .array(AppModel.zoomScales.map(Value.double))]
             case .x, .y: return ["type": "number", "minimum": 0, "maximum": 1]
             case .ratingStep: return ["type": "integer", "enum": [-1, 1]]
@@ -193,8 +253,7 @@ enum AppMCPTool: String, CaseIterable {
             if self == .attachments || self == .locations {
                 return ["type": "object", "maxProperties": 1000, "propertyNames": identifierSchema, "additionalProperties": identifierSchema]
             }
-            if isDevelopName(for: tool) { return ["type": "string", "minLength": textCriteria ? 0 : 1, "maxLength": 100] }
-            return ["type": "string", "minLength": textCriteria ? 0 : 1, "maxLength": .int(maxString)]
+            return ["type": "string", "minLength": textCriteria ? 0 : 1, "maxLength": .int(nameLimit(for: tool))]
         }
         func accepts(_ value: Value, for tool: AppMCPTool) -> Bool {
             if let range { return value.intValue.map(range.contains) ?? false }
@@ -209,14 +268,36 @@ enum AppMCPTool: String, CaseIterable {
                 return values.allSatisfy { Self.isID($0.key) && ($0.value.stringValue.map(Self.isID) ?? false) }
             }
             switch self {
-            case .adjustments: return MCPDevelopParameters.accepts(value, for: tool)
+            case .adjustments:
+                return tool == .pointColor ? MCPDevelopParameters.accepts(value, schema: MCPCanvasFields.pointColorSchema)
+                    : MCPDevelopParameters.accepts(value, for: tool)
+            case .start, .end: return MCPCanvasFields.point(value, range: tool == .maskShape ? MaskPoint.gradientRange : 0...1) != nil
+            case .point, .sourcePoint: return MCPCanvasFields.point(value) != nil
+            case .path:
+                guard let items = value.arrayValue, (1...4096).contains(items.count) else { return false }
+                return items.allSatisfy { MCPCanvasFields.point($0) != nil }
+            case .radius: return value.number.map((0.001...1).contains) ?? false
+            case .feather, .opacity, .flow, .density, .lower, .upper, .smoothness: return value.number.map((0...1).contains) ?? false
+            case .radiusX, .radiusY: return value.number.map((0.001...100).contains) ?? false
+            case .angle: return value.number.map((-180...180).contains) ?? false
+            case .refine: return value.number.map((0...100).contains) ?? false
+            case .refinement: return MCPDevelopParameters.accepts(value, schema: MCPMask.refinementSchema)
+            case .maskOverlay: return (try? MCPMaskOverlay(value)) != nil
+            case .smartOverlay: return (try? MCPSmartOverlay(value)) != nil
+            case .personIndices:
+                guard let indices = value.arrayValue, indices.count <= 64, Set(indices).count == indices.count else { return false }
+                return indices.allSatisfy { Field.candidateIndex.accepts($0, for: tool) }
+            case .region, .rect: return MCPCanvasFields.rect(value) != nil
+            case .perspective: return MCPDevelopParameters.accepts(value, schema: MCPCanvasFields.perspectiveSchema)
+            case .aspectRatio: return value.number.map((0.1...10).contains) ?? false
+            case .straighten: return value.number.map((-45...45).contains) ?? false
             case .points: return (try? MCPDevelopParameters.points(value)) != nil
             case .gains: return (try? MCPDevelopParameters.gains(value)) != nil
             case .groups:
                 guard let items = value.arrayValue, !items.isEmpty, Set(items).count == items.count else { return false }
                 return items.allSatisfy { $0.stringValue.map(MCPRecipeGroups.keys.contains) == true }
-            case .amount: return value.number.map((0...2).contains) ?? false
-            case .delta: return value.number.map((-5...5).contains) ?? false
+            case .amount: return value.number.map((tool == .localAdjustments ? 0.0...1.0 : 0.0...2.0).contains) ?? false
+            case .delta: return value.number.map((tool == .adjustPreview ? -200.0...200.0 : -5.0...5.0).contains) ?? false
             case .interval: return value.number.map((0...86400).contains) ?? false
             case .rules: return value.objectValue != nil
             case .versionRevisions:
@@ -262,9 +343,8 @@ enum AppMCPTool: String, CaseIterable {
             default: break
             }
             guard let text = value.stringValue else { return false }
-            if isDevelopName(for: tool) {
-                return ((textCriteria ? 0 : 1)...100).contains(text.count) && !text.contains("\0")
-            }
+            let limit = nameLimit(for: tool)
+            if limit != maxString { return ((textCriteria ? 0 : 1)...limit).contains(text.count) && !text.contains("\0") }
             return options(for: tool)?.contains(text) ?? (((textCriteria ? 0 : 1)...maxString).contains(text.utf8.count) && !text.contains("\0"))
         }
         private static func isID(_ text: String) -> Bool { (1...128).contains(text.utf8.count) && !text.contains("\0") }
@@ -288,6 +368,21 @@ enum AppMCPTool: String, CaseIterable {
         case .transferAdjustments: ["copy", "paste", "sync", "previous", "preset"]
         case .adjustmentPreview: ["saved_edit", "preset", "hide_group", "clear"]
         case .editPreset: ["create", "update", "rename", "delete", "favorite", "move"]
+        case .setCrop: ["set", "set_aspect", "lock", "unlock", "rotate_aspect", "reset"]
+        case .perspectiveGuides: ["begin", "add", "select", "move_endpoint", "delete", "clear", "finish", "cancel"]
+        case .samplePreview: ["rgb", "zone"]
+        case .adjustPreview: ["white_balance", "histogram", "hue", "saturation", "luminance", "black_white", "curve", "defringe_purple", "defringe_green"]
+        case .pointColor: ["add", "select", "set", "reset", "delete", "display"]
+        case .editSpot: ["add", "select", "set", "move", "set_source", "refresh_source", "auto_source", "delete"]
+        case .maskGroup: ["create", "select", "duplicate", "set", "delete"]
+        case .maskComponent: ["add", "select", "set", "delete"]
+        case .maskRange: ["set", "sample", "append_sample", "replace_sample", "remove_sample", "clear_samples"]
+        case .localAdjustments: ["set", "reset"]
+        case .transferLocal: ["copy", "paste"]
+        case .editLocalPreset: ["create", "apply", "rename", "delete"]
+        case .smartEdit:
+            ["include", "exclude", "box", "undo_prompt", "select_candidate", "select_people", "select_all_people", "select_whole_person",
+             "toggle_part", "select_face", "face_box", "reset_face", "set_separate", "cancel"]
         default: nil
         }
     }
@@ -338,6 +433,21 @@ enum AppMCPTool: String, CaseIterable {
         case .applyEditRecord: [.catalog, .photo, .sourceRevision, .recipeRevision]
         case .saveSnapshot: [.catalog, .photo, .sourceRevision, .recipeRevision, .name]
         case .deleteSnapshot: [.catalog, .photo, .sourceRevision, .recipeRevision, .snapshotID, .snapshotRevision]
+        case .setCrop, .perspectiveGuides, .pointColor, .editSpot, .maskGroup: [.catalog, .photo, .sourceRevision, .recipeRevision, .action]
+        case .photoGeometry, .spotRepairs, .maskState, .maskDisplay: [.catalog, .photo, .sourceRevision, .recipeRevision]
+        case .maskComponent, .localAdjustments, .transferLocal: [.catalog, .photo, .sourceRevision, .recipeRevision, .maskID, .action]
+        case .brushStroke: [.catalog, .photo, .sourceRevision, .recipeRevision, .maskID, .componentID, .previewID, .path]
+        case .maskShape: [.catalog, .photo, .sourceRevision, .recipeRevision, .maskID, .componentID]
+        case .maskRange: [.catalog, .photo, .sourceRevision, .recipeRevision, .maskID, .componentID, .action]
+        case .listLocalPresets: [.catalog]
+        case .editLocalPreset: [.catalog, .action]
+        case .smartStart: [.catalog, .photo, .sourceRevision, .recipeRevision, .workflow]
+        case .smartEdit: [.catalog, .photo, .sourceRevision, .recipeRevision, .smartSessionID, .selectionRevision, .action]
+        case .smartApply: [.catalog, .photo, .sourceRevision, .recipeRevision, .smartSessionID, .selectionRevision]
+        case .solvePerspective: [.catalog, .photo, .sourceRevision, .recipeRevision, .mode]
+        case .canvasGuides: [.catalog]
+        case .samplePreview: [.catalog, .previewID, .point]
+        case .adjustPreview: [.catalog, .photo, .sourceRevision, .recipeRevision, .previewID, .action]
         case .fileAccess: [.purpose]
         case .createCatalog: [.access, .name]
         case .openCatalog: []
@@ -391,7 +501,29 @@ enum AppMCPTool: String, CaseIterable {
         case .planStacks: [.scope, .photoIDs, .queryRevision, .selectionRevision]
         case .listPairs: [.photo, .source, .listing, .offset, .pageSize]
         case .planPairs: [.plan, .candidates, .scope, .photoIDs, .queryRevision, .selectionRevision, .rawSource, .jpegSource, .sameCapture]
-        case .preview: [.longEdge, .previewVariant, .historyID, .snapshotID, .presetID, .presetRevision, .amount, .groups, .group]
+        case .preview: [.longEdge, .previewVariant, .historyID, .snapshotID, .presetID, .presetRevision, .amount, .groups, .group, .region,
+                        .maskOverlay, .withoutMaskID, .smartOverlay]
+        case .setCrop: [.previewID, .rect, .aspectRatio]
+        case .photoGeometry: [.turns, .straighten, .flipHorizontal, .flipVertical, .perspective]
+        case .perspectiveGuides: [.guideMode, .previewID, .start, .end, .point, .pointIndex, .endpoint]
+        case .canvasGuides: [.cropGuide, .spotGuides]
+        case .samplePreview: [.action]
+        case .adjustPreview: [.point, .delta, .channel, .histogramRegion]
+        case .pointColor: [.previewID, .point, .sampleID, .adjustments, .affectedRange]
+        case .spotRepairs: [.previewID, .spotID, .offset, .pageSize]
+        case .editSpot: [.previewID, .spotID, .spotMode, .point, .path, .sourcePoint, .radius, .feather, .opacity, .enabled]
+        case .maskState: [.maskID, .componentID]
+        case .maskGroup: [.maskID, .maskKind, .name, .enabled, .inverted, .refinement]
+        case .maskComponent: [.componentID, .maskKind, .maskOperation, .name, .enabled, .inverted]
+        case .brushStroke: [.radius, .feather, .flow, .density, .erase, .autoMask]
+        case .maskShape: [.previewID, .start, .end, .radiusX, .radiusY, .angle, .feather]
+        case .maskRange: [.previewID, .point, .sampleIndex, .refine, .lower, .upper, .smoothness]
+        case .maskDisplay: [.overlay, .guides, .overlayStyle, .overlayColor, .hideEffect]
+        case .localAdjustments: [.adjustments, .amount, .group]
+        case .listLocalPresets: [.offset, .pageSize]
+        case .editLocalPreset: [.photo, .sourceRevision, .recipeRevision, .maskID, .presetID, .presetRevision, .name]
+        case .smartStart: [.maskID, .componentID, .maskOperation]
+        case .smartEdit: [.previewID, .point, .rect, .candidateIndex, .personIndices, .faceIndex, .part, .separate, .wholePerson]
         case .photoRecipe: [.historyID, .snapshotID]
         case .toneCurve: [.points, .pointIndex, .x, .y]
         case .transferAdjustments: [.photo, .photoIDs, .groups, .presetID, .presetRevision, .amount]
@@ -415,7 +547,8 @@ enum AppMCPTool: String, CaseIterable {
     var writes: Bool {
         switch self {
         case .capabilities, .workspace, .listPhotos, .listSelected, .preview, .librarySources, .recentCatalogs, .importRecords, .job, .keywords,
-             .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs, .photoRecipe, .listPresets: false
+             .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs, .photoRecipe, .listPresets,
+             .samplePreview, .spotRepairs, .maskState, .listLocalPresets: false
         default: true
         }
     }
@@ -429,16 +562,16 @@ enum AppMCPTool: String, CaseIterable {
         switch self {
         case .capabilities:
             description = "Identify the connected Phosdeck instance and which tools are currently available."
-            output = "app_name, version, bundle_id, instance_id, image_sharing, and tools with enabled and reason."
+            output = "app_name, version, bundle_id, instance_id, image_sharing, smart_mask_models, and tools with enabled and reason."
         case .workspace:
             description = "Read the current catalog, query, active photo, selection and native task state before working on photos."
-            output = "catalog_session_id, request_epoch, catalog_name, source, query, view, tool, active_photo, selected_photo_ids, selection_count, selection_truncated, busy, modal, draft, task, before_after, adjustment_preview, and adjustment transfer sources."
+            output = "catalog_session_id, request_epoch, catalog_name, source, query, view, tool, active_photo, selected_photo_ids, selection_count, selection_truncated, busy, modal, draft, task, before_after, adjustment_preview, canvas, and adjustment transfer sources."
         case .listPhotos:
             description = "Page through the current source, filters and sort. listing=visible (default) respects stack folding; listing=matches includes folded members in query order. Reuse next_cursor for the next page."
             output = "items with photo_id, name, version_name, source_revision, recipe_revision, rating, flag, color_label, source_status, and stack. matched_count includes folded members. visible_count and next_cursor describe the displayed rows."
         case .preview:
-            description = "Render an explicit saved version as an sRGB PNG when image sharing is on. preview_variant=original renders the baseline, before aligns a baseline or saved edit to current geometry. In saved mode optionally preview one history_id, snapshot_id, preset_id with preset_revision and amount/groups, or hide one adjustment group. Use the current photo revisions."
-            output = "preview_id, photo_id, source_revision, recipe_revision, width, height, coordinate_space, and histogram, plus a PNG content block."
+            description = "Render an explicit saved version as an sRGB PNG when image sharing is on. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. A normalized top-left region requests a detail view. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
+            output = "preview_id, photo_id, source_revision, recipe_revision, width, height, coordinate_space, region, editable_canvas, histogram, and a PNG content block."
         case .rate:
             description = "Set the rating of one explicit photo. Pass its current expected_rating and the request_epoch from get_workspace. Reuse request_id with identical arguments only when retrying the same operation."
             output = "photo_id, previous_rating, rating, changed, commit_state, and operation_id when an undo was registered."
@@ -448,7 +581,8 @@ enum AppMCPTool: String, CaseIterable {
                 : "Redo an operation undone with undo_operation if it is still Phosdeck's current redo action."
             output = "operation_id, the verified restored values, and commit_state."
         default:
-            (description, output) = cullingDescription ?? organizationDescription ?? developDescription ?? workflowDescription
+            (description, output) = cullingDescription ?? organizationDescription ?? developDescription ?? canvasDescription
+                ?? maskDescription ?? smartMaskDescription ?? workflowDescription
         }
         let required = required + (needsRequestID ? [.epoch, .request] : [])
         let properties = Dictionary(uniqueKeysWithValues: (required + optional).map { ($0.rawValue, $0.schema(for: self)) })
@@ -558,6 +692,7 @@ final class AppMCPTools {
         let name: String
         let png: String
         let selection: MCPDevelopPreview
+        let canvas: MCPCanvasPreview
     }
     private struct UndoReceipt {
         let id = UUID().uuidString
@@ -581,6 +716,8 @@ final class AppMCPTools {
     private var undoObservers: [AnyCancellable] = []
     private var activeLists = 0
     private var previewWorker: Task<Preview, Error>?
+    private var canvasPreviews: [MCPCanvasPreview] = []
+    var mcpSmartSessionID: UUID?
     private lazy var previewPipeline = ImagePipeline(qualityCacheLimit: 0)
     let workflows: AppMCPWorkflows
 
@@ -605,11 +742,15 @@ final class AppMCPTools {
         if !value {
             imageAccessGeneration = UUID()
             previewWorker?.cancel()
+            canvasPreviews.removeAll()
         }
     }
     @discardableResult func stop() -> Task<Void, Never>? {
         stopped = true
+        if let model, let id = mcpSmartSessionID, model.smartMaskSession?.id == id { model.cancelSmartMask() }
+        mcpSmartSessionID = nil
         previewWorker?.cancel()
+        canvasPreviews.removeAll()
         undoObservers.removeAll()
         currentUndo = nil
         cursors.removeAll()
@@ -642,6 +783,7 @@ final class AppMCPTools {
         if observedCatalog != catalogSession {
             observedCatalog = catalogSession
             cursors.removeAll()
+            canvasPreviews.removeAll()
             currentUndo = nil
             workflows.catalogChanged()
         }
@@ -663,6 +805,14 @@ final class AppMCPTools {
                                             selectionOnly: tool == .listSelected)
             case .preview:
                 return try await preview(model, catalog: model.catalog!, session: catalogSession!, arguments: arguments)
+            case .samplePreview:
+                return try await sampleCanvas(arguments, model: model, catalog: model.catalog!, session: catalogSession!)
+            case .spotRepairs:
+                return try await readSpots(arguments, model: model, catalog: model.catalog!)
+            case .maskState:
+                return try await readMasks(arguments, model: model, catalog: model.catalog!)
+            case .listLocalPresets:
+                return try readLocalPresets(arguments, catalog: model.catalog!)
             default:
                 let result = try await workflows.read(tool, arguments: arguments)
                 guard !stopped, !Task.isCancelled else { throw MCPToolProblem.stopped }
@@ -696,11 +846,13 @@ final class AppMCPTools {
             switch tool {
             case .capabilities, .workspace, .recentCatalogs, .job, .cancelJob: problem = nil
             case .listPhotos, .listSelected: problem = model.catalog == nil ? .noCatalog : nil
-            case .preview: problem = model.catalog == nil ? .noCatalog : sharesImages ? nil : .imageDisabled
+            case .preview, .samplePreview: problem = model.catalog == nil ? .noCatalog : sharesImages ? nil : .imageDisabled
             case .rate: problem = model.catalog == nil ? .noCatalog : writeProblem(model)
             case .undo, .redo:
-                problem = model.catalog == nil ? .noCatalog : writeProblem(model) ?? (undoAvailable(model, redo: tool == .redo) ? nil : .undoConflict)
+                problem = model.catalog == nil ? .noCatalog : writeProblem(model, tool: tool) ?? (undoAvailable(model, redo: tool == .redo) ? nil : .undoConflict)
             case .resolveConflict: problem = workflows.waitingForConflict ? nil : .busy
+            case .smartEdit, .smartApply:
+                problem = model.catalog == nil ? .noCatalog : model.smartMaskSession == nil ? .smartSelectionUnavailable : writeProblem(model, tool: tool)
             default: problem = tool.needsCatalog && model.catalog == nil ? .noCatalog : tool.writes ? writeProblem(model, tool: tool) : nil
             }
             return ["name": .string(tool.rawValue), "enabled": .bool(problem == nil),
@@ -708,7 +860,7 @@ final class AppMCPTools {
         }
         return .init("Connected to \(appName).", data: [
             "app_name": .string(appName), "version": .string(version), "bundle_id": .string(bundleID),
-            "instance_id": .string(instanceID), "image_sharing": .bool(sharesImages), "tools": .array(tools)
+            "instance_id": .string(instanceID), "image_sharing": .bool(sharesImages), "tools": .array(tools), "smart_mask_models": Self.smartModels()
         ])
     }
 
@@ -732,6 +884,9 @@ final class AppMCPTools {
         ]
         data.merge(Self.browseState(model)) { _, value in value }
         data.merge(Self.developViewState(model)) { _, value in value }
+        data["canvas"] = .object(Self.canvasState(model))
+        data["mask_display"] = .object(Self.maskState(model))
+        data["smart_session_id"] = model.smartMaskSession.map { .string($0.id.uuidString) } ?? .null
         return .init("Current Phosdeck workspace.", data: data)
     }
 
@@ -830,6 +985,9 @@ final class AppMCPTools {
         let sourceRevision = arguments["source_revision"]!.intValue!
         let recipeRevision = arguments["recipe_revision"]!.intValue!
         let edge = arguments["long_edge"]?.intValue ?? 768
+        let region = arguments["region"].flatMap(MCPCanvasFields.rect)
+        let smartOverlay = try arguments["smart_overlay"].map(MCPSmartOverlay.init)
+        let smartGroup = try smartOverlay.map { try smartOverlayGroup($0, photo: MCPDevelopPhoto.current(arguments, catalog: catalog), model: model) }
         let accessGeneration = imageAccessGeneration
         let roots = model.roots
         let pipeline = previewPipeline
@@ -842,21 +1000,53 @@ final class AppMCPTools {
             let current: EditRecipe?
             if photo.supportsEditing { current = try await MCPDevelopPhoto.recipe(for: photo, root: root, pipeline: pipeline) }
             else { current = nil }
-            let recipe = try await selection.recipe(current, photo: photo, root: root, pipeline: pipeline)
-            let rendered = try await pipeline.render(.init(photo: photo, root: root, recipe: recipe), longEdge: edge)
+            var recipe = try await selection.recipe(current, photo: photo, root: root, pipeline: pipeline)
+            let overlay = try arguments["mask_overlay"].map(MCPMaskOverlay.init)
+            let withoutMask = MCPMask.id(arguments["without_mask_id"])
+            if overlay != nil || arguments["without_mask_id"] != nil || smartOverlay != nil {
+                guard selection.editableCanvas, selection.variant == "saved", recipe != nil,
+                      arguments["without_mask_id"] == nil || withoutMask != nil,
+                      [overlay != nil, withoutMask != nil, smartOverlay != nil].filter({ $0 }).count == 1 else {
+                    throw MCPToolProblem.invalid("Choose one mask display option on the current saved version.")
+                }
+            }
+            if let withoutMask {
+                let index = try MCPMask.group(withoutMask, in: recipe!)
+                recipe?.localAdjustments[index].enabled = false
+            }
+            let renderEdge = region.map { max(edge, Int(min(2048, Double(max(1, edge - 2)) / max($0.width, $0.height)))) } ?? edge
+            let request = ImageRequest(photo: photo, root: root, recipe: recipe)
+            let rendered = try await pipeline.render(request, longEdge: renderEdge)
+            let full: CGImage
+            if let overlay, let recipe {
+                let group = recipe.localAdjustments[try MCPMask.group(overlay.id, in: recipe)]
+                full = try await pipeline.renderMaskOverlay(rendered, request: request, group: group, style: overlay.style, color: overlay.color)
+            } else if let smartOverlay, let smartGroup {
+                full = try await pipeline.renderMaskOverlay(rendered, request: request, group: smartGroup, style: smartOverlay.style, color: smartOverlay.color)
+            } else { full = rendered.image }
             try Task.checkCancellation()
+            let (image, actualRegion) = try MCPCanvasPreview.detail(full, region: region)
+            let editable = selection.editableCanvas && recipe != nil && overlay == nil && withoutMask == nil && smartOverlay == nil
+            let canvas = MCPCanvasPreview(photo: photo, image: image, region: actualRegion,
+                                          sourceSize: rendered.orientedSourceSize, variant: editable ? selection.variant : nil,
+                                          spotOffsets: rendered.spotOffsets)
             let png = NSMutableData()
             guard let destination = CGImageDestinationCreateWithData(png, UTType.png.identifier as CFString, 1, nil) else { throw MCPToolProblem.failed }
-            CGImageDestinationAddImage(destination, rendered.image, nil)
+            CGImageDestinationAddImage(destination, image, nil)
             guard CGImageDestinationFinalize(destination) else { throw MCPToolProblem.failed }
-            let histogram = rendered.histogram.map { Value.array($0.channels.map { .array($0.map(Value.double)) }) } ?? .null
+            let histogram = (region == nil ? rendered.histogram : ImageHistogram.calculate(image))
+                .map { Value.array($0.channels.map { .array($0.map(Value.double)) }) } ?? .null
             var data: [String: Value] = [
-                "preview_id": .string(UUID().uuidString), "photo_id": .string(id), "source_revision": .int(sourceRevision),
-                "recipe_revision": .int(recipeRevision), "width": .int(rendered.image.width), "height": .int(rendered.image.height),
-                "coordinate_space": "normalized_top_left", "histogram": histogram
+                "preview_id": .string(canvas.id), "photo_id": .string(id), "source_revision": .int(sourceRevision),
+                "recipe_revision": .int(recipeRevision), "width": .int(image.width), "height": .int(image.height),
+                "coordinate_space": "normalized_top_left", "histogram": histogram,
+                "region": MCPCanvasFields.rectValue(actualRegion), "editable_canvas": .bool(canvas.variant != nil)
             ]
             data.merge(selection.description) { _, value in value }
-            return Preview(data: data, name: String(photo.displayName.prefix(256)), png: png.base64EncodedString(), selection: selection)
+            if let overlay { data["mask_overlay"] = overlay.description }
+            if let withoutMask { data["without_mask_id"] = .string(withoutMask.uuidString) }
+            if let smartOverlay { data["smart_overlay"] = .object(smartOverlay.fields) }
+            return Preview(data: data, name: String(photo.displayName.prefix(256)), png: png.base64EncodedString(), selection: selection, canvas: canvas)
         }
         previewWorker = worker
         defer { previewWorker = nil }
@@ -867,8 +1057,33 @@ final class AppMCPTools {
         let preview = try result.get()
         guard try catalog.matchesPhotoRevisions(id: id, source: sourceRevision, recipe: recipeRevision) else { throw MCPToolProblem.stalePreview }
         try preview.selection.verify(arguments, catalog: catalog)
+        if let smartOverlay { _ = try smartOverlayGroup(smartOverlay, photo: MCPDevelopPhoto.current(arguments, catalog: catalog), model: model) }
+        if canvasPreviews.count >= 6 { canvasPreviews.removeFirst() }
+        canvasPreviews.append(preview.canvas)
         return .init("Rendered the requested photo preview.", data: preview.data,
                      artifacts: [["type": "photo_preview", "id": preview.data["preview_id"]!, "name": .string(preview.name)]], image: preview.png)
+    }
+
+    func canvasPreview(_ id: Value?, catalog: CatalogStore, photo: Photo? = nil, variant: String? = nil) throws -> MCPCanvasPreview {
+        guard sharesImages else { throw MCPToolProblem.imageDisabled }
+        guard let id = id?.stringValue, let preview = canvasPreviews.first(where: { $0.id == id }),
+              photo.map({ preview.matches($0) }) ?? true,
+              variant.map({ preview.variant == $0 }) ?? true,
+              try catalog.matchesPhotoRevisions(id: preview.photoID, source: preview.sourceRevision, recipe: preview.recipeRevision) else {
+            throw MCPToolProblem.staleCanvasPreview
+        }
+        return preview
+    }
+
+    func verifyCanvasRead(_ catalogSession: String, model: AppModel) throws {
+        guard !stopped, !Task.isCancelled else { throw MCPToolProblem.stopped }
+        guard model.catalogSessionID == catalogSession else { throw MCPToolProblem.catalogChanged }
+    }
+    func verifySavedCanvasRead(_ photo: Photo, catalog: CatalogStore, model: AppModel) throws {
+        guard !stopped, !Task.isCancelled else { throw MCPToolProblem.stopped }
+        guard model.catalog === catalog else { throw MCPToolProblem.catalogChanged }
+        guard try catalog.matchesPhotoRevisions(id: photo.id, source: photo.revision, recipe: photo.recipeRevision,
+                                                requiringAvailable: false) else { throw MCPToolProblem.stalePhoto }
     }
 
     private func write(_ tool: AppMCPTool, arguments: [String: Value], model: AppModel) -> MCPToolResult {
@@ -913,6 +1128,12 @@ final class AppMCPTools {
                 result = try writeRecipes(tool, args: arguments, model: model, catalog: model.catalog!)
             case .beforeAfter, .adjustmentPreview, .editPreset, .planXMP, .importXMP, .saveSnapshot, .deleteSnapshot:
                 result = try writeEditContext(tool, args: arguments, model: model, catalog: model.catalog!)
+            case .setCrop, .photoGeometry, .solvePerspective, .perspectiveGuides, .canvasGuides, .adjustPreview, .pointColor, .editSpot:
+                result = try writeCanvas(tool, args: arguments, model: model, catalog: model.catalog!)
+            case .maskGroup, .maskComponent, .brushStroke, .maskShape, .maskRange, .maskDisplay, .localAdjustments, .transferLocal, .editLocalPreset:
+                result = try writeMasks(tool, args: arguments, model: model, catalog: model.catalog!)
+            case .smartStart, .smartEdit, .smartApply:
+                result = try writeSmartMask(tool, args: arguments, model: model, catalog: model.catalog!)
             case .undo, .redo: result = try replay(model, redo: tool == .redo)
             default:
                 if tool.cullingDescription != nil {
@@ -947,11 +1168,12 @@ final class AppMCPTools {
         writes.removeAll(keepingCapacity: true)
     }
 
-    private func nativeInteraction(_ model: AppModel) -> Bool {
+    private func nativeInteraction(_ model: AppModel, allowingSmartMask: Bool = false) -> Bool {
         let window = NSApp?.keyWindow
         let typing = window.map(WorkspaceKeyboard.isWorkspaceWindow) == true && window?.firstResponder is NSTextView
         return model.dirty || model.maskGesture != nil || model.spotGesture != nil || model.directAdjustment != nil || model.automaticAdjustmentKind != nil
-            || model.perspectiveGuideDragOriginal != nil || model.smartMaskSession != nil || model.whiteBalanceSamplingBusy || typing
+            || model.perspectiveGuideDragOriginal != nil || model.uprightAnalyzing || (!allowingSmartMask && model.smartMaskSession != nil)
+            || model.whiteBalanceSamplingBusy || model.refreshingSpotSource || typing
     }
     private func nativeModal(_ model: AppModel) -> Bool {
         model.presentingSheet || NSApp?.modalWindow != nil || NSApp?.windows.contains {
@@ -960,7 +1182,10 @@ final class AppMCPTools {
     }
     private func writeProblem(_ model: AppModel, tool: AppMCPTool? = nil) -> MCPToolProblem? {
         guard model.workspaceAvailable, !model.changingCatalogExtension, !nativeModal(model) else { return .busy }
-        guard !nativeInteraction(model), !model.cropMode || tool == .workspaceView,
+        let cropTools: [AppMCPTool] = [.workspaceView, .setCrop, .photoGeometry, .solvePerspective, .perspectiveGuides, .canvasGuides, .undo, .redo]
+        let smartTools: [AppMCPTool] = [.smartEdit, .smartApply, .maskDisplay]
+        guard !nativeInteraction(model, allowingSmartMask: tool.map(smartTools.contains) == true),
+              !model.cropMode || tool.map(cropTools.contains) == true,
               model.undo.groupingLevel == 0, model.undo.isUndoRegistrationEnabled,
               !model.undo.isUndoing, !model.undo.isRedoing else { return .nativeInteraction }
         return nil

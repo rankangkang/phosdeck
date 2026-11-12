@@ -33,6 +33,12 @@ enum SpotPlacement {
         (originalPoints.map { MaskPoint($0.x + delta.x, $0.y + delta.y) }, pinnedOffset)
     }
 
+    static func clampedMove(_ points: [MaskPoint], from origin: MaskPoint, to point: MaskPoint) -> MaskPoint {
+        guard let minX = points.map(\.x).min(), let maxX = points.map(\.x).max(),
+              let minY = points.map(\.y).min(), let maxY = points.map(\.y).max() else { return MaskPoint(0, 0) }
+        return MaskPoint(min(1 - maxX, max(-minX, point.x - origin.x)), min(1 - maxY, max(-minY, point.y - origin.y)))
+    }
+
     /// Source drag keeps the grabbed point under the cursor instead of jumping to the first dab.
     static func sourced(displayedOffset: MaskPoint, from origin: MaskPoint, to point: MaskPoint) -> MaskPoint {
         MaskPoint(min(2, max(-2, displayedOffset.x + point.x - origin.x)), min(2, max(-2, displayedOffset.y + point.y - origin.y)))
@@ -281,7 +287,7 @@ extension AppModel {
             gesture.livePoints.append(point)
         case .move:
             guard recipe?.repairs.contains(where: { $0.id == gesture.id }) == true else { return }
-            let delta = clampedMove(gesture.originalPoints, from: gesture.origin, to: point)
+            let delta = SpotPlacement.clampedMove(gesture.originalPoints, from: gesture.origin, to: point)
             let placed = SpotPlacement.moved(originalPoints: gesture.originalPoints, delta: delta, pinnedOffset: gesture.pinnedOffset)
             gesture.livePoints = placed.points
             gesture.liveOffset = placed.offset
@@ -370,10 +376,5 @@ extension AppModel {
         }
         guard showSpotGuides else { return nil }
         return SpotPlacement.hit(point: point, size: size, repairs: recipe.repairs, selectedID: selectedSpotID, offsets: offsets, markerRadius: markerRadius)
-    }
-    private func clampedMove(_ points: [MaskPoint], from origin: MaskPoint, to point: MaskPoint) -> MaskPoint {
-        guard let minX = points.map(\.x).min(), let maxX = points.map(\.x).max(),
-              let minY = points.map(\.y).min(), let maxY = points.map(\.y).max() else { return MaskPoint(0, 0) }
-        return MaskPoint(min(1 - maxX, max(-minX, point.x - origin.x)), min(1 - maxY, max(-minY, point.y - origin.y)))
     }
 }

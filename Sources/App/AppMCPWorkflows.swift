@@ -97,6 +97,7 @@ final class AppMCPWorkflows {
         var summary = "Phosdeck accepted the job."
         var errorCode: String?
         var cancelRequested = false
+        var onCancel: (() -> Void)?
         var progress: TaskProgress?
         var conflictReplies: [String: ImportConflictDecision] = [:]
 
@@ -255,7 +256,7 @@ final class AppMCPWorkflows {
         activeJob = job
         model.busy = true
         model.task = Task { [self, model] in
-            defer { activeJob = nil; model.taskProgress = nil; model.busy = false; model.task = nil }
+            defer { job.onCancel = nil; activeJob = nil; model.taskProgress = nil; model.busy = false; model.task = nil }
             do {
                 try Task.checkCancellation()
                 if action == nil { running(job, phase: "working") }
@@ -317,6 +318,7 @@ final class AppMCPWorkflows {
         guard !job.cancelRequested else { return }
         job.cancelRequested = true
         model.task?.cancel()
+        job.onCancel?()
         cancelPanel?()
         if [.startImport, .resumeImport].contains(job.tool), model.importConflict != nil { model.resolveImportConflict(nil) }
     }

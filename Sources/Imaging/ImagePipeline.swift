@@ -459,6 +459,25 @@ actor ImagePipeline {
         return result
     }
 
+    func sampleMask(_ request: ImageRequest, at point: MaskPoint) throws -> MaskSample? {
+        try MaskSample.read(at: point, from: maskReference(request), context: developContext)
+    }
+
+    func renderMaskOverlay(_ rendered: RenderedImage, request: ImageRequest, group: LocalAdjustment,
+                           style: MaskOverlayStyle, color: Int) throws -> CGImage {
+        guard let recipe = request.recipe else { return rendered.image }
+        let reference = try group.needsBaseline ? maskReference(request) : nil
+        let coverage = try MaskPipeline.overlayCoverage(group, recipe: recipe, sourceSize: rendered.orientedSourceSize, reference: reference)
+        let photo = CIImage(cgImage: rendered.image)
+        let mask = Self.originZero(coverage).transformed(by: CGAffineTransform(
+            scaleX: photo.extent.width / coverage.extent.width, y: photo.extent.height / coverage.extent.height))
+        let overlay = DisplayOverlay.maskView(photo, coverage: mask, style: style, tint: DisplayOverlay.maskTint(color))
+        guard let image = context.createCGImage(overlay, from: photo.extent, format: .RGBA8, colorSpace: Self.outputSpace, deferred: false)
+        else { throw LRCError(L10n.text("app.rangeMaskBaselineRenderingFailed", defaultValue: "Range mask baseline rendering failed")) }
+        try Task.checkCancellation()
+        return image
+    }
+
     /// A separate sRGB model input; the linear range/auto-brush reference is unchanged.
     /// A result cache skips decoding, but must retain the original access, identity and digest checks.
     func validateSmartMaskSource(_ request: ImageRequest) throws {
@@ -678,6 +697,10 @@ actor ImagePipeline {
             colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!) else { throw LRCError(L10n.text("app.zoneLuminanceSamplingFailed", defaultValue: "Zone luminance sampling failed")) }
         try Task.checkCancellation()
         return result
+    }
+
+    func sampleZone(_ request: ImageRequest, at point: CGPoint) throws -> Double? {
+        zoneExposure(try zoneReference(request), at: point, context: developContext)
     }
 
     /// Spots sit on the linear decode, before highlights, curves, masks and crop.

@@ -74,7 +74,7 @@ final class ClippingPreviewSession: ObservableObject {
 /// Readout cache for the displayed sRGB preview. The cache canonicalizes every
 /// source (including BGRA, little-endian, float and 16-bit images) once when a
 /// readout consumer exists. Mouse moves only index these canonical bytes.
-final class DisplayPixelSampler {
+final class DisplayPixelSampler: Sendable {
     private let width: Int
     private let height: Int
     private let bytesPerRow: Int
@@ -105,11 +105,15 @@ final class DisplayPixelSampler {
     }
 
     func sample(normalizedX: CGFloat, normalizedY: CGFloat) -> DisplayPixelSample? {
-        guard width > 0, height > 0, normalizedX.isFinite, normalizedY.isFinite, !data.isEmpty else { return nil }
-        let x = min(width - 1, max(0, Int(min(1, max(0, normalizedX)) * CGFloat(width))))
         // The canvas and PhotoViewport use a bottom-left normalized y while
         // this cache is canonicalized to top-left rows.
-        let y = min(height - 1, max(0, Int((1 - min(1, max(0, normalizedY))) * CGFloat(height))))
+        sample(topLeftX: normalizedX, y: 1 - normalizedY)
+    }
+
+    func sample(topLeftX: CGFloat, y topLeftY: CGFloat) -> DisplayPixelSample? {
+        guard width > 0, height > 0, topLeftX.isFinite, topLeftY.isFinite, !data.isEmpty else { return nil }
+        let x = min(width - 1, Int(min(1, max(0, topLeftX)) * CGFloat(width)))
+        let y = min(height - 1, Int(min(1, max(0, topLeftY)) * CGFloat(height)))
         let offset = y * bytesPerRow + x * 4
         guard offset >= 0, offset + 3 < data.count else { return nil }
 

@@ -802,12 +802,9 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         if maskEditing?.component?.tool != .brush { brushCursor.path = nil }
         guard let edit = maskEditing, edit.showOverlay, let group = edit.group else { return }
         // Coverage only. The view style is applied in draw and never enters the exported image.
-        let scale = min(1, 1536 / max(edit.sourceSize.width, edit.sourceSize.height))
-        let extent = CGRect(x: 0, y: 0, width: max(1, floor(edit.sourceSize.width * scale)), height: max(1, floor(edit.sourceSize.height * scale)))
         if group.needsBaseline, edit.reference == nil { return }
         do {
-            let mask = try MaskPipeline.mask(group, extent: extent, baseline: edit.reference.map { CIImage(cgImage: $0) })
-            maskCoverage = try ImagePipeline.geometry(mask, recipe: edit.recipe, referenceSize: edit.sourceSize)
+            maskCoverage = try MaskPipeline.overlayCoverage(group, recipe: edit.recipe, sourceSize: edit.sourceSize, reference: edit.reference)
         } catch {
             let message = error.localizedDescription
             DispatchQueue.main.async { [weak self] in self?.onMaskError?(message) }

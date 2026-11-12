@@ -118,8 +118,7 @@ final class TargetedAdjustmentTests: XCTestCase {
             let input = TargetedAdjustment.hue.referenceRecipe(r)
             let reference = try await pipeline.pointColorReference(ImageRequest(photo: photo, root: root, recipe: input), longEdge: 256)
             // Sampling must follow actual native output geometry, without an
-            // independently reconstructed inverse rotation. The existing source
-            // inverse differs at odd quarter-turns (recorded in STATUS).
+            // independently reconstructed inverse rotation.
             let rendered = try await pipeline.render(ImageRequest(photo: photo, root: root, recipe: input), longEdge: nil, pixelFormat: .RGBAf)
             for point in [CGPoint(x: 0.35, y: 0.4), CGPoint(x: 0.65, y: 0.6)] {
                 // Read a small CI-coordinate rectangle independently of the

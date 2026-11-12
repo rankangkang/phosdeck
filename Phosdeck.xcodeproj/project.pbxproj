@@ -25,6 +25,11 @@
 		AA7900000000000000000052 /* AppMCPDevelop.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000062 /* AppMCPDevelop.swift */; };
 		AA7900000000000000000053 /* AppMCPEditContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000063 /* AppMCPEditContext.swift */; };
 		AA7900000000000000000054 /* AgentDevelopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000064 /* AgentDevelopTests.swift */; };
+		AA7900000000000000000055 /* AppMCPCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000065 /* AppMCPCanvas.swift */; };
+		AA7900000000000000000056 /* AppMCPSpot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000066 /* AppMCPSpot.swift */; };
+		AA7900000000000000000057 /* AppMCPMask.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000067 /* AppMCPMask.swift */; };
+		AA7900000000000000000058 /* AppMCPLocalPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000068 /* AppMCPLocalPresets.swift */; };
+		AA7900000000000000000059 /* AppMCPSmartMask.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000069 /* AppMCPSmartMask.swift */; };
 		AA790000000000000000003F /* AgentOrganizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004F /* AgentOrganizationTests.swift */; };
 		AA7900000000000000000033 /* MCPHTTPListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000043 /* MCPHTTPListener.swift */; };
 		AA7900000000000000000034 /* mcp-NOTICES.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000044 /* mcp-NOTICES.txt */; };
@@ -269,6 +274,11 @@
 		AA7900000000000000000062 /* AppMCPDevelop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPDevelop.swift; sourceTree = "<group>"; };
 		AA7900000000000000000063 /* AppMCPEditContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPEditContext.swift; sourceTree = "<group>"; };
 		AA7900000000000000000064 /* AgentDevelopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDevelopTests.swift; sourceTree = "<group>"; };
+		AA7900000000000000000065 /* AppMCPCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPCanvas.swift; sourceTree = "<group>"; };
+		AA7900000000000000000066 /* AppMCPSpot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPSpot.swift; sourceTree = "<group>"; };
+		AA7900000000000000000067 /* AppMCPMask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPMask.swift; sourceTree = "<group>"; };
+		AA7900000000000000000068 /* AppMCPLocalPresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPLocalPresets.swift; sourceTree = "<group>"; };
+		AA7900000000000000000069 /* AppMCPSmartMask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPSmartMask.swift; sourceTree = "<group>"; };
 		AA790000000000000000004F /* AgentOrganizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentOrganizationTests.swift; sourceTree = "<group>"; };
 		AA7900000000000000000043 /* MCPHTTPListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPHTTPListener.swift; sourceTree = "<group>"; };
 		AA7900000000000000000044 /* mcp-NOTICES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "mcp-NOTICES.txt"; sourceTree = "<group>"; };
@@ -707,6 +717,11 @@
 				AA7900000000000000000061 /* AppMCPDevelopParameters.swift */,
 				AA7900000000000000000062 /* AppMCPDevelop.swift */,
 				AA7900000000000000000063 /* AppMCPEditContext.swift */,
+				AA7900000000000000000065 /* AppMCPCanvas.swift */,
+				AA7900000000000000000066 /* AppMCPSpot.swift */,
+				AA7900000000000000000067 /* AppMCPMask.swift */,
+				AA7900000000000000000068 /* AppMCPLocalPresets.swift */,
+				AA7900000000000000000069 /* AppMCPSmartMask.swift */,
 				AA7900000000000000000043 /* MCPHTTPListener.swift */,
 				D19CCA868344D600A7F11CDD /* InspectionEditing.swift */,
 				751FCC1E508E2CE354177999 /* CollectionOrdering.swift */,
@@ -1110,6 +1125,11 @@
 				AA7900000000000000000051 /* AppMCPDevelopParameters.swift in Sources */,
 				AA7900000000000000000052 /* AppMCPDevelop.swift in Sources */,
 				AA7900000000000000000053 /* AppMCPEditContext.swift in Sources */,
+				AA7900000000000000000055 /* AppMCPCanvas.swift in Sources */,
+				AA7900000000000000000056 /* AppMCPSpot.swift in Sources */,
+				AA7900000000000000000057 /* AppMCPMask.swift in Sources */,
+				AA7900000000000000000058 /* AppMCPLocalPresets.swift in Sources */,
+				AA7900000000000000000059 /* AppMCPSmartMask.swift in Sources */,
 				AA7900000000000000000033 /* MCPHTTPListener.swift in Sources */,
 				F49651F836A00B9FF96B73EB /* InspectionEditing.swift in Sources */,
 				697D9CF45E47AEDB0B59398F /* CollectionOrdering.swift in Sources */,

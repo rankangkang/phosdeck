@@ -105,11 +105,8 @@ extension AppModel {
         cancelSmartMask()
         setMaskMode(true)
         maskSampleAppending = false
-        var c = MaskComponent(tool: tool, operation: selectedMask == nil ? .replace : operation)
-        if tool == .linear { c.end = c.start }
-        if tool == .radial { c.radiusX = 0.001; c.radiusY = 0.001 }
         let count = operation == .replace ? 0 : (selectedMask?.components.filter { $0.tool == tool }.count ?? 0)
-        c.name = "\(tool.title) \(count + 1)"
+        let c = MaskComponent.drawing(tool, operation: selectedMask == nil ? .replace : operation, number: count + 1)
         if operation == .replace || selectedMask == nil {
             var group = LocalAdjustment(components: [c]); group.settings = LocalDevelopSettings(); group.name = L10n.text("app.mask", defaultValue: "Mask \((recipe?.localAdjustments.count ?? 0) + 1)")
             changeRecipe({ $0.localAdjustments.append(group) }, title: L10n.text("app.new", defaultValue: "New \(tool.title)"))
@@ -138,13 +135,7 @@ extension AppModel {
         var local = group.editingRecipe(from: recipe)
         edit(&local)
         showMaskOverlay = false
-        changeMask(commit: commit) {
-            $0.exposure = local.exposure; $0.contrast = local.contrast; $0.saturation = local.saturation
-            let settings = LocalDevelopSettings(temperature: local.temperature, tint: local.tint,
-                asShotWhiteBalance: local.asShotWhiteBalance, develop: local.develop)
-            // Editing a legacy mask's original three controls preserves its original rendering.
-            $0.settings = $0.settings == nil && settings.isNeutral ? nil : settings
-        }
+        changeMask(commit: commit) { $0.updateDevelop(local) }
     }
 
     /// Copy only the selected mask's local adjustment values into the
@@ -215,16 +206,22 @@ extension AppModel {
     func deleteLocalParameterPreset(_ preset: LocalParameterPreset) -> Bool {
         guard workspaceAvailable, let catalog else { return false }
         do {
-            let deleted = try catalog.deleteLocalParameterPreset(preset.id)
-            localParameterPresets = try catalog.localParameterPresets()
-            undo.registerUndo(withTarget: self) { $0.restoreLocalParameterPreset(deleted) }
-            undo.setActionName(L10n.text("app.deleteLocalPreset", defaultValue: "Delete Local Preset"))
-            status = L10n.text("app.deletedLocalPreset", defaultValue: "Deleted local preset “\(preset.name)”")
-            return true
+            return try deleteLocalParameterPreset(preset, in: catalog, closedUndo: false)
         } catch {
             self.error = error.localizedDescription
             return false
         }
+    }
+
+    func deleteLocalParameterPreset(_ preset: LocalParameterPreset, in catalog: CatalogStore, closedUndo: Bool) throws -> Bool {
+        let deleted = try catalog.deleteLocalParameterPreset(preset.id, expecting: preset)
+        let groupsByEvent = undo.groupsByEvent
+        if closedUndo { undo.groupsByEvent = false; undo.beginUndoGrouping() }
+        undo.registerUndo(withTarget: self) { $0.restoreLocalParameterPreset(deleted) }
+        undo.setActionName(L10n.text("app.deleteLocalPreset", defaultValue: "Delete Local Preset"))
+        if closedUndo { undo.endUndoGrouping(); undo.groupsByEvent = groupsByEvent }
+        status = L10n.text("app.deletedLocalPreset", defaultValue: "Deleted local preset “\(deleted.name)”")
+        return perform { localParameterPresets = try catalog.localParameterPresets() }
     }
 
     /// Inverse of deleting a named local parameter preset.  A complete row is
@@ -273,29 +270,24 @@ extension AppModel {
         selectedMaskID = recipe?.localAdjustments.first?.id; selectedComponentID = selectedMask?.components.first?.id; maskGesture = nil
     }
     func duplicateMask() {
-        guard var group = selectedMask, commitRecipe() else { return }
-        group.id = UUID(); group.name += L10n.text("app.copy_213", defaultValue: " Copy")
-        group.components = group.components.map { var c = $0; c.id = UUID(); return c }
+        guard let selected = selectedMask, commitRecipe() else { return }
+        let group = selected.duplicated()
         changeRecipe({ $0.localAdjustments.append(group) }, title: L10n.text("app.duplicateMask", defaultValue: "Duplicate Mask"))
         selectedMaskID = group.id; selectedComponentID = group.components.first?.id
     }
     func sampleMaskColor(at point: MaskPoint, append: Bool = true) {
-        guard let rgb = maskRGB(at: point) else { return }
+        guard let sample = maskSample(at: point) else { return }
         guard !append || (selectedMaskComponent?.samples.count ?? 0) < 16 else { error = L10n.text("app.eachColorRangeCanHoldUpTo16Samples", defaultValue: "Each color range can hold up to 16 samples"); return }
         changeMaskComponent {
             if !append { $0.samples = [] }
-            $0.samples.append(MaskSample(point: point, red: rgb.x, green: rgb.y, blue: rgb.z))
+            $0.samples.append(sample)
         }
     }
-    private func maskRGB(at point: MaskPoint) -> SIMD3<Double>? {
+    private func maskSample(at point: MaskPoint) -> MaskSample? {
         guard point.valid else { return nil }
         guard let reference = maskReference else { prepareMaskReference(); status = L10n.text("app.preparingTheOriginalForSamplingTryClickingAgainShortly", defaultValue: "Preparing the original for sampling. Try clicking again shortly"); return nil }
-        var pixel = [Float](repeating: 0, count: 4)
-        let x = PhotoGeometry.pixelIndex(point.x,dimension:reference.width)
-        let y = PhotoGeometry.pixelIndex(point.y,dimension:reference.height)
-        CIContext().render(CIImage(cgImage: reference), toBitmap: &pixel, rowBytes: 16, bounds: CGRect(x: x, y: y, width: 1, height: 1), format: .RGBAf, colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!)
-        guard pixel.allSatisfy(\.isFinite), pixel[3] > 0 else { status = L10n.text("app.fullyTransparentPixelsHaveNoColorToSample", defaultValue: "Fully transparent pixels have no color to sample"); return nil }
-        return SIMD3(Double(min(1, max(0, pixel[0]/pixel[3]))), Double(min(1, max(0, pixel[1]/pixel[3]))), Double(min(1, max(0, pixel[2]/pixel[3]))))
+        guard let sample = MaskSample.read(at: point, from: reference, context: CIContext()) else { status = L10n.text("app.fullyTransparentPixelsHaveNoColorToSample", defaultValue: "Fully transparent pixels have no color to sample"); return nil }
+        return sample
     }
     var maskInstruction: String {
         if let session = smartMaskSession { return session.message }
@@ -336,10 +328,10 @@ extension AppModel {
                 return
             }
             if c.tool == .luminance {
-                guard maskSampling, let rgb = maskRGB(at: p) else { return }
+                guard maskSampling, let sample = maskSample(at: p) else { return }
                 showMaskOverlay = true
-                let lightness = min(1, max(0, PerceptualColor.lab(rgb).x))
-                changeMaskComponent { $0.lower = max(0, lightness - 0.1); $0.upper = min(1, lightness + 0.1) }
+                let range = sample.luminanceRange
+                changeMaskComponent { $0.lower = range.lowerBound; $0.upper = range.upperBound }
                 maskSampling = false
                 return
             }

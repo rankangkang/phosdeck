@@ -30,6 +30,7 @@ struct MCPDevelopPreview {
     let group: DevelopGroup?
     let amount: Double
     let options: RecipePasteOptions?
+    var editableCanvas: Bool { ["saved", "crop_canvas"].contains(variant) && record == nil && preset == nil && group == nil }
 
     init(_ args: [String: Value], photo: Photo, catalog: CatalogStore) throws {
         variant = args["preview_variant"]?.stringValue ?? "saved"
@@ -37,7 +38,7 @@ struct MCPDevelopPreview {
         group = args["group"]?.stringValue.flatMap(DevelopGroup.init(rawValue:))
         let hasPreset = args["preset_id"] != nil || args["preset_revision"] != nil
         let selectors = [record != nil, hasPreset, group != nil].filter { $0 }.count
-        guard selectors <= 1, variant != "original" || selectors == 0,
+        guard selectors <= 1, !["original", "crop_canvas"].contains(variant) || selectors == 0,
               variant != "before" || (!hasPreset && group == nil),
               hasPreset || (args["amount"] == nil && args["groups"] == nil) else {
             throw MCPToolProblem.invalid("Use one preview source compatible with preview_variant.")
@@ -53,6 +54,12 @@ struct MCPDevelopPreview {
             return nil
         }
         if variant == "original" { return current.baseline() }
+        if variant == "crop_canvas" {
+            var value = current
+            value.crop = Crop()
+            value.perspective.constrainCrop = false
+            return value
+        }
         if let record {
             let value = try record.recipe(for: photo, current: current)
             return variant == "before" ? value.aligned(to: current) : value
