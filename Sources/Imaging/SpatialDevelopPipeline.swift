@@ -78,27 +78,28 @@ enum SpatialDevelopPipeline {
         return input.clampedToExtent().applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: scale, kCIInputAspectRatioKey: 1])
             .cropped(to: input.extent.applying(CGAffineTransform(scaleX: scale, y: scale)))
     }
-    static func beforeZones(_ input: CIImage, adjustments a: DevelopAdjustments, context: CIContext) throws -> CIImage {
+    static func beforeZones(_ input: CIImage, adjustments a: DevelopAdjustments, context: CIContext, opaque: Bool = false) throws -> CIImage {
         var image = ImagePipeline.originZero(input)
         if a.dehaze != 0 { image = try dehaze(image, amount: a.dehaze, context: context) }
         let extent = image.extent
         if a.highlights != 0 || a.shadows != 0 || a.whites != 0 || a.blacks != 0 {
             let guide = try run("logLuminance", extent: extent, [image])
-            let coverage = ImagePipeline.hasTransparency(image,context:context) ? image : nil
+            let coverage = !opaque && ImagePipeline.hasTransparency(image,context:context) ? image : nil
             let base = try guided(guide, guide: guide, radius: max(4, max(extent.width, extent.height) * 0.008), epsilon: 0.08, coverage:coverage)
             image = try run("toneEqualize", extent: extent, [image, base, CIVector(x: a.highlights, y: a.shadows, z: a.whites, w: a.blacks)])
         }
         return image
     }
-    static func apply(_ input: CIImage, adjustments a: DevelopAdjustments, context: CIContext) throws -> CIImage {
-        var image = try TonalPipeline.zones(beforeZones(input, adjustments: a, context: context), a.zones, context:context)
+    static func apply(_ input: CIImage, adjustments a: DevelopAdjustments, context: CIContext, opaque: Bool = false) throws -> CIImage {
+        var image = try TonalPipeline.zones(beforeZones(input, adjustments: a, context: context, opaque: opaque),
+                                            a.zones, context: context, opaque: opaque)
         let extent = image.extent
         for (amount, radius, epsilon, edge) in [
             (a.texture, 2.0, 0.04, Double.greatestFiniteMagnitude),
             (a.clarity, max(4, max(extent.width, extent.height) * 0.004), 0.16, 1536.0)
         ] where amount != 0 {
             let guide = try run("logLuminance", extent: extent, [image])
-            let coverage = ImagePipeline.hasTransparency(image,context:context) ? image : nil
+            let coverage = !opaque && ImagePipeline.hasTransparency(image,context:context) ? image : nil
             let base = try guided(guide, guide: guide, radius: radius, epsilon: epsilon, maxEdge: edge, coverage:coverage)
             image = try run("detailEnhance", extent: extent, [image, guide, base, amount / 100])
         }

@@ -156,18 +156,18 @@ enum TonalPipeline {
         }
         return image
     }
-    static func zoneGuide(_ input: CIImage, context: CIContext? = nil) throws -> CIImage {
+    static func zoneGuide(_ input: CIImage, context: CIContext? = nil, opaque: Bool = false) throws -> CIImage {
         let guide = try SpatialDevelopPipeline.run("logLuminance", extent: input.extent, [input])
-        let coverage = context.flatMap { ImagePipeline.hasTransparency(input,context:$0) ? input : nil }
+        let coverage = opaque ? nil : context.flatMap { ImagePipeline.hasTransparency(input,context:$0) ? input : nil }
         return try SpatialDevelopPipeline.guided(guide, guide: guide,
             radius: max(4, max(input.extent.width, input.extent.height) * 0.008), epsilon: 0.08,coverage:coverage)
     }
-    static func zones(_ input: CIImage, _ zones: ToneZones?, context: CIContext? = nil) throws -> CIImage {
+    static func zones(_ input: CIImage, _ zones: ToneZones?, context: CIContext? = nil, opaque: Bool = false) throws -> CIImage {
         guard let zones else { return input }
         try zones.validate()
         guard !zones.isNeutral else { return input }
         let g = zones.gains
         return try SpatialDevelopPipeline.run("zoneExposure", extent: input.extent,
-            [input, zoneGuide(input,context:context), CIVector(x: g[0], y: g[1], z: g[2], w: g[3]), g[4]])
+            [input, zoneGuide(input,context:context,opaque:opaque), CIVector(x: g[0], y: g[1], z: g[2], w: g[3]), g[4]])
     }
 }

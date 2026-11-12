@@ -54,16 +54,18 @@ struct SpotBuffer: Sendable, Equatable {
     var height: Int
     var pixels: [SIMD3<Float>]
     var alpha: [Float]?
-    init(width: Int, height: Int, pixels: [SIMD3<Float>], alpha: [Float]? = nil) {
+    let origin: SIMD2<Int>
+    init(width: Int, height: Int, pixels: [SIMD3<Float>], alpha: [Float]? = nil, origin: SIMD2<Int> = .zero) {
         self.width = width; self.height = height; self.pixels = pixels
-        self.alpha = alpha
+        self.alpha = alpha; self.origin = origin
     }
     func get(_ x: Int, _ y: Int) -> SIMD3<Float> {
         guard width > 0, height > 0 else { return .zero }
-        let xx = min(width - 1, max(0, x)), yy = min(height - 1, max(0, y))
+        let xx = min(width - 1, max(0, x - origin.x)), yy = min(height - 1, max(0, y - origin.y))
         return pixels[yy * width + xx]
     }
     mutating func set(_ x: Int, _ y: Int, _ value: SIMD3<Float>) {
+        let x = x - origin.x, y = y - origin.y
         guard x >= 0, y >= 0, x < width, y < height else { return }
         pixels[y * width + x] = value
     }
@@ -86,7 +88,7 @@ struct SpotBuffer: Sendable, Equatable {
     }
     func coverage(_ x: Int, _ y: Int) -> Float {
         guard let alpha else { return 1 }
-        return alpha[min(height-1,max(0,y))*width + min(width-1,max(0,x))]
+        return alpha[min(height-1,max(0,y-origin.y))*width + min(width-1,max(0,x-origin.x))]
     }
     func sampleCoverage(_ x: Float, _ y: Float) -> Float {
         guard alpha != nil else { return 1 }
@@ -95,7 +97,7 @@ struct SpotBuffer: Sendable, Equatable {
             + coverage(x0,y0+1)*(1-tx)*ty + coverage(x0+1,y0+1)*tx*ty
     }
     func inside(_ x: Float, _ y: Float) -> Bool {
-        x >= 0 && y >= 0 && x < Float(width) && y < Float(height)
+        x >= Float(origin.x) && y >= Float(origin.y) && x < Float(origin.x + width) && y < Float(origin.y + height)
     }
 }
 
@@ -252,24 +254,61 @@ enum SpotRepairMath {
         }
         return result
     }
-    private static func apply(_ repair: SpotRepair, offset: MaskPoint, to image: inout SpotBuffer) {
-        let width = image.width, height = image.height
-        guard width > 1, height > 1 else { return }
-        let radius = max(1, repair.radius * Double(min(width, height)))
-        let stamps = dabs(repair, width: width, height: height, radius: radius)
-        guard !stamps.isEmpty else { return }
-        let sigma = max(1, radius * 0.6)
-        let reach = radius + max(radius, sigma * 3)
-        var minX = width, minY = height, maxX = 0, maxY = 0
-        for dab in stamps {
-            minX = min(minX, Int(floor(dab.x - reach)))
-            minY = min(minY, Int(floor(dab.y - reach)))
-            maxX = max(maxX, Int(ceil(dab.x + reach)))
-            maxY = max(maxY, Int(ceil(dab.y + reach)))
+    struct Placement {
+        let radius: Double
+        let sigma: Double
+        let stamps: [SIMD2<Double>]
+        let target: CGRect
+        let paint: CGRect
+        let shift: SIMD2<Float>
+
+        init?(_ repair: SpotRepair, offset: MaskPoint, width: Int, height: Int) {
+            guard width > 1, height > 1 else { return nil }
+            radius = max(1, repair.radius * Double(min(width, height)))
+            sigma = max(1, radius * 0.6)
+            stamps = SpotRepairMath.dabs(repair, width: width, height: height, radius: radius)
+            guard let first = stamps.first else { return nil }
+            var lower = first, upper = first
+            for dab in stamps.dropFirst() {
+                lower = SIMD2(min(lower.x, dab.x), min(lower.y, dab.y))
+                upper = SIMD2(max(upper.x, dab.x), max(upper.y, dab.y))
+            }
+            let frame = CGRect(x: 0, y: 0, width: width, height: height)
+            func box(_ margin: Double) -> CGRect {
+                let left = floor(lower.x - margin), bottom = floor(lower.y - margin)
+                return CGRect(x: left, y: bottom, width: ceil(upper.x + margin) - left,
+                              height: ceil(upper.y + margin) - bottom).intersection(frame)
+            }
+            target = box(radius + max(radius, sigma * 3))
+            paint = box(radius)
+            shift = SIMD2(Float(offset.x * Double(width)), Float(offset.y * Double(height)))
+            guard !target.isEmpty, !paint.isEmpty else { return nil }
         }
-        minX = max(0, minX); minY = max(0, minY); maxX = min(width, maxX); maxY = min(height, maxY)
-        let boxW = maxX - minX, boxH = maxY - minY
-        guard boxW > 0, boxH > 0 else { return }
+
+        func sourceBounds(width: Int, height: Int) -> CGRect {
+            // Match the sampler's Float coordinates, bilinear neighbor and
+            // clamping to the original photo edges, even for faraway sources.
+            func limits(_ lo: CGFloat, _ hi: CGFloat, _ shift: Float, _ count: Int) -> (Int, Int) {
+                let start = Int(floor(Float(lo) + 0.5 + shift))
+                let end = Int(floor(Float(hi - 1) + 0.5 + shift)) + 1
+                return (min(count - 1, max(0, start)), min(count - 1, max(0, end)))
+            }
+            let (x0, x1) = limits(target.minX, target.maxX, shift.x, width)
+            let (y0, y1) = limits(target.minY, target.maxY, shift.y, height)
+            return CGRect(x: x0, y: y0, width: x1-x0+1, height: y1-y0+1)
+        }
+    }
+
+    private static func apply(_ repair: SpotRepair, offset: MaskPoint, to image: inout SpotBuffer) {
+        guard let placement = Placement(repair, offset: offset, width: image.width, height: image.height) else { return }
+        apply(repair, placement: placement, to: &image)
+    }
+
+    static func apply(_ repair: SpotRepair, placement: Placement, to image: inout SpotBuffer, sampling samples: SpotBuffer? = nil) {
+        let (radius, stamps) = (placement.radius, placement.stamps)
+        let minX = Int(placement.target.minX), minY = Int(placement.target.minY)
+        let maxX = Int(placement.target.maxX), maxY = Int(placement.target.maxY)
+        let boxW = Int(placement.target.width), boxH = Int(placement.target.height)
         var alpha = [Float](repeating: 0, count: boxW * boxH)
         let hard = radius * (1 - min(1, max(0, repair.feather)))
         for dab in stamps {
@@ -286,7 +325,7 @@ enum SpotRepairMath {
             }
         }
         guard alpha.contains(where: { $0 > 0 }) else { return }
-        let shift = SIMD2(Float(offset.x * Double(width)), Float(offset.y * Double(height)))
+        let shift = placement.shift
         var source = [SIMD3<Float>](repeating: .zero, count: boxW * boxH)
         var target = [SIMD3<Float>](repeating: .zero, count: boxW * boxH)
         var sourceCoverage = [Float](repeating: 1, count: boxW * boxH)
@@ -295,13 +334,13 @@ enum SpotRepairMath {
             for x in 0..<boxW {
                 let px = Float(minX + x) + 0.5, py = Float(minY + y) + 0.5
                 let index = y * boxW + x
-                source[index] = image.sample(px + shift.x, py + shift.y)
+                source[index] = samples?.sample(px + shift.x, py + shift.y) ?? image.sample(px + shift.x, py + shift.y)
                 target[index] = image.get(minX + x, minY + y)
-                sourceCoverage[index] = image.sampleCoverage(px + shift.x,py + shift.y)
+                sourceCoverage[index] = samples?.sampleCoverage(px + shift.x, py + shift.y) ?? image.sampleCoverage(px + shift.x, py + shift.y)
                 confidence[index] = sourceCoverage[index] * image.coverage(minX+x,minY+y)
             }
         }
-        let low: [SIMD3<Float>]? = repair.mode == .clone ? nil : tone(target: target, source: source, alpha: alpha, confidence: confidence, width: boxW, height: boxH, sigma: Float(sigma))
+        let low: [SIMD3<Float>]? = repair.mode == .clone ? nil : tone(target: target, source: source, alpha: alpha, confidence: confidence, width: boxW, height: boxH, sigma: Float(placement.sigma))
         for y in 0..<boxH {
             for x in 0..<boxW {
                 let index = y * boxW + x
@@ -451,8 +490,48 @@ enum SpotRepairPipeline {
         let rendered = SpotRepairMath.render(try buffer(base, context: context), repairs: active)
         return (try image(rendered.buffer), rendered.offsets)
     }
-    static func buffer(_ image: CIImage, context: CIContext) throws -> SpotBuffer {
-        let extent = image.extent.integral
+    /// Backtrack from the requested pixels, including earlier repairs sampled
+    /// by later ones. Read distant source boxes separately from their targets.
+    static func applyPinned(_ input: CIImage, repairs: [SpotRepair], region: CGRect, context: CIContext) throws -> (image: CIImage, offsets: [UUID: MaskPoint])? {
+        let extent = input.extent
+        guard extent == extent.integral, extent.origin == .zero, extent.width <= 20_000, extent.height <= 20_000,
+              !region.isEmpty, extent.contains(region) else { return nil }
+        let width = Int(extent.width), height = Int(extent.height)
+        var required = [region]
+        var work: [(repair: SpotRepair, placement: SpotRepairMath.Placement, source: CGRect)] = []
+        var pixelCount = region.width * region.height
+        var offsets: [UUID: MaskPoint] = [:]
+        for repair in repairs.reversed() {
+            try Task.checkCancellation()
+            guard let offset = repair.sourceOffset else { return nil }
+            offsets[repair.id] = offset
+            guard let placement = SpotRepairMath.Placement(repair, offset: offset, width: width, height: height),
+                  required.contains(where: { $0.intersects(placement.paint) }) else { continue }
+            let source = placement.sourceBounds(width: width, height: height)
+            pixelCount += placement.target.width * placement.target.height + source.width * source.height
+            guard pixelCount < extent.width * extent.height else { return nil }
+            required.append(placement.target)
+            required.append(source)
+            work.append((repair, placement, source))
+        }
+        var repaired = input
+        for (repair, placement, source) in work.reversed() {
+            try Task.checkCancellation()
+            var target = try buffer(repaired, context: context, region: placement.target)
+            let samples = try buffer(repaired, context: context, region: source)
+            guard target.alpha == nil, samples.alpha == nil else { return nil }
+            SpotRepairMath.apply(repair, placement: placement, to: &target, sampling: samples)
+            repaired = try image(target).composited(over: repaired)
+        }
+        // Match the full-frame straight-to-premultiplied float boundary for
+        // every pixel the following develop graph will consume.
+        let tile = try buffer(repaired, context: context, region: region)
+        guard tile.alpha == nil else { return nil }
+        return (try image(tile).composited(over: input), offsets)
+    }
+
+    static func buffer(_ image: CIImage, context: CIContext, region: CGRect? = nil) throws -> SpotBuffer {
+        let extent = region ?? image.extent.integral
         let width = Int(extent.width), height = Int(extent.height)
         guard width > 0, height > 0, width <= 20_000, height <= 20_000 else { throw LRCError(L10n.text("app.invalidHealingImageDimensions", defaultValue: "Invalid healing image dimensions")) }
         var raw = [Float](repeating: 0, count: width * height * 4)
@@ -468,7 +547,8 @@ enum SpotRepairPipeline {
                 pixels[y * width + x] = SIMD3(rgb.x.isFinite ? rgb.x : 0, rgb.y.isFinite ? rgb.y : 0, rgb.z.isFinite ? rgb.z : 0)
             }
         }
-        return SpotBuffer(width: width, height: height, pixels: pixels, alpha: alpha.contains { $0 < 1 } ? alpha : nil)
+        let origin = region.map { SIMD2(Int($0.minX), Int($0.minY)) } ?? .zero
+        return SpotBuffer(width: width, height: height, pixels: pixels, alpha: alpha.contains { $0 < 1 } ? alpha : nil, origin: origin)
     }
     static func image(_ buffer: SpotBuffer) throws -> CIImage {
         var raw = [Float](repeating: 0, count: buffer.width * buffer.height * 4)
@@ -481,7 +561,8 @@ enum SpotRepairPipeline {
             }
         }
         let data = raw.withUnsafeBufferPointer { Data(buffer: $0) }
-        return CIImage(bitmapData: data, bytesPerRow: buffer.width * 16, size: CGSize(width: buffer.width, height: buffer.height), format: .RGBAf, colorSpace: linear)
+        let image = CIImage(bitmapData: data, bytesPerRow: buffer.width * 16, size: CGSize(width: buffer.width, height: buffer.height), format: .RGBAf, colorSpace: linear)
+        return buffer.origin == .zero ? image : image.transformed(by: CGAffineTransform(translationX: CGFloat(buffer.origin.x), y: CGFloat(buffer.origin.y)))
     }
 }
 

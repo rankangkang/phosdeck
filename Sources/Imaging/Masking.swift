@@ -385,11 +385,12 @@ enum MaskPipeline {
         let mode: Double = operation == .replace ? 0 : operation == .add ? 1 : operation == .subtract ? 2 : 3
         return try run("maskCombine", extent: a.extent, [a, b, mode, invert ? 1.0 : 0.0, amount])
     }
-    static func mask(_ group: LocalAdjustment, extent: CGRect, baseline: CIImage?) throws -> CIImage {
+    static func mask(_ group: LocalAdjustment, extent: CGRect, baseline: CIImage?, region: CGRect? = nil) throws -> CIImage {
         guard group.enabled, group.amount > 0 else { return black(extent) }
+        let brushRegion = group.refinement?.isNeutral == false ? nil : region
         var result = black(extent)
         for c in group.components where c.enabled {
-            let component = try component(c, extent: extent, baseline: baseline)
+            let component = try component(c, extent: extent, baseline: baseline, brushRegion: brushRegion)
             result = try combine(result, component, operation: c.operation, invert: c.inverted)
         }
         if group.inverted { result = try combine(black(extent), result, operation: .replace, invert: true) }
@@ -432,7 +433,7 @@ enum MaskPipeline {
         mask = try run("maskHardness", extent: extent, [mask, settings.hardness])
         return mask.transformed(by: CGAffineTransform(translationX: input.extent.minX, y: input.extent.minY))
     }
-    static func component(_ c: MaskComponent, extent: CGRect, baseline: CIImage?) throws -> CIImage {
+    static func component(_ c: MaskComponent, extent: CGRect, baseline: CIImage?, brushRegion: CGRect? = nil) throws -> CIImage {
         switch c.tool {
         case .object:
             guard let raster = c.raster else { throw LRCError(L10n.text("app.smartSelectionDataIsMissing", defaultValue: "Smart selection data is missing")) }
@@ -440,7 +441,7 @@ enum MaskPipeline {
         case .linear, .radial:
             return try run("maskShape", extent: extent, [CIVector(cgRect: extent), CIVector(x: c.start.x, y: c.start.y, z: c.end.x, w: c.end.y),
                 CIVector(x: c.radiusX, y: c.radiusY, z: c.angle * .pi / 180, w: c.feather), c.tool == .linear ? 0.0 : 1.0])
-        case .brush: return try brush(c.strokes, extent: extent, baseline: baseline)
+        case .brush: return try brush(c.strokes, extent: extent, baseline: baseline, region: brushRegion)
         case .color, .luminance:
             guard let baseline else { throw LRCError(L10n.text("app.theOriginalBaselineForRangeMaskingIsNotReady", defaultValue: "The original baseline for range masking is not ready")) }
             let input = fittedBaseline(baseline, extent: extent)
@@ -455,16 +456,22 @@ enum MaskPipeline {
             return result
         }
     }
-    static func brush(_ strokes: [MaskStroke], extent: CGRect, baseline: CIImage? = nil) throws -> CIImage {
-        struct Key: Encodable { var strokes: [MaskStroke]; var width: Int; var height: Int }
+    static func brush(_ strokes: [MaskStroke], extent: CGRect, baseline: CIImage? = nil, region: CGRect? = nil) throws -> CIImage {
+        struct Key: Encodable { var strokes: [MaskStroke]; var width: Int; var height: Int; var region: CGRect? }
         let width = max(1, Int(ceil(extent.width))), height = max(1, Int(ceil(extent.height)))
         let automatic = strokes.contains(where: \.autoMask)
         if automatic, baseline == nil { throw LRCError(L10n.text("app.theOriginalBaselineForAutoMaskIsNotReady", defaultValue: "The original baseline for Auto Mask is not ready")) }
-        let key = try JSONEncoder().encode(Key(strokes: strokes, width: width, height: height)) as NSData
+        let grid = CGRect(x: 0, y: 0, width: width, height: height)
+        let local = automatic ? nil : region?.offsetBy(dx: -extent.minX, dy: -extent.minY).integral.intersection(grid)
+        let coverageRect = local ?? grid
+        guard !coverageRect.isEmpty, !coverageRect.isNull else { return black(extent) }
+        let coverageWidth = Int(coverageRect.width), coverageHeight = Int(coverageRect.height)
+        let key = try JSONEncoder().encode(Key(strokes: strokes, width: width, height: height, region: local)) as NSData
         if !automatic, let cached = brushCache.object(forKey: key) { return cached }
-        let photo = automatic ? fittedBaseline(baseline!, extent: CGRect(x: 0, y: 0, width: width, height: height)) : nil
-        var coverage = Data(count: width * height)
+        let photo = automatic ? fittedBaseline(baseline!, extent: grid) : nil
+        var coverage = Data(count: coverageWidth * coverageHeight)
         for stroke in strokes {
+            try Task.checkCancellation()
             if stroke.autoMask {
                 guard let photo else { throw LRCError(L10n.text("app.theOriginalBaselineForAutoMaskIsNotReady", defaultValue: "The original baseline for Auto Mask is not ready")) }
                 try stampAutomatic(stroke, width: width, height: height, photo: photo, coverage: &coverage)
@@ -475,7 +482,8 @@ enum MaskPipeline {
             guard let first = points.first else { continue }
             var box = CGRect(x: first.x, y: first.y, width: 0, height: 0)
             for point in points { box = box.union(CGRect(x: point.x, y: point.y, width: 0, height: 0)) }
-            box = box.insetBy(dx: -radius - 1, dy: -radius - 1).integral.intersection(CGRect(x: 0, y: 0, width: width, height: height))
+            box = box.insetBy(dx: -radius - 1, dy: -radius - 1).integral.intersection(coverageRect)
+            guard !box.isNull else { continue }
             let bw = Int(box.width), bh = Int(box.height)
             guard bw > 0, bh > 0 else { continue }
             guard let ctx = CGContext(data: nil, width: bw, height: bh, bitsPerComponent: 8, bytesPerRow: bw, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0) else { throw LRCError(L10n.text("app.cannotAllocateABrushMask", defaultValue: "Cannot allocate a brush mask")) }
@@ -505,7 +513,7 @@ enum MaskPipeline {
             coverage.withUnsafeMutableBytes { raw in
                 let target = raw.bindMemory(to: UInt8.self)
                 for y in 0..<bh { for x in 0..<bw {
-                    let index = (height - Int(box.maxY) + y) * width + Int(box.minX) + x
+                    let index = (Int(coverageRect.maxY - box.maxY) + y) * coverageWidth + Int(box.minX - coverageRect.minX) + x
                     let previous = Double(target[index]) / 255
                     let value = Double(bytes[y * bw + x]) / 255
                     let next = stroke.erase ? previous * (1 - value * stroke.density) : previous + max(0, stroke.density - previous) * value
@@ -513,13 +521,14 @@ enum MaskPipeline {
                 } }
             }
         }
-        let result = CIImage(bitmapData: coverage, bytesPerRow: width, size: CGSize(width: width, height: height), format: .L8, colorSpace: nil)
-            .transformed(by: CGAffineTransform(translationX: extent.minX, y: extent.minY)).cropped(to: extent)
+        let tile = CIImage(bitmapData: coverage, bytesPerRow: coverageWidth, size: coverageRect.size, format: .L8, colorSpace: nil)
+            .transformed(by: CGAffineTransform(translationX: extent.minX + coverageRect.minX, y: extent.minY + coverageRect.minY))
+        let result = (local == nil ? tile : tile.composited(over: black(extent))).cropped(to: extent)
         // ponytail: replay strokes on cache miss; add checkpoints if long drawing sessions need them.
         // Automatic strokes depend on the photo, so they are not cached.
-        if !automatic && width * height <= 64 * 1024 * 1024 {
+        if !automatic && coverage.count <= 64 * 1024 * 1024 {
             brushCache.totalCostLimit = 64 * 1024 * 1024
-            brushCache.setObject(result, forKey: key, cost: width * height)
+            brushCache.setObject(result, forKey: key, cost: coverage.count)
         }
         return result
     }
@@ -640,13 +649,14 @@ enum MaskPipeline {
         }
     }
     private static let developContext = CIContext(options: [.workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!, .workingFormat: CIFormat.RGBAf])
-    static func apply(_ input: CIImage, groups: [LocalAdjustment], baseline: CIImage?, context: CIContext? = nil, interactive: Bool = false, cache: RasterCache? = nil) throws -> CIImage {
+    static func apply(_ input: CIImage, groups: [LocalAdjustment], baseline: CIImage?, context: CIContext? = nil,
+                      interactive: Bool = false, cache: RasterCache? = nil, region: CGRect? = nil, opaque: Bool = false) throws -> CIImage {
         cache?.retain(groups: groups)
         var image = input
         for group in groups where group.enabled && group.amount > 0 && !group.isNeutral {
             try Task.checkCancellation()
             let mask = try cache?.mask(group, extent: image.extent, baseline: baseline, context: context ?? developContext)
-                ?? self.mask(group, extent: image.extent, baseline: baseline)
+                ?? self.mask(group, extent: image.extent, baseline: baseline, region: region)
             var adjusted = image
             if group.exposure != 0 { adjusted = adjusted.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: group.exposure]) }
             if let settings = group.settings {
@@ -657,7 +667,7 @@ enum MaskPipeline {
                         "inputTargetNeutral": CIVector(x: 5500, y: 0)])
                 }
                 adjusted = try ImagePipeline.develop(adjusted, adjustments: settings.develop, contrast: group.contrast,
-                    saturation: group.saturation, context: context ?? developContext, interactive: interactive)
+                    saturation: group.saturation, context: context ?? developContext, interactive: interactive, opaque: opaque)
             } else if group.contrast != 1 || group.saturation != 1 {
                 adjusted = adjusted.applyingFilter("CILinearToSRGBToneCurve")
                     .applyingFilter("CIColorControls", parameters: [kCIInputContrastKey: group.contrast, kCIInputSaturationKey: group.saturation])

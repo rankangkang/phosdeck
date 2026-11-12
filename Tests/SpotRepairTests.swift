@@ -116,6 +116,103 @@ final class SpotRepairTests: XCTestCase {
         XCTAssertGreaterThan(rightThenLeft, 0.9)
     }
 
+    func testPinnedTileMatchesFullRepairsWhenAnEarlierSpotChangesItsSource() throws {
+        let input = try SpotRepairPipeline.image(buffer(width: 256, height: 192) { x, y in
+            Float((x * 31 + y * 19) % 997) / 997
+        })
+        let earlier = SpotRepair(mode: .clone, points: [MaskPoint(0.80, 0.78)], radius: 0.022,
+                                 sourceOffset: MaskPoint(-0.48, -0.13))
+        let clone = SpotRepair(mode: .clone, points: [MaskPoint(0.11, 0.20)], radius: 0.024,
+                               sourceOffset: MaskPoint(0.69, 0.58))
+        let heal = SpotRepair(mode: .heal, points: [MaskPoint(0.025, 0.14), MaskPoint(0.04, 0.15)], radius: 0.02,
+                              sourceOffset: MaskPoint(-0.12, 0.04))
+        let outside = SpotRepair(mode: .remove, points: [MaskPoint(0.60, 0.58)], radius: 0.015,
+                                 sourceOffset: MaskPoint(-0.06, 0.02))
+        let box = CGRect(x: 0, y: 21, width: 40, height: 27)
+        let repairs = [earlier, clone, heal, outside]
+        let full = try SpotRepairPipeline.apply(input, repairs: repairs, context: context)
+        let local = try XCTUnwrap(SpotRepairPipeline.applyPinned(input, repairs: repairs, region: box, context: context))
+        let withoutEarlier = try SpotRepairPipeline.apply(input, repairs: [clone, heal, outside], context: context)
+        let expected = try SpotRepairPipeline.buffer(full.image, context: context, region: box)
+        XCTAssertNotEqual(try SpotRepairPipeline.buffer(withoutEarlier.image, context: context, region: box), expected)
+        XCTAssertEqual(try SpotRepairPipeline.buffer(local.image, context: context, region: box), expected)
+        XCTAssertEqual(local.offsets, full.offsets)
+        var automatic = outside
+        automatic.sourceOffset = nil
+        XCTAssertNil(try SpotRepairPipeline.applyPinned(input, repairs: [clone, automatic], region: box, context: context))
+    }
+
+    func testNativeTileMatchesFullRenderWithSpatialEditsAndGeometry() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("native.png")
+        try PNGFixture.data(width: 512, height: 384, transparency: false).write(to: url)
+        let source = try PNGFixture.request(url)
+        let pipeline = ImagePipeline(qualityCacheLimit: 0)
+        var recipe = try await pipeline.baseline(source)
+        let point = MaskPoint(0.43, 0.49)
+        recipe.repairs = [.init(mode: .heal, points: [point], radius: 0.024, sourceOffset: MaskPoint(0.38, -0.30))]
+        recipe.noiseReduction = .init(luminance: 25, color: 12)
+        recipe.sharpening = .init(amount: 60, radius: 1.6)
+        recipe.develop.highlights = -35
+        recipe.develop.zones = ToneZones(gains: [0, 0.2, 0.4, -0.1, 0])
+        recipe.crop = Crop(x: 0.08, y: 0.13, width: 0.76, height: 0.75)
+        recipe.quarterTurns = 1
+        recipe.flipVertical = true
+        recipe.perspective.horizontal = 15
+        recipe.perspective.constrainCrop = false
+        var brush = MaskComponent.drawing(.brush, operation: .replace, number: 1)
+        brush.strokes = [.init(points: [point, MaskPoint(0.49, 0.56)], radius: 0.04, flow: 0.8),
+                         .init(points: [MaskPoint(0.43, 0.52)], radius: 0.018, erase: true)]
+        var local = LocalDevelopSettings()
+        local.develop.clarity = 25
+        recipe.schemaVersion = 3
+        recipe.maskVersion = 2
+        recipe.localAdjustments = [.init(components: [brush], exposure: 0.5, settings: local)]
+        let size = CGSize(width: 512, height: 384)
+        let geometry = try PhotoGeometry(size: size, recipe: recipe)
+        let edited = try XCTUnwrap(geometry.transform.point(CGPoint(x: point.x * size.width, y: point.y * size.height)))
+        let tile = CGRect(x: floor(edited.x) - 14, y: floor(geometry.output.height - edited.y) - 15, width: 44, height: 38)
+        let request = ImageRequest(photo: source.photo, root: source.root, recipe: recipe)
+        let full = try await pipeline.render(request, longEdge: nil)
+        for rect in [tile, tile.offsetBy(dx: 11, dy: 7)] {
+            let local = try await pipeline.render(request, longEdge: nil, nativePixelRegion: { _ in rect })
+            try assertPixels(local.image, match: full.image, at: rect)
+        }
+    }
+
+    func testNativePinnedRAWTileMatchesFullRender() async throws {
+        let source = try MoreRAWTests.request("a7iii_12bit_compressed.ARW")
+        let pipeline = ImagePipeline(qualityCacheLimit: 0)
+        var recipe = try await pipeline.baseline(source)
+        recipe.repairs = [.init(mode: .clone, points: [MaskPoint(0.49, 0.51)], radius: 0.002,
+                                sourceOffset: MaskPoint(0.41, -0.26))]
+        let request = ImageRequest(photo: source.photo, root: source.root, recipe: recipe)
+        let full = try await pipeline.render(request, longEdge: nil)
+        let rect = CGRect(x: floor(full.fullSize.width * 0.49) - 24, y: floor(full.fullSize.height * 0.49) - 20,
+                          width: 48, height: 40)
+        let local = try await pipeline.render(request, longEdge: nil, nativePixelRegion: { _ in rect })
+        try assertPixels(local.image, match: full.image, at: rect)
+    }
+
+    private func assertPixels(_ tile: CGImage, match image: CGImage, at rect: CGRect,
+                              file: StaticString = #filePath, line: UInt = #line) throws {
+        let crop = try XCTUnwrap(image.cropping(to: rect), file: file, line: line)
+        XCTAssertEqual(tile.width, crop.width, file: file, line: line)
+        XCTAssertEqual(tile.height, crop.height, file: file, line: line)
+        let actual = DisplayPixelSampler(image: tile), reference = DisplayPixelSampler(image: crop)
+        for y in 0..<tile.height { for x in 0..<tile.width {
+            let u = (Double(x) + 0.5) / Double(tile.width), v = (Double(y) + 0.5) / Double(tile.height)
+            let a = try XCTUnwrap(actual.sample(topLeftX: u, y: v), file: file, line: line)
+            let b = try XCTUnwrap(reference.sample(topLeftX: u, y: v), file: file, line: line)
+            guard [a.red, a.green, a.blue, a.alpha] == [b.red, b.green, b.blue, b.alpha] else {
+                return XCTFail("Native tile differs from the full render at (\(x), \(y)) in \(rect)",
+                               file: file, line: line)
+            }
+        } }
+    }
+
     func testRepairSurvivesCropAndQuarterTurn() throws {
         var pixels = buffer(width: 40, height: 40) { _, _ in 0.2 }
         for y in 18..<22 { for x in 18..<22 { pixels.set(x, y, .zero) } }

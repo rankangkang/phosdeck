@@ -87,6 +87,22 @@ actor ImagePipeline {
     private var spotLinearBase: (key: String, buffer: SpotBuffer)?
     private var spotDone: (key: String, repairs: [SpotRepair], rendered: SpotRepairMath.Rendered)?
     private var spotCut: (key: String, index: Int, prefix: [SpotRepair], buffer: SpotBuffer, offsets: [UUID: MaskPoint])?
+    private var nativeOpacity: (key: String, opaque: Bool)?
+
+    private final class NativePreviewArea {
+        let canvas: CGSize
+        let pixels: CGRect
+        var sourceIsOpaque = false
+
+        init(canvas: CGSize, pixels: CGRect) {
+            self.canvas = canvas
+            self.pixels = pixels
+        }
+
+        var bounds: CGRect {
+            CGRect(x: pixels.minX, y: canvas.height - pixels.maxY, width: pixels.width, height: pixels.height)
+        }
+    }
     init(cacheIntermediates: Bool = false, qualityCacheLimit: Int = 512 * 1024 * 1024) {
         self.qualityCacheLimit = max(0, qualityCacheLimit)
         let options: [CIContextOption: Any] = [.workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!, .workingFormat: CIFormat.RGBAh, .cacheIntermediates: cacheIntermediates]
@@ -241,7 +257,7 @@ actor ImagePipeline {
 
     private func graph(_ request: ImageRequest, url: URL, orientedSourceSize: inout CGSize, previewEdge: Int? = nil,
                        zoneReferenceOnly: Bool = false, pointReferenceOnly: Bool = false, decodeOnly: Bool = false,
-                       reuseDecoded: Bool = false, checkDecodedSize: ((CGSize) throws -> Void)? = nil) throws -> CIImage {
+                       reuseDecoded: Bool = false, nativeArea: ((CGSize) throws -> NativePreviewArea)? = nil) throws -> CIImage {
         renderedSpotOffsets = [:]
         var image: CIImage
         if request.photo.isRAW {
@@ -316,9 +332,10 @@ actor ImagePipeline {
                     }
                 } else { decoded = output }
             }
-            try checkDecodedSize?(decoded.extent.size)
+            let area = try nativeArea?(decoded.extent.size)
             image = try processDecoded(decoded, request: request, url: url, recipe: recipe, decodeKey: decodeKey,
-                previewEdge: previewEdge, zoneReferenceOnly: zoneReferenceOnly, pointReferenceOnly:pointReferenceOnly, decodeOnly: decodeOnly, sourceSize: orientedSourceSize)
+                previewEdge: previewEdge, zoneReferenceOnly: zoneReferenceOnly, pointReferenceOnly:pointReferenceOnly,
+                decodeOnly: decodeOnly, sourceSize: orientedSourceSize, nativeArea: area)
         } else {
             // Raster sources never enter the RAW decode cache or CIRAWFilter's base look.
             if qualitySourceKey != nil || previewRAW != nil {
@@ -329,7 +346,7 @@ actor ImagePipeline {
             }
             let decoded = try raster(url)
             orientedSourceSize = decoded.extent.size
-            try checkDecodedSize?(orientedSourceSize)
+            let area = try nativeArea?(orientedSourceSize)
             guard let recipe = request.recipe else { return decoded }
             // Exposure is nonlinear: sampling first changes mixed/high-contrast
             // pixels. Both paths apply WB/exposure at source size, then reduce
@@ -344,7 +361,8 @@ actor ImagePipeline {
             base = Self.resized(base, longEdge: previewEdge)
             let decodeKey = "\(url.path):\(request.photo.identity.base64EncodedString()):\(recipe.sourceDigest):\(recipe.decoderVersion):\(previewEdge ?? 0):\(recipe.exposure):\(recipe.asShotWhiteBalance):\(recipe.temperature):\(recipe.tint)"
             image = try processDecoded(base, request: request, url: url, recipe: recipe, decodeKey: decodeKey,
-                previewEdge: previewEdge, zoneReferenceOnly: zoneReferenceOnly, pointReferenceOnly:pointReferenceOnly, decodeOnly: decodeOnly, sourceSize: orientedSourceSize)
+                previewEdge: previewEdge, zoneReferenceOnly: zoneReferenceOnly, pointReferenceOnly:pointReferenceOnly,
+                decodeOnly: decodeOnly, sourceSize: orientedSourceSize, nativeArea: area)
         }
         return image
     }
@@ -388,10 +406,15 @@ actor ImagePipeline {
     }
 
     private func processDecoded(_ decoded: CIImage, request: ImageRequest, url: URL, recipe: EditRecipe, decodeKey: String,
-                                previewEdge: Int?, zoneReferenceOnly: Bool, pointReferenceOnly:Bool, decodeOnly: Bool, sourceSize: CGSize) throws -> CIImage {
+                                previewEdge: Int?, zoneReferenceOnly: Bool, pointReferenceOnly:Bool, decodeOnly: Bool,
+                                sourceSize: CGSize, nativeArea: NativePreviewArea?) throws -> CIImage {
         try Task.checkCancellation()
         if decodeOnly { return Self.originZero(decoded) }
-        let repaired = try repairedLinear(decoded, recipe: recipe, cacheKey: decodeKey)
+        let region = try nativeArea.flatMap {
+            try nativeSourceRegion(decoded, recipe: recipe, sourceSize: sourceSize, area: $0, decodeKey: decodeKey)
+        }
+        let opaque = nativeArea?.sourceIsOpaque == true
+        let repaired = try repairedLinear(decoded, recipe: recipe, cacheKey: decodeKey, region: region)
         let denoised = try GeneralDetailPipeline.denoise(repaired,recipe.noiseReduction,sourceSize:sourceSize)
         let base = try ManualDefringePipeline.apply(denoised, recipe.manualDefringe, sourceSize: sourceSize)
         if pointReferenceOnly {
@@ -413,14 +436,14 @@ actor ImagePipeline {
         if request.photo.isRAW, previewEdge != nil, recipe.pipelineVersion >= 2 {
             image = try interactiveDevelop(base, recipe: recipe, decodedKey: decodeKey)
         } else {
-            image = try Self.develop(base, recipe: recipe, context: developContext, interactive: previewEdge != nil)
+            image = try Self.develop(base, recipe: recipe, context: developContext, interactive: previewEdge != nil, opaque: opaque)
         }
         let needsBaseline = recipe.localAdjustments.contains { $0.enabled && $0.amount > 0 && !$0.isNeutral && $0.needsBaseline }
         let baseline = needsBaseline ? try maskBaseline(url: url, recipe: recipe, edge: previewEdge) : nil
         image = try MaskPipeline.apply(image, groups: recipe.localAdjustments, baseline: baseline, context: developContext,
-            interactive: previewEdge != nil, cache: previewEdge != nil ? maskCache : nil)
+            interactive: previewEdge != nil, cache: previewEdge != nil ? maskCache : nil, region: region, opaque: opaque)
         image = try GeneralDetailPipeline.sharpen(image,recipe.sharpening,sourceSize:sourceSize)
-        if !request.photo.isRAW, Self.hasTransparency(image,context:developContext) {
+        if !request.photo.isRAW, !opaque, Self.hasTransparency(image,context:developContext) {
             // Finish neighborhood/local processing on its native pixel grid.
             // Fusing a later affine sample into log-luminance/coverage guides
             // mixes invisible guide values into partially covered edge pixels.
@@ -430,6 +453,31 @@ actor ImagePipeline {
         }
         image = try Self.geometry(image, recipe: recipe, referenceSize: previewEdge != nil ? sourceSize : nil)
         return try CreativeVignettePipeline.apply(image, recipe.vignette)
+    }
+
+    private func nativeSourceRegion(_ decoded: CIImage, recipe: EditRecipe, sourceSize: CGSize,
+                                    area: NativePreviewArea, decodeKey: String) throws -> CGRect? {
+        let local = recipe.localAdjustments.filter { $0.enabled && $0.amount > 0 }.compactMap { $0.settings?.develop }
+        // Dehaze estimates airlight from the whole repaired image.
+        guard recipe.pipelineVersion >= 2, decoded.extent == decoded.extent.integral,
+              recipe.develop.dehaze == 0, local.allSatisfy({ $0.dehaze == 0 }) else { return nil }
+        if nativeOpacity?.key != decodeKey {
+            nativeOpacity = (decodeKey, !Self.hasTransparency(decoded, context: developContext))
+        }
+        guard nativeOpacity?.opaque == true else { return nil }
+        area.sourceIsOpaque = true
+        // Per-pixel color and coverage blends cannot enlarge this footprint.
+        // The spatial kernels and geometry supply their own input bounds.
+        let denoised = try GeneralDetailPipeline.denoise(decoded, recipe.noiseReduction, sourceSize: sourceSize)
+        var spatial = try ManualDefringePipeline.apply(denoised, recipe.manualDefringe, sourceSize: sourceSize)
+        for adjustments in [recipe.develop] + local {
+            spatial = try SpatialDevelopPipeline.apply(spatial, adjustments: adjustments, context: developContext, opaque: true)
+        }
+        let sharpened = try GeneralDetailPipeline.sharpen(spatial, recipe.sharpening, sourceSize: sourceSize)
+        let output = try Self.geometry(sharpened, recipe: recipe)
+        let region = output.regionOfInterest(for: decoded, in: area.bounds).integral.intersection(decoded.extent)
+        guard !region.isEmpty, !region.isNull, region != decoded.extent else { return nil }
+        return region
     }
 
     private func fitsQualityCache(_ size: CGSize) -> Bool {
@@ -727,9 +775,13 @@ actor ImagePipeline {
     /// Spots sit on the linear decode, before highlights, curves, masks and crop.
     /// The linear buffer and any unchanged repairs stay cached, so dragging one spot
     /// does not heal the others again or read the image back from the GPU.
-    private func repairedLinear(_ decoded: CIImage, recipe: EditRecipe, cacheKey: String) throws -> CIImage {
+    private func repairedLinear(_ decoded: CIImage, recipe: EditRecipe, cacheKey: String, region: CGRect?) throws -> CIImage {
         let active = recipe.repairs.filter { $0.enabled && !$0.points.isEmpty && $0.opacity > 0 }
         guard !active.isEmpty else { renderedSpotOffsets = [:]; return decoded }
+        if let region, let rendered = try SpotRepairPipeline.applyPinned(decoded, repairs: active, region: region, context: developContext) {
+            renderedSpotOffsets = rendered.offsets
+            return rendered.image
+        }
         let base = try spotBaseBuffer(decoded, key: cacheKey)
         let rendered = renderSpots(base, repairs: active, key: cacheKey)
         renderedSpotOffsets = rendered.offsets
@@ -820,14 +872,17 @@ actor ImagePipeline {
             .applyingFilter("CISRGBToneCurveToLinear")
     }
 
-    static func develop(_ input: CIImage, recipe: EditRecipe, context: CIContext, interactive: Bool = false) throws -> CIImage {
+    static func develop(_ input: CIImage, recipe: EditRecipe, context: CIContext,
+                        interactive: Bool = false, opaque: Bool = false) throws -> CIImage {
         if recipe.pipelineVersion < 2 {
             return DevelopPipeline.apply(colorControls(input, recipe: recipe), adjustments: recipe.develop, interactive: interactive)
         }
-        return try develop(input, adjustments: recipe.develop, contrast: recipe.contrast, saturation: recipe.saturation, context: context, interactive: interactive)
+        return try develop(input, adjustments: recipe.develop, contrast: recipe.contrast, saturation: recipe.saturation,
+                           context: context, interactive: interactive, opaque: opaque)
     }
-    static func develop(_ input: CIImage, adjustments: DevelopAdjustments, contrast: Double, saturation: Double, context: CIContext, interactive: Bool = false) throws -> CIImage {
-        let spatial = try SpatialDevelopPipeline.apply(input, adjustments: adjustments, context: context)
+    static func develop(_ input: CIImage, adjustments: DevelopAdjustments, contrast: Double, saturation: Double,
+                        context: CIContext, interactive: Bool = false, opaque: Bool = false) throws -> CIImage {
+        let spatial = try SpatialDevelopPipeline.apply(input, adjustments: adjustments, context: context, opaque: opaque)
         let contrasted = colorControls(spatial, contrast: contrast, saturation: 1)
         return try PerceptualColor.apply(TonalPipeline.curves(contrasted, adjustments.curves), adjustments: adjustments, saturation: saturation, interactive: interactive)
     }
@@ -980,6 +1035,7 @@ actor ImagePipeline {
                 if !completed {
                     qualityDecoded = nil; qualityCacheBytes = 0; qualitySourceKey = nil
                     maskBaselineCache = nil; maskCache.removeAll()
+                    nativeOpacity = nil
                 }
             }
             let started = Date()
@@ -992,8 +1048,8 @@ actor ImagePipeline {
             let (lease, url) = try source(request)
             defer { withExtendedLifetime(lease) {} }
             try Task.checkCancellation()
-            var region: (canvas: CGSize, pixels: CGRect)?
-            let checkDecodedSize: ((CGSize) throws -> Void)? = nativePixelRegion.map { resolve in
+            var region: NativePreviewArea?
+            let nativeArea: ((CGSize) throws -> NativePreviewArea)? = nativePixelRegion.map { resolve in
                 { decoded in
                     let canvas = try Self.nativeOutputSize(decoded, recipe: request.recipe)
                     let pixels = try resolve(canvas)
@@ -1001,22 +1057,24 @@ actor ImagePipeline {
                           pixels == pixels.integral, CGRect(origin: .zero, size: canvas).contains(pixels) else {
                         throw LRCError("Invalid native preview pixel region")
                     }
-                    region = (canvas, pixels)
+                    let area = NativePreviewArea(canvas: canvas, pixels: pixels)
+                    region = area
+                    return area
                 }
             }
             var orientedSize = CGSize.zero
             let graph = try graph(request, url: url, orientedSourceSize: &orientedSize, reuseDecoded: cacheDecoded,
-                                  checkDecodedSize: checkDecodedSize)
+                                  nativeArea: nativeArea)
             var image = try Self.finish(Self.resized(graph, longEdge: longEdge), request: request)
             let finishedFrame = image
             if let region {
                 let frame = image.extent.integral
                 guard frame.size == region.canvas else { throw LRCError("Native preview canvas dimensions changed") }
                 // Apply image-space effects before clipping so the tile retains their full-frame coordinates.
-                image = image.cropped(to: CGRect(x: frame.minX + region.pixels.minX, y: frame.maxY - region.pixels.maxY,
-                                                width: region.pixels.width, height: region.pixels.height))
+                image = image.cropped(to: region.bounds.offsetBy(dx: frame.minX, dy: frame.minY))
             }
             let usesDevelop = (request.recipe?.pipelineVersion ?? 0) >= 2 && (request.photo.isRAW || request.recipe?.isUnadjustedRaster == false)
+            let opaqueTile = region?.sourceIsOpaque == true && request.recipe?.straightenDegrees == 0 && request.recipe?.perspective.isNeutral == true
             var renderContext = pixelFormat == .RGBA16 || usesDevelop ? developContext : context
             if let jpegMatte, Self.hasTransparency(image, context: developContext) {
                 renderContext = developContext
@@ -1039,7 +1097,8 @@ actor ImagePipeline {
                 }
                 result = try Self.materialize16(image, context: renderContext, preserveJPEG8: preserveJPEG8)
             }
-            else if pixelFormat == .RGBA8, jpegMatte == nil, Self.mayHaveTransparency(request), Self.hasTransparency(finishedFrame, context: developContext) {
+            else if pixelFormat == .RGBA8, jpegMatte == nil, !opaqueTile, Self.mayHaveTransparency(request),
+                    Self.hasTransparency(finishedFrame, context: developContext) {
                 result = try Self.materialize8(image, context: developContext)
             } else {
                 guard let bitmap = renderContext.createCGImage(image, from: image.extent.integral, format: pixelFormat, colorSpace: Self.outputSpace, deferred: false) else { throw LRCError(L10n.text("app.renderingFailed", defaultValue: "Rendering failed")) }

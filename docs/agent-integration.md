@@ -257,7 +257,9 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 `get_photo_preview` 支持 `region` 局部预览。`preview_variant=crop_canvas` 返回裁剪工具所用的完整几何画布，供 `set_crop` 设置矩形及 `edit_perspective_guides` 设置参考线。默认保存预览用于显影取样、污点及蒙版操作。用 `editable_canvas` 判断预览是否可供编辑。换版、保存或关闭图像共享后重新获取预览和修订。区域内的坐标以返回的 PNG 为准。
 
-`resolution=native` 请求 1:1 局部 PNG。用左上角为原点的归一化 `region` 或整数 `region_pixels` 框选，省略 `long_edge`。像素坐标以当前预览版本的原分辨率画布为准，画布包含该版本的旋转、翻转、裁剪和透视结果。响应给出 `canvas_width`、`canvas_height` 和实际像素框。每块最长边为 2048 像素，总面积至多 1,048,576 像素。用 `plan_only=true` 查看尺寸、`fits` 和建议框，此时可省略区域以查询整个画布。渲染请求超限时返回 `preview_region_too_large` 和 `suggested_region_pixels`，可缩小或按相邻像素框分块读取。取图使用原生显影管线，只编码选区，部分显影步骤仍需整图计算。
+`resolution=native` 请求 1:1 局部 PNG。用左上角为原点的归一化 `region` 或整数 `region_pixels` 框选，省略 `long_edge`。像素坐标以当前预览版本的原分辨率画布为准，画布包含该版本的旋转、翻转、裁剪和透视结果。响应给出 `canvas_width`、`canvas_height` 和实际像素框。每块最长边为 2048 像素，总面积至多 1,048,576 像素。用 `plan_only=true` 查看尺寸、`fits` 和建议框，此时可省略区域以查询整个画布。渲染请求超限时返回 `preview_region_too_large` 和 `suggested_region_pixels`，可缩小或按相邻像素框分块读取。
+
+取图沿用原生显影管线。对支持局部处理的不透明源，普通画笔和已固定采样源的污点只处理选区所需的像素、滤镜周边和跨块来源。自动选源、去雾等全图分析以及透明源保留完整处理，原片验证和解码仍由原生管线完成。
 
 `set_photo_geometry` 可更新旋转、拉直、翻转与透视。`solve_perspective` 返回原生自动求解状态。在活动照片的裁剪工作区编辑参考线，回读有效线、求解状态和已应用参数。`sample_preview` 返回图像 RGB 与剪切标记，或读取当前显影的亮度分区。`adjust_from_preview` 和 `edit_point_color` 使用原生浮点取样。`get_spot_repairs` 返回已保存的目标与采样源，可按 ID 读完整路径。`edit_spot_repair` 支持整笔提交与单独换源。用 `source_preview_id` 可在同一照片修订的另一块局部预览中指定采样点。画笔和污点半径按 `source_width` 和 `source_height` 中较短的一边计算。
 
