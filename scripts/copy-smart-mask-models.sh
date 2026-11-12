@@ -27,10 +27,12 @@ fi
 for name in FaceParsing.mlmodelc selfie_multiclass_256x256.tflite; do
     if [ "$name" = FaceParsing.mlmodelc ]; then
         [ -d "$models/$name" ] || continue
+        /usr/bin/ditto "$models/$name" "$destination/$name"
     else
         [ -f "$models/$name" ] || continue
+        # The TFLite model is a single file, and its old copy was already removed.
+        /bin/cp "$models/$name" "$destination/$name"
     fi
-    /usr/bin/ditto "$models/$name" "$destination/$name"
     copied=1
 done
 if [ "$copied" = 1 ]; then
