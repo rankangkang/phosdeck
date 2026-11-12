@@ -160,7 +160,7 @@
 
 导入、智能选择、合成和导出以任务 ID 连接准备、预览、执行及结果。任务提供进度、阶段、已完成对象、失败原因、取消入口及实际支持的恢复动作。文件或选项选择面板对应等待用户输入状态，用户完成后可继续同一任务。
 
-任务使用 `queued`、`running`、`waiting_for_user`、`succeeded`、`partially_succeeded`、`failed` 和 `cancelled`。取消请求先返回当前状态，达到终态后按已提交或已发布内容报告结果。客户端断线后通过 `get_job` 查询业务状态，取消通过 `cancel_job` 进入原生取消流程。服务关闭时停止接受新调用，并按现有任务的提交边界结束或取消执行。
+任务使用 `queued`、`running`、`waiting_for_user`、`succeeded`、`partially_succeeded`、`failed` 和 `cancelled`。同一工作区一次运行一个任务，服务保留最近 64 个临时任务；复制导入和导出的持久记录可从原图库查询。取消请求先返回当前状态，达到终态后按已提交或已发布内容报告结果。客户端断线后通过 `get_job` 查询业务状态，取消通过 `cancel_job` 进入原生取消流程。服务关闭时停止接受新调用，并按现有任务的提交边界结束或取消执行。
 
 ### 本地连接
 
@@ -172,7 +172,7 @@
 
 首批 HTTP 响应流随 POST 请求返回。独立 GET 流返回 `405`。每次连接处理一个请求，请求体上限 64 KiB。传输会话空闲 15 分钟或达到消息及响应大小上限时需要重新初始化，业务请求代次在监听运行期间继续有效。分页游标使用数据库读中的变更计数，目录写入后可重新读取工作区与首屏。
 
-“复制 JSON 配置”适用于接受 `mcpServers` 和 `headers` 的 Streamable HTTP 客户端。复制的内容含当前 `url` 和 `Authorization` 请求头。服务重启后重新复制配置。
+“复制 JSON 配置”适用于接受 `mcpServers` 的 Streamable HTTP 客户端。复制的内容包含 `type: "http"`、当前 `url` 和 `Authorization` 请求头。Claude Code 可通过 `--mcp-config` 加载这份 JSON。令牌随服务重启更新，请将配置保存在本机。[Claude Code MCP 配置](https://code.claude.com/docs/en/mcp)
 
 “复制 Codex 配置”生成 Streamable HTTP 的 TOML 片段。下例端口由设置实际显示值替换，`PHOSDECK_MCP_TOKEN` 由启动客户端的环境提供。Codex 配置引用变量名，令牌由用户在设置中单独复制。Preview 使用独立的服务器配置名和令牌环境变量。[OpenAI Docs 的 MCP 配置](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
 
@@ -182,7 +182,16 @@ url = "http://127.0.0.1:49152/mcp"
 bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 ```
 
-配套 Skill 随仓库发布。支持项目级 Skill 的客户端可从仓库发现；在其他工作区使用时，将 `phosdeck` 文件夹复制到客户端配置的用户 Skill 目录。[Phosdeck Skill](../.agents/skills/phosdeck/SKILL.md)
+### 安装 Phosdeck Skill
+
+源码仓库的 `.agents/skills/phosdeck` 是 Skill 的源目录，Phosdeck 构建时将它复制到应用包的 `Contents/Resources/phosdeck`。在 Finder 中对应用选择“显示包内容”即可取得。安装或更新时复制整个 `phosdeck` 目录，保留 `SKILL.md` 和 `references/`。[Phosdeck Skill](../.agents/skills/phosdeck/SKILL.md)
+
+| 客户端 | 项目目录 | 用户目录 |
+|---|---|---|
+| Codex | `.agents/skills/`，在源码仓库中自动发现 | `~/.agents/skills/` |
+| Claude Code | `.claude/skills/` | `~/.claude/skills/` |
+
+在目标工作区启动新的客户端会话，确认能发现 `phosdeck`。连接 MCP 后先让 Agent 读取应用身份和当前图库，确认连接的是正式版或 Preview，再操作照片。[Codex Skill 目录](https://learn.chatgpt.com/docs/build-skills) · [Claude Code Skill 目录](https://code.claude.com/docs/en/skills)
 
 ### 首批接口
 
@@ -284,7 +293,7 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 | 左栏、右栏和画布 | 文件夹和集合、历史及预设对应第三至四步，几何、取样、修复与蒙版对应第五步，布局与面板展开对应第七步。 |
 | 设置与帮助菜单 | 偏好、社区语言包、缓存、快捷键和相机检查对应第七步。相机检查面板可查看本次 Agent 结果。 |
 
-连续堆叠比较的开始、切组及退出定位仍由原生工作区操作。MCP 可按明确版本比较，覆盖单组堆叠成员。原生表单关闭、窗口管理、系统剪贴板、系统语言选择和授权确认仍使用本机交互。跨客户端与手工操作交替的整体验收在第八步进行。
+连续堆叠比较的开始、切组及退出定位仍由原生工作区操作。MCP 可按明确版本比较，覆盖单组堆叠成员。MCP 撤销和重做只接受自己返回且仍在栈顶的操作 ID；手工编辑用原生编辑菜单撤销。原生表单关闭、窗口管理、系统剪贴板、系统语言选择和授权确认仍使用本机交互。
 
 ## 实施顺序
 
@@ -348,7 +357,7 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 依赖前七步。Skill 在第二步起随每批能力维护，本步完成整体验证和分发。
 
-- 提供可安装的 `phosdeck` Skill，主文件描述触发条件、连接、状态读取、执行及结果核验。整理、显影、局部编辑、合成、导出和恢复细节按工作流放入参考文件。
+- 从源码和应用包提供可安装的 `phosdeck` Skill 目录，随工具更新。主文件描述触发条件、连接、状态读取、执行及结果核验；整理、显影、局部编辑、合成、导出和恢复细节按工作流放入参考文件。
 - Skill 使用工具发现和返回的 schema，引用真实工具及可用条件，按用户授权连续推进任务。需要用户输入时说明待完成动作，得到输入后继续，结束时回读实际结果。
 - 在本机 Codex 完成主验收，再用第二个独立客户端核对协议及图像返回。
 - 跑完整工作流、人工与 Agent 交替编辑、重连、错误恢复及覆盖清单回归。完成与覆盖范围相符的原生全量检查、固定体验 App 实窗检查和依赖声明检查，交由用户体验验收。

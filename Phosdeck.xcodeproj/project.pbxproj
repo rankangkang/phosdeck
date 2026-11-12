@@ -41,6 +41,7 @@
 		AA790000000000000000003F /* AgentOrganizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004F /* AgentOrganizationTests.swift */; };
 		AA7900000000000000000033 /* MCPHTTPListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000043 /* MCPHTTPListener.swift */; };
 		AA7900000000000000000034 /* mcp-NOTICES.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000044 /* mcp-NOTICES.txt */; };
+		AA79000000000000000000B0 /* phosdeck in Resources */ = {isa = PBXBuildFile; fileRef = AA79000000000000000000B1 /* phosdeck */; };
 		AA7900000000000000000035 /* AgentMCPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000045 /* AgentMCPTests.swift */; };
 		AA7900000000000000000039 /* AgentLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000049 /* AgentLibraryTests.swift */; };
 		3B9583FE6690D98E09610ED7 /* PhotoMergeFinishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23A27CF5EB589AA8EB8709DF /* PhotoMergeFinishTests.swift */; };
@@ -298,6 +299,7 @@
 		AA790000000000000000004F /* AgentOrganizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentOrganizationTests.swift; sourceTree = "<group>"; };
 		AA7900000000000000000043 /* MCPHTTPListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPHTTPListener.swift; sourceTree = "<group>"; };
 		AA7900000000000000000044 /* mcp-NOTICES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "mcp-NOTICES.txt"; sourceTree = "<group>"; };
+		AA79000000000000000000B1 /* phosdeck */ = {isa = PBXFileReference; lastKnownFileType = folder; name = phosdeck; path = ".agents/skills/phosdeck"; sourceTree = "<group>"; };
 		AA7900000000000000000045 /* AgentMCPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentMCPTests.swift; sourceTree = "<group>"; };
 		AA7900000000000000000049 /* AgentLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLibraryTests.swift; sourceTree = "<group>"; };
 		23A27CF5EB589AA8EB8709DF /* PhotoMergeFinishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMergeFinishTests.swift; sourceTree = "<group>"; };
@@ -696,6 +698,7 @@
 			isa = PBXGroup;
 			children = (
 				D20300010000000000000001 /* LICENSE */,
+				AA79000000000000000000B1 /* phosdeck */,
 				C0DE00000000000000000001 /* Debug.xcconfig */,
 				FEEDBEEF00000000000000A1 /* wordmark-approved-ivory.svg */,
 				FEEDBEEF00000000000000A2 /* wordmark-approved-graphite.svg */,
@@ -984,6 +987,7 @@
 				D20300020000000000000001 /* LICENSE in Resources */,
 				D20300020000000000000002 /* grdb-LICENSE.txt in Resources */,
 				AA7900000000000000000034 /* mcp-NOTICES.txt in Resources */,
+				AA79000000000000000000B0 /* phosdeck in Resources */,
 				D20300020000000000000003 /* litert-NOTICES.txt in Resources */,
 				D7A1C0DE00000000000000B5 /* AppIcon.icon in Resources */,
 				FEEDBEEF00000000000000B1 /* wordmark-approved-ivory.svg in Resources */,

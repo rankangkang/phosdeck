@@ -48,7 +48,7 @@ final class AppMCPService {
 
     var jsonClientConfiguration: String? {
         guard let endpoint, let token = connectionToken else { return nil }
-        let entry: [String: Any] = ["url": endpoint, "headers": ["Authorization": "Bearer \(token)"]]
+        let entry: [String: Any] = ["type": "http", "url": endpoint, "headers": ["Authorization": "Bearer \(token)"]]
         let configuration = ["mcpServers": [configurationName: entry]]
         guard let data = try? JSONSerialization.data(withJSONObject: configuration,
                                                      options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return nil }

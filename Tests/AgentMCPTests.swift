@@ -440,6 +440,7 @@ final class AgentMCPTests: XCTestCase {
             let servers = try XCTUnwrap(configuration["mcpServers"])
             XCTAssertEqual(Set(servers.keys), ["phosdeck"])
             let entry = try XCTUnwrap(servers["phosdeck"])
+            XCTAssertEqual(entry["type"] as? String, "http")
             XCTAssertEqual(entry["url"] as? String, endpoint)
             let headers = try XCTUnwrap(entry["headers"] as? [String: String])
             XCTAssertTrue(headers["Authorization"] == "Bearer \(token)")

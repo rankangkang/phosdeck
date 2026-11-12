@@ -60,6 +60,9 @@ targets:
         buildPhase: resources
       - path: docs/references/mcp-NOTICES.txt
         buildPhase: resources
+      - path: .agents/skills/phosdeck
+        type: folder
+        buildPhase: resources
     info:
       path: Sources/App/Info.plist
       properties:

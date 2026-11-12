@@ -35,7 +35,8 @@ architectures="$(/usr/bin/lipo -archs "$app/Contents/MacOS/$(read_info CFBundleE
 
 resources="$app/Contents/Resources"
 [[ -d "$resources/SmartMaskModels" && -z "$(/bin/ls -A "$resources/SmartMaskModels")" ]] || fail "Release must not contain research models"
-for notice in LICENSE grdb-LICENSE.txt litert-NOTICES.txt SmartMaskRuntime-LICENSE.txt oklab-LICENSE.txt lightcraft-LICENSE.txt; do
+for notice in LICENSE grdb-LICENSE.txt litert-NOTICES.txt SmartMaskRuntime-LICENSE.txt oklab-LICENSE.txt lightcraft-LICENSE.txt mcp-NOTICES.txt; do
     [[ -s "$resources/$notice" ]] || fail "Missing bundled notice: $notice"
 done
+[[ -s "$resources/phosdeck/SKILL.md" && -d "$resources/phosdeck/references" ]] || fail "Missing bundled Phosdeck skill"
 printf 'Verified release: %s (build %s)\n' "$version" "$build"

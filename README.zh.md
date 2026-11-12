@@ -19,7 +19,7 @@
 
 Phosdeck 是 macOS 上的照片管理与非破坏性编辑工具，使用 SwiftUI、Core Image、Metal 和 GRDB。原片保存在本地，整理信息和编辑参数存入图库。
 
-在“设置 → Agent”开启本地 MCP 服务，即可用 Agent 客户端管理图库、导入照片、核对文件夹差异和恢复复制任务。Agent 可以筛选、选片和比较，批量编辑标记和元数据，还能管理普通与智能集合、创建虚拟副本、整理堆叠，以及核验和保存 RAW/JPEG 配对。照片预览有独立的共享开关。[连接方式与配套 Skill](docs/agent-integration.md#本地连接)
+在“设置 → Agent”开启本地 MCP 服务，即可用 Agent 客户端导入和整理照片、显影和编辑蒙版、合成母版、多规格导出以及维护图库。照片预览有独立的共享开关。配套 Skill 随源码和应用构建提供。[连接方式](docs/agent-integration.md#本地连接) · [安装 Phosdeck Skill](docs/agent-integration.md#安装-phosdeck-skill)
 
 项目目前处于开发预览阶段，可下载[预发布版本](https://github.com/rankangkang/phosdeck/releases)或从源码构建。
 
