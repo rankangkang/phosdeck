@@ -149,8 +149,10 @@ struct MCPCanvasPreview: Sendable {
     let height: Int
     let sampler: DisplayPixelSampler
     let spotOffsets: [UUID: MaskPoint]
+    let draft: MCPPhotoDraft.Reference?
 
-    init(photo: Photo, image: CGImage, region: CGRect, sourceSize: CGSize, variant: String?, spotOffsets: [UUID: MaskPoint]) {
+    init(photo: Photo, image: CGImage, region: CGRect, sourceSize: CGSize, variant: String?, spotOffsets: [UUID: MaskPoint],
+         draft: MCPPhotoDraft.Reference? = nil) {
         photoID = photo.id
         sourceRevision = photo.revision
         recipeRevision = photo.recipeRevision
@@ -161,6 +163,7 @@ struct MCPCanvasPreview: Sendable {
         height = image.height
         sampler = DisplayPixelSampler(image: image)
         self.spotOffsets = spotOffsets
+        self.draft = draft
     }
 
     func matches(_ photo: Photo) -> Bool {
@@ -193,7 +196,7 @@ struct MCPCanvasPreview: Sendable {
 
 extension MCPToolProblem {
     static let staleCanvasPreview = Self(code: "stale_preview", summary: "This preview is no longer valid for the requested photo or action.",
-                                         next: "Render a fresh preview with the current photo revisions and the requested canvas variant.")
+                                         next: "Render a fresh preview of the same saved or draft version with the current revisions and canvas variant.")
     static let outsideCanvas = Self(code: "invalid_canvas_point", summary: "The coordinates do not map to a valid point on the photo.",
                                     next: "Use normalized top-left coordinates within the specified preview.")
     static let noCanvasSample = Self(code: "no_canvas_sample", summary: "The selected position did not produce a usable sample.",
@@ -214,15 +217,15 @@ extension AppMCPTool {
         case .canvasGuides:
             ("Set display-only crop guide pattern and spot-guide visibility in the native workspace.", "crop_guide and spot_guides")
         case .samplePreview:
-            ("Read the exact preview pixel's sRGB and clipping flags, or sample its native luminance zone with action=zone on a current saved canvas.", "pixel, rgba, clipping, or zone and ev")
+            ("Read the exact preview pixel's sRGB and clipping flags, or sample its native luminance zone with action=zone on a current editable canvas.", "pixel, rgba, clipping, or zone and ev")
         case .adjustPreview:
             ("Apply a native adjustment bound to a current saved preview. White balance uses a point; histogram uses histogram_region and delta. Color and curve targets use point and delta, and curve needs a channel. Purple/green defringe supports a point with optional amount delta.", "job_id, then sample result, revision and operation_id")
         case .pointColor:
             ("Add a sample using a current saved preview and point. Set offsets/ranges, reset or delete by sample_id. Select a sample or display its affected range on the active Develop canvas.", "job_id or native point-color state")
         case .spotRepairs:
-            ("Page through saved clone, heal and remove repairs for this photo version. Supply spot_id for the full path and a saved preview_id to read a rendered automatic source.", "items, next_offset, selected_spot_id and photo revisions")
+            ("Page through clone, heal and remove repairs for this photo version. Supply spot_id for the full path and a current preview_id to read a rendered automatic source.", "items, next_offset, selected_spot_id and photo revisions")
         case .editSpot:
-            ("Add a point or path, move a target, or set a source_point on a current saved preview. Supply source_preview_id to pick the source from a different saved preview of the same photo revision. Edit brush settings, select, refresh an alternative source, return to automatic source, or delete by spot_id.", "job_id or native spot selection")
+            ("Add a point or path, move a target, or set a source_point on a current editable preview. Supply source_preview_id to pick the source from a different preview of the same saved or draft version. Edit brush settings, select in the native workspace, refresh an alternative source, return to automatic source, or delete by spot_id.", "job_id or native spot selection")
         default: nil
         }
     }
@@ -245,32 +248,35 @@ extension AppMCPTools {
     }
 
     func sampleCanvas(_ args: [String: Value], model: AppModel, catalog: CatalogStore, session: String) async throws -> MCPToolResult {
-        let preview = try canvasPreview(args["preview_id"], catalog: catalog)
+        let draft = try requestedDraft(args)
+        let preview = try canvasPreview(args["preview_id"], catalog: catalog, draft: draft?.reference)
+        var data = draft?.fields ?? [:]
+        data["preview_id"] = .string(preview.id)
         let point = MCPCanvasFields.point(args["point"]!)!
         if args["action"] == "zone" {
             guard preview.variant == "saved", let photo = try catalog.photo(preview.photoID),
                   let root = model.roots.first(where: { $0.id == photo.rootID }) else { throw MCPToolProblem.staleCanvasPreview }
             let pipeline = model.pipeline
             let worker = Task.detached {
-                let recipe = try await MCPDevelopPhoto.recipe(for: photo, root: root, pipeline: pipeline)
+                let recipe = if let draft { draft.recipe } else { try await MCPDevelopPhoto.recipe(for: photo, root: root, pipeline: pipeline) }
                 _ = try preview.sourcePoint(point, recipe: recipe)
                 return try await pipeline.sampleZone(.init(photo: photo, root: root, recipe: recipe), at: preview.outputPoint(point))
             }
             guard let sample = try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
             else { throw MCPToolProblem.noCanvasSample }
             try verifyCanvasRead(session, model: model)
-            _ = try canvasPreview(args["preview_id"], catalog: catalog)
-            return .init("Read the native luminance zone.", data: ["preview_id": .string(preview.id),
-                         "zone": .int(ToneZones.nearest(to: sample)), "ev": .double(sample)])
+            _ = try canvasPreview(args["preview_id"], catalog: catalog, draft: draft?.reference)
+            data["zone"] = .int(ToneZones.nearest(to: sample))
+            data["ev"] = .double(sample)
+            return .init("Read the native luminance zone.", data: data)
         }
         guard let sample = preview.sampler.sample(topLeftX: point.x, y: point.y) else { throw MCPToolProblem.noCanvasSample }
         let codes = [sample.red, sample.green, sample.blue]
-        return .init("Read an sRGB pixel from the preview.", data: [
-            "preview_id": .string(preview.id), "pixel": ["x": .int(sample.x), "y": .int(preview.height - 1 - sample.y)],
-            "rgba": .array((codes + [sample.alpha]).map { .int(Int($0)) }),
-            "clipping": ["highlights": .bool(sample.alpha != 0 && codes.contains(255)),
-                         "shadows": .bool(sample.alpha != 0 && codes.contains(0))]
-        ])
+        data["pixel"] = ["x": .int(sample.x), "y": .int(preview.height - 1 - sample.y)]
+        data["rgba"] = .array((codes + [sample.alpha]).map { .int(Int($0)) })
+        data["clipping"] = ["highlights": .bool(sample.alpha != 0 && codes.contains(255)),
+                            "shadows": .bool(sample.alpha != 0 && codes.contains(0))]
+        return .init("Read an sRGB pixel from the preview.", data: data)
     }
 
     func writeCanvas(_ tool: AppMCPTool, args: [String: Value], model: AppModel, catalog: CatalogStore) throws -> MCPToolResult {

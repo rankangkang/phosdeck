@@ -113,17 +113,17 @@ extension AppMCPTool {
     var maskDescription: (String, String)? {
         switch self {
         case .maskState:
-            ("Read the saved mask list and current native display. Add mask_id for its components and local parameters, and component_id for shape, stroke count or range details.", "photo revisions, masks, selected mask and component IDs, and display")
+            ("Read the mask list. Add mask_id for its components and local parameters, and component_id for shape, stroke count or range details. The saved version also reports the current native display.", "photo revisions, masks, selected mask and component IDs, and display")
         case .maskGroup:
             ("Create a mask with mask_kind, or select, duplicate, patch, or delete an existing mask_id. Set name, enabled, inverted and edge refinement.", "job_id or native mask selection")
         case .maskComponent:
             ("Add a mask_kind using mask_operation=add, subtract or intersect. Select, rename, change the operation, enable, invert, or delete an existing component_id.", "job_id or native component selection")
         case .brushStroke:
-            ("Paint or erase one path on a saved preview and a brush component. Radius is a fraction of the oriented source's short edge. Feather, flow and density are 0–1.", "job_id, then updated component and operation_id")
+            ("Paint or erase one path on a current preview and a brush component. In a draft, use the returned zero-based stroke_index to revise a stroke; omit path and preview_id to change brush settings only. Radius is a fraction of the oriented source's short edge. Feather, flow and density are 0–1.", "job_id, then updated component, stroke_index and saved operation_id when applicable")
         case .maskShape:
-            ("Edit linear start/end or a radial center (start) and optional corner (end) on a saved preview. You may also set feather or radial radii and angle in the oriented source.", "job_id, then saved source geometry")
+            ("Edit linear start/end or a radial center (start) and optional corner (end) on a current preview. You may also set feather or radial radii and angle in the oriented source.", "job_id, then source geometry")
         case .maskRange:
-            ("Append, replace, remove or clear color samples, or set refine. Sample luminance or set its lower, upper and smoothness. A sampling point uses a current saved preview.", "job_id, then saved range and samples")
+            ("Append, replace, remove or clear color samples, or set refine. Sample luminance or set its lower, upper and smoothness. A sampling point uses a current preview.", "job_id, then range and samples")
         case .maskDisplay:
             ("Change the active Mask workspace overlay, guides, style and tint, or temporarily hide the selected mask's local effect.", "native mask display and selected IDs")
         case .localAdjustments:
@@ -151,13 +151,14 @@ extension AppMCPTools {
 
     func readMasks(_ args: [String: Value], model: AppModel, catalog: CatalogStore) async throws -> MCPToolResult {
         let photo = try MCPDevelopPhoto.current(args, catalog: catalog)
+        let draft = try requestedDraft(args, photo: photo)
         let maskID = MCPMask.id(args["mask_id"]), componentID = MCPMask.id(args["component_id"])
         guard (args["mask_id"] == nil || maskID != nil),
               (args["component_id"] == nil || (maskID != nil && componentID != nil)) else { throw MCPToolProblem.maskUnavailable }
         let worker = Task.detached {
-            let recipe = try photo.recipe.map { try MCPDevelopPhoto.decode($0, for: photo) }
+            let recipe = try draft?.recipe ?? photo.recipe.map { try MCPDevelopPhoto.decode($0, for: photo) }
             let groups = recipe?.localAdjustments ?? []
-            var data = MCPDevelopPhoto.revisions(photo)
+            var data = draft?.data ?? MCPDevelopPhoto.revisions(photo)
             if let maskID {
                 guard let recipe else { throw MCPToolProblem.maskUnavailable }
                 let mask = groups[try MCPMask.group(maskID, in: recipe)]
@@ -168,20 +169,22 @@ extension AppMCPTools {
         }
         var data = try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
         try verifySavedCanvasRead(photo, catalog: catalog, model: model)
-        data["display"] = model.activeID == photo.id ? .object(Self.maskState(model)) : .null
+        try verifyPhotoDraft(draft?.reference)
+        data["display"] = draft == nil && model.activeID == photo.id ? .object(Self.maskState(model)) : .null
         data["smart_mask"] = model.smartMaskSession.flatMap { session in
-            guard session.photoID == photo.id, session.request.photo.revision == photo.revision,
+            guard draft == nil, session.photoID == photo.id, session.request.photo.revision == photo.revision,
                   session.request.photo.recipeRevision == photo.recipeRevision else { return nil }
             return .object(Self.smartState(model, session: session))
         } ?? .null
         data["coordinate_space"] = "oriented_source_normalized_top_left"
-        return .init("Read the saved mask state.", data: data)
+        return .init(draft == nil ? "Read the saved mask state." : "Read the draft mask state.", data: data)
     }
 
     func writeMasks(_ tool: AppMCPTool, args: [String: Value], model: AppModel, catalog: CatalogStore) throws -> MCPToolResult {
         if tool == .editLocalPreset { return try editLocalPreset(tool, args: args, model: model, catalog: catalog) }
         let photo = try MCPDevelopPhoto.current(args, catalog: catalog)
         if tool == .transferLocal { return try transferLocal(tool, args: args, photo: photo, model: model, catalog: catalog) }
+        let draft = try requestedDraft(args, photo: photo)
         let action = args["action"]?.stringValue
         let id = MCPMask.id(args["mask_id"]), componentID = MCPMask.id(args["component_id"])
         let name = try MCPMask.name(args["name"])
@@ -204,6 +207,7 @@ extension AppMCPTools {
             guard valid, creates == (target == nil) else { throw MCPToolProblem.invalid("Supply the target and fields for this mask action.") }
         }
         if tool == .maskDisplay || action == "select" {
+            guard draft == nil else { throw MCPToolProblem.invalid("Native mask selection is available on saved edits only.") }
             guard model.activeID == photo.id, model.active?.recipeRevision == photo.recipeRevision, model.maskMode,
                   let recipe = model.recipe, model.canEdit else { throw MCPToolProblem.developUnavailable }
             if action == "select" {
@@ -213,13 +217,19 @@ extension AppMCPTools {
             } else { try writeMaskDisplay(args, model: model) }
             return .init("Updated the native mask display.", data: Self.maskState(model))
         }
-        let takesPoints = tool == .brushStroke || args["point"] != nil || args["start"] != nil || args["end"] != nil
-        guard takesPoints == (args["preview_id"] != nil) else {
-            throw MCPToolProblem.invalid("Supply a current saved preview_id with canvas coordinates.")
+        let strokeIndex = args["stroke_index"]?.intValue
+        if tool == .brushStroke {
+            guard strokeIndex == nil ? args["path"] != nil : draft != nil else {
+                throw MCPToolProblem.invalid("Supply a new brush path or a stroke_index in a photo draft.")
+            }
         }
-        let preview = try args["preview_id"].map { try canvasPreview($0, catalog: catalog, photo: photo, variant: "saved") }
+        let takesPoints = args["path"] != nil || args["point"] != nil || args["start"] != nil || args["end"] != nil
+        guard takesPoints == (args["preview_id"] != nil) else {
+            throw MCPToolProblem.invalid("Supply a current preview_id with canvas coordinates.")
+        }
+        let preview = try args["preview_id"].map { try canvasPreview($0, catalog: catalog, photo: photo, variant: "saved", draft: draft?.reference) }
         let title = L10n.text("app.editMaskRegion", defaultValue: "Edit Mask Region")
-        return startCanvasEdit(tool, model: model, catalog: catalog, photo: photo, title: title, preview: preview) { request, original, pipeline in
+        return startCanvasEdit(tool, model: model, catalog: catalog, photo: photo, title: title, preview: preview, draft: draft) { request, original, pipeline in
             var value = original
             if tool == .maskGroup && action == "create" {
                 guard id == nil, let kind, value.localAdjustments.count < 64 else {
@@ -261,9 +271,10 @@ extension AppMCPTools {
                                                                   group: &group, preview: preview, recipe: original, request: request, pipeline: pipeline)
                 if group.components.isEmpty { value.localAdjustments.remove(at: index) }
                 else { value.localAdjustments[index] = group }
-                return (value, ["mask_id": .string(group.id.uuidString),
-                                "mask_deleted": .bool(group.components.isEmpty),
-                                "component": component.map { MCPMask.componentRow($0, detail: true) } ?? .null])
+                var result: [String: Value] = ["mask_id": .string(group.id.uuidString), "mask_deleted": .bool(group.components.isEmpty),
+                                               "component": component.map { MCPMask.componentRow($0, detail: true) } ?? .null]
+                if tool == .brushStroke, let component { result["stroke_index"] = .int(strokeIndex ?? component.strokes.count - 1) }
+                return (value, result)
             }
             value.localAdjustments[index] = group
             return (value, ["mask": MCPMask.row(group, recipe: value)])
@@ -305,11 +316,23 @@ extension AppMCPTools {
             }
             patchComponent(args, name: name, component: &component)
         case .brushStroke:
-            guard component.tool == .brush, let preview else { throw MCPToolProblem.invalid("Choose a brush component.") }
-            let points = try args["path"]!.arrayValue!.compactMap(MCPCanvasFields.point).map { try preview.sourcePoint($0, recipe: recipe) }
-            component.strokes.append(MaskStroke(points: points, radius: args["radius"]?.number ?? 0.04, feather: args["feather"]?.number ?? 0.7,
-                                                flow: args["flow"]?.number ?? 0.5, density: args["density"]?.number ?? 1,
-                                                erase: args["erase"]?.boolValue ?? false, autoMask: args["auto_mask"]?.boolValue ?? false))
+            guard component.tool == .brush else { throw MCPToolProblem.invalid("Choose a brush component.") }
+            let index = args["stroke_index"]?.intValue
+            var stroke = MaskStroke(points: [])
+            if let index {
+                guard component.strokes.indices.contains(index) else { throw MCPToolProblem.invalid("Choose an existing brush stroke_index.") }
+                stroke = component.strokes[index]
+            }
+            if let path = args["path"]?.arrayValue, let preview {
+                stroke.points = try path.compactMap(MCPCanvasFields.point).map { try preview.sourcePoint($0, recipe: recipe) }
+            }
+            if let radius = args["radius"]?.number { stroke.radius = radius }
+            if let feather = args["feather"]?.number { stroke.feather = feather }
+            if let flow = args["flow"]?.number { stroke.flow = flow }
+            if let density = args["density"]?.number { stroke.density = density }
+            if let erase = args["erase"]?.boolValue { stroke.erase = erase }
+            if let autoMask = args["auto_mask"]?.boolValue { stroke.autoMask = autoMask }
+            if let index { component.strokes[index] = stroke } else { component.strokes.append(stroke) }
         case .maskShape:
             try updateMaskShape(args, component: &component, preview: preview, recipe: recipe)
         case .maskRange:

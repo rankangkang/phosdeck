@@ -269,6 +269,170 @@ final class AgentDevelopTests: XCTestCase {
         ])), "stale_preview")
     }
 
+    @MainActor func testLocalDraftRendersTrialPixelsThenSavesOnlyTheFinalEdit() async throws {
+        let (catalog, folder) = try await catalog(ids: ["a"])
+        let client = try await Client(catalog)
+        client.tools.setSharesImages(true)
+        let original = try client.recipe("a"), base = try client.edits("a")
+        let historyCount = try catalog.editHistory(photoID: "a").count
+        let target: [String: Value] = ["resolution": "native", "region_pixels": ["x": 16, "y": 20, "width": 12, "height": 12]]
+        let source: [String: Value] = ["resolution": "native", "region_pixels": ["x": 42, "y": 52, "width": 12, "height": 12]]
+        let center: Value = ["x": 0.5, "y": 0.5]
+        let savedBefore = await client.call(.preview, base.merging(target) { _, new in new })
+        let savedPreview = try XCTUnwrap(client.data(savedBefore)["preview_id"])
+        let opened = try await client.job(await client.call(.editPhotoDraft, base.merging(["action": "begin"]) { _, new in new }))
+        let draftID = try XCTUnwrap(opened["draft_id"])
+        var revision = try XCTUnwrap(opened["draft_revision"])
+        XCTAssertEqual(revision, 0)
+
+        func scope(_ fields: [String: Value] = [:]) -> [String: Value] {
+            ["draft_id": draftID, "draft_revision": revision].merging(fields) { _, new in new }
+        }
+        func scoped(_ fields: [String: Value] = [:]) -> [String: Value] {
+            base.merging(scope(fields)) { _, new in new }
+        }
+        func update(_ tool: AppMCPTool, _ fields: [String: Value]) async throws -> [String: Value] {
+            let job = try await client.job(await client.call(tool, scoped(fields)))
+            XCTAssertEqual(job["state"], "succeeded", String(describing: job))
+            XCTAssertEqual(job["commit_state"], "not_committed")
+            XCTAssertNil(job["operation_id"])
+            revision = try XCTUnwrap(job["draft_revision"])
+            return try XCTUnwrap(job["items"]?.arrayValue?.first?.objectValue?["result"]?.objectValue)
+        }
+
+        let draftBefore = await client.call(.preview, scoped(target))
+        let targetPreview = try XCTUnwrap(client.data(draftBefore)["preview_id"])
+        XCTAssertEqual(draftBefore.content.last, savedBefore.content.last)
+        let sourceData = try client.data(await client.call(.preview, scoped(source)))
+        let sourcePreview = try XCTUnwrap(sourceData["preview_id"])
+        let repairFields: [String: Value] = [
+            "action": "add", "spot_mode": "clone", "point": center, "preview_id": targetPreview,
+            "source_preview_id": sourcePreview, "source_point": center, "radius": 0.08, "feather": 0
+        ]
+        client.error(await client.call(.editSpot, scoped(repairFields.merging(["source_preview_id": savedPreview]) { _, new in new })), "stale_preview")
+        client.error(await client.call(.editSpot, base.merging(repairFields) { _, new in new }), "stale_preview")
+        let repair = try await update(.editSpot, repairFields)
+        let spotID = try XCTUnwrap(repair["repair"]?.objectValue?["spot_id"])
+        let stalePoint: [String: Value] = ["preview_id": targetPreview, "point": center]
+        client.error(await client.call(.samplePreview, scope(stalePoint)), "stale_preview")
+        client.error(await client.call(.samplePreview, scope(stalePoint.merging(["draft_revision": 0]) { _, new in new })), "stale_draft")
+        let afterClone = await client.call(.preview, scoped(target))
+        let clonePreview = try XCTUnwrap(client.data(afterClone)["preview_id"])
+        XCTAssertNotEqual(draftBefore.content.last, afterClone.content.last)
+        _ = try await update(.editSpot, ["action": "move", "spot_id": spotID, "preview_id": clonePreview, "point": ["x": 0.75, "y": 0.5]])
+        _ = try await update(.editSpot, ["action": "set", "spot_id": spotID, "radius": 0.10])
+
+        let mask = try await update(.maskGroup, ["action": "create", "mask_kind": "brush"])
+        let maskID = try XCTUnwrap(mask["mask"]?.objectValue?["mask_id"])
+        let componentID = try XCTUnwrap(mask["component"]?.objectValue?["component_id"])
+        let brush: [String: Value] = ["mask_id": maskID, "component_id": componentID]
+        let brushData = try client.data(await client.call(.preview, scoped(target)))
+        let forBrush = try XCTUnwrap(brushData["preview_id"])
+        let painted = try await update(.brushStroke, brush.merging(["preview_id": forBrush, "path": [center], "radius": 0.05, "flow": 1]) { _, new in new })
+        let index = try XCTUnwrap(painted["stroke_index"])
+        let revise: [String: Value] = brush.merging(["stroke_index": index]) { _, new in new }
+        let moveData = try client.data(await client.call(.preview, scoped(target)))
+        let forMove = try XCTUnwrap(moveData["preview_id"])
+        _ = try await update(.brushStroke, revise.merging(["preview_id": forMove, "path": [["x": 0.25, "y": 0.5]], "radius": 0.06]) { _, new in new })
+        _ = try await update(.brushStroke, revise.merging(["radius": 0.09]) { _, new in new })
+        _ = try await update(.localAdjustments, ["action": "set", "mask_id": maskID, "adjustments": ["basic": ["exposure": 1]]])
+
+        let overlay = try client.data(await client.call(.preview, scoped(target.merging([
+            "mask_overlay": ["mask_id": maskID, "style": "monochrome"]
+        ]) { _, new in new })))
+        XCTAssertEqual(overlay["editable_canvas"], false)
+        let sample = try client.data(await client.call(.samplePreview, scope([
+            "preview_id": try XCTUnwrap(overlay["preview_id"]), "point": ["x": 0.25, "y": 0.5]
+        ])))
+        XCTAssertGreaterThan(try XCTUnwrap(sample["rgba"]?.arrayValue?.first?.intValue), 200)
+        let finalTrial = await client.call(.preview, scoped(target))
+        XCTAssertEqual(try client.data(finalTrial)["region_pixels"], target["region_pixels"])
+        let spots = try client.data(await client.call(.spotRepairs, scoped(["spot_id": spotID])))
+        XCTAssertEqual(spots["total_count"], 1)
+        let draftMasks = try client.data(await client.call(.maskState, scoped()))
+        let savedMasks = try client.data(await client.call(.maskState, base))
+        let savedSpots = try client.data(await client.call(.spotRepairs, base))
+        XCTAssertEqual(draftMasks["masks"]?.arrayValue?.count, 1)
+        XCTAssertEqual(savedMasks["masks"], [])
+        XCTAssertEqual(savedSpots["total_count"], 0)
+        let stillSaved = await client.call(.preview, base.merging(target) { _, new in new })
+        XCTAssertEqual(stillSaved.content.last, savedBefore.content.last)
+        XCTAssertNotEqual(finalTrial.content.last, stillSaved.content.last)
+        XCTAssertEqual(try client.edits("a"), base)
+        XCTAssertEqual(try catalog.editHistory(photoID: "a").count, historyCount)
+        XCTAssertFalse(client.model.undo.canUndo)
+
+        let commit = scope(["action": "commit"])
+        let started = await client.call(.editPhotoDraft, commit, request: "commit-final-draft")
+        let saved = try await client.job(started)
+        XCTAssertEqual(saved["commit_state"], "committed", String(describing: saved))
+        let replay = await client.call(.editPhotoDraft, commit, request: "commit-final-draft")
+        XCTAssertEqual(replay.structuredContent, started.structuredContent)
+        let workspace = try client.data(await client.call(.workspace))
+        XCTAssertEqual(workspace["photo_draft"], .null)
+        XCTAssertEqual(try catalog.editHistory(photoID: "a").count, historyCount + 1)
+        let updated = await client.call(.preview, try client.edits("a", target))
+        XCTAssertEqual(updated.content.last, finalTrial.content.last)
+        let committed = try client.recipe("a")
+        XCTAssertEqual(committed.repairs.count, 1)
+        XCTAssertEqual(committed.repairs.first?.radius, 0.10)
+        XCTAssertEqual(try XCTUnwrap(committed.repairs.first?.points.first?.x), 57.0 / 128, accuracy: 1e-12)
+        let strokes = try XCTUnwrap(committed.localAdjustments.first?.components.first?.strokes)
+        XCTAssertEqual(strokes.count, 1)
+        XCTAssertEqual(strokes.first?.radius, 0.09)
+        XCTAssertEqual(strokes.first?.flow, 1)
+        XCTAssertEqual(try XCTUnwrap(strokes.first?.points.first?.x), 51.0 / 128, accuracy: 1e-12)
+        let undo = try XCTUnwrap(saved["operation_id"])
+        _ = try client.data(await client.call(.undo, ["operation_id": undo]))
+        XCTAssertEqual(try client.recipe("a"), original)
+        _ = try client.data(await client.call(.redo, ["operation_id": undo]))
+        XCTAssertEqual(try client.recipe("a"), committed)
+        XCTAssertEqual(try SafeFileWriter.sha256(folder.appendingPathComponent("a.png")), original.sourceDigest)
+    }
+
+    @MainActor func testLocalDraftCancelNoOpAndSavedVersionConflictLeaveHistoryUntouched() async throws {
+        let (catalog, _) = try await catalog(ids: ["a"], withRecipes: false)
+        let client = try await Client(catalog)
+        let base = try client.edits("a")
+        let begin = base.merging(["action": "begin"]) { _, new in new }
+        func identity(_ job: [String: Value], action: Value) throws -> [String: Value] {
+            ["draft_id": try XCTUnwrap(job["draft_id"]), "draft_revision": try XCTUnwrap(job["draft_revision"]), "action": action]
+        }
+        let noOp = try await client.job(await client.call(.editPhotoDraft, begin))
+        client.error(await client.call(.editPhotoDraft, begin), "draft_already_open")
+        let closed = try await client.job(await client.call(.editPhotoDraft, identity(noOp, action: "commit")))
+        XCTAssertEqual(closed["commit_state"], "not_committed")
+        XCTAssertNil(try catalog.photo("a")?.recipe)
+        let afterNoOp = try client.data(await client.call(.workspace))
+        XCTAssertEqual(afterNoOp["photo_draft"], .null)
+
+        let opened = try await client.job(await client.call(.editPhotoDraft, begin))
+        let cancelled = try await client.job(await client.call(.maskGroup, base.merging(
+            identity(opened, action: "create").merging(["mask_kind": "radial"]) { _, new in new }
+        ) { _, new in new }))
+        client.error(await client.call(.editPhotoDraft, try identity(opened, action: "cancel")), "stale_draft")
+        let discarded = try client.data(await client.call(.editPhotoDraft, identity(cancelled, action: "cancel")))
+        XCTAssertEqual(discarded["discarded"], true)
+        XCTAssertNil(try catalog.photo("a")?.recipe)
+        XCTAssertTrue(try catalog.editHistory(photoID: "a").isEmpty)
+        XCTAssertFalse(client.model.undo.canUndo)
+
+        let stale = try await client.job(await client.call(.editPhotoDraft, begin))
+        let trial = try await client.job(await client.call(.maskGroup, base.merging(
+            identity(stale, action: "create").merging(["mask_kind": "linear"]) { _, new in new }
+        ) { _, new in new }))
+        let otherSave = try await client.job(await client.call(.globalAdjustments, base.merging(["adjustments": ["exposure": 0.5]]) { _, new in new }))
+        XCTAssertEqual(otherSave["commit_state"], "committed")
+        client.error(await client.call(.editPhotoDraft, try identity(trial, action: "commit")), "stale_photo")
+        _ = try client.data(await client.call(.editPhotoDraft, identity(trial, action: "cancel")))
+        let current = try client.recipe("a")
+        XCTAssertEqual(current.exposure, 0.5)
+        XCTAssertTrue(current.localAdjustments.isEmpty)
+        XCTAssertEqual(try catalog.editHistory(photoID: "a").count, 1)
+        let workspace = try client.data(await client.call(.workspace))
+        XCTAssertEqual(workspace["undo_operation_id"], otherSave["operation_id"])
+    }
+
     @MainActor func testRotatedCanvasCropAndSpotTargetsShareTheNativeSourceCoordinates() async throws {
         let (catalog, folder) = try await catalog(ids: ["a"])
         let client = try await Client(catalog)

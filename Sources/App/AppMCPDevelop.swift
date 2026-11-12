@@ -58,6 +58,7 @@ extension MCPToolProblem {
     static let savedEditUnavailable = Self(code: "edit_record_unavailable", summary: "This saved edit is unavailable for the photo version.", next: "Read list_edit_records for the same photo.")
     static let stalePreset = Self(code: "stale_preset", summary: "The preset changed or was deleted.", next: "Read list_adjustment_presets for the current revision.")
     static let staleSnapshot = Self(code: "stale_snapshot", summary: "The snapshot changed or was deleted.", next: "Read list_edit_records with record_type=snapshots.")
+    static let staleDraft = Self(code: "stale_draft", summary: "The photo draft was changed or closed.", next: "Read photo_draft in get_workspace before continuing.")
     static let developUnavailable = Self(code: "view_unavailable", summary: "The requested action needs a ready canvas for this active photo.", next: "Use select_photos and set_workspace_view, then check get_workspace.")
 }
 
@@ -144,6 +145,29 @@ enum MCPDevelopPhoto {
     }
 }
 
+struct MCPPhotoDraft: Sendable {
+    struct Reference: Equatable, Sendable {
+        let id: String
+        let revision: Int
+    }
+
+    let id = UUID().uuidString
+    let photo: Photo
+    let baseline: EditRecipe
+    let rawDefaults: RAWDetailSettings?
+    var recipe: EditRecipe
+    var revision = 0
+
+    var reference: Reference { .init(id: id, revision: revision) }
+    var fields: [String: Value] { ["draft_id": .string(id), "draft_revision": .int(revision)] }
+    var data: [String: Value] { MCPDevelopPhoto.revisions(photo).merging(fields) { _, value in value } }
+
+    func matches(_ value: Photo) -> Bool {
+        photo.id == value.id && photo.revision == value.revision && photo.recipeRevision == value.recipeRevision
+            && photo.rootID == value.rootID && photo.relativePath == value.relativePath
+    }
+}
+
 extension AppMCPWorkflows {
     func readRecipe(_ args: Arguments, catalog: CatalogStore, session: String) async throws -> MCPToolResult {
         let roots = model.roots, pipeline = model.pipeline
@@ -183,8 +207,11 @@ extension AppMCPTools {
         case match(TotalExposureMatch)
         case canvas(CanvasRecipeEdit)
 
-        func result(on photo: Photo, root: StorageRoot, pipeline: ImagePipeline) async throws -> (EditRecipe?, [String], [String: Value]) {
-            let (original, defaults) = try await MCPDevelopPhoto.editRecipe(for: photo, root: root, pipeline: pipeline)
+        func result(on photo: Photo, root: StorageRoot, pipeline: ImagePipeline, draft: MCPPhotoDraft?) async throws -> (EditRecipe?, [String], [String: Value]) {
+            let original: EditRecipe
+            let defaults: RAWDetailSettings?
+            if let draft { (original, defaults) = (draft.recipe, draft.rawDefaults) }
+            else { (original, defaults) = try await MCPDevelopPhoto.editRecipe(for: photo, root: root, pipeline: pipeline) }
             var value = original
             var notes: [String] = []
             var details: [String: Value] = [:]
@@ -239,12 +266,65 @@ extension AppMCPTools {
     }
 
     func startCanvasEdit(_ tool: AppMCPTool, model: AppModel, catalog: CatalogStore, photo: Photo, title: String,
-                         preview: MCPCanvasPreview? = nil, beforeSave: @escaping () throws -> Void = {},
+                         preview: MCPCanvasPreview? = nil, draft: MCPPhotoDraft? = nil, beforeSave: @escaping () throws -> Void = {},
                          edit: @escaping CanvasRecipeEdit) -> MCPToolResult {
-        startRecipeEdit(tool, model: model, catalog: catalog, targets: [photo], title: title, beforeSave: {
-            if let preview { _ = try self.canvasPreview(.string(preview.id), catalog: catalog, photo: photo) }
+        startRecipeEdit(tool, model: model, catalog: catalog, targets: [photo], title: title, draft: draft, beforeSave: {
+            if let preview { _ = try self.canvasPreview(.string(preview.id), catalog: catalog, photo: photo, draft: draft?.reference) }
             try beforeSave()
         }) { .canvas(edit) }
+    }
+
+    func requestedDraft(_ args: [String: Value], photo: Photo? = nil) throws -> MCPPhotoDraft? {
+        guard args["draft_id"] != nil || args["draft_revision"] != nil else { return nil }
+        guard let id = args["draft_id"]?.stringValue, let revision = args["draft_revision"]?.intValue else {
+            throw MCPToolProblem.invalid("Supply both draft_id and draft_revision.")
+        }
+        guard let draft = photoDraft, draft.reference == .init(id: id, revision: revision) else { throw MCPToolProblem.staleDraft }
+        if let photo, !draft.matches(photo) { throw MCPToolProblem.stalePhoto }
+        return draft
+    }
+
+    func verifyPhotoDraft(_ reference: MCPPhotoDraft.Reference?) throws {
+        if let reference, photoDraft?.reference != reference { throw MCPToolProblem.staleDraft }
+    }
+
+    func writePhotoDraft(_ args: [String: Value], model: AppModel, catalog: CatalogStore) throws -> MCPToolResult {
+        if args["action"] == "begin" {
+            guard args["photo_id"] != nil, args["source_revision"] != nil, args["recipe_revision"] != nil,
+                  args["draft_id"] == nil, args["draft_revision"] == nil else {
+                throw MCPToolProblem.invalid("Begin with photo_id, source_revision and recipe_revision.")
+            }
+            if let draft = photoDraft {
+                throw MCPToolProblem(code: "draft_already_open", summary: "A photo draft is already open.",
+                                     next: "Commit or cancel that draft before opening another one.", details: draft.data)
+            }
+            let photo = try MCPDevelopPhoto.current(args, catalog: catalog)
+            guard photo.availability == "available", let root = model.roots.first(where: { $0.id == photo.rootID }) else { throw MCPToolProblem.fileAccess }
+            let pipeline = model.pipeline
+            return workflows.start(.editPhotoDraft) { [self] job in
+                let worker = Task.detached { try await MCPDevelopPhoto.editRecipe(for: photo, root: root, pipeline: pipeline) }
+                let (recipe, defaults) = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                try Task.checkCancellation()
+                try verifySavedCanvasRead(photo, catalog: catalog, model: model)
+                let draft = MCPPhotoDraft(photo: photo, baseline: recipe, rawDefaults: defaults, recipe: recipe)
+                photoDraft = draft
+                job.data.merge(draft.data) { _, value in value }
+                job.finish(.succeeded, "Opened a photo draft without saving an edit.")
+            }
+        }
+        guard args["photo_id"] == nil, args["source_revision"] == nil, args["recipe_revision"] == nil,
+              let draft = try requestedDraft(args) else { throw MCPToolProblem.invalid("Supply the current draft_id and draft_revision.") }
+        if args["action"] == "cancel" {
+            clearPhotoDraft()
+            return .init("Discarded the photo draft.", data: ["discarded": true, "commit_state": "not_committed"])
+        }
+        try verifySavedCanvasRead(draft.photo, catalog: catalog, model: model)
+        return startRecipeEdit(.editPhotoDraft, model: model, catalog: catalog, targets: [draft.photo],
+                               title: L10n.text("app.adjustPhoto", defaultValue: "Adjust Photo"),
+                               beforeSave: { try self.verifyPhotoDraft(draft.reference) },
+                               afterSave: { self.clearPhotoDraft() }) {
+            .canvas { _, original, _ in (draft.recipe == draft.baseline ? original : draft.recipe, [:]) }
+        }
     }
 
     func recordRecipeUndo(before: [Photo], after: [Photo]) -> Value {
@@ -363,10 +443,11 @@ extension AppMCPTools {
     }
 
     private func startRecipeEdit(_ tool: AppMCPTool, model: AppModel, catalog: CatalogStore, targets: [Photo], source: Photo? = nil,
-                                 title: String, beforeSave: @escaping () throws -> Void = {}, prepare: @escaping () async throws -> RecipeEdit) -> MCPToolResult {
+                                 title: String, draft: MCPPhotoDraft? = nil, beforeSave: @escaping () throws -> Void = {},
+                                 afterSave: @escaping () -> Void = {}, prepare: @escaping () async throws -> RecipeEdit) -> MCPToolResult {
         let roots = Dictionary(uniqueKeysWithValues: model.roots.map { ($0.id, $0) })
         let pipeline = model.pipeline
-        let singleEdit = tool.required.contains(.sourceRevision) || tool == .editLocalPreset
+        let singleEdit = tool.required.contains(.sourceRevision) || tool == .editLocalPreset || tool == .editPhotoDraft
         return workflows.start(tool) { [self] job in
             model.applyingAdjustments = true
             defer { model.applyingAdjustments = false }
@@ -380,7 +461,7 @@ extension AppMCPTools {
                 var item = MCPDevelopPhoto.revisions(photo)
                 do {
                     guard photo.availability == "available", let root = roots[photo.rootID] else { throw MCPToolProblem.fileAccess }
-                    let worker = Task.detached { try await edit.result(on: photo, root: root, pipeline: pipeline) }
+                    let worker = Task.detached { try await edit.result(on: photo, root: root, pipeline: pipeline, draft: draft) }
                     let (value, notes, details) = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                     if let value { changes.append((photo, value)) }
                     item["state"] = value == nil ? "unchanged" : "updated"
@@ -398,11 +479,27 @@ extension AppMCPTools {
             }
             try Task.checkCancellation()
             guard model.catalog === catalog, model.catalogSessionID == job.session else { throw MCPToolProblem.catalogChanged }
+            if var draft {
+                try verifyPhotoDraft(draft.reference)
+                try verifySavedCanvasRead(draft.photo, catalog: catalog, model: model)
+                try beforeSave()
+                if let change = changes.first {
+                    draft.recipe = change.recipe
+                    draft.revision += 1
+                    photoDraft = draft
+                }
+                job.data.merge(draft.data) { _, value in value }
+                job.data["changed_count"] = .int(changes.count)
+                job.items = items.map(Value.object)
+                job.finish(.succeeded, changes.isEmpty ? "The draft was unchanged." : "Updated the photo draft without saving an edit.")
+                return
+            }
             guard !model.dirty, model.undo.groupingLevel == 0, model.undo.isUndoRegistrationEnabled else { throw MCPToolProblem.nativeInteraction }
             try beforeSave()
             do {
                 try model.publishRecipeBatch(changes, title: title, catalog: catalog, expecting: targets + [source].compactMap { $0 }, closedUndo: true)
             } catch OrganizationError.versionConflict { throw MCPToolProblem.stalePhoto }
+            afterSave()
 
             let committed = changes.isEmpty ? "not_committed" : "committed"
             job.data["commit_state"] = .string(committed)

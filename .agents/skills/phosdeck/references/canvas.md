@@ -4,6 +4,13 @@ Read the target photo ID and both revisions. For positions, render `get_photo_pr
 
 For fine detail, request `resolution=native` with one normalized `region` or integer `region_pixels` rectangle and omit `long_edge`. The rectangle is in the full-resolution edited frame, including crop and orientation. Use `plan_only=true` to check `canvas_width`, `canvas_height`, the actual pixel rectangle and `fits` before requesting a PNG. For an oversized region, use `suggested_region_pixels` or request adjacent tiles within the reported limits. Use the rendered tile's `preview_id` for placement, and use the shorter of `source_width` and `source_height` to convert a source-pixel radius to the brush or repair fraction.
 
+## Try local edits before saving
+
+1. Use `edit_photo_draft(action=begin)` with the photo ID and saved source and recipe revisions. Poll `get_job` for `draft_id` and `draft_revision`. The draft stays in memory; `get_workspace.photo_draft` shows its current identity after reconnecting.
+2. Add both draft fields to `get_photo_preview`, `get_mask_state`, `get_spot_repairs`, `sample_preview` and the local editing calls. Use a plain editable draft PNG to place strokes, shapes or repair targets. For a repair with its source on another tile, fetch both tiles at the same draft revision. Use `mask_overlay` for coverage or `without_mask_id` to inspect the effect separately. Omit the draft fields to render the unchanged saved photo for comparison.
+3. After each trial job, use its current `draft_revision` and fetch a fresh editable PNG for the next placement. To revise a brush stroke, pass its returned `stroke_index` and a new path; to change radius or other brush settings only, omit the path and preview ID. Move a spot with `edit_spot_repair(action=move)` and resize with `action=set`. Render the same pixel rectangle again to check the result.
+4. When the result meets the requested edit, call `edit_photo_draft(action=commit)` with the current draft ID and revision and verify the saved state. A changed draft creates one history entry and undo action. Use `action=cancel` to discard it without saving. If the saved photo changes, discard the stale draft and start from the new version rather than overwriting it. Switching catalogs or stopping the server discards the draft.
+
 ## Geometry, sampling and repair
 
 - Use `preview_variant=crop_canvas` for `set_crop(action=set)` and for points on `edit_perspective_guides`. Set an aspect ratio or lock, rotate, unlock or reset it using the crop actions. `set_photo_geometry` patches rotation, straightening, flips and perspective. Positive turns rotate the visible canvas clockwise. Read the effective crop and the saved version from `get_job`.

@@ -20,41 +20,44 @@ private extension SpotRepair {
 extension AppMCPTools {
     func readSpots(_ args: [String: Value], model: AppModel, catalog: CatalogStore) async throws -> MCPToolResult {
         let photo = try MCPDevelopPhoto.current(args, catalog: catalog)
-        let preview = try args["preview_id"].map { try canvasPreview($0, catalog: catalog, photo: photo, variant: "saved") }
+        let draft = try requestedDraft(args, photo: photo)
+        let preview = try args["preview_id"].map { try canvasPreview($0, catalog: catalog, photo: photo, variant: "saved", draft: draft?.reference) }
         let requestedID = args["spot_id"]?.stringValue
         let offset = args["offset"]?.intValue ?? 0, pageSize = args["page_size"]?.intValue ?? 50
         guard requestedID == nil || (args["offset"] == nil && args["page_size"] == nil) else {
             throw MCPToolProblem.invalid("Use spot_id for one path, or offset and page_size for the list.")
         }
         let worker = Task.detached {
-            let saved = try photo.recipe.map { try MCPDevelopPhoto.decode($0, for: photo).repairs } ?? []
+            let repairs = try draft?.recipe.repairs ?? photo.recipe.map { try MCPDevelopPhoto.decode($0, for: photo).repairs } ?? []
             let spots: [SpotRepair]
             if let requestedID {
-                guard let repair = saved.first(where: { $0.id == UUID(uuidString: requestedID) }) else { throw MCPToolProblem.spotUnavailable }
+                guard let repair = repairs.first(where: { $0.id == UUID(uuidString: requestedID) }) else { throw MCPToolProblem.spotUnavailable }
                 spots = [repair]
-            } else { spots = Array(saved.dropFirst(offset).prefix(pageSize)) }
+            } else { spots = Array(repairs.dropFirst(offset).prefix(pageSize)) }
             let items = spots.map { $0.mcpValue(offset: preview?.spotOffsets[$0.id], includePath: requestedID != nil) }
-            let next = requestedID == nil && offset < saved.count - items.count ? offset + items.count : nil
-            return (items, next, saved.count)
+            let next = requestedID == nil && offset < repairs.count - items.count ? offset + items.count : nil
+            return (items, next, repairs.count)
         }
         let (items, next, count) = try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
         try verifySavedCanvasRead(photo, catalog: catalog, model: model)
-        if let preview { _ = try canvasPreview(.string(preview.id), catalog: catalog, photo: photo) }
-        var data = MCPDevelopPhoto.revisions(photo)
+        try verifyPhotoDraft(draft?.reference)
+        if let preview { _ = try canvasPreview(.string(preview.id), catalog: catalog, photo: photo, draft: draft?.reference) }
+        var data = draft?.data ?? MCPDevelopPhoto.revisions(photo)
         data["items"] = .array(items)
         data["total_count"] = .int(count)
         data["next_offset"] = next.map(Value.int) ?? .null
         data["coordinate_space"] = "oriented_source_normalized_top_left"
-        data["selected_spot_id"] = (model.activeID == photo.id ? model.selectedSpotID : nil).map { .string($0.uuidString) } ?? .null
-        return .init("Read the saved spot repairs.", data: data)
+        data["selected_spot_id"] = (draft == nil && model.activeID == photo.id ? model.selectedSpotID : nil).map { .string($0.uuidString) } ?? .null
+        return .init(draft == nil ? "Read the saved spot repairs." : "Read the draft spot repairs.", data: data)
     }
 
     func writeSpot(_ tool: AppMCPTool, args: [String: Value], photo: Photo, model: AppModel, catalog: CatalogStore) throws -> MCPToolResult {
         let action = args["action"]!.stringValue!
+        let draft = try requestedDraft(args, photo: photo)
         let id = args["spot_id"]?.stringValue.flatMap(UUID.init(uuidString:))
         let settings = Set(["spot_mode", "radius", "feather", "opacity", "enabled"])
         let provided = Set(args.keys).subtracting(["action", "catalog_session_id", "photo_id", "source_revision",
-                                                  "recipe_revision", "request_id", "request_epoch", "spot_id"])
+                                                  "recipe_revision", "request_id", "request_epoch", "spot_id", "draft_id", "draft_revision"])
         let allowed: Set<String> = switch action {
         case "add": settings.union(["preview_id", "point", "path", "source_point", "source_preview_id"])
         case "set": settings.union(["preview_id"])
@@ -68,6 +71,7 @@ extension AppMCPTools {
             throw MCPToolProblem.invalid("Supply spot_id for an existing repair and fields for the chosen action.")
         }
         if action == "select" {
+            guard draft == nil else { throw MCPToolProblem.invalid("Native spot selection is available on saved edits only.") }
             guard model.activeID == photo.id, model.active?.recipeRevision == photo.recipeRevision,
                   model.spotMode, let recipe = model.recipe, model.canEdit else {
                 throw MCPToolProblem.developUnavailable
@@ -85,14 +89,14 @@ extension AppMCPTools {
               action != "set" || !provided.isDisjoint(with: settings) else {
             throw MCPToolProblem.invalid("Add one point or path, move to a point, set a source_point, or change at least one brush setting.")
         }
-        let sourcePreview = try args["source_preview_id"].map { try canvasPreview($0, catalog: catalog, photo: photo, variant: "saved") }
+        let sourcePreview = try args["source_preview_id"].map { try canvasPreview($0, catalog: catalog, photo: photo, variant: "saved", draft: draft?.reference) }
         let requiresPreview = ["add", "move"].contains(action) || (action == "set_source" && sourcePreview == nil)
         let preview = try (requiresPreview || args["preview_id"] != nil)
-            ? canvasPreview(args["preview_id"], catalog: catalog, photo: photo, variant: "saved") : nil
+            ? canvasPreview(args["preview_id"], catalog: catalog, photo: photo, variant: "saved", draft: draft?.reference) : nil
         let mode = args["spot_mode"]?.stringValue.flatMap(SpotRepairMode.init(rawValue:))
         return startCanvasEdit(tool, model: model, catalog: catalog, photo: photo, title: L10n.text("app.spotRemoval", defaultValue: "Spot Removal"),
-                               preview: preview, beforeSave: {
-            if let sourcePreview { _ = try self.canvasPreview(.string(sourcePreview.id), catalog: catalog, photo: photo, variant: "saved") }
+                               preview: preview, draft: draft, beforeSave: {
+            if let sourcePreview { _ = try self.canvasPreview(.string(sourcePreview.id), catalog: catalog, photo: photo, variant: "saved", draft: draft?.reference) }
         }) { request, original, pipeline in
             var value = original
             let index = value.repairs.firstIndex(where: { $0.id == id })
@@ -142,7 +146,7 @@ extension AppMCPTools {
                 let current = repair.sourceOffset ?? preview?.spotOffsets[repair.id]
                 guard let next = try await pipeline.alternateSpotSource(request, selected: repair.id, avoiding: current) else {
                     throw MCPToolProblem(code: "spot_source_unavailable", summary: "No other complete nearby source was found.",
-                                         next: "Choose a source_point on a current saved preview.")
+                                         next: "Choose a source_point on a current preview of the same version.")
                 }
                 repair.sourceOffset = next
             }

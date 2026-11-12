@@ -68,11 +68,12 @@
 | `sample_preview`、`adjust_from_preview` | 绑定预览的坐标读 RGB／剪切。白平衡中性取样、亮度分区定位、直方图分区调节、HSL／黑白／曲线目标调整、紫边／绿边取样 | `DisplayPixelSampler`、`ToneSampling`、`TargetedEditing`、`DirectAdjustments`。透明像素及数据不可用沿用原生判断 |
 | `edit_point_color` | 点颜色添加／取样／选中、调整色相／饱和／亮度和范围、显示影响范围、重置及删除。返回采样与更新 | `PointColorEditing`、`PointColorPanel`。采样绑定当前渲染，修改使用配方事务 |
 | `get_mask_state`、`edit_mask_group`、`edit_mask_component` | 查询选区，新增、选择、复制、重命名、组合／反转、启用／禁用和删除组或组件。返回实际 ID、顺序、操作和可撤销结果 | `MaskEditing`、`MaskPanel`、`LocalAdjustment`、`MaskComponent`。组与组件按版本隔离 |
-| `apply_mask_brush_stroke`、`set_mask_shape`、`set_mask_range` | 画笔路径、大小、羽化、流量、密度、自动蒙版与擦除。线性／径向几何与控制点。颜色取样／增减和亮度上下限 | `maskPointer`、`sampleMaskColor`、`MaskGeometry`、`MaskPanel`。提取图像坐标动作，一次笔划或形状调整一次保存 |
+| `apply_mask_brush_stroke`、`set_mask_shape`、`set_mask_range` | 画笔路径、大小、羽化、流量、密度、自动蒙版与擦除。线性／径向几何与控制点。颜色取样／增减和亮度上下限 | `maskPointer`、`sampleMaskColor`、`MaskGeometry`、`MaskPanel`。图像坐标绑定当前预览，支持直接保存或先在草稿试画 |
 | `get_photo_preview`、`set_mask_display`、`set_local_adjustments` | 补齐局部放大和叠加预览，引导线、选区覆盖颜色和样式、查看有无局部效果。设置或重置蒙版强度与局部显影参数 | `PhotoCanvas`、`MaskPanel`、`beginMaskEffectPreview`／`endMaskEffectPreview`、`changeLocalDevelop`。查看与保存分开，局部参数重置保留选区 |
 | `transfer_local_adjustments`、`list_local_adjustment_presets`、`edit_local_adjustment_preset` | 复制／粘贴、列出／保存／应用／重命名／删除局部参数预设。返回参数或实际改动 | `MaskEditing`、`CatalogLocalPresets`。只改变局部参数，保留选区几何 |
 | `start_smart_mask`、`edit_smart_mask_selection`、`apply_smart_mask` | 对象点／框、增减提示及提示撤销、候选；人物单选／多选／全选、整人、部位、脸框与细化、拆分或合并。返回分析任务、当前候选、叠加预览及新增组件 | `SmartMaskEditing`、`SmartMaskEngine`。绑定候选代次、照片及配方，缺模型返回条件，取消复用任务接口 |
 | `get_spot_repairs`、`edit_spot_repair` | 查看和选中污点，点／路径、模式、半径／羽化／不透明度、移动、选择／重算来源、禁用和删除 | `SpotEditing`、`SpotRepair`。目标与采样源各自校验，回读实际 ID、来源和修订号 |
+| `edit_photo_draft` | 开始、提交或取消单张照片的试修。普通蒙版、局部参数和污点可共用一个草稿 | 用同一显影管线渲染草稿。提交时核对保存版本，只写一条历史并注册一次原生撤销 |
 | `set_canvas_guides` | 设置构图辅助线、裁剪引导及污点引导显示，返回当前显示状态 | `cycleCropGuide`、`PhotoCanvas`、`SpotPanel`。只改变显示 |
 
 对应回归包括 `PerspectiveTests`、`UprightTests`、`FlipTests`、`InspectionWorkflowTests`、`TargetedAdjustmentTests`、`DirectAdjustmentTests`、`PointColorTests`、`ManualDefringeTests`、`MaskingTests`、`SmartMaskTests`、`LocalParameterPresetTests` 和 `SpotRepairTests`。关键验收用有方向标记的合成图核对 Agent 输入的位置和原生结果。
@@ -200,7 +201,7 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 | 工具 | 输入 | `data` 与主要原生入口 |
 |---|---|---|
 | `get_capabilities` | `{}` | 应用名称、版本、bundle ID、`instance_id`、各已注册工具的当前可用性及原因，图像共享状态。取自 `Bundle`、服务设置及 `AppModel` 的可用条件 |
-| `get_workspace` | `{}` | `catalog_session_id`、`request_epoch`、图库显示名、当前来源和查询、视图和工具、活动 `photo_id` 与修订号、选择数量及最多 50 个 ID、是否截断、任务和草稿状态。无图库时会话和活动照片为空，仍可读取服务状态。取自 `AppModel`，完整选择用 `list_selected_photos` 分页 |
+| `get_workspace` | `{}` | `catalog_session_id`、`request_epoch`、图库显示名、当前来源和查询、视图和工具、活动 `photo_id` 与修订号、选择数量及最多 50 个 ID、是否截断、任务和原生编辑状态。MCP 试修单独返回 `photo_draft`，为空表示没有草稿。完整选择用 `list_selected_photos` 分页 |
 | `list_photos` | `catalog_session_id`，可选 `cursor`、`page_size`、`listing` | `items`、`matched_count`、`visible_count`、`next_cursor`。每项含 `photo_id`、名称、版本、源与配方修订号、拍摄信息、评级、旗标、色标、源可用性和堆叠信息。使用 `CatalogStore.page`，返回稳定的排序和分页状态 |
 | `get_photo_preview` | `catalog_session_id`、`photo_id`、`source_revision`、`recipe_revision`，支持缩放预览、[1:1 局部预览和尺寸检查](#画布几何和局部编辑接口) | `preview_id`、目标身份、原分辨率画布与实际图像尺寸、坐标空间与直方图，另附 PNG。使用 `CatalogStore.photo`、`ImageRequest` 和 `ImagePipeline.render`，校验图像共享、来源及版本 |
 | `set_photo_rating` | `catalog_session_id`、`photo_id`、`expected_rating`、`rating`（两种评级均为 0 至 5 的整数）、`request_epoch`、`request_id` | `photo_id`、`previous_rating`、`rating`、`changed`、`commit_state`、`operation_id`。复用 `AppModel.updateOrganization` 的保存和回读。MCP 明确指定目标，事务校验期望评级，并关闭自动前进 |
@@ -261,6 +262,10 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 `set_photo_geometry` 可更新旋转、拉直、翻转与透视。`solve_perspective` 返回原生自动求解状态。在活动照片的裁剪工作区编辑参考线，回读有效线、求解状态和已应用参数。`sample_preview` 返回图像 RGB 与剪切标记，或读取当前显影的亮度分区。`adjust_from_preview` 和 `edit_point_color` 使用原生浮点取样。`get_spot_repairs` 返回已保存的目标与采样源，可按 ID 读完整路径。`edit_spot_repair` 支持整笔提交与单独换源。用 `source_preview_id` 可在同一照片修订的另一块局部预览中指定采样点。画笔和污点半径按 `source_width` 和 `source_height` 中较短的一边计算。
 
 `get_mask_state` 按照片版本返回组，指定组和组件 ID 后读取细节。画笔、渐变和颜色／亮度范围可分别编辑。用 `get_photo_preview(mask_overlay={mask_id,style,color})` 读取覆盖图，或用 `without_mask_id` 对比临时隐藏的局部效果。`set_mask_display` 控制活动窗口的覆盖图和引导线。局部参数编辑、传递及应用局部预设保留目标选区，按实际保存修订返回原生撤销标识。
+
+用 `edit_photo_draft(action=begin)` 和明确的照片 ID、源和配方修订号开始试修。从 `get_job` 取回 `draft_id`、`draft_revision`，把它们与原保存版本的身份一起传给预览、蒙版或污点工具。每次试修后从任务结果取最新草稿修订；用同一 `region_pixels` 重取 1:1 PNG 对比，也可以叠加蒙版或临时隐藏其效果。目标和跨块采样源必须来自同一草稿修订的可编辑预览。修改笔划时传入上一次返回的 `stroke_index`，可用当前预览换路径，也可省略路径和预览只改笔刷大小等参数。省略草稿字段即可单独读取原保存版本。
+
+当前图库会话保留一个内存草稿；反复试修不会改变保存版本、原片、编辑历史或撤销栈。`action=commit` 使用当前草稿 ID 和修订保存，有变化时整份草稿只写一条编辑历史并返回原生撤销标识。`action=cancel` 丢弃草稿；切换图库或停止服务也会丢弃。期间若保存版本变化，提交会拒绝覆盖；可取消后从最新版本重新试修。
 
 智能蒙版在活动照片的蒙版工作区运行。`get_capabilities` 的 `smart_mask_models` 返回本机可用能力。调用 `start_smart_mask` 后用 `get_job` 查询分析，`get_mask_state` 返回选择修订、候选、人物、部位、脸框和失败原因。编辑或提交使用当前 `smart_session_id` 和 `selection_revision`。用 `smart_overlay` 查看指定候选或已选覆盖，用 `apply_smart_mask` 按原生分组提交。运行中的分析可由 `cancel_job` 取消，空闲会话可在选择工具中取消。
 
