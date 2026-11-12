@@ -14,6 +14,12 @@ enum MCPCanvasFields {
     }()
     static let rectSchema: Value = ["type": "object", "properties": ["x": unit, "y": unit, "width": unit, "height": unit],
                                     "required": ["x", "y", "width", "height"], "additionalProperties": false]
+    static let pixelRectSchema: Value = {
+        let edge = Int(PhotoGeometry.maximumDimension)
+        let origin = MCPOutputSchema.integer(0...edge), size = MCPOutputSchema.integer(1...edge)
+        return ["type": "object", "properties": ["x": origin, "y": origin, "width": size, "height": size],
+                "required": ["x", "y", "width", "height"], "additionalProperties": false]
+    }()
     static let histogramRegions = ["blacks", "shadows", "exposure", "highlights", "whites"]
     static let perspectiveSchema = patch([
         "horizontal": MCPDevelopParameters.numberSchema(-100...100), "vertical": MCPDevelopParameters.numberSchema(-100...100),
@@ -47,6 +53,18 @@ enum MCPCanvasFields {
     static func rectValue(_ rect: CGRect) -> Value {
         ["x": .double(rect.minX), "y": .double(rect.minY), "width": .double(rect.width), "height": .double(rect.height)]
     }
+    static func pixelRect(_ value: Value) -> CGRect? {
+        let limit = Int(PhotoGeometry.maximumDimension)
+        guard let fields = value.objectValue, fields.count == 4,
+              let x = fields["x"]?.intValue, (0...limit).contains(x),
+              let y = fields["y"]?.intValue, (0...limit).contains(y),
+              let width = fields["width"]?.intValue, (1...limit).contains(width),
+              let height = fields["height"]?.intValue, (1...limit).contains(height) else { return nil }
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+    static func pixelRectValue(_ rect: CGRect) -> Value {
+        ["x": .int(Int(rect.minX)), "y": .int(Int(rect.minY)), "width": .int(Int(rect.width)), "height": .int(Int(rect.height))]
+    }
     static func pointValue(_ point: MaskPoint) -> Value { ["x": .double(point.x), "y": .double(1 - point.y)] }
 
     static func geometry(_ recipe: EditRecipe, size: CGSize? = nil) -> Value {
@@ -72,6 +90,50 @@ enum MCPCanvasFields {
         for (name, key) in pointColorFields {
             if let value = fields[name]?.number { sample[keyPath: key] = value }
         }
+    }
+}
+
+struct MCPNativePreviewRegion {
+    static let maximumEdge = 2048
+    static let maximumPixels = 1024 * 1024
+    let canvas: CGSize
+    let pixels: CGRect
+
+    static func resolve(canvas: CGSize, region: CGRect?, pixelRegion: CGRect?) throws -> Self {
+        let frame = CGRect(origin: .zero, size: canvas)
+        let pixels = pixelRegion ?? region.map {
+            $0.applying(CGAffineTransform(scaleX: canvas.width, y: canvas.height)).integral.intersection(frame)
+        } ?? frame
+        guard !pixels.isEmpty, frame.contains(pixels) else {
+            throw MCPToolProblem(code: "preview_region_outside_canvas", summary: "The pixel region extends outside the edited frame.",
+                                 next: "Choose a region within the reported canvas dimensions.",
+                                 details: ["canvas_width": .int(Int(canvas.width)), "canvas_height": .int(Int(canvas.height))])
+        }
+        return Self(canvas: canvas, pixels: pixels)
+    }
+
+    var normalized: CGRect {
+        pixels.applying(CGAffineTransform(scaleX: 1 / canvas.width, y: 1 / canvas.height))
+    }
+    var fits: Bool {
+        max(pixels.width, pixels.height) <= Double(Self.maximumEdge) && pixels.width * pixels.height <= Double(Self.maximumPixels)
+    }
+    var data: [String: Value] {
+        var result: [String: Value] = [
+            "resolution": "native", "canvas_width": .int(Int(canvas.width)), "canvas_height": .int(Int(canvas.height)),
+            "width": .int(Int(pixels.width)), "height": .int(Int(pixels.height)), "region": MCPCanvasFields.rectValue(normalized),
+            "region_pixels": MCPCanvasFields.pixelRectValue(pixels), "fits": .bool(fits),
+            "max_long_edge": .int(Self.maximumEdge), "max_pixels": .int(Self.maximumPixels)
+        ]
+        if !fits {
+            let scale = min(Double(Self.maximumEdge) / max(pixels.width, pixels.height),
+                            sqrt(Double(Self.maximumPixels) / (pixels.width * pixels.height)))
+            let width = max(1, floor(pixels.width * scale)), height = max(1, floor(pixels.height * scale))
+            let suggestion = CGRect(x: floor(pixels.midX - width / 2), y: floor(pixels.midY - height / 2),
+                                    width: width, height: height)
+            result["suggested_region_pixels"] = MCPCanvasFields.pixelRectValue(suggestion)
+        }
+        return result
     }
 }
 
@@ -160,7 +222,7 @@ extension AppMCPTool {
         case .spotRepairs:
             ("Page through saved clone, heal and remove repairs for this photo version. Supply spot_id for the full path and a saved preview_id to read a rendered automatic source.", "items, next_offset, selected_spot_id and photo revisions")
         case .editSpot:
-            ("Add a point or path, move a target, or set a source_point on a current saved preview. Edit brush settings, select, refresh an alternative source, return to automatic source, or delete by spot_id.", "job_id or native spot selection")
+            ("Add a point or path, move a target, or set a source_point on a current saved preview. Supply source_preview_id to pick the source from a different saved preview of the same photo revision. Edit brush settings, select, refresh an alternative source, return to automatic source, or delete by spot_id.", "job_id or native spot selection")
         default: nil
         }
     }

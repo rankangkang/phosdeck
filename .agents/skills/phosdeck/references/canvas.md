@@ -2,12 +2,14 @@
 
 Read the target photo ID and both revisions. For positions, render `get_photo_preview` and use coordinates normalized to the returned PNG's top-left origin. Convert pixel centers with `(pixel + 0.5) / dimension`. A `region` request returns its actual pixel-aligned bounds in the full preview. Coordinates for the next action are relative to the returned detail PNG. Use the new recipe revision and a fresh preview after a save.
 
+For fine detail, request `resolution=native` with one normalized `region` or integer `region_pixels` rectangle and omit `long_edge`. The rectangle is in the full-resolution edited frame, including crop and orientation. Use `plan_only=true` to check `canvas_width`, `canvas_height`, the actual pixel rectangle and `fits` before requesting a PNG. For an oversized region, use `suggested_region_pixels` or request adjacent tiles within the reported limits. Use the rendered tile's `preview_id` for placement, and use the shorter of `source_width` and `source_height` to convert a source-pixel radius to the brush or repair fraction.
+
 ## Geometry, sampling and repair
 
 - Use `preview_variant=crop_canvas` for `set_crop(action=set)` and for points on `edit_perspective_guides`. Set an aspect ratio or lock, rotate, unlock or reset it using the crop actions. `set_photo_geometry` patches rotation, straightening, flips and perspective. Positive turns rotate the visible canvas clockwise. Read the effective crop and the saved version from `get_job`.
 - Use `solve_perspective` for automatic correction. For guides, select the target and enter `set_workspace_view(view=develop, tool=crop)`. Begin the guide tool, add or move endpoints, and read the current guide state before finishing. The native solver may require more lines or report that a proposed correction is unsupported.
 - `sample_preview` reads RGB and clipping from the returned PNG. Luminance zones, targeted adjustments and new point-color samples use a default saved preview with `editable_canvas=true`. Use `adjust_from_preview` for white balance, histogram, HSL, monochrome mixer, curves and defringe. `edit_point_color` returns the saved sample ID for later changes.
-- Use `get_spot_repairs` for IDs and the source-space targets. Read one repair with `spot_id` for its full path. To add a repair, supply a point or path and optionally a `source_point` on the same saved preview. Subsequent actions can move the target, set or refresh its source, use automatic source selection, or edit its brush settings.
+- Use `get_spot_repairs` for IDs and the source-space targets. Read one repair with `spot_id` for its full path. To add a repair, supply a point or path and optionally a `source_point`. Use `source_preview_id` when the source point is on a different saved preview of the same photo revision. Subsequent actions can move the target, set or refresh its source, use automatic source selection, or edit its brush settings.
 
 ## Masks and local parameters
 

@@ -56,10 +56,10 @@ extension AppMCPTools {
         let provided = Set(args.keys).subtracting(["action", "catalog_session_id", "photo_id", "source_revision",
                                                   "recipe_revision", "request_id", "request_epoch", "spot_id"])
         let allowed: Set<String> = switch action {
-        case "add": settings.union(["preview_id", "point", "path", "source_point"])
+        case "add": settings.union(["preview_id", "point", "path", "source_point", "source_preview_id"])
         case "set": settings.union(["preview_id"])
         case "move": ["preview_id", "point"]
-        case "set_source": ["preview_id", "source_point"]
+        case "set_source": ["preview_id", "source_point", "source_preview_id"]
         case "refresh_source": ["preview_id"]
         default: []
         }
@@ -81,15 +81,19 @@ extension AppMCPTools {
         let source = args["source_point"].flatMap(MCPCanvasFields.point)
         guard action != "add" || (point == nil) != (path == nil),
               action != "move" || point != nil, action != "set_source" || source != nil,
+              args["source_preview_id"] == nil || source != nil,
               action != "set" || !provided.isDisjoint(with: settings) else {
             throw MCPToolProblem.invalid("Add one point or path, move to a point, set a source_point, or change at least one brush setting.")
         }
-        let requiresPreview = ["add", "move", "set_source"].contains(action)
+        let sourcePreview = try args["source_preview_id"].map { try canvasPreview($0, catalog: catalog, photo: photo, variant: "saved") }
+        let requiresPreview = ["add", "move"].contains(action) || (action == "set_source" && sourcePreview == nil)
         let preview = try (requiresPreview || args["preview_id"] != nil)
             ? canvasPreview(args["preview_id"], catalog: catalog, photo: photo, variant: "saved") : nil
         let mode = args["spot_mode"]?.stringValue.flatMap(SpotRepairMode.init(rawValue:))
         return startCanvasEdit(tool, model: model, catalog: catalog, photo: photo, title: L10n.text("app.spotRemoval", defaultValue: "Spot Removal"),
-                               preview: preview) { request, original, pipeline in
+                               preview: preview, beforeSave: {
+            if let sourcePreview { _ = try self.canvasPreview(.string(sourcePreview.id), catalog: catalog, photo: photo, variant: "saved") }
+        }) { request, original, pipeline in
             var value = original
             let index = value.repairs.firstIndex(where: { $0.id == id })
             if action == "delete" {
@@ -121,8 +125,8 @@ extension AppMCPTools {
             if let opacity = args["opacity"]?.number { repair.opacity = opacity }
             if let enabled = args["enabled"]?.boolValue { repair.enabled = enabled }
             let target = repair.points[0]
-            if let source, let preview {
-                let position = try preview.sourcePoint(source, recipe: original)
+            if let source, let sourceCanvas = sourcePreview ?? preview {
+                let position = try sourceCanvas.sourcePoint(source, recipe: original)
                 repair.sourceOffset = MaskPoint(position.x - target.x, position.y - target.y)
             } else if action == "add" {
                 let rank = try await pipeline.linearRank(request)

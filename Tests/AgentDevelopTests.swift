@@ -1,3 +1,4 @@
+import ImageIO
 import MCP
 import XCTest
 @testable import Phosdeck
@@ -71,7 +72,8 @@ final class AgentDevelopTests: XCTestCase {
         }
     }
 
-    private func catalog(ids: [String] = ["a", "b"], withRecipes: Bool = true) async throws -> (CatalogStore, URL) {
+    private func catalog(ids: [String] = ["a", "b"], withRecipes: Bool = true,
+                         width: Int = 128, height: Int = 96, transparency: Bool = false) async throws -> (CatalogStore, URL) {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("phosdeck-mcp-develop-" + UUID().uuidString)
         let catalog = try CatalogStore(directory: folder.appendingPathComponent("catalog"))
         addTeardownBlock {
@@ -82,7 +84,7 @@ final class AgentDevelopTests: XCTestCase {
         let pipeline = ImagePipeline()
         for (index, id) in ids.enumerated() {
             let url = folder.appendingPathComponent(id + ".png")
-            try PNGFixture.data(width: 128, height: 96, transparency: false).write(to: url)
+            try PNGFixture.data(width: width, height: height, transparency: transparency).write(to: url)
             var photo = try ReferenceImporter.inspect(url: url, root: root, rootURL: folder)
             photo.id = id
             photo.metadata = try JSONEncoder().encode(PhotoMetadata(iso: 100, aperture: 4, exposureTime: 0.01 / pow(2, Double(index))))
@@ -170,6 +172,103 @@ final class AgentDevelopTests: XCTestCase {
         client.error(await client.call(.samplePreview, sampleArgs), "stale_preview")
     }
 
+    @MainActor func testNativePreviewPlansBoundsAndReturnsFullResolutionPixels() async throws {
+        let (catalog, _) = try await catalog(ids: ["a"], width: 3072, height: 1152, transparency: true)
+        let client = try await Client(catalog)
+        var recipe = try client.recipe("a")
+        recipe.quarterTurns = 1
+        recipe.flipVertical = true
+        recipe.crop = Crop(x: 0.0625, y: 0.0625, width: 0.875, height: 0.875)
+        recipe.perspective.horizontal = 12
+        recipe.perspective.constrainCrop = false
+        recipe.grain = FilmGrain(amount: 46, size: 37, roughness: 42, seed: 12)
+        try catalog.saveRecipe(id: "a", recipe: recipe)
+        let native = try client.edits("a", ["resolution": "native"])
+        client.error(await client.call(.preview, native.merging(["plan_only": true]) { _, value in value }), "image_access_disabled")
+        client.tools.setSharesImages(true)
+
+        let planResult = await client.call(.preview, native.merging(["plan_only": true]) { _, value in value })
+        let plan = try client.data(planResult)
+        XCTAssertEqual(plan["canvas_width"], 1008)
+        XCTAssertEqual(plan["canvas_height"], 2688)
+        XCTAssertEqual(plan["fits"], false)
+        XCTAssertNil(plan["preview_id"])
+        XCTAssertEqual(planResult.content.count, 1)
+        client.error(await client.call(.preview, native.merging([
+            "region_pixels": try XCTUnwrap(plan["region_pixels"])
+        ]) { _, value in value }), "preview_region_too_large")
+        let suggested = try client.data(await client.call(.preview, native.merging([
+            "region_pixels": try XCTUnwrap(plan["suggested_region_pixels"]), "plan_only": true
+        ]) { _, value in value }))
+        XCTAssertEqual(suggested["fits"], true)
+        client.error(await client.call(.preview, native.merging([
+            "region_pixels": ["x": 1007, "y": 0, "width": 2, "height": 2]
+        ]) { _, value in value }), "preview_region_outside_canvas")
+        client.error(await client.call(.preview, native.merging([
+            "region_pixels": ["x": 0, "y": 0, "width": 16, "height": 16], "long_edge": 128
+        ]) { _, value in value }), "invalid_arguments")
+
+        let result = await client.call(.preview, native.merging([
+            "region": ["x": 0.125, "y": 0.0625, "width": 0.0625, "height": 0.0625]
+        ]) { _, value in value })
+        let tile = try client.data(result)
+        XCTAssertEqual(tile["region_pixels"], ["x": 126, "y": 168, "width": 63, "height": 168])
+        XCTAssertEqual(tile["editable_canvas"], true)
+        guard case .image(let bytes, "image/png", _, _) = result.content.last else { return XCTFail("Missing native PNG") }
+        let png = try XCTUnwrap(Data(base64Encoded: bytes))
+        let decoded = try XCTUnwrap(CGImageSourceCreateWithData(png as CFData, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(decoded, 0, nil))
+        XCTAssertEqual(image.width, 63)
+        XCTAssertEqual(image.height, 168)
+        let photo = try XCTUnwrap(catalog.photo("a"))
+        let root = try XCTUnwrap(catalog.roots().first { $0.id == photo.rootID })
+        let full = try await ImagePipeline().render(.init(photo: photo, root: root, recipe: recipe), longEdge: nil)
+        let expected = try XCTUnwrap(full.image.cropping(to: CGRect(x: 126, y: 168, width: 63, height: 168)))
+        let tileSampler = DisplayPixelSampler(image: image), fullSampler = DisplayPixelSampler(image: expected)
+        for row in 0..<image.height {
+            for column in 0..<image.width {
+                let x = (Double(column) + 0.5) / Double(image.width), y = (Double(row) + 0.5) / Double(image.height)
+                let actual = try XCTUnwrap(tileSampler.sample(topLeftX: x, y: y))
+                let reference = try XCTUnwrap(fullSampler.sample(topLeftX: x, y: y))
+                guard [actual.red, actual.green, actual.blue, actual.alpha] == [reference.red, reference.green, reference.blue, reference.alpha]
+                else { return XCTFail("Pixel differs from full-resolution render at \(column), \(row)") }
+            }
+        }
+    }
+
+    @MainActor func testNativePreviewRepairUsesTheTargetTileAndADifferentSourceTile() async throws {
+        let (catalog, _) = try await catalog(ids: ["a"])
+        let client = try await Client(catalog)
+        client.tools.setSharesImages(true)
+        let targetArgs: [String: Value] = ["resolution": "native", "region_pixels": ["x": 16, "y": 20, "width": 12, "height": 12]]
+        let targetResult = await client.call(.preview, try client.edits("a", targetArgs))
+        let targetID = try XCTUnwrap(client.data(targetResult)["preview_id"])
+        let source = try client.data(await client.call(.preview, client.edits("a", [
+            "resolution": "native", "region_pixels": ["x": 42, "y": 52, "width": 12, "height": 12]
+        ])))
+        let sourceID = try XCTUnwrap(source["preview_id"])
+        let center: Value = ["x": 0.5, "y": 0.5]
+        let saved = try await client.job(await client.call(.editSpot, client.edits("a", [
+            "action": "add", "spot_mode": "clone", "preview_id": targetID, "point": center,
+            "source_preview_id": sourceID, "source_point": center, "radius": 0.08, "feather": 0
+        ])))
+        XCTAssertEqual(saved["commit_state"], "committed")
+        let repair = try XCTUnwrap(client.recipe("a").repairs.first)
+        let point = try XCTUnwrap(repair.points.first)
+        let sourceOffset = try XCTUnwrap(repair.sourceOffset)
+        XCTAssertEqual(point.x, 54.0 / 128, accuracy: 1e-12)
+        XCTAssertEqual(point.y, 1 - 26.0 / 96, accuracy: 1e-12)
+        XCTAssertEqual(sourceOffset.x, 26.0 / 128, accuracy: 1e-12)
+        XCTAssertEqual(sourceOffset.y, -32.0 / 96, accuracy: 1e-12)
+        let updated = await client.call(.preview, try client.edits("a", targetArgs))
+        XCTAssertEqual(try client.data(updated)["region_pixels"], targetArgs["region_pixels"])
+        XCTAssertNotEqual(updated.content.last, targetResult.content.last)
+        client.error(await client.call(.editSpot, try client.edits("a", [
+            "action": "set_source", "spot_id": .string(repair.id.uuidString),
+            "source_preview_id": sourceID, "source_point": center
+        ])), "stale_preview")
+    }
+
     @MainActor func testRotatedCanvasCropAndSpotTargetsShareTheNativeSourceCoordinates() async throws {
         let (catalog, folder) = try await catalog(ids: ["a"])
         let client = try await Client(catalog)
@@ -246,20 +345,25 @@ final class AgentDevelopTests: XCTestCase {
         let created = try XCTUnwrap(client.recipe("a").localAdjustments.first)
         let mask: Value = .string(created.id.uuidString)
         let component: Value = .string(created.components[0].id.uuidString)
-        let preview = try client.data(await client.call(.preview, client.edits("a", ["long_edge": 128])))
+        let preview = try client.data(await client.call(.preview, client.edits("a", [
+            "resolution": "native", "region_pixels": ["x": 16, "y": 32, "width": 32, "height": 32]
+        ])))
         let position: Value = ["x": 0.5, "y": 0.5]
         let stroke = try await client.job(await client.call(.brushStroke, client.edits("a", [
             "mask_id": mask, "component_id": component, "preview_id": try XCTUnwrap(preview["preview_id"]), "path": .array([position]),
             "flow": 1, "radius": 0.12, "feather": 0.2])))
         XCTAssertEqual(stroke["commit_state"], "committed")
         let drawn = try XCTUnwrap(client.recipe("a").localAdjustments.first)
-        XCTAssertEqual(drawn.components[0].strokes[0].points, [MaskPoint(0.5, 0.5)])
+        let point = try XCTUnwrap(drawn.components.first?.strokes.first?.points.first)
+        XCTAssertEqual(point.x, 0.5, accuracy: 1e-12)
+        XCTAssertEqual(point.y, 0.5, accuracy: 1e-12)
         let overlay = try client.data(await client.call(.preview, client.edits("a", [
-            "long_edge": 128, "mask_overlay": ["mask_id": mask, "style": "monochrome"]])))
+            "resolution": "native", "region_pixels": ["x": 24, "y": 40, "width": 32, "height": 32],
+            "mask_overlay": ["mask_id": mask, "style": "monochrome"]])))
         let overlayID = try XCTUnwrap(overlay["preview_id"])
         XCTAssertEqual(overlay["editable_canvas"], false)
-        let inside = try client.data(await client.call(.samplePreview, ["preview_id": overlayID, "point": position]))
-        let outside = try client.data(await client.call(.samplePreview, ["preview_id": overlayID, "point": ["x": 0.1, "y": 0.1]]))
+        let inside = try client.data(await client.call(.samplePreview, ["preview_id": overlayID, "point": ["x": 0.25, "y": 0.25]]))
+        let outside = try client.data(await client.call(.samplePreview, ["preview_id": overlayID, "point": ["x": 0.9, "y": 0.9]]))
         XCTAssertGreaterThan(try XCTUnwrap(inside["rgba"]?.arrayValue?.first?.intValue), 220)
         XCTAssertLessThan(try XCTUnwrap(outside["rgba"]?.arrayValue?.first?.intValue), 5)
         client.error(await client.call(.brushStroke, try client.edits("a", [

@@ -202,7 +202,7 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 | `get_capabilities` | `{}` | 应用名称、版本、bundle ID、`instance_id`、各已注册工具的当前可用性及原因，图像共享状态。取自 `Bundle`、服务设置及 `AppModel` 的可用条件 |
 | `get_workspace` | `{}` | `catalog_session_id`、`request_epoch`、图库显示名、当前来源和查询、视图和工具、活动 `photo_id` 与修订号、选择数量及最多 50 个 ID、是否截断、任务和草稿状态。无图库时会话和活动照片为空，仍可读取服务状态。取自 `AppModel`，完整选择用 `list_selected_photos` 分页 |
 | `list_photos` | `catalog_session_id`，可选 `cursor`、`page_size`、`listing` | `items`、`matched_count`、`visible_count`、`next_cursor`。每项含 `photo_id`、名称、版本、源与配方修订号、拍摄信息、评级、旗标、色标、源可用性和堆叠信息。使用 `CatalogStore.page`，返回稳定的排序和分页状态 |
-| `get_photo_preview` | `catalog_session_id`、`photo_id`、`source_revision`、`recipe_revision`，可选 `long_edge` | `preview_id`、目标身份、实际图像尺寸、坐标空间与直方图，另附 PNG。使用 `CatalogStore.photo`、`ImageRequest` 和 `ImagePipeline.render`，校验图像共享、来源及版本 |
+| `get_photo_preview` | `catalog_session_id`、`photo_id`、`source_revision`、`recipe_revision`，支持缩放预览、[1:1 局部预览和尺寸检查](#画布几何和局部编辑接口) | `preview_id`、目标身份、原分辨率画布与实际图像尺寸、坐标空间与直方图，另附 PNG。使用 `CatalogStore.photo`、`ImageRequest` 和 `ImagePipeline.render`，校验图像共享、来源及版本 |
 | `set_photo_rating` | `catalog_session_id`、`photo_id`、`expected_rating`、`rating`（两种评级均为 0 至 5 的整数）、`request_epoch`、`request_id` | `photo_id`、`previous_rating`、`rating`、`changed`、`commit_state`、`operation_id`。复用 `AppModel.updateOrganization` 的保存和回读。MCP 明确指定目标，事务校验期望评级，并关闭自动前进 |
 | `undo_operation` | `catalog_session_id`、`operation_id`、`request_epoch`、`request_id` | 被撤销的 `operation_id`、已核对的恢复结果及 `commit_state`。复用 `AppModel.undo`，栈顶身份或当前值冲突返回 `undo_conflict` |
 
@@ -256,7 +256,9 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 `get_photo_preview` 支持 `region` 局部预览。`preview_variant=crop_canvas` 返回裁剪工具所用的完整几何画布，供 `set_crop` 设置矩形及 `edit_perspective_guides` 设置参考线。默认保存预览用于显影取样、污点及蒙版操作。用 `editable_canvas` 判断预览是否可供编辑。换版、保存或关闭图像共享后重新获取预览和修订。区域内的坐标以返回的 PNG 为准。
 
-`set_photo_geometry` 可更新旋转、拉直、翻转与透视。`solve_perspective` 返回原生自动求解状态。在活动照片的裁剪工作区编辑参考线，回读有效线、求解状态和已应用参数。`sample_preview` 返回图像 RGB 与剪切标记，或读取当前显影的亮度分区。`adjust_from_preview` 和 `edit_point_color` 使用原生浮点取样。`get_spot_repairs` 返回已保存的目标与采样源，可按 ID 读完整路径。`edit_spot_repair` 支持整笔提交与单独换源。
+`resolution=native` 请求 1:1 局部 PNG。用左上角为原点的归一化 `region` 或整数 `region_pixels` 框选，省略 `long_edge`。像素坐标以当前预览版本的原分辨率画布为准，画布包含该版本的旋转、翻转、裁剪和透视结果。响应给出 `canvas_width`、`canvas_height` 和实际像素框。每块最长边为 2048 像素，总面积至多 1,048,576 像素。用 `plan_only=true` 查看尺寸、`fits` 和建议框，此时可省略区域以查询整个画布。渲染请求超限时返回 `preview_region_too_large` 和 `suggested_region_pixels`，可缩小或按相邻像素框分块读取。取图使用原生显影管线，只编码选区，部分显影步骤仍需整图计算。
+
+`set_photo_geometry` 可更新旋转、拉直、翻转与透视。`solve_perspective` 返回原生自动求解状态。在活动照片的裁剪工作区编辑参考线，回读有效线、求解状态和已应用参数。`sample_preview` 返回图像 RGB 与剪切标记，或读取当前显影的亮度分区。`adjust_from_preview` 和 `edit_point_color` 使用原生浮点取样。`get_spot_repairs` 返回已保存的目标与采样源，可按 ID 读完整路径。`edit_spot_repair` 支持整笔提交与单独换源。用 `source_preview_id` 可在同一照片修订的另一块局部预览中指定采样点。画笔和污点半径按 `source_width` 和 `source_height` 中较短的一边计算。
 
 `get_mask_state` 按照片版本返回组，指定组和组件 ID 后读取细节。画笔、渐变和颜色／亮度范围可分别编辑。用 `get_photo_preview(mask_overlay={mask_id,style,color})` 读取覆盖图，或用 `without_mask_id` 对比临时隐藏的局部效果。`set_mask_display` 控制活动窗口的覆盖图和引导线。局部参数编辑、传递及应用局部预设保留目标选区，按实际保存修订返回原生撤销标识。
 

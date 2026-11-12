@@ -93,10 +93,12 @@ enum AppMCPTool: String, CaseIterable {
         case presetID = "preset_id", presetRevision = "preset_revision", snapshotRevision = "snapshot_revision"
         case presetGroup = "preset_group", favorite, favoritesOnly = "favorites_only", previewVariant = "preview_variant", beforeLayout = "before_layout"
         case previewID = "preview_id", region, point, rect, aspectRatio = "aspect_ratio", turns
+        case resolution, regionPixels = "region_pixels", planOnly = "plan_only"
         case straighten, flipHorizontal = "flip_horizontal", flipVertical = "flip_vertical", perspective
         case cropGuide = "crop_guide", spotGuides = "spot_guides", guideMode = "guide_mode", endpoint
         case start, end, sampleID = "sample_id", affectedRange = "affected_range", histogramRegion = "histogram_region"
-        case spotID = "spot_id", spotMode = "spot_mode", sourcePoint = "source_point", path, radius, feather, opacity, enabled
+        case spotID = "spot_id", spotMode = "spot_mode", sourcePoint = "source_point", sourcePreviewID = "source_preview_id"
+        case path, radius, feather, opacity, enabled
         case maskID = "mask_id", componentID = "component_id", maskKind = "mask_kind", maskOperation = "mask_operation"
         case inverted, refinement, flow, density, erase, autoMask = "auto_mask", radiusX = "radius_x", radiusY = "radius_y", angle
         case sampleIndex = "sample_index", refine, lower, upper, smoothness
@@ -152,6 +154,7 @@ enum AppMCPTool: String, CaseIterable {
                     : MCPDevelopParameters.groups.map(\.rawValue) + (tool == .resetAdjustments ? ["all"] : [])
             case .channel: MCPDevelopParameters.channels
             case .previewVariant: ["saved", "original", "before", "crop_canvas"]
+            case .resolution: ["scaled", "native"]
             case .beforeLayout: ["off", "original", "side_by_side", "split"]
             case .cropGuide: CropGuide.allCases.map(\.rawValue)
             case .guideMode: ["straighten", "perspective"]
@@ -177,7 +180,7 @@ enum AppMCPTool: String, CaseIterable {
              .filtersOpen, .clearFilters, .linked, .locked, .restricted, .highlights, .shadows, .advance,
              .manualOrder, .fromQuery, .sameCapture, .favorite, .favoritesOnly, .flipHorizontal, .flipVertical,
              .spotGuides, .affectedRange, .enabled, .inverted, .erase, .autoMask, .overlay, .guides, .hideEffect,
-             .separate, .wholePerson, .stackWithSources, .unfinishedOnly, .includeCompleted].contains(self)
+             .separate, .wholePerson, .stackWithSources, .unfinishedOnly, .includeCompleted, .planOnly].contains(self)
         }
         private var textCriteria: Bool { [.search, .keyword, .camera, .lens, .dateFrom, .dateThrough, .presetGroup].contains(self) }
         private var maxString: Int {
@@ -229,6 +232,7 @@ enum AppMCPTool: String, CaseIterable {
             case .personIndices:
                 return ["type": "array", "maxItems": 64, "uniqueItems": true, "items": Field.candidateIndex.schema(for: tool)]
             case .region, .rect: return MCPCanvasFields.rectSchema
+            case .regionPixels: return MCPCanvasFields.pixelRectSchema
             case .perspective: return MCPCanvasFields.perspectiveSchema
             case .aspectRatio: return MCPDevelopParameters.numberSchema(0.1...10)
             case .straighten: return MCPDevelopParameters.numberSchema(-45...45)
@@ -324,6 +328,7 @@ enum AppMCPTool: String, CaseIterable {
                 guard let indices = value.arrayValue, indices.count <= 64, Set(indices).count == indices.count else { return false }
                 return indices.allSatisfy { Field.candidateIndex.accepts($0, for: tool) }
             case .region, .rect: return MCPCanvasFields.rect(value) != nil
+            case .regionPixels: return MCPCanvasFields.pixelRect(value) != nil
             case .perspective: return MCPDevelopParameters.accepts(value, schema: MCPCanvasFields.perspectiveSchema)
             case .aspectRatio: return value.number.map((0.1...10).contains) ?? false
             case .straighten: return value.number.map((-45...45).contains) ?? false
@@ -563,7 +568,8 @@ enum AppMCPTool: String, CaseIterable {
         case .planStacks: [.scope, .photoIDs, .queryRevision, .selectionRevision]
         case .listPairs: [.photo, .source, .listing, .offset, .pageSize]
         case .planPairs: [.plan, .candidates, .scope, .photoIDs, .queryRevision, .selectionRevision, .rawSource, .jpegSource, .sameCapture]
-        case .preview: [.longEdge, .previewVariant, .historyID, .snapshotID, .presetID, .presetRevision, .amount, .groups, .group, .region,
+        case .preview: [.longEdge, .previewVariant, .historyID, .snapshotID, .presetID, .presetRevision, .amount, .groups, .group,
+                        .region, .resolution, .regionPixels, .planOnly,
                         .maskOverlay, .withoutMaskID, .smartOverlay]
         case .setCrop: [.previewID, .rect, .aspectRatio]
         case .photoGeometry: [.turns, .straighten, .flipHorizontal, .flipVertical, .perspective]
@@ -573,7 +579,7 @@ enum AppMCPTool: String, CaseIterable {
         case .adjustPreview: [.point, .delta, .channel, .histogramRegion]
         case .pointColor: [.previewID, .point, .sampleID, .adjustments, .affectedRange]
         case .spotRepairs: [.previewID, .spotID, .offset, .pageSize]
-        case .editSpot: [.previewID, .spotID, .spotMode, .point, .path, .sourcePoint, .radius, .feather, .opacity, .enabled]
+        case .editSpot: [.previewID, .spotID, .spotMode, .point, .path, .sourcePoint, .sourcePreviewID, .radius, .feather, .opacity, .enabled]
         case .maskState: [.maskID, .componentID]
         case .maskGroup: [.maskID, .maskKind, .name, .enabled, .inverted, .refinement]
         case .maskComponent: [.componentID, .maskKind, .maskOperation, .name, .enabled, .inverted]
@@ -650,8 +656,8 @@ enum AppMCPTool: String, CaseIterable {
             description = "Page through the current source, filters and sort. listing=visible (default) respects stack folding; listing=matches includes folded members in query order. Reuse next_cursor for the next page."
             output = "items with photo_id, name, version_name, source_revision, recipe_revision, rating, flag, color_label, source_status, and stack. matched_count includes folded members. visible_count and next_cursor describe the displayed rows."
         case .preview:
-            description = "Render an explicit saved version as an sRGB PNG when image sharing is on. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. A normalized top-left region requests a detail view. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
-            output = "preview_id, photo_id, source_revision, recipe_revision, width, height, coordinate_space, region, editable_canvas, histogram, and a PNG content block."
+            description = "Render an explicit photo version as an sRGB PNG when image sharing is on. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. The default scaled resolution accepts a normalized top-left region. Use resolution=native with region or an integer top-left region_pixels for an unscaled tile of the edited frame. Omit long_edge in native mode. Use plan_only=true to check the tile dimensions and limits without receiving pixels; omit the region to inspect the full frame. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
+            output = "Photo revisions, canvas dimensions, region, actual width and height. Native requests also report region_pixels, fits and limits, and suggest a smaller region when needed. Rendered previews include preview_id, coordinate_space, editable_canvas, histogram, and a PNG content block."
         case .rate:
             description = "Set the rating of one explicit photo. Pass its current expected_rating and the request_epoch from get_workspace. Reuse request_id with identical arguments only when retrying the same operation."
             output = "photo_id, previous_rating, rating, changed, commit_state, and operation_id when an undo was registered."
@@ -769,10 +775,8 @@ final class AppMCPTools {
     }
     private struct Preview: Sendable {
         let data: [String: Value]
-        let name: String
-        let png: String
         let selection: MCPDevelopPreview
-        let canvas: MCPCanvasPreview
+        let image: (canvas: MCPCanvasPreview, name: String, png: String)?
     }
     private struct UndoReceipt {
         let id = UUID().uuidString
@@ -1080,6 +1084,17 @@ final class AppMCPTools {
         let recipeRevision = arguments["recipe_revision"]!.intValue!
         let edge = arguments["long_edge"]?.intValue ?? 768
         let region = arguments["region"].flatMap(MCPCanvasFields.rect)
+        let native = arguments["resolution"] == "native"
+        let planOnly = arguments["plan_only"]?.boolValue ?? false
+        let pixelRegion = arguments["region_pixels"].flatMap(MCPCanvasFields.pixelRect)
+        if native {
+            guard arguments["long_edge"] == nil, region == nil || pixelRegion == nil,
+                  planOnly || region != nil || pixelRegion != nil else {
+                throw MCPToolProblem.invalid("For native previews omit long_edge and choose one region or region_pixels. plan_only may omit the region.")
+            }
+        } else if pixelRegion != nil || planOnly {
+            throw MCPToolProblem.invalid("region_pixels and plan_only require resolution=native.")
+        }
         let smartOverlay = try arguments["smart_overlay"].map(MCPSmartOverlay.init)
         let smartGroup = try smartOverlay.map { try smartOverlayGroup($0, photo: MCPDevelopPhoto.current(arguments, catalog: catalog), model: model) }
         let accessGeneration = imageAccessGeneration
@@ -1108,9 +1123,30 @@ final class AppMCPTools {
                 let index = try MCPMask.group(withoutMask, in: recipe!)
                 recipe?.localAdjustments[index].enabled = false
             }
-            let renderEdge = region.map { max(edge, Int(min(2048, Double(max(1, edge - 2)) / max($0.width, $0.height)))) } ?? edge
             let request = ImageRequest(photo: photo, root: root, recipe: recipe)
-            let rendered = try await pipeline.render(request, longEdge: renderEdge)
+            var data = MCPDevelopPhoto.revisions(photo)
+            data.merge(selection.description) { _, value in value }
+            if planOnly {
+                let canvas = try await pipeline.nativeOutputSize(request)
+                let plan = try MCPNativePreviewRegion.resolve(canvas: canvas, region: region, pixelRegion: pixelRegion)
+                data.merge(plan.data) { _, value in value }
+                return Preview(data: data, selection: selection, image: nil)
+            }
+            let rendered: RenderedImage
+            if native {
+                rendered = try await pipeline.render(request, longEdge: nil, nativePixelRegion: { canvas in
+                    let plan = try MCPNativePreviewRegion.resolve(canvas: canvas, region: region, pixelRegion: pixelRegion)
+                    guard plan.fits else {
+                        throw MCPToolProblem(code: "preview_region_too_large", summary: "The region exceeds the native preview limits.",
+                                             next: "Use suggested_region_pixels or split the region into smaller rectangles.",
+                                             details: plan.data)
+                    }
+                    return plan.pixels
+                })
+            } else {
+                let renderEdge = region.map { max(edge, Int(min(2048, Double(max(1, edge - 2)) / max($0.width, $0.height)))) } ?? edge
+                rendered = try await pipeline.render(request, longEdge: renderEdge)
+            }
             let full: CGImage
             if let overlay, let recipe {
                 let group = recipe.localAdjustments[try MCPMask.group(overlay.id, in: recipe)]
@@ -1119,25 +1155,37 @@ final class AppMCPTools {
                 full = try await pipeline.renderMaskOverlay(rendered, request: request, group: smartGroup, style: smartOverlay.style, color: smartOverlay.color)
             } else { full = rendered.image }
             try Task.checkCancellation()
-            let (image, actualRegion) = try MCPCanvasPreview.detail(full, region: region)
+            let image: CGImage
+            let actualRegion: CGRect
+            if let pixels = rendered.nativePixelRegion {
+                let tile = MCPNativePreviewRegion(canvas: rendered.fullSize, pixels: pixels)
+                image = full
+                actualRegion = tile.normalized
+                data.merge(tile.data) { _, value in value }
+            } else {
+                (image, actualRegion) = try MCPCanvasPreview.detail(full, region: region)
+                data["resolution"] = "scaled"
+                data["canvas_width"] = .int(Int(rendered.fullSize.width.rounded(.up)))
+                data["canvas_height"] = .int(Int(rendered.fullSize.height.rounded(.up)))
+            }
             let editable = selection.editableCanvas && recipe != nil && overlay == nil && withoutMask == nil && smartOverlay == nil
             let canvas = MCPCanvasPreview(photo: photo, image: image, region: actualRegion,
                                           sourceSize: rendered.orientedSourceSize, variant: editable ? selection.variant : nil,
                                           spotOffsets: rendered.spotOffsets)
             let png = try MCPOutputImage.png(image)
-            let histogram = (region == nil ? rendered.histogram : ImageHistogram.calculate(image))
+            let recalculateHistogram = native ? overlay != nil || smartOverlay != nil : region != nil
+            let histogram = (recalculateHistogram ? ImageHistogram.calculate(image) : rendered.histogram)
                 .map { Value.array($0.channels.map { .array($0.map(Value.double)) }) } ?? .null
-            var data: [String: Value] = [
-                "preview_id": .string(canvas.id), "photo_id": .string(id), "source_revision": .int(sourceRevision),
-                "recipe_revision": .int(recipeRevision), "width": .int(image.width), "height": .int(image.height),
+            data.merge([
+                "preview_id": .string(canvas.id), "width": .int(image.width), "height": .int(image.height),
+                "source_width": .int(Int(rendered.orientedSourceSize.width)), "source_height": .int(Int(rendered.orientedSourceSize.height)),
                 "coordinate_space": "normalized_top_left", "histogram": histogram,
                 "region": MCPCanvasFields.rectValue(actualRegion), "editable_canvas": .bool(canvas.variant != nil)
-            ]
-            data.merge(selection.description) { _, value in value }
+            ]) { _, value in value }
             if let overlay { data["mask_overlay"] = overlay.description }
             if let withoutMask { data["without_mask_id"] = .string(withoutMask.uuidString) }
             if let smartOverlay { data["smart_overlay"] = .object(smartOverlay.fields) }
-            return Preview(data: data, name: String(photo.displayName.prefix(256)), png: png, selection: selection, canvas: canvas)
+            return Preview(data: data, selection: selection, image: (canvas, String(photo.displayName.prefix(256)), png))
         }
         previewWorker = worker
         defer { previewWorker = nil }
@@ -1149,10 +1197,11 @@ final class AppMCPTools {
         guard try catalog.matchesPhotoRevisions(id: id, source: sourceRevision, recipe: recipeRevision) else { throw MCPToolProblem.stalePreview }
         try preview.selection.verify(arguments, catalog: catalog)
         if let smartOverlay { _ = try smartOverlayGroup(smartOverlay, photo: MCPDevelopPhoto.current(arguments, catalog: catalog), model: model) }
+        guard let image = preview.image else { return .init("Checked the native preview region.", data: preview.data) }
         if canvasPreviews.count >= 6 { canvasPreviews.removeFirst() }
-        canvasPreviews.append(preview.canvas)
+        canvasPreviews.append(image.canvas)
         return .init("Rendered the requested photo preview.", data: preview.data,
-                     artifacts: [["type": "photo_preview", "id": preview.data["preview_id"]!, "name": .string(preview.name)]], image: preview.png)
+                     artifacts: [["type": "photo_preview", "id": .string(image.canvas.id), "name": .string(image.name)]], image: image.png)
     }
 
     func canvasPreview(_ id: Value?, catalog: CatalogStore, photo: Photo? = nil, variant: String? = nil) throws -> MCPCanvasPreview {

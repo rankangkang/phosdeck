@@ -23,6 +23,8 @@ struct RenderedImage {
     let elapsed: Double
     /// Sources chosen while rendering. A stored offset wins; this fills in automatic picks.
     var spotOffsets: [UUID: MaskPoint] = [:]
+    /// Top-left pixel rectangle in the full-resolution edited frame.
+    var nativePixelRegion: CGRect? = nil
 }
 struct SmartMaskImage {
     let image: CGImage
@@ -119,6 +121,16 @@ actor ImagePipeline {
         defer { withExtendedLifetime(lease) {} }
         var oriented = CGSize.zero
         return try graph(request, url: url, orientedSourceSize: &oriented, decodeOnly: true).extent.size
+    }
+
+    func nativeOutputSize(_ request: ImageRequest) throws -> CGSize {
+        try Self.nativeOutputSize(geometrySourceSize(request), recipe: request.recipe)
+    }
+
+    private static func nativeOutputSize(_ decoded: CGSize, recipe: EditRecipe?) throws -> CGSize {
+        if let recipe { return try PhotoGeometry(size: decoded, recipe: recipe).output }
+        try PhotoGeometry.checkSize(decoded)
+        return CGRect(origin: .zero, size: decoded).integral.size
     }
 
     func baseline(_ request: ImageRequest) throws -> EditRecipe {
@@ -227,7 +239,9 @@ actor ImagePipeline {
         withExtendedLifetime(lease) {}
     }
 
-    private func graph(_ request: ImageRequest, url: URL, orientedSourceSize: inout CGSize, previewEdge: Int? = nil, zoneReferenceOnly: Bool = false, pointReferenceOnly: Bool = false, decodeOnly: Bool = false, reuseDecoded: Bool = false) throws -> CIImage {
+    private func graph(_ request: ImageRequest, url: URL, orientedSourceSize: inout CGSize, previewEdge: Int? = nil,
+                       zoneReferenceOnly: Bool = false, pointReferenceOnly: Bool = false, decodeOnly: Bool = false,
+                       reuseDecoded: Bool = false, checkDecodedSize: ((CGSize) throws -> Void)? = nil) throws -> CIImage {
         renderedSpotOffsets = [:]
         var image: CIImage
         if request.photo.isRAW {
@@ -302,6 +316,7 @@ actor ImagePipeline {
                     }
                 } else { decoded = output }
             }
+            try checkDecodedSize?(decoded.extent.size)
             image = try processDecoded(decoded, request: request, url: url, recipe: recipe, decodeKey: decodeKey,
                 previewEdge: previewEdge, zoneReferenceOnly: zoneReferenceOnly, pointReferenceOnly:pointReferenceOnly, decodeOnly: decodeOnly, sourceSize: orientedSourceSize)
         } else {
@@ -314,6 +329,7 @@ actor ImagePipeline {
             }
             let decoded = try raster(url)
             orientedSourceSize = decoded.extent.size
+            try checkDecodedSize?(orientedSourceSize)
             guard let recipe = request.recipe else { return decoded }
             // Exposure is nonlinear: sampling first changes mixed/high-contrast
             // pixels. Both paths apply WB/exposure at source size, then reduce
@@ -469,8 +485,13 @@ actor ImagePipeline {
         let reference = try group.needsBaseline ? maskReference(request) : nil
         let coverage = try MaskPipeline.overlayCoverage(group, recipe: recipe, sourceSize: rendered.orientedSourceSize, reference: reference)
         let photo = CIImage(cgImage: rendered.image)
-        let mask = Self.originZero(coverage).transformed(by: CGAffineTransform(
-            scaleX: photo.extent.width / coverage.extent.width, y: photo.extent.height / coverage.extent.height))
+        let canvasSize = rendered.nativePixelRegion == nil ? photo.extent.size : rendered.fullSize
+        var mask = Self.originZero(coverage).transformed(by: CGAffineTransform(
+            scaleX: canvasSize.width / coverage.extent.width, y: canvasSize.height / coverage.extent.height))
+        if let pixels = rendered.nativePixelRegion {
+            mask = mask.transformed(by: CGAffineTransform(translationX: -pixels.minX, y: pixels.maxY - canvasSize.height))
+                .cropped(to: photo.extent)
+        }
         let overlay = DisplayOverlay.maskView(photo, coverage: mask, style: style, tint: DisplayOverlay.maskTint(color))
         guard let image = context.createCGImage(overlay, from: photo.extent, format: .RGBA8, colorSpace: Self.outputSpace, deferred: false)
         else { throw LRCError(L10n.text("app.rangeMaskBaselineRenderingFailed", defaultValue: "Range mask baseline rendering failed")) }
@@ -949,7 +970,8 @@ actor ImagePipeline {
     /// Materializing RAW can change Core Image's evaluation, even with full-float
     /// storage. Reuse only the verified color controls at original screen size;
     /// other processing and high-depth output retain the original graph.
-    func render(_ request: ImageRequest, longEdge: Int?, pixelFormat: CIFormat = .RGBA8, reuseDecoded: Bool = false, jpegMatte: JPEGMatte? = nil) throws -> RenderedImage {
+    func render(_ request: ImageRequest, longEdge: Int?, pixelFormat: CIFormat = .RGBA8, reuseDecoded: Bool = false,
+                jpegMatte: JPEGMatte? = nil, nativePixelRegion: (@Sendable (CGSize) throws -> CGRect)? = nil) throws -> RenderedImage {
         return try autoreleasepool {
             var completed = false
             defer {
@@ -970,9 +992,30 @@ actor ImagePipeline {
             let (lease, url) = try source(request)
             defer { withExtendedLifetime(lease) {} }
             try Task.checkCancellation()
+            var region: (canvas: CGSize, pixels: CGRect)?
+            let checkDecodedSize: ((CGSize) throws -> Void)? = nativePixelRegion.map { resolve in
+                { decoded in
+                    let canvas = try Self.nativeOutputSize(decoded, recipe: request.recipe)
+                    let pixels = try resolve(canvas)
+                    guard longEdge == nil, pixelFormat == .RGBA8, jpegMatte == nil, !pixels.isEmpty,
+                          pixels == pixels.integral, CGRect(origin: .zero, size: canvas).contains(pixels) else {
+                        throw LRCError("Invalid native preview pixel region")
+                    }
+                    region = (canvas, pixels)
+                }
+            }
             var orientedSize = CGSize.zero
-            let graph = try graph(request, url: url, orientedSourceSize: &orientedSize, reuseDecoded: cacheDecoded)
+            let graph = try graph(request, url: url, orientedSourceSize: &orientedSize, reuseDecoded: cacheDecoded,
+                                  checkDecodedSize: checkDecodedSize)
             var image = try Self.finish(Self.resized(graph, longEdge: longEdge), request: request)
+            let finishedFrame = image
+            if let region {
+                let frame = image.extent.integral
+                guard frame.size == region.canvas else { throw LRCError("Native preview canvas dimensions changed") }
+                // Apply image-space effects before clipping so the tile retains their full-frame coordinates.
+                image = image.cropped(to: CGRect(x: frame.minX + region.pixels.minX, y: frame.maxY - region.pixels.maxY,
+                                                width: region.pixels.width, height: region.pixels.height))
+            }
             let usesDevelop = (request.recipe?.pipelineVersion ?? 0) >= 2 && (request.photo.isRAW || request.recipe?.isUnadjustedRaster == false)
             var renderContext = pixelFormat == .RGBA16 || usesDevelop ? developContext : context
             if let jpegMatte, Self.hasTransparency(image, context: developContext) {
@@ -996,7 +1039,7 @@ actor ImagePipeline {
                 }
                 result = try Self.materialize16(image, context: renderContext, preserveJPEG8: preserveJPEG8)
             }
-            else if pixelFormat == .RGBA8, jpegMatte == nil, Self.mayHaveTransparency(request), Self.hasTransparency(image, context: developContext) {
+            else if pixelFormat == .RGBA8, jpegMatte == nil, Self.mayHaveTransparency(request), Self.hasTransparency(finishedFrame, context: developContext) {
                 result = try Self.materialize8(image, context: developContext)
             } else {
                 guard let bitmap = renderContext.createCGImage(image, from: image.extent.integral, format: pixelFormat, colorSpace: Self.outputSpace, deferred: false) else { throw LRCError(L10n.text("app.renderingFailed", defaultValue: "Rendering failed")) }
@@ -1010,7 +1053,9 @@ actor ImagePipeline {
             // High-depth export does not need a display histogram or an extra 16→8 bit readback.
             let histogram = pixelFormat == .RGBA8 ? ImageHistogram.calculate(result) : nil
             completed = true
-            return RenderedImage(image: result, fullSize: graph.extent.size, orientedSourceSize: orientedSize, histogram: histogram, elapsed: Date().timeIntervalSince(started), spotOffsets: renderedSpotOffsets)
+            return RenderedImage(image: result, fullSize: region?.canvas ?? graph.extent.size, orientedSourceSize: orientedSize,
+                                 histogram: histogram, elapsed: Date().timeIntervalSince(started),
+                                 spotOffsets: renderedSpotOffsets, nativePixelRegion: region?.pixels)
         }
     }
 
