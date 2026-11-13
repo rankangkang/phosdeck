@@ -2,12 +2,14 @@
 
 Use `get_photo_recipe` for the current global settings and the photo's source and recipe revisions. A `photo_id` identifies an edit version. You can read and save a specific version without selecting it in the App. For a history entry or snapshot, pass its ID from `list_edit_records` on the same version.
 
-## Try exposure and color before saving
+## Try exposure, color and preset strength before saving
 
 1. Open a draft with `edit_photo_draft(action=begin)`, the photo ID, and the saved source and recipe revisions. Poll `get_job` for the draft ID and revision.
 2. Pass both draft fields and the saved version identity to `set_global_adjustments` or `set_color_adjustments`. Poll each job and use the returned draft revision for the next call. Pass the draft fields and `photo_id` to `get_photo_recipe` to read the trial values.
 3. Pass the same draft and saved version fields to `get_photo_preview`. Set `long_edge` and omit the region to see the whole edited photo. To compare against the saved version, request the same preview size with the saved version fields alone.
 4. Commit or cancel with `edit_photo_draft` and the current draft ID and revision. A changed draft creates one history entry and one undo action on commit. Cancel discards the in-memory draft. After committing, verify the saved recipe and preview at the same size.
+
+For preset strength, use `transfer_adjustments(action=preset)` in step 2. Pass the draft fields, current preset ID and revision, one target in `photo_ids`, and its saved versions in `expected_revisions`. Each consecutive preset trial replaces the previous trial from the same starting recipe. `amount` ranges from `0` to `2`, with `1` at 100 percent. `0` restores the starting recipe. A change through another draft edit tool starts a new baseline for the next preset trial. Read `preset_trial` for the current amount and groups. Use the returned draft revision alone with the saved photo identity when rendering the trial in `get_photo_preview`.
 
 ## Edit and verify
 

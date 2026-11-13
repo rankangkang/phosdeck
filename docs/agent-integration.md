@@ -51,7 +51,7 @@
 | `set_tone_curve`、`set_zone_lighting`、`set_color_adjustments` | 曲线通道及点增删改、通道重置、五区 EV、HSL 八色、黑白混色、阴影／中间调／高光／全局色彩分级与混合平衡 | `ToneCurvePanel`、`ToneZones`、`ColorGrading`、`DevelopPanel`。点颜色与画布取样见第五步 |
 | `set_detail_adjustments`、`set_effects` | 通用锐化／降噪、RAW 锐化／降噪／镜头校正、紫边／绿边数量及范围、暗角样式和形状、颗粒大小和粗糙度。返回实际接受的参数 | `GeneralDetail`、`RAWDetailSettings`、`ManualDefringe`、`CreativeVignette`、`FilmGrain`。沿用渲染顺序与支持范围 |
 | `run_automatic_adjustment`、`apply_relative_exposure`、`match_total_exposures` | 自动白平衡／色调、按 EV 调整目标、以明确源照片匹配总曝光。返回任务及跳过原因 | `AutomaticAdjustmentEditing`、`applyRelativeExposure`／`matchTotalExposures`。按现有批次事务保存与撤销 |
-| `transfer_adjustments` | 复制、粘贴、同步、沿用上一张、应用预设，显式传源、目标和 `RecipePasteOptions` 组。支持已有强度及预览 | `copyAdjustments`／`applyAdjustments`、`AdjustmentPreview`。只改所选参数组，批量结果逐项回读 |
+| `transfer_adjustments` | 复制、粘贴、同步、沿用上一张、应用预设，显式传源、目标和 `RecipePasteOptions` 组。预设强度可在单张草稿里反复试用 | `copyAdjustments`／`applyAdjustments`、`AdjustmentPreview`。只改所选参数组，批量结果逐项回读 |
 | `list_adjustment_presets`、`edit_adjustment_preset` | 搜索、筛选收藏／分组、保存／更新／改名／删除、收藏与分组。返回预设及是否可撤销 | `PresetBrowser`、`PresetManagement`、`savePreset`。按原生能力报告撤销 |
 | `plan_xmp_preset_import`、`import_xmp_presets` | 从授权 XMP 读取支持字段、预检诊断、选择记录后批量导入。返回导入及跳过项 | `XMPPresetReader`、`XMPPresetImportSheet`、`importXMPPresets`。保留支持的 XMP 子集 |
 | `list_edit_records`、`preview_adjustment`、`apply_edit_record` | 分页历史和快照，预览历史／快照／预设／参数组或恢复已保存记录。返回预览或新的保存版本 | `editHistory`／`loadMoreHistory`、`previewSavedEdit`／`previewPreset`／`beginDevelopGroupPreview`／`applySavedEdit`。预览只改工作区 |
@@ -73,7 +73,7 @@
 | `transfer_local_adjustments`、`list_local_adjustment_presets`、`edit_local_adjustment_preset` | 复制／粘贴、列出／保存／应用／重命名／删除局部参数预设。返回参数或实际改动 | `MaskEditing`、`CatalogLocalPresets`。只改变局部参数，保留选区几何 |
 | `start_smart_mask`、`edit_smart_mask_selection`、`apply_smart_mask` | 对象点／框、增减提示及提示撤销、候选；人物单选／多选／全选、整人、部位、脸框与细化、拆分或合并。返回分析任务、当前候选、叠加预览及新增组件 | `SmartMaskEditing`、`SmartMaskEngine`。绑定候选代次、照片及配方，缺模型返回条件，取消复用任务接口 |
 | `get_spot_repairs`、`edit_spot_repair` | 查看和选中污点，点／路径、模式、半径／羽化／不透明度、移动、选择／重算来源、禁用和删除 | `SpotEditing`、`SpotRepair`。目标与采样源各自校验，回读实际 ID、来源和修订号 |
-| `edit_photo_draft` | 开始、提交或取消单张照片的试修。曝光、色彩、普通蒙版、局部参数和污点可共用一个草稿 | 用同一显影管线渲染草稿。提交时核对保存版本，只写一条历史并注册一次原生撤销 |
+| `edit_photo_draft` | 开始、提交或取消单张照片的试修。曝光、色彩、预设强度、普通蒙版、局部参数和污点可共用一个草稿 | 用同一显影管线渲染草稿。提交时核对保存版本，只写一条历史并注册一次原生撤销 |
 | `set_canvas_guides` | 设置构图辅助线、裁剪引导及污点引导显示，返回当前显示状态 | `cycleCropGuide`、`PhotoCanvas`、`SpotPanel`。只改变显示 |
 
 对应回归包括 `PerspectiveTests`、`UprightTests`、`FlipTests`、`InspectionWorkflowTests`、`TargetedAdjustmentTests`、`DirectAdjustmentTests`、`PointColorTests`、`ManualDefringeTests`、`MaskingTests`、`SmartMaskTests`、`LocalParameterPresetTests` 和 `SpotRepairTests`。关键验收用有方向标记的合成图核对 Agent 输入的位置和原生结果。
@@ -246,6 +246,8 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 `get_photo_recipe` 按照片版本读取全局参数及修订号，也可用同版本的历史或快照 ID 读取保存值。各参数的范围随 `tools/list` 发布。参数工具只更新传入字段。曝光使用 EV，对比度和饱和度以 1 为中性，温度使用 K。RAW 细节参数可传 `null` 使用解码器默认值。`reset_adjustments` 可重置一组参数，`group=all` 复用原生完整重置，包含几何、蒙版与污点。
 
 用 `edit_photo_draft(action=begin)` 开启单张草稿。给 `set_global_adjustments` 和 `set_color_adjustments` 传入 `draft_id`、`draft_revision` 及保存版本的修订号，在同一草稿里调整曝光、白平衡、饱和度、HSL 和色彩分级。每次修改后从 `get_job` 取最新草稿修订，用草稿字段调用 `get_photo_recipe` 回读参数，或调用 `get_photo_preview` 取图。用 `long_edge` 且省略区域字段可预览整幅编辑画面。满意后用 `edit_photo_draft(action=commit)` 提交整份草稿，或用 `action=cancel` 丢弃。
+
+在草稿里试用预设时，调用 `transfer_adjustments(action=preset)`，传入草稿字段、`preset_id`、`preset_revision`、单个目标的 `photo_ids` 和对应的 `expected_revisions`。`amount` 范围为 0–2，`1` 对应 100%。连续调强度或换预设均从这轮试用前的草稿计算，`amount=0` 恢复该草稿状态。修改其他草稿参数后，下一次试用以修改后的配方为起点。任务结果、配方和预览中的 `preset_trial` 给出当前试用的预设、强度和参数组。用最新草稿修订取整图预览，确认后整份草稿只新增一条编辑历史。
 
 参数修改、自动分析、恢复历史、批量曝光和传递返回任务 ID。单张提交核对 `source_revision` 和 `recipe_revision`，批量按 `expected_revisions` 核对每个显式照片 ID。原片不可用或参数不适用时返回单张错误或逐项跳过原因。提交前复查版本，成功项整批保存并在原生撤销栈登记一次。用 `get_job` 查看状态、已保存修订号与 `operation_id`，再通过配方或预览核验结果。
 

@@ -538,7 +538,7 @@ enum AppMCPTool: String, CaseIterable {
     }
     var optional: [Field] {
         switch self {
-        case .preview, .photoRecipe, .globalAdjustments, .colorAdjustments,
+        case .preview, .photoRecipe, .globalAdjustments, .colorAdjustments, .transferAdjustments,
              .samplePreview, .spotRepairs, .editSpot, .maskState, .maskGroup, .maskComponent, .brushStroke,
              .maskShape, .maskRange, .localAdjustments:
             return optionalFields + [.draftID, .draftRevision]
@@ -674,7 +674,7 @@ enum AppMCPTool: String, CaseIterable {
             description = "Render an explicit photo version as an sRGB PNG when image sharing is on. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. The default scaled resolution accepts a normalized top-left region. Use resolution=native with region or an integer top-left region_pixels for an unscaled tile of the edited frame. Omit long_edge in native mode. Use plan_only=true to check the tile dimensions and limits without receiving pixels; omit the region to inspect the full frame. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
             output = "Photo revisions, canvas dimensions, region, actual width and height. Native requests also report region_pixels, fits and limits, and suggest a smaller region when needed. Rendered previews include preview_id, coordinate_space, editable_canvas, histogram, and a PNG content block."
         case .editPhotoDraft:
-            description = "Begin an in-memory photo draft for exposure, color, local masks and spot repairs with explicit photo_id, source_revision and recipe_revision. Poll get_job for draft_id and draft_revision. Pass them to draft-aware editing and preview tools. Commit with the current draft_id and draft_revision to create one saved edit and undo action, or cancel with the same fields to discard the draft. There is one active draft per catalog session."
+            description = "Begin an in-memory photo draft for exposure, color, preset strength, local masks and spot repairs with explicit photo_id, source_revision and recipe_revision. Poll get_job for draft_id and draft_revision. Pass them to draft-aware editing and preview tools. Commit with the current draft_id and draft_revision to create one saved edit and undo action, or cancel with the same fields to discard the draft. There is one active draft per catalog session."
             output = "job_id for begin and commit; draft identity, current revision and photo revisions on begin; saved revisions and operation_id on commit; discarded on cancel."
         case .rate:
             description = "Set the rating of one explicit photo. Pass its current expected_rating and the request_epoch from get_workspace. Reuse request_id with identical arguments only when retrying the same operation."
@@ -1167,7 +1167,7 @@ final class AppMCPTools {
             let request = ImageRequest(photo: photo, root: root, recipe: recipe)
             var data = MCPDevelopPhoto.revisions(photo)
             data.merge(selection.description) { _, value in value }
-            if let draft { data.merge(draft.fields) { _, value in value } }
+            if let draft { data.merge(draft.data) { _, value in value } }
             if planOnly {
                 let canvas = try await pipeline.nativeOutputSize(request)
                 let plan = try MCPNativePreviewRegion.resolve(canvas: canvas, region: region, pixelRegion: pixelRegion)

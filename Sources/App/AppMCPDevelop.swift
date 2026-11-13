@@ -29,7 +29,7 @@ extension AppMCPTool {
         case .matchExposure:
             return ("Match total exposure using the source photo_id's aperture, shutter speed, ISO, decoder baseline and saved exposure. Pass distinct target photo_ids and expected_revisions for source and targets.", recipeJob)
         case .transferAdjustments:
-            return ("Copy settings from photo_id to Phosdeck's adjustment clipboard, or paste, sync from photo_id, use the previous photo's stored settings, or apply preset_id with preset_revision and optional amount (1 = 100%). Use explicit photo_ids for targets and expected_revisions for supplied photos. Choose groups, or omit groups to use the preset's saved groups.", recipeJob)
+            return ("Copy settings from photo_id to Phosdeck's adjustment clipboard, or paste, sync from photo_id, use the previous photo's stored settings, or apply preset_id with preset_revision and optional amount (1 = 100%). Use explicit photo_ids for targets and expected_revisions for supplied photos. Choose groups, or omit groups to use the preset's saved groups. Draft transfers require action=preset and one target. Consecutive trials share a starting recipe. Use amount=0 to restore it. Other draft edits end the current preset trial.", draftRecipeJob + " Draft preset trials also return preset_trial.")
         case .beforeAfter:
             return ("Set off, original, side_by_side or split on the active photo in Develop or Single view. An optional history_id or snapshot_id pins that saved edit as the comparison baseline; omitting both restores the original baseline.", "before_after with layout, before and after, and commit_state")
         case .adjustmentPreview:
@@ -152,16 +152,26 @@ struct MCPPhotoDraft: Sendable {
         let revision: Int
     }
 
+    struct PresetTrial: Sendable {
+        let baseline: EditRecipe
+        let selection: Value
+    }
+
     let id = UUID().uuidString
     let photo: Photo
     let baseline: EditRecipe
     let rawDefaults: RAWDetailSettings?
     var recipe: EditRecipe
     var revision = 0
+    var presetTrial: PresetTrial?
 
     var reference: Reference { .init(id: id, revision: revision) }
     var fields: [String: Value] { ["draft_id": .string(id), "draft_revision": .int(revision)] }
-    var data: [String: Value] { MCPDevelopPhoto.revisions(photo).merging(fields) { _, value in value } }
+    var data: [String: Value] {
+        var data = MCPDevelopPhoto.revisions(photo).merging(fields) { _, value in value }
+        data["preset_trial"] = presetTrial?.selection
+        return data
+    }
 
     func matches(_ value: Photo) -> Bool {
         photo.id == value.id && photo.revision == value.revision && photo.recipeRevision == value.recipeRevision
@@ -217,7 +227,8 @@ extension AppMCPTools {
         case match(TotalExposureMatch)
         case canvas(CanvasRecipeEdit)
 
-        func result(on photo: Photo, root: StorageRoot, pipeline: ImagePipeline, draft: MCPPhotoDraft?) async throws -> (EditRecipe?, [String], [String: Value]) {
+        func result(on photo: Photo, root: StorageRoot, pipeline: ImagePipeline, draft: MCPPhotoDraft?,
+                    presetTrial: MCPPhotoDraft.PresetTrial?) async throws -> (EditRecipe?, [String], [String: Value]) {
             let original: EditRecipe
             let defaults: RAWDetailSettings?
             if let draft { (original, defaults) = (draft.recipe, draft.rawDefaults) }
@@ -232,8 +243,16 @@ extension AppMCPTools {
                 result.apply(to: &value)
             case .restore(let record): value = try record.recipe(for: photo, current: original)
             case let .transfer(source, options, amount):
-                value = try amount.map { try original.applyingPreset(source, options: options, amount: $0) } ?? original.pasting(source, options: options)
-                notes = original.transferNotes(from: source, options: options)
+                let base = presetTrial?.baseline ?? original
+                if let presetTrial {
+                    if draft?.presetTrial?.selection == presetTrial.selection { return (nil, notes, details) }
+                    if amount == 0 {
+                        value = base
+                        break
+                    }
+                }
+                value = try amount.map { try base.applyingPreset(source, options: options, amount: $0) } ?? base.pasting(source, options: options)
+                notes = base.transferNotes(from: source, options: options)
                 if options.details, !source.isRaster, let defaults {
                     notes += value.rawDetails.unavailableNames(defaults)
                     value.rawDetails = value.rawDetails.supported(by: defaults)
@@ -376,6 +395,10 @@ extension AppMCPTools {
         let ids = args["photo_ids"]?.arrayValue?.compactMap(\.stringValue) ?? []
         let sourceID = args["photo_id"]?.stringValue
         let action = args["action"]?.stringValue
+        let draft = try requestedDraft(args)
+        guard draft == nil || (action == "preset" && ids.count == 1) else {
+            throw MCPToolProblem.invalid("A draft transfer requires action=preset and one target photo ID.")
+        }
         let requiresSource = tool == .matchExposure || action == "copy" || action == "sync"
         guard (sourceID != nil) == requiresSource, sourceID.map({ !ids.contains($0) }) ?? true,
               action == "copy" ? ids.isEmpty : !ids.isEmpty else {
@@ -398,6 +421,7 @@ extension AppMCPTools {
         }
         let source = rows.first { $0.id == sourceID }
         let targets = rows.filter { $0.id != sourceID }.sorted { $0.id < $1.id }
+        if let draft, targets.first.map(draft.matches) != true { throw MCPToolProblem.stalePhoto }
         let roots = model.roots, pipeline = model.pipeline
         if action == "copy", let source {
             return workflows.start(tool) { job in
@@ -433,7 +457,15 @@ extension AppMCPTools {
             let preset = try MCPPreset.expected(args, catalog: catalog)
             let options = try MCPPreset.options(preset, selected: args["groups"])
             let amount = args["amount"]?.number ?? 1
-            return startRecipeEdit(tool, model: model, catalog: catalog, targets: targets, title: preset.name) {
+            let trial = draft.map {
+                MCPPhotoDraft.PresetTrial(baseline: $0.presetTrial?.baseline ?? $0.recipe,
+                                         selection: ["preset_id": .string(preset.id), "preset_revision": args["preset_revision"]!,
+                                                     "groups": MCPRecipeGroups.names(options), "amount": .double(amount)])
+            }
+            return startRecipeEdit(tool, model: model, catalog: catalog, targets: targets, title: preset.name, draft: draft,
+                                   presetTrial: trial, beforeSave: {
+                if trial != nil, try catalog.preset(preset.id) != preset { throw MCPToolProblem.stalePreset }
+            }) {
                 .transfer(try JSONDecoder().decode(EditRecipe.self, from: preset.recipe), options, amount)
             }
         }
@@ -454,11 +486,12 @@ extension AppMCPTools {
     }
 
     private func startRecipeEdit(_ tool: AppMCPTool, model: AppModel, catalog: CatalogStore, targets: [Photo], source: Photo? = nil,
-                                 title: String, draft: MCPPhotoDraft? = nil, beforeSave: @escaping () throws -> Void = {},
+                                 title: String, draft: MCPPhotoDraft? = nil, presetTrial: MCPPhotoDraft.PresetTrial? = nil,
+                                 beforeSave: @escaping () throws -> Void = {},
                                  afterSave: @escaping () -> Void = {}, prepare: @escaping () async throws -> RecipeEdit) -> MCPToolResult {
         let roots = Dictionary(uniqueKeysWithValues: model.roots.map { ($0.id, $0) })
         let pipeline = model.pipeline
-        let singleEdit = tool.required.contains(.sourceRevision) || tool == .editLocalPreset || tool == .editPhotoDraft
+        let singleEdit = draft != nil || tool.required.contains(.sourceRevision) || tool == .editLocalPreset || tool == .editPhotoDraft
         return workflows.start(tool) { [self] job in
             model.applyingAdjustments = true
             defer { model.applyingAdjustments = false }
@@ -472,7 +505,9 @@ extension AppMCPTools {
                 var item = MCPDevelopPhoto.revisions(photo)
                 do {
                     guard photo.availability == "available", let root = roots[photo.rootID] else { throw MCPToolProblem.fileAccess }
-                    let worker = Task.detached { try await edit.result(on: photo, root: root, pipeline: pipeline, draft: draft) }
+                    let worker = Task.detached {
+                        try await edit.result(on: photo, root: root, pipeline: pipeline, draft: draft, presetTrial: presetTrial)
+                    }
                     let (value, notes, details) = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                     if let value { changes.append((photo, value)) }
                     item["state"] = value == nil ? "unchanged" : "updated"
@@ -494,15 +529,17 @@ extension AppMCPTools {
                 try verifyPhotoDraft(draft.reference)
                 try verifySavedCanvasRead(draft.photo, catalog: catalog, model: model)
                 try beforeSave()
-                if let change = changes.first {
-                    draft.recipe = change.recipe
+                let updated = !changes.isEmpty || (presetTrial != nil && draft.presetTrial?.selection != presetTrial?.selection)
+                if updated {
+                    if let change = changes.first { draft.recipe = change.recipe }
+                    draft.presetTrial = presetTrial
                     draft.revision += 1
                     photoDraft = draft
                 }
                 job.data.merge(draft.data) { _, value in value }
                 job.data["changed_count"] = .int(changes.count)
                 job.items = items.map(Value.object)
-                job.finish(.succeeded, changes.isEmpty ? "The draft was unchanged." : "Updated the photo draft without saving an edit.")
+                job.finish(.succeeded, updated ? "Updated the photo draft without saving an edit." : "The draft was unchanged.")
                 return
             }
             guard !model.dirty, model.undo.groupingLevel == 0, model.undo.isUndoRegistrationEnabled else { throw MCPToolProblem.nativeInteraction }
