@@ -517,6 +517,8 @@ final class AppModel {
     var exportRecordsUnfinishedOnly = false
     var showCopyRecovery = false
     var catalogUtilityOpen = false
+    var showCatalogArchive = false
+    var lightroomImportSource: AccessLease?
     var showNewCatalog = false
     var catalogRestoreSource: URL?
     var importConflict: ImportConflict?
@@ -531,6 +533,7 @@ final class AppModel {
     private var openingStartupCatalog = false
     private var deferredCatalogURL: URL?
     var changingCatalogExtension = false
+    @ObservationIgnored private(set) var catalogTransfer: Task<Void, Never>?
     let viewport = PhotoViewport()
     let undo = UndoManager()
     @ObservationIgnored lazy var mcp = AppMCPService()
@@ -545,7 +548,7 @@ final class AppModel {
     }
     var catalogName: String { catalog?.fileURL.deletingPathExtension().lastPathComponent ?? L10n.text("app.noCatalogOpen", defaultValue: "No catalog open") }
     /// Menu-bar commands stay reachable while a sheet is up, so they must not stack a second sheet.
-    var presentingSheet: Bool { showCameraDiagnostics || showTaskResults || showImport || folderReview != nil || mergeSession != nil || showXMPPresetImport || showExport || showNewCatalog || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
+    var presentingSheet: Bool { showCameraDiagnostics || showTaskResults || showImport || folderReview != nil || mergeSession != nil || showXMPPresetImport || showExport || showNewCatalog || showCatalogArchive || lightroomImportSource != nil || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
     var canSwitchCatalog: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var workspaceAvailable: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var canLocateOriginal: Bool { catalog != nil && active != nil && workspaceAvailable && comparison == nil && survey == nil }
@@ -749,9 +752,10 @@ final class AppModel {
             if let recent = recentCatalogs.first {
                 let lease = try AccessLease(bookmark: recent.bookmark)
                 let url = lease.url.appendingPathComponent(recent.filename)
-                if CatalogFile.isLegacy(url) {
+                if CatalogFile.isLegacy(url) || CatalogArchive.hasIndex(beside: url) {
                     startupCatalogOpen = CatalogOpenRequest(url: url, access: lease, bookmark: recent.bookmark, restoreWorkspace: true)
-                    status = L10n.text("catalogExtension.waitingForChoice", defaultValue: "Choose how to open this catalog.")
+                    status = CatalogFile.isLegacy(url) ? L10n.text("catalogExtension.waitingForChoice", defaultValue: "Choose how to open this catalog.")
+                        : L10n.text("archive.opening", defaultValue: "Opening archived catalog…")
                     return
                 }
                 catalog = try CatalogStore(fileURL: url, access: lease)
@@ -3033,7 +3037,7 @@ final class AppModel {
             // Read the journal again: a sheet may have just renewed the target permission.
             let history = try ExportService.history(catalog: catalog, ids: ids)
             guard history.rejected.isEmpty, history.logs.count == ids.count else { throw LRCError(L10n.text("app.someOutputRecordsAreUnsupportedOrMissingOriginalRecords", defaultValue: "Some output records are unsupported or missing. Original records were preserved; review them first")) }
-            let snapshots = history.logs.filter { includeCompleted || $0.canRetryInBatch }.map(\.snapshot)
+            let snapshots = history.logs.filter { !$0.isArchived && (includeCompleted || $0.canRetryInBatch) }.map(\.snapshot)
             guard !snapshots.isEmpty else { return }
             let batchIDs = lastExportResult.flatMap { ids.isSubset(of: $0.ids) ? $0.ids : nil } ?? ids
             busy = true; showImportCompletion = false
@@ -3249,6 +3253,109 @@ final class AppModel {
             status = L10n.text("app.copyLogLoadedIntoTaskResultsTasksWereNot", defaultValue: "Copy log loaded into task results; tasks were not replayed")
         }
     }
+    func requestCatalogArchive() {
+        guard canSwitchCatalog, catalog != nil, commitRecipe() else { return }
+        showCatalogArchive = true
+    }
+    func requestLightroomImport() {
+        guard canSwitchCatalog, commitRecipe() else { return }
+        catalogUtilityOpen = true
+        defer { catalogUtilityOpen = false }
+        let panel = NSOpenPanel()
+        panel.title = L10n.text("lightroom.title", defaultValue: "Import Lightroom Classic Catalog")
+        panel.canChooseDirectories = true; panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = L10n.text("lightroom.chooseCatalogFolder", defaultValue: "Choose the folder containing the Lightroom Classic catalog and its settings files.")
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
+        let directoryLease = AccessLease(url: directory)
+        perform {
+            let catalogs = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles])
+                .filter { $0.pathExtension.lowercased() == "lrcat" && (try? FileIdentity.read($0)) != nil }
+            guard !catalogs.isEmpty else { throw LRCError(L10n.text("lightroom.unsupportedCatalog", defaultValue: "Choose a supported Lightroom Classic .lrcat catalog.")) }
+            let selected: URL
+            if catalogs.count == 1 { selected = catalogs[0] }
+            else {
+                let picker = NSOpenPanel()
+                picker.title = panel.title; picker.directoryURL = directory
+                picker.allowedContentTypes = [UTType(filenameExtension: "lrcat") ?? .database]
+                picker.canChooseDirectories = false; picker.allowsMultipleSelection = false
+                guard picker.runModal() == .OK, let url = picker.url else { return }
+                guard url.deletingLastPathComponent().resolvingSymlinksInPath().path == directory.resolvingSymlinksInPath().path else {
+                    throw LRCError(L10n.text("lightroom.chooseCatalogFolder", defaultValue: "Choose the folder containing the Lightroom Classic catalog and its settings files."))
+                }
+                selected = url
+            }
+            lightroomImportSource = AccessLease(url: selected, retaining: directoryLease)
+        }
+    }
+    func startLightroomImport(_ preview: LightroomCatalog, source: AccessLease, folders: [Int64: AccessLease],
+                              parent: AccessLease, name: String, copying: Bool) throws {
+        guard !busy, commitRecipe() else { return }
+        let filename = try Self.catalogFilename(name)
+        let folder = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
+        let destination = parent.url.appendingPathComponent(folder, isDirectory: true)
+        let title = L10n.text("lightroom.importing", defaultValue: "Importing Lightroom catalog…")
+        let pipeline = pipeline
+        lightroomImportSource = nil
+        runCatalogTransfer(title: title) { progress in
+            defer { withExtendedLifetime((source, folders, parent)) {} }
+            return try await LightroomImporter.run(preview, locations: folders.mapValues(\.url), destination: destination,
+                                                  copying: copying, pipeline: pipeline, progress: progress)
+        } complete: { [self] result in
+            let lease = AccessLease(url: result.catalog.deletingLastPathComponent(), retaining: parent)
+            do {
+                let next = try CatalogStore(fileURL: result.catalog, access: lease)
+                try activateCreatedCatalog(next, directory: lease.url, bookmark: AccessLease.bookmark(lease.url, readOnly: false))
+            } catch { self.error = result.catalog.path + "\n" + error.localizedDescription }
+            let summary = L10n.text("lightroom.summary", defaultValue: "Imported \(result.imported) versions · \(result.converted) with converted edits")
+            status = summary
+            reports = [summary, result.catalog.path] + result.warnings
+            if self.error == nil { showTaskResults = true }
+        } failure: { [self] error in
+            status = error is CancellationError ? L10n.text("app.importCancelled", defaultValue: "Import cancelled") : L10n.text("app.importIncomplete", defaultValue: "Import incomplete")
+        }
+    }
+    private func runCatalogTransfer<Result: Sendable>(title: String,
+        _ work: @escaping @Sendable (@escaping @Sendable (Int, Int) async -> Void) async throws -> Result,
+        complete: @escaping (Result) -> Void, failure: @escaping (Error) -> Void) {
+        busy = true; status = title; reports = []
+        let transfer = Task {
+            defer { busy = false; catalogTransfer = nil; taskProgress = nil; task = nil }
+            let worker = Task.detached(priority: .utility) { [self] in
+                try await work { done, total in
+                    await MainActor.run { taskProgress = TaskProgress(title: title, done: done, total: total) }
+                }
+            }
+            do {
+                let value = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                busy = false
+                complete(value)
+            } catch {
+                if !(error is CancellationError) { self.error = error.localizedDescription }
+                failure(error)
+            }
+        }
+        task = transfer
+        catalogTransfer = transfer
+    }
+    func startCatalogArchive(name: String, parent: AccessLease, extras: [AccessLease]) throws {
+        guard !busy, let catalog, commitRecipe() else { return }
+        let filename = try Self.catalogFilename(name)
+        let folder = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
+        let destination = parent.url.appendingPathComponent(folder, isDirectory: true)
+        let title = L10n.text("archive.copying", defaultValue: "Copying project files…")
+        showCatalogArchive = false
+        runCatalogTransfer(title: title) { progress in
+            defer { withExtendedLifetime((parent, extras)) {} }
+            return try await CatalogArchive.create(catalog: catalog, destination: destination, extras: extras.map(\.url), progress: progress)
+        } complete: { [self] file in
+            status = L10n.text("archive.complete", defaultValue: "Catalog archive complete")
+            reports = [file.path]
+            NSWorkspace.shared.activateFileViewerSelecting([file])
+        } failure: { [self] error in
+            status = error is CancellationError ? L10n.text("archive.cancelled", defaultValue: "Catalog archive cancelled") : L10n.text("archive.failed", defaultValue: "Catalog archive incomplete")
+        }
+    }
     func backup(manifest: Bool = false) {
         guard let catalog else { return }
         let panel = NSSavePanel(); panel.nameFieldStringValue = manifest ? "Phosdeck-\(UUID().uuidString.prefix(8)).json" : "Phosdeck-\(UUID().uuidString.prefix(8)).sqlite"
@@ -3282,7 +3389,7 @@ struct RecentCatalog: Codable, Identifiable {
     var id: String { path }
 }
 
-struct CatalogOpenRequest {
+struct CatalogOpenRequest: Sendable {
     let url: URL
     let access: AccessLease
     let bookmark: Data?
@@ -3309,6 +3416,23 @@ extension AppModel {
         guard canSwitchCatalog, commitRecipe() else { return nil }
         do {
             guard CatalogFile.isLegacy(request.url) else {
+                if CatalogArchive.hasIndex(beside: request.url) {
+                    let previousStatus = status
+                    let title = L10n.text("archive.opening", defaultValue: "Opening archived catalog…")
+                    runCatalogTransfer(title: title) { _ in
+                        try CatalogStore(fileURL: request.url, access: request.access)
+                    } complete: { [self] next in
+                        do {
+                            try finishCatalogOpen(request.url, request: request, prepared: next)
+                        } catch {
+                            status = catalog == nil ? L10n.text("app.noCatalogIsOpen", defaultValue: "No catalog is open") : previousStatus
+                            self.error = error.localizedDescription
+                        }
+                    } failure: { [self] error in
+                        status = catalog == nil && !(error is CancellationError) ? L10n.text("app.noCatalogIsOpen", defaultValue: "No catalog is open") : previousStatus
+                    }
+                    return catalogTransfer
+                }
                 try finishCatalogOpen(request.url, request: request)
                 return nil
             }
@@ -3378,14 +3502,14 @@ extension AppModel {
         try await Task.detached(priority: .userInitiated) { try change.perform() }.value
     }
 
-    func finishCatalogOpen(_ url: URL, request: CatalogOpenRequest) throws {
+    func finishCatalogOpen(_ url: URL, request: CatalogOpenRequest, prepared: CatalogStore? = nil) throws {
         let renamed = url != request.url
         if renamed {
             if usesPreferences { Self.transferCatalogPreferences(from: request.url, to: url, defaults: .standard) }
             // A completed rename must be discoverable even if opening later fails.
             try rememberCatalog(url, directory: request.access.url, bookmark: request.bookmark, replacing: request.url)
         }
-        let next = try CatalogStore(fileURL: url, access: request.access)
+        let next = try prepared ?? CatalogStore(fileURL: url, access: request.access)
         if request.restoreWorkspace && catalog == nil {
             catalog = next
             try restoreCatalogWorkspace()

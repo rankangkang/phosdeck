@@ -47,7 +47,7 @@ Phosdeck 是 macOS 上的照片管理与非破坏性编辑工具，使用 SwiftU
 | 相机检查 | 本地 RAW 解码与管线一致性检查，保存 JSON 报告 |
 | 导出 | JPEG、PNG、TIFF16，命名模板、导出预设、多规格输出与可选元数据；同名文件不覆盖 |
 
-支持导入 Lightroom XMP 预设的部分全局参数，属于近似转换，不保证与 Lightroom 的渲染结果相同。Lightroom 图库不能直接打开。
+支持从 Lightroom Classic `.lrcat` 导入照片组织、虚拟副本和部分可编辑调整，可原地引用或复制原片。Lightroom XMP 预设也可单独导入。转换效果可能与 Lightroom 不同，具体范围见[上手指南](docs/getting-started.md#从-lightroom-classic-目录导入)。
 
 ## 快速上手
 
@@ -74,7 +74,7 @@ Phosdeck 是 macOS 上的照片管理与非破坏性编辑工具，使用 SwiftU
 
 构建产物位于 `build/Build/Products/Debug/Phosdeck.app`。首次使用可新建一个 `.phoscat` 测试图库，导入几张合成图片或有权使用的照片，试一下评级、编辑与导出。[上手指南](docs/getting-started.md)介绍了完整流程及备份恢复方法。
 
-图库保存照片位置和调整，不包含原片。备份图库时，照片和导出文件需要另行备份。旧后缀 `.omlcat`／`.omlrcat` 仍可打开，是否在原位置更换后缀由打开时的提示确认；这不会转换数据库格式。
+图库数据库保存照片位置和调整。使用[归档整个图库](docs/getting-started.md#归档整个图库)可将图库和项目文件复制到另一块盘，并从副本继续编辑。旧后缀 `.omlcat`／`.omlrcat` 仍可打开，可按提示在原位置更换后缀。
 
 <details>
 <summary>使用稳定的本机开发签名</summary>

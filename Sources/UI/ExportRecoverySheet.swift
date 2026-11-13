@@ -8,9 +8,9 @@ struct ExportRecoverySheet: View {
     @State private var feedback: String?
     @State private var failure: String?
     @State private var unfinishedOnly = false
-    private var completed: Int { logs.filter { $0.state == "completed" }.count }
+    private var completed: Int { logs.count(where: \.isCompleted) }
     private var retryable: [ExportLog] { logs.filter(\.canRetryInBatch) }
-    private var displayed: [ExportLog] { unfinishedOnly ? logs.filter { $0.state != "completed" } : logs }
+    private var displayed: [ExportLog] { unfinishedOnly ? logs.filter { !$0.isCompleted } : logs }
     private var batch: Bool { model.exportRecordIDs != nil }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -57,16 +57,18 @@ struct ExportRecoverySheet: View {
                                     ForEach(retained, id: \.path) { url in Text(url.path).font(.caption11).textSelection(.enabled) }
                                 }
                             }
-                            HStack {
-                                if log.state == "completed" {
-                                    Button(L10n.text("app.showInFinder", defaultValue: "Show in Finder")) { model.revealExports(ids: [log.id]) }
-                                        .disabled(model.busy).accessibilityIdentifier("export-reveal-" + log.id)
+                            if !log.isArchived {
+                                HStack {
+                                    if log.state == "completed" {
+                                        Button(L10n.text("app.showInFinder", defaultValue: "Show in Finder")) { model.revealExports(ids: [log.id]) }
+                                            .disabled(model.busy).accessibilityIdentifier("export-reveal-" + log.id)
+                                    }
+                                    Button(log.state == "completed" ? L10n.text("app.verifyOutputAndRetryIfNeeded", defaultValue: "Verify Output and Retry if Needed") : L10n.text("app.verifyAndRetryThisOutput", defaultValue: "Verify and Retry This Output")) {
+                                        model.retryExport(log.snapshot); dismiss()
+                                    }.disabled(model.busy).accessibilityIdentifier("export-retry-" + log.id)
+                                    Button(L10n.text("app.reauthorizeOriginalDestination", defaultValue: "Reauthorize Original Destination…")) { reauthorize(log) }
+                                        .disabled(model.busy).accessibilityIdentifier("export-reauthorize-" + log.id)
                                 }
-                                Button(log.state == "completed" ? L10n.text("app.verifyOutputAndRetryIfNeeded", defaultValue: "Verify Output and Retry if Needed") : L10n.text("app.verifyAndRetryThisOutput", defaultValue: "Verify and Retry This Output")) {
-                                    model.retryExport(log.snapshot); dismiss()
-                                }.disabled(model.busy).accessibilityIdentifier("export-retry-" + log.id)
-                                Button(L10n.text("app.reauthorizeOriginalDestination", defaultValue: "Reauthorize Original Destination…")) { reauthorize(log) }
-                                    .disabled(model.busy).accessibilityIdentifier("export-reauthorize-" + log.id)
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading)
                         Seam()

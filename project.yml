@@ -38,6 +38,8 @@ targets:
       # Includes AppMCPPreferences.swift, AppMCPMaintenance.swift, and AppMCPCameraDiagnostics.swift.
       # Includes MergePanoramaFinish.swift and MergeDNGCodec.swift for float panorama finishing and linear DNG masters.
       # Includes native multiframe merge registration, MergeCameraRefinement, depth-gated FocusStackFusion, float masters and UI.
+      # Includes CatalogArchive.swift, ProjectCopy.swift and CatalogArchiveSheet.swift.
+      # Includes LightroomCatalog.swift, LightroomImporter.swift, LightroomSettings.swift and LightroomImportSheet.swift.
       - path: Sources
         excludes: [Imaging/raster-exposure-colour-v4.bin]
       - path: design/logo/wordmark-approved-ivory.svg
@@ -122,6 +124,8 @@ targets:
       # Includes PhotoMergeTests.swift and FocusStackRegressionTests.swift for merge algorithms, float masters, safe publication and clipped focus selection.
       # Includes Agent*Tests.swift for MCP checks.
       # Includes AgentMaintenanceTests.swift for preferences, recovery, and camera reports.
+      # Includes CatalogArchiveTests.swift for independent project copies.
+      # Includes LightroomImportTests.swift for read-only catalog conversion and file handling.
       - path: Tests
         excludes: [test_calibration_paths.py]
     dependencies:

@@ -169,6 +169,7 @@ final class CatalogStore: @unchecked Sendable {
             """)
             }
         }
+        if !create { try CatalogArchive.restoreRoots(file: self.fileURL, database: database) }
         try database.write { db in
             try db.execute(sql: "UPDATE exportItem SET state = 'interrupted' WHERE state IN ('planned','rendering','verified','published')")
             for payload in try Data.fetchAll(db, sql: "SELECT payload FROM importPlan WHERE state='running'") {

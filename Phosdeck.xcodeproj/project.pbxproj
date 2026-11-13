@@ -90,6 +90,7 @@
 		FEEDBEEF00000000000000B1 /* wordmark-approved-ivory.svg in Resources */ = {isa = PBXBuildFile; fileRef = FEEDBEEF00000000000000A1 /* wordmark-approved-ivory.svg */; };
 		FEEDBEEF00000000000000B2 /* wordmark-approved-graphite.svg in Resources */ = {isa = PBXBuildFile; fileRef = FEEDBEEF00000000000000A2 /* wordmark-approved-graphite.svg */; };
 		08AE74690DB619415969B071 /* XMPPresetSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D53D3CC77BFC5680ACDE04B /* XMPPresetSettings.swift */; };
+		2538AEABAC77359726E07EC4 /* LightroomSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC3702DCB886B88647E05432 /* LightroomSettings.swift */; };
 		83C9C2CBABFA4C4AFB6AB636 /* XMPPresetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B030719D5305B26A428BB20 /* XMPPresetReader.swift */; };
 		436255011F4E1BCB772DD16B /* XMPPresetImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE0EE456E9FC2842A71E298 /* XMPPresetImportSheet.swift */; };
 		DA90B09A85067158C14FD926 /* XMPPresetImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77AC34E25F283E1DB318AD24 /* XMPPresetImportTests.swift */; };
@@ -181,6 +182,7 @@
 		9913E8720AABF226BB23DC19 /* FileAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADE6D9815B8E884D06D585D9 /* FileAccess.swift */; };
 		9B85F001D553A52C48B32237 /* DevelopAdjustments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F6E16199347E71C3D817B0A /* DevelopAdjustments.swift */; };
 		A265017B4066DAECE7ED9FFC /* ToneCurvePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBE0D5833B89D396CA8288C /* ToneCurvePanel.swift */; };
+		18F6E7B8FEBAC6966FDED913 /* ProjectCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E3E6FF90D56DA62947903E /* ProjectCopy.swift */; };
 		A4853007425A5B671C3F1323 /* RootRelocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68587806D8AA27D2E1428821 /* RootRelocator.swift */; };
 		A49613E642E70E763F6C0EB1 /* EditRecipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3BDAF664C85EC415862CAB9 /* EditRecipe.swift */; };
 		A667B81DEFD3FAEAE0335612 /* RecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DF525A9BA333CDB965BDCC4 /* RecoveryTests.swift */; };
@@ -193,9 +195,14 @@
 		D7A1C0DE00000000000000B4 /* Wordmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7A1C0DE00000000000000A4 /* Wordmark.swift */; };
 		D7A1C0DE00000000000000B5 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = D7A1C0DE00000000000000A5 /* AppIcon.icon */; };
 		D7A1C0DE00000000000000B3 /* ParameterRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7A1C0DE00000000000000A3 /* ParameterRow.swift */; };
+		23F4751BCF7E55BDBC5CC3C5 /* LightroomImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB728F4477E5CB52DE7901A5 /* LightroomImportSheet.swift */; };
+		B466147E8E18BC560259E19A /* CatalogArchiveSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 697DE9C6D30DDE007E561967 /* CatalogArchiveSheet.swift */; };
 		AD94AF82E673FECB2CC63625 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DBB19F204ED5600D22F26E7 /* WorkspaceView.swift */; };
+		B938A97EBD7231653D6F1EE1 /* LightroomCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8D73BD01CDAF8733A41F234 /* LightroomCatalog.swift */; };
+		5EB5F5412DE1AC2F5D63EDCC /* LightroomImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7A5EB59F42456828A63BF4E /* LightroomImporter.swift */; };
 		AED295502F55C29C6C3CFD22 /* ReferenceImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EBE4EE996A4C6B183C214B8 /* ReferenceImporter.swift */; };
 		B008C831C8598D4967C8EB31 /* ToneSampling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC49DA04965D4D2B674E126 /* ToneSampling.swift */; };
+		5BC2BA96C7ED3F59EC6B7800 /* CatalogArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = B536719AE4B368BC0C402B09 /* CatalogArchive.swift */; };
 		B0203ED18208D27A8E747F00 /* CatalogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B79E803642C4FBB1674B3FA /* CatalogStore.swift */; };
 		D21100000000000000000002 /* CatalogFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D21100000000000000000001 /* CatalogFile.swift */; };
 		B954E0DF2619F412432A8C86 /* WorkflowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60A24C4208C52F3CAB9048E /* WorkflowTests.swift */; };
@@ -203,6 +210,8 @@
 		C09B6544CF232A93B7AABE7C /* DevelopKernels.metal in Sources */ = {isa = PBXBuildFile; fileRef = E15831987E3307EB5A6F1B5C /* DevelopKernels.metal */; };
 		C2C73DBA680514FAB3E515F7 /* DevelopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA41767E2E2C79FF95C7D711 /* DevelopTests.swift */; };
 		C6519DE165001862FA01C861 /* ImagePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD7FF6D65F7384866D5FA9BD /* ImagePipeline.swift */; };
+		DBA8623E66985C75BDC474DF /* LightroomImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6461FEE691581B3EC8055853 /* LightroomImportTests.swift */; };
+		195BB976680996526D685672 /* CatalogArchiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BE84A26ADF0284CA4852F45 /* CatalogArchiveTests.swift */; };
 		CEC431965B5747D16FE00693 /* ImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D29031A4109AE4DE8738DC4 /* ImportTests.swift */; };
 		D6A78123605B822492388040 /* CopyImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14D20029DE4CCA812F22ED0 /* CopyImporter.swift */; };
 		E4D8B598D3B19A1AE65E5C75 /* FoundationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C76698ABB9B371F9B04A3643 /* FoundationTests.swift */; };
@@ -349,6 +358,7 @@
 		FEEDBEEF00000000000000A2 /* wordmark-approved-graphite.svg */ = {isa = PBXFileReference; lastKnownFileType = image.svg; path = "design/logo/wordmark-approved-graphite.svg"; sourceTree = "<group>"; };
 		C0DE00000000000000000001 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Debug.xcconfig; sourceTree = "<group>"; };
 		8D53D3CC77BFC5680ACDE04B /* XMPPresetSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XMPPresetSettings.swift; sourceTree = "<group>"; };
+		AC3702DCB886B88647E05432 /* LightroomSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightroomSettings.swift; sourceTree = "<group>"; };
 		8B030719D5305B26A428BB20 /* XMPPresetReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XMPPresetReader.swift; sourceTree = "<group>"; };
 		1AE0EE456E9FC2842A71E298 /* XMPPresetImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XMPPresetImportSheet.swift; sourceTree = "<group>"; };
 		77AC34E25F283E1DB318AD24 /* XMPPresetImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XMPPresetImportTests.swift; sourceTree = "<group>"; };
@@ -390,6 +400,7 @@
 		F7D581C53A784739B2DB4182 /* RasterEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RasterEditingTests.swift; sourceTree = "<group>"; };
 		00C8F7372EACBFA43F19D953 /* PhotoCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCanvas.swift; sourceTree = "<group>"; };
 		0B0D61F218E1F961955D1D86 /* MaskEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaskEditing.swift; sourceTree = "<group>"; };
+		B536719AE4B368BC0C402B09 /* CatalogArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogArchive.swift; sourceTree = "<group>"; };
 		1B79E803642C4FBB1674B3FA /* CatalogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogStore.swift; sourceTree = "<group>"; };
 		D21100000000000000000001 /* CatalogFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogFile.swift; sourceTree = "<group>"; };
 		1DF525A9BA333CDB965BDCC4 /* RecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryTests.swift; sourceTree = "<group>"; };
@@ -399,6 +410,8 @@
 		3A1657F865558A803EB25884 /* PerceptualColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerceptualColor.swift; sourceTree = "<group>"; };
 		3A5B21C5345EE6589A963C50 /* CopyImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyImportSheet.swift; sourceTree = "<group>"; };
 		3BFC62F44052CFA3BB5F66CC /* PhotoComparison.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoComparison.swift; sourceTree = "<group>"; };
+		B8D73BD01CDAF8733A41F234 /* LightroomCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightroomCatalog.swift; sourceTree = "<group>"; };
+		F7A5EB59F42456828A63BF4E /* LightroomImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightroomImporter.swift; sourceTree = "<group>"; };
 		3EBE4EE996A4C6B183C214B8 /* ReferenceImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImporter.swift; sourceTree = "<group>"; };
 		494FCB93588637CA96FBB7BB /* ImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportSheet.swift; sourceTree = "<group>"; };
 		49D31EDF4DE88089168B0CF3 /* FolderTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderTree.swift; sourceTree = "<group>"; };
@@ -412,6 +425,7 @@
 		625A7D1CDDF3EB238EFB4E81 /* SettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSheet.swift; sourceTree = "<group>"; };
 		63E063FFBB01E5BB554FDD76 /* ExportRecoverySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportRecoverySheet.swift; sourceTree = "<group>"; };
 		671468FA459BF0C33D8ADFF8 /* PhosdeckTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhosdeckTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C4E3E6FF90D56DA62947903E /* ProjectCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectCopy.swift; sourceTree = "<group>"; };
 		68587806D8AA27D2E1428821 /* RootRelocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootRelocator.swift; sourceTree = "<group>"; };
 		717E53E401E0C4E52985528C /* ExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
 		764A78C6D034125EE59E8F92 /* ImageHistogram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageHistogram.swift; sourceTree = "<group>"; };
@@ -426,6 +440,8 @@
 		99DA58B0D79A40DECD113A27 /* CropInteraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CropInteraction.swift; sourceTree = "<group>"; };
 		9B806177FC63F1D0385774AD /* AuthorizedVolumeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorizedVolumeTests.swift; sourceTree = "<group>"; };
 		9BC49DA04965D4D2B674E126 /* ToneSampling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToneSampling.swift; sourceTree = "<group>"; };
+		6461FEE691581B3EC8055853 /* LightroomImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightroomImportTests.swift; sourceTree = "<group>"; };
+		9BE84A26ADF0284CA4852F45 /* CatalogArchiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogArchiveTests.swift; sourceTree = "<group>"; };
 		9D29031A4109AE4DE8738DC4 /* ImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportTests.swift; sourceTree = "<group>"; };
 		D7A1C0DE00000000000000A1 /* DarkroomTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkroomTheme.swift; sourceTree = "<group>"; };
 		D7A1C0DE00000000000000A2 /* DarkroomControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkroomControls.swift; sourceTree = "<group>"; };
@@ -433,6 +449,8 @@
 		D7A1C0DE00000000000000A4 /* Wordmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wordmark.swift; sourceTree = "<group>"; };
 		D7A1C0DE00000000000000A5 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		D7A1C0DE00000000000000A3 /* ParameterRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParameterRow.swift; sourceTree = "<group>"; };
+		BB728F4477E5CB52DE7901A5 /* LightroomImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightroomImportSheet.swift; sourceTree = "<group>"; };
+		697DE9C6D30DDE007E561967 /* CatalogArchiveSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogArchiveSheet.swift; sourceTree = "<group>"; };
 		9DBB19F204ED5600D22F26E7 /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
 		A516ABDDEEF02AC4E4D98112 /* StorageUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageUsage.swift; sourceTree = "<group>"; };
 		A5334CF392C1CE1E6D909AB9 /* oklab-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "oklab-LICENSE.txt"; sourceTree = "<group>"; };
@@ -568,6 +586,7 @@
 			isa = PBXGroup;
 			children = (
 				ADE6D9815B8E884D06D585D9 /* FileAccess.swift */,
+				C4E3E6FF90D56DA62947903E /* ProjectCopy.swift */,
 				68587806D8AA27D2E1428821 /* RootRelocator.swift */,
 				4F7E0280B39E067F8333CF12 /* SafeFileWriter.swift */,
 				A516ABDDEEF02AC4E4D98112 /* StorageUsage.swift */,
@@ -585,6 +604,7 @@
 
 				F9B522B1EA604DD895358936 /* RawJpegPairs.swift */,
 				A2300AF050A841A4B479A9E1 /* PhotoStacks.swift */,				B6668B685DDDA7D5F01F7EA3 /* CatalogQueries.swift */,
+				B536719AE4B368BC0C402B09 /* CatalogArchive.swift */,
 				1B79E803642C4FBB1674B3FA /* CatalogStore.swift */,
 				D21100000000000000000001 /* CatalogFile.swift */,
 				E38AF958FAE6D5E906017E06 /* Models.swift */,
@@ -607,9 +627,12 @@
 		7E95A4E8EE3FD4B285C2964B /* Import */ = {
 			isa = PBXGroup;
 			children = (
+				AC3702DCB886B88647E05432 /* LightroomSettings.swift */,
 				8B030719D5305B26A428BB20 /* XMPPresetReader.swift */,
 				B14D20029DE4CCA812F22ED0 /* CopyImporter.swift */,
 				5EE64A30FC6BCE98D0AE3EED /* ImportPlanner.swift */,
+				B8D73BD01CDAF8733A41F234 /* LightroomCatalog.swift */,
+				F7A5EB59F42456828A63BF4E /* LightroomImporter.swift */,
 				3EBE4EE996A4C6B183C214B8 /* ReferenceImporter.swift */,
 				D42800020000000000000001 /* FolderReview.swift */,
 			);
@@ -662,6 +685,8 @@
 				C76698ABB9B371F9B04A3643 /* FoundationTests.swift */,
 				D21100000000000000000003 /* CatalogFileTests.swift */,
 				92E011EA10F84D58646D426A /* ImagingTests.swift */,
+				6461FEE691581B3EC8055853 /* LightroomImportTests.swift */,
+				9BE84A26ADF0284CA4852F45 /* CatalogArchiveTests.swift */,
 				9D29031A4109AE4DE8738DC4 /* ImportTests.swift */,
 				D42800020000000000000003 /* FolderReviewTests.swift */,
 				57C4D9A738840CD7C3ED455C /* KeywordTests.swift */,
@@ -874,6 +899,8 @@
 				625A7D1CDDF3EB238EFB4E81 /* SettingsSheet.swift */,
 				B957796ED3C30AF6FB0A2427 /* LanguagePackSettings.swift */,
 				5BBE0D5833B89D396CA8288C /* ToneCurvePanel.swift */,
+				BB728F4477E5CB52DE7901A5 /* LightroomImportSheet.swift */,
+				697DE9C6D30DDE007E561967 /* CatalogArchiveSheet.swift */,
 				9DBB19F204ED5600D22F26E7 /* WorkspaceView.swift */,
 				AB40F5227D8135746CC9EB17 /* PresetPreviewList.swift */,
 				7122EEA3997ED8F3B1CEF587 /* SmartMaskPanel.swift */,
@@ -1067,6 +1094,8 @@
 				E4D8B598D3B19A1AE65E5C75 /* FoundationTests.swift in Sources */,
 				D21100000000000000000004 /* CatalogFileTests.swift in Sources */,
 				8EC306108B156312ED8B0C15 /* ImagingTests.swift in Sources */,
+				DBA8623E66985C75BDC474DF /* LightroomImportTests.swift in Sources */,
+				195BB976680996526D685672 /* CatalogArchiveTests.swift in Sources */,
 				CEC431965B5747D16FE00693 /* ImportTests.swift in Sources */,
 				D42800010000000000000003 /* FolderReviewTests.swift in Sources */,
 				33B7016C130759D12B66A7C2 /* KeywordTests.swift in Sources */,
@@ -1139,6 +1168,7 @@
 				9EFCB50EACDDE7159F2A9462 /* MultiExport.swift in Sources */,
 				4B1880121E14937DFF134CCF /* PresetManagement.swift in Sources */,
 				08AE74690DB619415969B071 /* XMPPresetSettings.swift in Sources */,
+				2538AEABAC77359726E07EC4 /* LightroomSettings.swift in Sources */,
 				83C9C2CBABFA4C4AFB6AB636 /* XMPPresetReader.swift in Sources */,
 				436255011F4E1BCB772DD16B /* XMPPresetImportSheet.swift in Sources */,
 				FB23F056B5AEF44EEF30E376 /* AppModel.swift in Sources */,
@@ -1174,6 +1204,7 @@
 
 				62CC3F674FB44971AA01CA58 /* RawJpegPairs.swift in Sources */,
 				A703AB3E00B741788D8A7AA2 /* PhotoStacks.swift in Sources */,				F96FCEF7FC2F8104E91F01C9 /* CatalogQueries.swift in Sources */,
+				5BC2BA96C7ED3F59EC6B7800 /* CatalogArchive.swift in Sources */,
 				B0203ED18208D27A8E747F00 /* CatalogStore.swift in Sources */,
 				D21100000000000000000002 /* CatalogFile.swift in Sources */,
 
@@ -1238,8 +1269,11 @@
 				8C7E42B896427FF9776FFC84 /* PhotoComparison.swift in Sources */,
 				4506E94AC0006E4939CD0A52 /* PhotoGrid.swift in Sources */,
 				8701029D1A2B67CB5AE5D340 /* PreviewDiskCache.swift in Sources */,
+				B938A97EBD7231653D6F1EE1 /* LightroomCatalog.swift in Sources */,
+				5EB5F5412DE1AC2F5D63EDCC /* LightroomImporter.swift in Sources */,
 				AED295502F55C29C6C3CFD22 /* ReferenceImporter.swift in Sources */,
 				D42800010000000000000001 /* FolderReview.swift in Sources */,
+				18F6E7B8FEBAC6966FDED913 /* ProjectCopy.swift in Sources */,
 				A4853007425A5B671C3F1323 /* RootRelocator.swift in Sources */,
 				473E1F7A288537F9DDE47C7C /* SafeFileWriter.swift in Sources */,
 				7EFC07668E5A6FA948609B5C /* SettingsSheet.swift in Sources */,
@@ -1260,6 +1294,8 @@
 				A8C07A0F2026101900000002 /* InstrumentFormControls.swift in Sources */,
 				D7A1C0DE00000000000000B4 /* Wordmark.swift in Sources */,
 				D7A1C0DE00000000000000B3 /* ParameterRow.swift in Sources */,
+				23F4751BCF7E55BDBC5CC3C5 /* LightroomImportSheet.swift in Sources */,
+				B466147E8E18BC560259E19A /* CatalogArchiveSheet.swift in Sources */,
 				AD94AF82E673FECB2CC63625 /* WorkspaceView.swift in Sources */,
 				5ABD5E7ACBC9E7B3A799CCD7 /* PresetPreviewList.swift in Sources */,
 				AAC7DCCC91F14369B67D1E37 /* SmartMaskRaster.swift in Sources */,

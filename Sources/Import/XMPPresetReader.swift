@@ -60,7 +60,10 @@ enum XMPPresetReader {
         guard parser.parse(), reader.failure == nil else {
             throw LRCError(reader.failure ?? L10n.text("app.invalidXMPXMLLine", defaultValue: "Invalid XMP XML (line \(parser.lineNumber))"))
         }
-        let props = try reader.properties()
+        return try convert(reader.properties(), filename: filename)
+    }
+
+    static func convert(_ props: [String: [String]], filename: String) throws -> XMPPresetDraft {
         guard !props.isEmpty else { throw LRCError(L10n.text("app.noAdobeCRSAdjustmentsFoundChooseALightroomClassic", defaultValue: "No Adobe CRS adjustments found. Choose a Lightroom Classic XMP preset")) }
         func scalar(_ key: String) -> String? { props[key]?.first }
         if let applied = scalar("AlreadyApplied") {

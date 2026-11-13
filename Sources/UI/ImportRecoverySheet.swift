@@ -18,7 +18,7 @@ struct ImportRecoverySheet: View {
                             Text("\(plan.sourceRoot.lastPathComponent) → \(plan.targetRoot.lastPathComponent) · \(TaskStatusText.title(plan.state))").fontWeight(.medium)
                             ForEach(plan.groups) { group in
                                 Text("\(group.members.first?.source.lastPathComponent ?? L10n.text("app.needsConfirmation", defaultValue: "Needs Confirmation")) · \(TaskStatusText.title(group.state)) \(group.diagnostic ?? "")").font(.caption11)
-                                ForEach(group.members.filter { $0.recovery != nil && $0.recoveryState != "deleted" }) { member in
+                                ForEach(group.members.filter { !plan.isArchived && $0.recovery != nil && $0.recoveryState != "deleted" }) { member in
                                     HStack {
                                         Text(L10n.text("app.previousFile", defaultValue: "Previous file: \(member.destination.lastPathComponent)"))
                                         Button(L10n.text("app.showLocation", defaultValue: "Show Location")) {

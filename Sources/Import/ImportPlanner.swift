@@ -66,8 +66,9 @@ struct CopyPlan: Codable, Identifiable {
     var collectionID: String?
     var state = "planned"
 
+    var isArchived: Bool { state.hasPrefix("archived:") }
     var canResume: Bool {
-        state != "completed" && groups.contains {
+        !isArchived && state != "completed" && groups.contains {
             $0.selected && !$0.members.isEmpty && !["completed", "skippedConflict"].contains($0.state)
         }
     }

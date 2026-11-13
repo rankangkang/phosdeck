@@ -250,6 +250,8 @@ struct WorkspaceView: View {
             CameraDiagnosticsView(report: snapshot?.report ?? .empty(), results: snapshot?.results ?? [])
         }
         .sheet(isPresented: $model.showNewCatalog) { NewCatalogSheet(model: model) }
+        .sheet(isPresented: $model.showCatalogArchive) { CatalogArchiveSheet(model: model) }
+        .sheet(item: $model.lightroomImportSource) { LightroomImportSheet(model: model, source: $0) }
         .sheet(item: $model.importConflict) { conflict in
             ImportConflictSheet(model: model, conflict: conflict).id(conflict.id).interactiveDismissDisabled()
         }

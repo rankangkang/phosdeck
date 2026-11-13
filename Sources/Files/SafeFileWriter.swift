@@ -22,13 +22,17 @@ enum SafeFileWriter {
         guard staging.deletingLastPathComponent().resolvingSymlinksInPath() == destination.deletingLastPathComponent().resolvingSymlinksInPath() else {
             throw LRCError(L10n.text("app.temporaryFilesMustBeInTheDestinationFolderCross", defaultValue: "Temporary files must be in the destination folder; cross-volume publication is not allowed"))
         }
-        let fd = Darwin.open(staging.path, O_RDONLY | O_NOFOLLOW)
-        guard fd >= 0 else { throw posix(L10n.text("app.openTemporaryFile", defaultValue: "Open Temporary File")) }
-        defer { close(fd) }
-        guard fsync(fd) == 0 else { throw posix(L10n.text("app.flushTemporaryFile", defaultValue: "Flush Temporary File")) }
+        try flush(staging)
         guard renamex_np(staging.path, destination.path, UInt32(RENAME_EXCL)) == 0 else {
             throw posix(L10n.text("app.theDestinationExistsOrTheVolumeDoesNotSupport", defaultValue: "The destination exists or the volume does not support safe publication. Temporary file preserved"))
         }
+    }
+
+    static func flush(_ url: URL) throws {
+        let fd = Darwin.open(url.path, O_RDONLY | O_NOFOLLOW)
+        guard fd >= 0 else { throw posix(L10n.text("app.openTemporaryFile", defaultValue: "Open Temporary File")) }
+        defer { close(fd) }
+        guard fsync(fd) == 0 else { throw posix(L10n.text("app.flushTemporaryFile", defaultValue: "Flush Temporary File")) }
     }
 
     static func write(_ data: Data, to destination: URL) throws {

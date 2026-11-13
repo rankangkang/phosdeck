@@ -13,9 +13,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !model.commitRecipe() { return .terminateCancel }
         if waitingForTermination { return .terminateLater }
         let merge = model.mergeSession
-        if merge?.working == true || model.mcp.needsShutdown {
+        let transfer = model.catalogTransfer
+        if merge?.working == true || model.mcp.needsShutdown || transfer != nil {
             waitingForTermination = true
             Task { @MainActor in
+                transfer?.cancel()
+                await transfer?.value
                 if let merge, merge.working {
                     await merge.cancelAndWait()
                     if merge.error != nil {
@@ -157,6 +160,9 @@ struct WorkspaceCommands: Commands {
                 .disabled(!workspace || model.currentFolderReviewScope == nil)
             Button(L10n.text("app.importLightroomXMPPresets", defaultValue: "Import Lightroom XMP Presets…"), action: model.requestXMPPresetImport)
                 .disabled(!workspace || model.catalog == nil)
+            Button(L10n.text("lightroom.menu", defaultValue: "Import Lightroom Classic Catalog…")) {
+                openWindow(id: "main"); model.requestLightroomImport()
+            }.disabled(!model.canSwitchCatalog)
             Button(L10n.text("app.exportSelectedPhotos", defaultValue: "Export Selected Photos…")) { model.requestExport() }.keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(!workspace || !model.canExportPhotos)
             Menu(L10n.text("app.exportWithPreset", defaultValue: "Export with Preset")) {
@@ -171,6 +177,7 @@ struct WorkspaceCommands: Commands {
             Button(L10n.text("app.copyImportLogsAndRecovery", defaultValue: "Copy Import Logs and Recovery…")) { model.showCopyRecovery = true }.disabled(!workspace || model.catalog == nil)
             Divider()
             Menu(L10n.text("app.catalogMaintenance", defaultValue: "Catalog Maintenance")) {
+                Button(L10n.text("archive.menu", defaultValue: "Archive Entire Catalog…"), action: model.requestCatalogArchive).disabled(model.catalog == nil)
                 Button(L10n.text("app.backUpCatalog", defaultValue: "Back Up Catalog…")) { model.backup() }.disabled(model.catalog == nil)
                 Button(L10n.text("app.restoreFromBackup", defaultValue: "Restore from Backup…"), action: model.restoreBackup)
                 Button(L10n.text("app.exportJSONManagementManifest", defaultValue: "Export JSON Management Manifest…")) { model.backup(manifest: true) }.disabled(model.catalog == nil)

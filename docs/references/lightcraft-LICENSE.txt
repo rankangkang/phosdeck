@@ -180,3 +180,10 @@ matching, linear-sRGB colour stage, float premultiplied sampling and coverage
 visualization are native adaptations. Unrelated nonempty preset lists use the
 whole-array switch from crates/develop/src/presets.rs. Independent scalar
 reference equations are in scripts/point_color_reference.py. MIT option.
+
+LightroomCatalog.swift and LightroomSettings.swift use the Lightroom table
+relationships, serialized settings format and orientation conventions documented
+by LightCraft at fd0b914e6c2bdb274ef05d8904f6f631a4c7d44a (2026-11-12), in
+crates/engine/src/lightroom_catalog.rs, preset_import.rs and
+lightroom_catalog/tests.rs. Swift parsing, GRDB reads, file handling, reporting
+and Phosdeck recipe conversion are native implementations. MIT option.

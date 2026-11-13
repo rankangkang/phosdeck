@@ -795,7 +795,10 @@ struct SegmentMeter: View {
 
 enum TaskStatusText {
     static func title(_ state: String) -> String {
-        ["planned": L10n.text("app.pending", defaultValue: "Pending"), "running": L10n.text("app.processing", defaultValue: "Processing"), "rendering": L10n.text("app.developing", defaultValue: "Developing"), "completed": L10n.text("app.complete", defaultValue: "Complete"),
+        if state.hasPrefix("archived:") {
+            return L10n.text("archive.taskState", defaultValue: "Archived · \(title(String(state.dropFirst(9))))")
+        }
+        return ["planned": L10n.text("app.pending", defaultValue: "Pending"), "running": L10n.text("app.processing", defaultValue: "Processing"), "rendering": L10n.text("app.developing", defaultValue: "Developing"), "completed": L10n.text("app.complete", defaultValue: "Complete"),
          "cancelled": L10n.text("app.cancelled", defaultValue: "Cancelled"), "failed": L10n.text("app.failed", defaultValue: "Failed"), "needsReview": L10n.text("app.needsReview", defaultValue: "Needs Review"),
          "skippedVerified": L10n.text("app.verifiedAndReused", defaultValue: "Verified and Reused"), "skippedConflict": L10n.text("app.conflictSkipped", defaultValue: "Conflict Skipped")][state] ?? state
     }

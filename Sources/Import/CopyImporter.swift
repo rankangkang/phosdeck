@@ -21,6 +21,7 @@ actor CopyImporter {
     func run(_ input: CopyPlan, catalog: CatalogStore, resolveConflict: (@Sendable (ImportConflict) async -> ImportConflictDecision?)? = nil,
              onImported: @escaping @Sendable (String) async -> Void = { _ in },
              groupProgress: (@Sendable (Int, Int) async -> Void)? = nil, progress: @escaping @Sendable (String) async -> Void) async -> CopyPlan {
+        guard !input.isArchived else { return input }
         guard input.version == 2 else {
             var refused = input; refused.omitted.append(L10n.text("app.unsupportedCopyPlanVersionOriginalTaskPreservedWithoutExecution", defaultValue: "Unsupported copy plan version. Original task preserved without execution or modification"))
             refused.state = "needsReview"; return refused

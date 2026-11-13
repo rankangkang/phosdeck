@@ -7,6 +7,8 @@ struct ExportLog: Identifiable {
     let snapshot: ExportSnapshot
     let state: String
     let error: String?
+    var isArchived: Bool { state.hasPrefix("archived:") }
+    var isCompleted: Bool { state == "completed" || state == "archived:completed" }
     var canRetryInBatch: Bool { ["failed", "needsReview", "cancelled", "interrupted", "planned", "rendering", "verified", "published"].contains(state) }
 }
 
@@ -80,7 +82,9 @@ actor ExportService {
                 guard let row = try Row.fetchOne(db, sql: "SELECT * FROM exportItem WHERE id=?", arguments: [id]) else {
                     throw LRCError(L10n.text("app.theOutputRecordNoLongerExists", defaultValue: "The output record no longer exists"))
                 }
-                let frozen = try log(row).snapshot
+                let item = try log(row)
+                guard !item.isArchived else { throw LRCError(L10n.text("archive.historyOnly", defaultValue: "Archived task records are kept for reference.")) }
+                let frozen = item.snapshot
                 guard frozen.destination.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path == canonical.path else {
                     throw LRCError(L10n.text("app.chooseTheOriginalDestinationFolderReauthorizationPreservesTheFrozen", defaultValue: "Choose the original destination folder: \(frozen.destination.deletingLastPathComponent().path). Reauthorization preserves the frozen export destination."))
                 }
@@ -107,7 +111,7 @@ actor ExportService {
     }
     static func historyPage(catalog: CatalogStore, unfinishedOnly: Bool, offset: Int, limit: Int) throws -> (logs: [ExportLog], rejectedIDs: [String], total: Int) {
         try catalog.database.read { db in
-            let filter = unfinishedOnly ? " WHERE state <> 'completed'" : ""
+            let filter = unfinishedOnly ? " WHERE state NOT IN ('completed','archived:completed')" : ""
             let total = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM exportItem" + filter) ?? 0
             let rows = try Row.fetchAll(db, sql: "SELECT * FROM exportItem" + filter + " ORDER BY rowid DESC LIMIT ? OFFSET ?",
                                         arguments: [limit, offset])
@@ -163,6 +167,10 @@ actor ExportService {
                 let existing = try await catalog.database.read { db -> (state: String, digest: String?, snapshot: Data, staging: String?)? in
                     try Row.fetchOne(db, sql: "SELECT state,digest,snapshot,staging FROM exportItem WHERE id=?", arguments: [id])
                         .map { ($0["state"], $0["digest"], $0["snapshot"], $0["staging"]) }
+                }
+                if existing?.state.hasPrefix("archived:") == true {
+                    reports.append(L10n.text("archive.historyOnly", defaultValue: "Archived task records are kept for reference."))
+                    continue
                 }
                 previouslyCompleted = existing?.state == "completed"
                 let frozen = try existing.map { try JSONDecoder().decode(ExportSnapshot.self, from: $0.snapshot) } ?? snapshot

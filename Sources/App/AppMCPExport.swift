@@ -343,7 +343,7 @@ extension AppMCPWorkflows {
             guard self.model.catalog === catalog else { throw MCPToolProblem.catalogChanged }
             guard history.rejected.isEmpty, history.logs.count == ids.count else { throw Self.missingOutput }
             let records = Dictionary(uniqueKeysWithValues: history.logs.map { ($0.id, $0) })
-            let logs = ids.compactMap { records[$0] }.filter { includeCompleted || $0.canRetryInBatch }
+            let logs = ids.compactMap { records[$0] }.filter { !$0.isArchived && (includeCompleted || $0.canRetryInBatch) }
             guard !logs.isEmpty else {
                 job.finish(.succeeded, "The selected records have no incomplete outputs.")
                 return

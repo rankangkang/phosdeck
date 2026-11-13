@@ -47,7 +47,7 @@ Themes affect the interface only. They do not change photo pixels or exported im
 | Camera checks | Local RAW decoding and pipeline consistency checks with JSON reports |
 | Export | JPEG, PNG, and 16-bit TIFF; naming templates, export presets, multiple output specifications, and optional metadata; existing files are never overwritten |
 
-Lightroom XMP preset import supports an approximate conversion of selected global parameters. Results may differ from Lightroom. Lightroom catalogs cannot be opened directly.
+Import Lightroom Classic `.lrcat` catalogs with organization, virtual copies, and supported editable adjustments. Reference originals in place or copy them. XMP presets can also be imported separately. Converted edits may render differently from Lightroom. [Import guide (Chinese)](docs/getting-started.md#从-lightroom-classic-目录导入)
 
 ## Build from source
 
@@ -74,7 +74,7 @@ Debug builds use local ad hoc signing by default, with no Apple development cert
 
 The app is built at `build/Build/Products/Debug/Phosdeck.app`. For a first run, create a `.phoscat` test catalog and import a few synthetic images or photos you have permission to use. Try rating, editing, and exporting them. The [getting started guide (Chinese)](docs/getting-started.md) covers the full workflow and backup and restore steps.
 
-Catalogs store photo locations and edits, not the original files. Back up photos and exports separately. Existing `.omlcat` and `.omlrcat` files can still be opened; a prompt lets you choose whether to change the extension in place. Renaming does not convert the database format.
+The catalog database stores photo locations and edits. Use [Archive Entire Catalog (Chinese)](docs/getting-started.md#归档整个图库) to copy the catalog and project files to another drive and continue editing from the copy. Existing `.omlcat` and `.omlrcat` files can still be opened and optionally renamed in place.
 
 <details>
 <summary>Use a stable local development signature</summary>

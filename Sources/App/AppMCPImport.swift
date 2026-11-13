@@ -27,7 +27,8 @@ extension AppMCPWorkflows {
             let access = tool == .restoreBackup ? try grant(arguments["access_id"], purpose: .restoreBackup) : nil
             return start(tool) { job in
                 self.running(job, phase: "reading_import_record")
-                guard let plan = try await Task.detached(operation: { try CopyImporter.savedPlan(record, catalog: catalog) }).value else { throw Self.missingRecord }
+                guard let plan = try await Task.detached(operation: { try CopyImporter.savedPlan(record, catalog: catalog) }).value,
+                      !plan.isArchived else { throw Self.missingRecord }
                 try Task.checkCancellation()
                 job.data["record_id"] = .string(record)
                 if tool == .resumeImport {
