@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import CryptoKit
 import simd
 
@@ -102,5 +103,90 @@ struct MergeRetouchSettings: Codable, Equatable {
               kind.isPanorama || kind == .lighten || !strokes.contains(where: \.exclude) else { throw MergeRetouchProject.invalid }
         try trails.validate()
         try strokes.forEach { try $0.validate(count:count) }
+    }
+}
+
+/// Display-only diagnostics on the pre-finishing canvas. These masks never
+/// enter master pixels. Constraints describe explicit choices, not automatic
+/// multiband/HDR contribution weights.
+enum MergeRetouchOverlay: String, CaseIterable, Identifiable {
+    case none, coverage, constraints
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .none: L10n.text("merge.inspect.overlayNone",defaultValue:"No Overlay")
+        case .coverage: L10n.text("merge.inspect.coverage",defaultValue:"Source Coverage")
+        case .constraints: L10n.text("merge.inspect.constraints",defaultValue:"Source Constraints")
+        }
+    }
+}
+struct MergeSourcePreview {
+    let index: Int
+    let name: String
+    let memberIDs: [String]
+    let coverage: Float?
+    let thumbnail: CGImage?
+}
+struct MergeSourcePage {
+    let total: Int
+    let width: Int
+    let height: Int
+    let items: [MergeSourcePreview]
+}
+
+enum MergeRetouchOverlayMask {
+    /// Ordered source constraints. A later keep cancels an earlier exclusion;
+    /// automatic restores the frame's default state, including frame exclusion.
+    static func update(keep: inout Float,exclude: inout Float,stroke: MergeRetouchStroke,
+                       source: Int,alpha: Float,frameExcluded: Bool,kind: PhotoMergeKind) {
+        let a = min(1,max(0,alpha)),b = 1-a
+        if stroke.restore {
+            keep *= b; exclude = exclude*b+(frameExcluded ? a : 0)
+        } else if stroke.exclude {
+            if stroke.source == source { keep *= b; exclude = exclude*b+a }
+        } else if stroke.source == source {
+            keep = keep*b+a; exclude *= b
+        } else {
+            keep *= b
+            if kind.isPanorama || kind == .lighten { exclude = exclude*b+a }
+        }
+    }
+    static func image(source: MergeImage,settings: MergeRetouchSettings,masks: [MergeBrushMask],
+                      index: Int,kind: PhotoMergeKind,mode: MergeRetouchOverlay) throws -> CGImage? {
+        guard mode != .none else { return nil }
+        guard masks.count == settings.strokes.count || mode == .coverage else { throw MergeRetouchProject.invalid }
+        let count = source.pixels.count,excluded = settings.excludedSources.contains(index)
+        var keep = [Float](repeating:0,count:mode == .constraints ? count : 0)
+        var exclude = [Float](repeating:excluded ? 1 : 0,count:keep.count)
+        if mode == .constraints {
+            for (stroke,mask) in zip(settings.strokes,masks) {
+                for y in mask.y..<mask.y+mask.height {
+                    if y.isMultiple(of:32) { try Task.checkCancellation() }
+                    for x in mask.x..<mask.x+mask.width {
+                        let p = y*source.width+x
+                        update(keep:&keep[p],exclude:&exclude[p],stroke:stroke,source:index,alpha:mask.value(x,y),frameExcluded:excluded,kind:kind)
+                    }
+                }
+            }
+        }
+        var rgba = [UInt8](repeating:0,count:count*4)
+        for p in 0..<count {
+            if p.isMultiple(of:65536) { try Task.checkCancellation() }
+            let coverage = source.pixels[p].w
+            let green = mode == .constraints ? keep[p] : 0
+            let red = mode == .constraints ? exclude[p] : 0
+            let strength = mode == .coverage ? coverage : coverage*max(green,red)
+            if strength > 0 {
+                // Straight sRGB overlay with its own alpha, separate from the photo.
+                let color: (UInt8,UInt8,UInt8) = mode == .coverage ? (70,170,255) : green >= red ? (65,225,145) : (255,75,85)
+                rgba[p*4] = color.0; rgba[p*4+1] = color.1; rgba[p*4+2] = color.2
+                rgba[p*4+3] = UInt8((min(1,strength)*112).rounded())
+            }
+        }
+        let data = Data(rgba)
+        guard let provider = CGDataProvider(data:data as CFData) else { throw MergeRetouchProject.invalid }
+        return CGImage(width:source.width,height:source.height,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:source.width*4,
+                       space:CGColorSpace(name:CGColorSpace.sRGB)!,bitmapInfo:CGBitmapInfo(rawValue:CGImageAlphaInfo.last.rawValue),
+                       provider:provider,decode:nil,shouldInterpolate:false,intent:.defaultIntent)
     }
 }

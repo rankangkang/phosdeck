@@ -56,6 +56,7 @@ enum AppMCPTool: String, CaseIterable {
     case smartStart = "start_smart_mask", smartEdit = "edit_smart_mask_selection", smartApply = "apply_smart_mask"
     case planMerge = "plan_photo_merge", renderMerge = "render_merge_preview", getMergePreview = "get_merge_preview"
     case saveMerge = "save_photo_merge"
+    case editMergeRetouch = "edit_merge_retouch", getMergeRetouch = "get_merge_retouch"
     case listExportPresets = "list_export_presets", editExportPreset = "edit_export_preset"
     case planExport = "plan_export", getExportPreview = "get_export_preview", runExport = "run_export"
     case exportRecords = "list_export_records", retryExport = "verify_or_retry_export", reauthorizeExport = "reauthorize_export_location"
@@ -115,6 +116,7 @@ enum AppMCPTool: String, CaseIterable {
         case separate, wholePerson = "whole_person"
         case mergeKind = "merge_kind", outputOptions = "options", displayEV = "display_ev"
         case masterFormat = "master_format", filename, stackWithSources = "stack_with_sources"
+        case sourceIndex = "source_index", retouchChanges = "changes"
         case specifications, outputID = "output_id", recordIDs = "record_ids"
         case unfinishedOnly = "unfinished_only", includeCompleted = "include_completed"
         case fileID = "file_id", revealKind = "kind"
@@ -122,7 +124,8 @@ enum AppMCPTool: String, CaseIterable {
 
         private func range(for tool: AppMCPTool) -> ClosedRange<Int>? {
             switch self {
-            case .pageSize: 1...200
+            case .pageSize: tool == .getMergeRetouch ? 1...12 : 1...200
+            case .sourceIndex: 0...2047
             case .longEdge: 1...1024
             case .expectedRating, .rating, .ratingThreshold: 0...5
             case .flag: -1...1
@@ -150,7 +153,7 @@ enum AppMCPTool: String, CaseIterable {
             case .recordType: ["history", "snapshots"]
             case .direction: ["earlier", "later"]
             case .scope: tool == .planPairs ? ["catalog", "query", "selection"] : ["query", "selection"]
-            case .view: WorkspaceMode.allCases.map(\.rawValue)
+            case .view: tool == .getMergeRetouch ? ["state", "sources", "source", "result", "coverage", "constraints"] : WorkspaceMode.allCases.map(\.rawValue)
             case .tool: DevelopTool.allCases.map(\.rawValue)
             case .pane: tool == .showAppPanel ? MCPAppPanel.settingsPanes.keys.sorted() : ["main", "reference", "candidate", "develop_reference"]
             case .zoom: ["fit", "fill", "scale"]
@@ -214,7 +217,7 @@ enum AppMCPTool: String, CaseIterable {
                 if self == .pageSize {
                     if tool == .listPhotos {
                         schema["description"] = .string("Defaults to 50, or \(MCPContactSheet.defaultCount) with contact_sheet.")
-                    } else { schema["default"] = 50 }
+                    } else { schema["default"] = tool == .getMergeRetouch ? 6 : 50 }
                 }
                 if self == .longEdge { schema["default"] = 768 }
                 return .object(schema)
@@ -230,6 +233,7 @@ enum AppMCPTool: String, CaseIterable {
             case .preferences: return MCPPreferences.schema
             case .quotaGiB: return ["type": "integer", "enum": .array(ThumbnailService.quotaOptions.map(Value.int))]
             case .outputOptions: return tool == .planMerge ? MCPMergeOptions.schema : MCPExportOptions.schema
+            case .retouchChanges: return MCPMergeRetouchDraft.changesSchema
             case .specifications: return MCPExportOptions.specificationsSchema
             case .displayEV: return MCPDevelopParameters.numberSchema(-5...5)
             case .start, .end: return tool == .maskShape ? MCPCanvasFields.gradientPointSchema : MCPCanvasFields.pointSchema
@@ -268,7 +272,7 @@ enum AppMCPTool: String, CaseIterable {
                 }
                 return ["type": "array", "uniqueItems": true, "items": ["enum": .array(values)]]
             case .photoIDs, .stackIDs, .recordIDs:
-                let count = tool == .planMerge ? 2...128 : 1...1000
+                let count = tool == .planMerge ? 2...2048 : 1...1000
                 return ["type": "array", "minItems": .int(count.lowerBound), "maxItems": .int(count.upperBound),
                         "uniqueItems": true, "items": identifierSchema]
             case .interval:
@@ -281,7 +285,7 @@ enum AppMCPTool: String, CaseIterable {
             case .rules: return MCPCollectionState.rulesSchema
             case .versionRevisions:
                 let revision: Value = ["type": "integer", "minimum": 0]
-                return ["type": "object", "minProperties": 1, "maxProperties": 1000, "propertyNames": identifierSchema,
+                return ["type": "object", "minProperties": 1, "maxProperties": .int(tool == .planMerge ? 2048 : 1000), "propertyNames": identifierSchema,
                         "additionalProperties": ["type": "object", "additionalProperties": false,
                                                   "required": ["source_revision", "recipe_revision"],
                                                   "properties": ["source_revision": revision, "recipe_revision": revision]]]
@@ -312,7 +316,7 @@ enum AppMCPTool: String, CaseIterable {
             if let range = range(for: tool) { return value.intValue.map(range.contains) ?? false }
             if isBoolean { return value.boolValue != nil }
             if [.candidates, .differences, .photoIDs, .stackIDs, .recordIDs].contains(self) {
-                let count = tool == .planMerge ? 2...128 : 1...1000
+                let count = tool == .planMerge ? 2...2048 : 1...1000
                 guard let values = value.arrayValue, count.contains(values.count) else { return false }
                 let ids = values.compactMap(\.stringValue)
                 return Set(ids).count == values.count && ids.allSatisfy(Self.isID)
@@ -329,6 +333,7 @@ enum AppMCPTool: String, CaseIterable {
             case .preferences: return MCPDevelopParameters.accepts(value, schema: MCPPreferences.schema)
             case .quotaGiB: return value.intValue.map(ThumbnailService.quotaOptions.contains) ?? false
             case .outputOptions: return MCPDevelopParameters.accepts(value, schema: schema(for: tool))
+            case .retouchChanges: return MCPMergeRetouchDraft.accepts(value)
             case .specifications: return MCPExportOptions.acceptsSpecifications(value)
             case .displayEV: return value.number.map((-5...5).contains) ?? false
             case .adjustments:
@@ -367,7 +372,7 @@ enum AppMCPTool: String, CaseIterable {
             case .minimumSimilarity: return value.number.map((0...1).contains) ?? false
             case .rules: return value.objectValue != nil
             case .versionRevisions:
-                guard let values = value.objectValue, (1...1000).contains(values.count) else { return false }
+                guard let values = value.objectValue, (1...(tool == .planMerge ? 2048 : 1000)).contains(values.count) else { return false }
                 return values.allSatisfy { id, value in
                     guard Self.isID(id), let revision = value.objectValue, revision.count == 2,
                           let source = revision["source_revision"]?.intValue, let recipe = revision["recipe_revision"]?.intValue else { return false }
@@ -438,6 +443,7 @@ enum AppMCPTool: String, CaseIterable {
         case .perspectiveGuides: ["begin", "add", "select", "move_endpoint", "delete", "clear", "finish", "cancel"]
         case .samplePreview: ["rgb", "zone"]
         case .editPhotoDraft: ["begin", "commit", "cancel"]
+        case .editMergeRetouch: ["begin", "reopen", "set", "undo", "redo", "reset", "cancel"]
         case .adjustPreview: ["white_balance", "histogram", "hue", "saturation", "luminance", "black_white", "curve", "defringe_purple", "defringe_green"]
         case .pointColor: ["add", "select", "set", "reset", "delete", "display"]
         case .editSpot: ["add", "select", "set", "move", "set_source", "refresh_source", "auto_source", "delete"]
@@ -521,6 +527,8 @@ enum AppMCPTool: String, CaseIterable {
         case .planMerge: [.catalog, .photoIDs, .versionRevisions, .mergeKind]
         case .renderMerge: [.catalog, .plan]
         case .getMergePreview: [.catalog, .previewID]
+        case .editMergeRetouch: [.catalog, .action]
+        case .getMergeRetouch: [.catalog, .previewID, .draftID, .draftRevision]
         case .saveMerge: [.catalog, .previewID, .destinationAccess]
         case .listExportPresets: []
         case .editExportPreset: [.action]
@@ -634,7 +642,9 @@ enum AppMCPTool: String, CaseIterable {
         case .smartEdit: [.previewID, .point, .rect, .candidateIndex, .personIndices, .faceIndex, .part, .separate, .wholePerson]
         case .planMerge: [.outputOptions, .collection]
         case .getMergePreview: [.displayEV, .longEdge]
-        case .saveMerge: [.filename, .masterFormat, .stackWithSources]
+        case .saveMerge: [.filename, .masterFormat, .stackWithSources, .draftID, .draftRevision]
+        case .editMergeRetouch: [.previewID, .draftID, .draftRevision, .photo, .sourceRevision, .recipeRevision, .retouchChanges, .sourceIndex]
+        case .getMergeRetouch: [.view, .sourceIndex, .point, .offset, .pageSize, .displayEV, .longEdge, .regionPixels, .planOnly]
         case .listExportPresets: [.offset, .pageSize]
         case .editExportPreset: [.name, .presetID, .presetRevision, .outputOptions]
         case .planExport: [.outputOptions, .presetID, .presetRevision, .specifications]
@@ -673,7 +683,7 @@ enum AppMCPTool: String, CaseIterable {
         switch self {
         case .capabilities, .workspace, .listPhotos, .listSelected, .cullPhotos, .preview, .librarySources, .recentCatalogs, .importRecords, .job, .keywords,
              .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs, .photoRecipe, .listPresets,
-             .samplePreview, .spotRepairs, .maskState, .listLocalPresets, .getMergePreview, .listExportPresets, .getExportPreview, .exportRecords,
+             .samplePreview, .spotRepairs, .maskState, .listLocalPresets, .getMergePreview, .getMergeRetouch, .listExportPresets, .getExportPreview, .exportRecords,
              .getPreferences, .listLanguagePacks, .storageUsage, .getCameraDiagnosticPreview: false
         default: true
         }
@@ -998,8 +1008,8 @@ final class AppMCPTools {
                 try verifyCanvasRead(catalogSession!, model: model)
                 try verifyPhotoDraft(draft?.reference)
                 return result
-            case .getMergePreview, .getExportPreview, .getCameraDiagnosticPreview:
-                let withImage = tool != .getExportPreview || arguments["output_id"] != nil
+            case .getMergePreview, .getMergeRetouch, .getExportPreview, .getCameraDiagnosticPreview:
+                let withImage = tool == .getMergeRetouch ? MCPMergeRetouchDraft.wantsImage(arguments) : tool != .getExportPreview || arguments["output_id"] != nil
                 guard !withImage || sharesImages else { throw MCPToolProblem.imageDisabled }
                 let accessGeneration = imageAccessGeneration
                 let result = try await workflows.read(tool, arguments: arguments)

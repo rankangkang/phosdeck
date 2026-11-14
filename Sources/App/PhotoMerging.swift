@@ -26,6 +26,8 @@ import CoreGraphics
     @ObservationIgnored private var displayJob: Task<Void,Never>?
     @ObservationIgnored private var token = UUID()
     @ObservationIgnored private var displayToken = UUID()
+    @ObservationIgnored private var sourceJob: Task<Void,Never>?
+    @ObservationIgnored private var sourceToken = UUID()
 
     init(catalog: CatalogStore,ids: Set<String>,kind: PhotoMergeKind,collectionID: String? = nil) {
         self.catalog = catalog; self.collectionID = collectionID; options = .defaults(for: kind)
@@ -61,7 +63,7 @@ import CoreGraphics
             } catch is CancellationError { }
             catch { self.error = error.localizedDescription }
             working = false; job = nil
-            if preview != nil { refreshRetouch() }
+            if preview != nil { refreshRetouch(); refreshRetouchSources() }
         }
     }
     var retouchSourceNames: [String] {
@@ -75,14 +77,14 @@ import CoreGraphics
     func refreshRetouch() {
         displayJob?.cancel(); displayToken = UUID()
         guard retouch.active,let preview,!working else { return }
-        let token = displayToken, settings = retouch.settings, source = retouch.source, ev = previewEV
+        let token = displayToken, settings = retouch.settings, source = retouch.source, ev = previewEV, overlay = retouch.overlayMode
         retouch.pending = true; retouch.error = nil
         displayJob = Task {
             do {
                 // One cancelled in-flight request plus latest desired state. No
                 // rendering per pointer event; a stroke commits on mouse-up.
                 try await Task.sleep(for:.milliseconds(80))
-                let result = try await engine.retouchPreview(preview.id,settings:settings,source:source,ev:ev) { _,_ in }
+                let result = try await engine.retouchPreview(preview.id,settings:settings,source:source,ev:ev,overlay:overlay) { _,_ in }
                 try Task.checkCancellation()
                 guard displayToken == token else { return }
                 retouch.preview = result; retouch.pending = false
@@ -90,13 +92,30 @@ import CoreGraphics
             catch { if displayToken == token { retouch.error = error.localizedDescription; retouch.pending = false } }
         }
     }
+    func refreshRetouchSources() {
+        sourceJob?.cancel(); sourceToken = UUID()
+        guard retouch.active,let preview,!working else { return }
+        let token = sourceToken,page = retouch.sourcePage,point: MaskPoint? = retouch.inspecting ? retouch.inspectionPoint : nil,ev = previewEV
+        retouch.sourcesPending = true; retouch.sourcesError = nil
+        sourceJob = Task {
+            do {
+                // Coalesce typed/dragged inspection coordinates; no source decode
+                // is requested for pointer movement or uncommitted brush points.
+                try await Task.sleep(for:.milliseconds(80))
+                let result = try await engine.retouchSources(preview.id,offset:page*6,count:6,point:point,ev:ev)
+                try Task.checkCancellation(); guard sourceToken == token else { return }
+                retouch.sources = result; retouch.sourcesPending = false
+            } catch is CancellationError { }
+            catch { if sourceToken == token { retouch.sourcesError = error.localizedDescription; retouch.sourcesPending = false } }
+        }
+    }
     func startRetouch() {
         guard options.kind.supportsRetouch,preview != nil,!working else { return }
-        retouch.active = true; refreshRetouch()
+        retouch.active = true; refreshRetouch(); refreshRetouchSources()
     }
     func invalidate() {
         guard !reopening else { return }
-        retouch.active = false; retouch.preview = nil; retouch.load(MergeRetouchSettings()); retouch.pending = false
+        retouch.active = false; retouch.preview = nil; retouch.sources = nil; sourceJob?.cancel(); sourceToken = UUID(); retouch.load(MergeRetouchSettings()); retouch.pending = false
         if working && !saving { job?.cancel() }
         preview = nil; error = nil; displayJob?.cancel(); displayToken = UUID()
     }
@@ -151,7 +170,7 @@ import CoreGraphics
     }
     func save(completion: @escaping (MergeSaved) -> Void) {
         guard !working,!retouch.pending,let preview,let directoryBookmark,retouch.error == nil else { return }
-        displayJob?.cancel(); working = true; saving = true; progress = 0; error = nil
+        displayJob?.cancel(); sourceJob?.cancel(); sourceToken = UUID(); retouch.sourcesPending = false; working = true; saving = true; progress = 0; error = nil
         let token = UUID(); self.token = token
         let filename = filename,stackWithSources = stackWithSources
         job = Task {
@@ -171,13 +190,13 @@ import CoreGraphics
         }
     }
     func cancel() {
-        job?.cancel(); displayJob?.cancel(); displayToken = UUID(); retouch.pending = false
+        job?.cancel(); displayJob?.cancel(); sourceJob?.cancel(); sourceToken = UUID(); displayToken = UUID(); retouch.pending = false; retouch.sourcesPending = false
         if working { phase = L10n.text("merge.cancelling", defaultValue:"Cancelling…") }
     }
     func cancelAndWait() async {
-        let pending = job,display = displayJob
+        let pending = job,display = displayJob,sources = sourceJob
         cancel()
-        await pending?.value; await display?.value
+        await pending?.value; await display?.value; await sources?.value
     }
     private func report(_ value: Double,phase: String,token: UUID) {
         guard self.token == token,job?.isCancelled != true else { return }

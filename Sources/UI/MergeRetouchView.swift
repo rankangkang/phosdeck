@@ -7,11 +7,7 @@ struct MergeRetouchControls: View {
     var body: some View {
         VStack(alignment:.leading,spacing:8) {
             SubgroupLabel(L10n.text("merge.retouch.title",defaultValue:"Merge Retouching"))
-            Picker(L10n.text("merge.retouch.source",defaultValue:"Source"),selection:$state.source) {
-                ForEach(Array(session.retouchSourceNames.enumerated()),id:\.offset) { index,name in
-                    Text("\(index+1) · \(name)").tag(index)
-                }
-            }
+            MergeSourceBrowser(session:session,state:state)
             HStack {
                 Button(L10n.text("merge.retouch.previous",defaultValue:"Previous")) { state.source -= 1 }
                     .disabled(state.source == 0)
@@ -34,6 +30,15 @@ struct MergeRetouchControls: View {
                 Button(L10n.text("app.redo_245",defaultValue:"Redo")) { state.undo.redo() }.disabled(!state.undo.canRedo || state.pending)
                 Button(L10n.text("merge.retouch.reset",defaultValue:"Reset")) { state.replaceSettings(MergeRetouchSettings()) }.disabled(state.settings == MergeRetouchSettings() || state.pending)
             }.buttonStyle(.key)
+            Picker(L10n.text("merge.inspect.overlay",defaultValue:"Overlay"),selection:$state.overlayMode) {
+                ForEach(MergeRetouchOverlay.allCases) { Text($0.title).tag($0) }
+            }
+            if state.overlayMode != .none {
+                Text(state.overlayMode == .coverage
+                     ? L10n.text("merge.inspect.coverageLegend",defaultValue:"Blue: captured coverage of the selected source, before crop and edge filling.")
+                     : L10n.text("merge.inspect.constraintLegend",defaultValue:"Green: explicitly kept. Red: excluded or suppressed by another source. Shows final brush constraints for this source, not automatic fusion weights."))
+                    .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
+            }
             Toggle(L10n.text("merge.retouch.overlay",defaultValue:"Show Stroke Paths"),isOn:$state.overlay).toggleStyle(.instrument)
             Text(modeHint)
                 .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
@@ -41,7 +46,15 @@ struct MergeRetouchControls: View {
             Text(L10n.text("merge.retouch.hint",defaultValue:"Paint on the result. Space-drag or scroll to pan; left/right arrows switch sources. Escape cancels the current stroke. Corrections are saved with the new master."))
                 .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
         }
-            .onChange(of:state.source) { session.refreshRetouch() }
+            .onChange(of:state.source) {
+                state.sourcePage = state.source/6
+                session.refreshRetouch()
+            }
+            .onChange(of:state.sourcePage) { session.refreshRetouchSources() }
+            .onChange(of:state.inspectionPoint) { session.refreshRetouchSources() }
+            .onChange(of:state.inspecting) { session.refreshRetouchSources() }
+            .onChange(of:state.overlayMode) { session.refreshRetouch() }
+            .onChange(of:session.previewEV) { session.refreshRetouchSources() }
             .onChange(of:state.revision) { session.refreshRetouch() }
     }
     private var brushModes: [KeyOption<Int>] {
@@ -131,6 +144,7 @@ struct MergeRetouchCanvas: NSViewRepresentable {
         // Read only here: updates remain confined to the comparison canvas.
         _ = state.preview; _ = state.pending; _ = state.zoom; _ = state.radius
         _ = state.overlay; _ = state.strokes; _ = state.restore; _ = state.exclude
+        _ = state.inspecting; _ = state.inspectionPoint
         if state.pending || !enabled { view.cancelStroke() }
         view.needsDisplay = true
     }
@@ -186,6 +200,18 @@ final class MergeRetouchNSView: NSView {
         }
         let pane = panes[1], rect = imageRect(in:pane)
         cg.saveGState(); cg.clip(to:pane.intersection(rect))
+        if let overlay = pair.overlay {
+            NSImage(cgImage:overlay,size:NSSize(width:overlay.width,height:overlay.height))
+                .draw(in:rect,from:.zero,operation:.sourceOver,fraction:1,respectFlipped:true,hints:[.interpolation:NSImageInterpolation.none.rawValue])
+        }
+        if state.inspecting {
+            let p = CGPoint(x:rect.minX+state.inspectionPoint.x*rect.width,y:rect.minY+state.inspectionPoint.y*rect.height)
+            let marker = NSBezierPath(ovalIn:CGRect(x:p.x-5,y:p.y-5,width:10,height:10))
+            marker.move(to:CGPoint(x:p.x-10,y:p.y)); marker.line(to:CGPoint(x:p.x+10,y:p.y))
+            marker.move(to:CGPoint(x:p.x,y:p.y-10)); marker.line(to:CGPoint(x:p.x,y:p.y+10))
+            NSColor.black.setStroke(); marker.lineWidth = 3; marker.stroke()
+            NSColor.white.setStroke(); marker.lineWidth = 1; marker.stroke()
+        }
         func path(_ points: [MaskPoint],radius: Double,restore: Bool,exclude: Bool) {
             guard let first = points.first else { return }
             let line = NSBezierPath(); line.lineCapStyle = .round; line.lineJoinStyle = .round
@@ -198,7 +224,7 @@ final class MergeRetouchNSView: NSView {
         }
         if state.overlay { for stroke in state.strokes { path(stroke.points,radius:stroke.radius,restore:stroke.restore,exclude:stroke.exclude) } }
         path(points,radius:state.radius,restore:state.restore,exclude:state.exclude)
-        if let cursor,point(cursor) != nil,!space {
+        if let cursor,point(cursor) != nil,!space,!state.inspecting {
             let r = state.radius*min(rect.width,rect.height)
             let outline = NSBezierPath(ovalIn:CGRect(x:cursor.x-r,y:cursor.y-r,width:2*r,height:2*r))
             NSColor.black.setStroke(); outline.lineWidth = 3; outline.stroke()
@@ -231,6 +257,7 @@ final class MergeRetouchNSView: NSView {
         guard interactionEnabled else { return }
         if space { panStart = p; return }
         guard state?.pending == false,let point = point(p) else { return }
+        if state?.inspecting == true { state?.inspectionPoint = point; cursor = p; needsDisplay = true; return }
         points = [point]; cursor = p; needsDisplay = true
     }
     override func mouseDragged(with event: NSEvent) {
@@ -266,4 +293,75 @@ final class MergeRetouchNSView: NSView {
     override func keyUp(with event: NSEvent) { if event.keyCode == 49 { space = false; panStart = nil } else { super.keyUp(with:event) } }
     override func resignFirstResponder() -> Bool { cancelStroke(); space = false; return super.resignFirstResponder() }
     func cancelStroke() { points = []; panStart = nil; needsDisplay = true }
+}
+
+private struct MergeSourceBrowser: View {
+    @Bindable var session: PhotoMergeSession
+    @Bindable var state: MergeRetouchState
+    private var names: [String] { session.retouchSourceNames }
+    var body: some View {
+        VStack(alignment:.leading,spacing:6) {
+            Text("\(state.source+1) · \(names.indices.contains(state.source) ? names[state.source] : "")")
+                .font(.caption11).lineLimit(2).textSelection(.enabled)
+            LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:4),count:3),spacing:4) {
+                ForEach(state.sources?.items ?? [],id:\.index) { item in
+                    MergeSourceThumbnail(item:item,selected:state.source == item.index,
+                        excluded:state.settings.excludedSources.contains(item.index),enabled:!state.sourcesPending && !session.working) {
+                            state.source = item.index
+                        }
+
+                }
+            }.frame(minHeight:154,alignment:.top)
+            HStack {
+                Button(L10n.text("merge.inspect.previousPage",defaultValue:"Previous Page")) { state.sourcePage -= 1 }
+                    .disabled(state.sourcePage == 0 || session.working)
+                Text("\(state.sourcePage+1) / \(max(1,(names.count+5)/6))").font(.caption11).monospacedDigit()
+                Button(L10n.text("merge.inspect.nextPage",defaultValue:"Next Page")) { state.sourcePage += 1 }
+                    .disabled((state.sourcePage+1)*6 >= names.count || session.working)
+            }.buttonStyle(.key(height:24))
+            if state.sourcesPending { Text(L10n.text("merge.inspect.loading",defaultValue:"Loading source page…")).font(.caption11).foregroundStyle(Theme.textSecondary) }
+            if let error = state.sourcesError { Text(error).font(.caption11).foregroundStyle(Theme.warning) }
+            Toggle(L10n.text("merge.inspect.pick",defaultValue:"Inspect Point Instead of Painting"),isOn:$state.inspecting).toggleStyle(.instrument)
+            if state.inspecting {
+                AdjustmentRow(label:L10n.text("merge.inspect.x",defaultValue:"Point X"),value:state.inspectionPoint.x*100,range:0...100,step:0.1,digits:1,unit:"%",
+                    change:{ value,_ in state.inspectionPoint.x = value/100 },commit:{})
+                AdjustmentRow(label:L10n.text("merge.inspect.y",defaultValue:"Point Y"),value:state.inspectionPoint.y*100,range:0...100,step:0.1,digits:1,unit:"%",
+                    change:{ value,_ in state.inspectionPoint.y = value/100 },commit:{})
+            }
+            Text(L10n.text("merge.inspect.pointHint",defaultValue:"Click the result in inspection mode, or enter X/Y. Coverage labels use the alignment analysis; Source Coverage shows full-resolution alpha. Thumbnails show source frames, not projected result tiles."))
+                .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
+        }
+    }
+}
+
+private struct MergeSourceThumbnail: View {
+    let item: MergeSourcePreview
+    let selected: Bool
+    let excluded: Bool
+    let enabled: Bool
+    let action: () -> Void
+    @FocusState private var focused: Bool
+    var body: some View {
+        Button(action:action) {
+            VStack(alignment:.leading,spacing:3) {
+                ZStack {
+                    PhotoMat.dark.color
+                    if let image = item.thumbnail { Image(decorative:image,scale:1).resizable().aspectRatio(contentMode:.fit) }
+                }.frame(height:52).clipped()
+                Text("\(item.index+1) · \(item.name)").lineLimit(1).truncationMode(.middle)
+                Text(coverageTitle).foregroundStyle(Theme.textSecondary)
+                if excluded { Text(L10n.text("merge.inspect.frameOff",defaultValue:"Frame Excluded")).foregroundStyle(Theme.warning) }
+            }.font(.caption11).padding(3).frame(maxWidth:.infinity)
+                .background(Theme.inset)
+                .overlay(Rectangle().stroke(focused ? Theme.focusRing : selected ? Theme.accentSignal : Theme.controlBorder,lineWidth:focused || selected ? 2 : 0.5))
+        }.buttonStyle(.plain).focused($focused).disabled(!enabled).help(item.name)
+            .accessibilityLabel("\(item.index+1) · \(item.name)")
+            .accessibilityValue([selected ? L10n.text("merge.inspect.selected",defaultValue:"Selected") : "",coverageTitle,
+                excluded ? L10n.text("merge.inspect.frameOff",defaultValue:"Frame Excluded") : ""].filter { !$0.isEmpty }.joined(separator:", "))
+            .accessibilityIdentifier("merge-source-\(item.index)")
+    }
+    private var coverageTitle: String {
+        guard let coverage = item.coverage else { return "" }
+        return coverage > 0 ? L10n.text("merge.inspect.covered",defaultValue:"Covers Point") : L10n.text("merge.inspect.uncovered",defaultValue:"No Coverage")
+    }
 }

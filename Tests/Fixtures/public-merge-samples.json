@@ -201,7 +201,7 @@
       "author": "Mark D. Fairchild / HDR Photographic Survey",
       "source": "https://markfairchild.org/HDRPS/Scenes/HancockKitchenInside.html",
       "archive": "https://markfairchild.org/files/HDRPS_Raws.zip",
-      "usage": "Copyright Mark D. Fairchild, 2006–2007. Publicly available for research and non-commercial research publication with acknowledgement of Mark Fairchild's HDR Photographic Survey. Commercial publication prohibited; local evaluation only, originals and derived photographs not distributed.",
+      "usage": "Copyright Mark D. Fairchild, 2006\u20132007. Publicly available for research and non-commercial research publication with acknowledgement of Mark Fairchild's HDR Photographic Survey. Commercial publication prohibited; local evaluation only, originals and derived photographs not distributed.",
       "files": [
         {
           "file": "_MDF0001.NEF",
@@ -238,6 +238,394 @@
         {
           "file": "_MDF0009.NEF",
           "sha256": "c35ae2f868bc0170a8ca9159256c76cb004870938c024e05a7ffb9192cfe5deb"
+        }
+      ]
+    },
+    {
+      "id": "beach-jpeg",
+      "author": "Isaac I. Ullah (2016)",
+      "source": "https://pixls.us/articles/aligning-images-with-hugin/",
+      "usage": "Creative Commons Attribution-ShareAlike 4.0, confirmed by the tutorial and archive README. Camera JPEG companions used through the supported native import path; originals and derivatives not bundled.",
+      "files": [
+        {
+          "file": "P9032152.JPG",
+          "sha256": "e22b0997e6bcd9ba706aa61e54987153583f14ae78f716e7bb726a30100875b6"
+        },
+        {
+          "file": "P9032153.JPG",
+          "sha256": "4ce258bf13bb02d431edfd157fdccedd8d690fcb57c0e208c50f8101127e1712"
+        },
+        {
+          "file": "P9032154.JPG",
+          "sha256": "f21544cc59c7920bb25c36c38fb40b28967cb41d40952c25f8fb98261b6d49d5"
+        }
+      ]
+    },
+    {
+      "id": "dpm-star-trails",
+      "author": "Darlene Hildebrandt / Digital Photo Mentor",
+      "source": "https://www.digitalphotomentor.com/how-to-shoot-star-trails-and-sample-images-for-you-to-practice-stacking/",
+      "usage": "Tutorial offers these photographs to practice stacking, including alternative methods. Local evaluation only; originals and derivatives not distributed. Archive contains 90 sky frames and 3 light-painted foregrounds; this fixture uses the 90 sky frames.",
+      "files": [
+        {
+          "file": "DPM-star-trails-001-1600px.jpg",
+          "sha256": "1094a9aa850d1c36fd7ce191f26a198b327501273fab2845dfec2fc12c0f7831"
+        },
+        {
+          "file": "DPM-star-trails-002-1600px.jpg",
+          "sha256": "5ca067df2e1963dfb556cd02b92929a187d754a3f881ae58e6b4c1fbed8373e9"
+        },
+        {
+          "file": "DPM-star-trails-003-1600px.jpg",
+          "sha256": "0895129108b270c7fa92fc908f077120774d899fdd8676ec25184a7c09992552"
+        },
+        {
+          "file": "DPM-star-trails-004-1600px.jpg",
+          "sha256": "76ec10eaded6b1d1589e4e06c0cb923481a293aea2749c55432b6bc103244491"
+        },
+        {
+          "file": "DPM-star-trails-005-1600px.jpg",
+          "sha256": "aa3242ae3696887332155d0d335c2cdc0c7530472fbc1deda9e5ecb076f7ad8f"
+        },
+        {
+          "file": "DPM-star-trails-006-1600px.jpg",
+          "sha256": "613214e80652a3af87c7c9628b10a16abc3975e18637c681a74f768f03944137"
+        },
+        {
+          "file": "DPM-star-trails-007-1600px.jpg",
+          "sha256": "14434c4f4259fa8f1de30a3fd9b89b41936f951fa2e0171fedbdec237e3953fb"
+        },
+        {
+          "file": "DPM-star-trails-008-1600px.jpg",
+          "sha256": "4563340f1694ca7950ce91429e84a73144b0cafbd622ac250ba47e71aa0545fc"
+        },
+        {
+          "file": "DPM-star-trails-009-1600px.jpg",
+          "sha256": "6561ad5e81deec2908ff5e27095105b55c6963c2227e95f368b9def752291bf7"
+        },
+        {
+          "file": "DPM-star-trails-010-1600px.jpg",
+          "sha256": "bdb20cd52c0bcbdc898fc7024050574296e001ee575ad37c3bda7f739310fef8"
+        },
+        {
+          "file": "DPM-star-trails-011-1600px.jpg",
+          "sha256": "af7a7086e53bfbaef41aaf7213b8fef5f30ab11c910e114b12ac850b014e04f8"
+        },
+        {
+          "file": "DPM-star-trails-012-1600px.jpg",
+          "sha256": "1ceceff6c47ab85786dff4020b8dcdc1c5fb26b97bcc298fff5666fb5605984b"
+        },
+        {
+          "file": "DPM-star-trails-013-1600px.jpg",
+          "sha256": "4f09fb69b1419d53f9e657664b4ce151084b63607529e0e225ac13b908b35714"
+        },
+        {
+          "file": "DPM-star-trails-014-1600px.jpg",
+          "sha256": "437e9c5d34a68679ed437cf7666c957482de5c52974560137c1125a679c0fa55"
+        },
+        {
+          "file": "DPM-star-trails-015-1600px.jpg",
+          "sha256": "50095b80d71cf137b12074ba8d6211a1c1ec7b319941688ad5af79dde1c1f7d4"
+        },
+        {
+          "file": "DPM-star-trails-016-1600px.jpg",
+          "sha256": "65ba8ab312dd75be3c751dff2ed859a6052723a47f4be4d5c361f8d12e683947"
+        },
+        {
+          "file": "DPM-star-trails-017-1600px.jpg",
+          "sha256": "bd78f93a4d8a0c3c7102116c25118bae1cd98daaf2a656c2c967e2c054a33e87"
+        },
+        {
+          "file": "DPM-star-trails-018-1600px.jpg",
+          "sha256": "4c6b99a0fe8aa0cf76d025e4b19082006368ceecddfe4af2e13964084aac7dee"
+        },
+        {
+          "file": "DPM-star-trails-019-1600px.jpg",
+          "sha256": "43c50efa6a40e96b294f28b4b969bc1b1f5103d0971fe646c4caa37242791b15"
+        },
+        {
+          "file": "DPM-star-trails-020-1600px.jpg",
+          "sha256": "2abc39045cf77b8a13981cfacbf3999a52c6c94416ff4fed551eeb6a7bed9170"
+        },
+        {
+          "file": "DPM-star-trails-021-1600px.jpg",
+          "sha256": "63f0a45400ef48318e4c6f56c06d34c1d6c2749422ae4b22bb17950ce0282ad9"
+        },
+        {
+          "file": "DPM-star-trails-022-1600px.jpg",
+          "sha256": "6856d4cc2fa47630fefaaea064676f70e9401445dc69a85a4b191a5f8e3f324a"
+        },
+        {
+          "file": "DPM-star-trails-023-1600px.jpg",
+          "sha256": "fa9989127500f230d86cd5eaea1a81473dea2ba0abc56d3e8c8441dbd31c0b29"
+        },
+        {
+          "file": "DPM-star-trails-024-1600px.jpg",
+          "sha256": "71eda2e35359021695a3b3faa0fd9c7749476887953c808c651ba6971248f3e0"
+        },
+        {
+          "file": "DPM-star-trails-025-1600px.jpg",
+          "sha256": "64f0e4188be64590694cda01c91ba901ba4e1ace7515662d5576bb1fe30ee89d"
+        },
+        {
+          "file": "DPM-star-trails-026-1600px.jpg",
+          "sha256": "7f238aed7395134f805120fcee91af588eedccff23da8cb3572010d5674801eb"
+        },
+        {
+          "file": "DPM-star-trails-027-1600px.jpg",
+          "sha256": "f90c8a5f537a0b25929d328367fe975dc4a8b77a3cf29fc3cc2bbd1093bfb9c8"
+        },
+        {
+          "file": "DPM-star-trails-028-1600px.jpg",
+          "sha256": "49db0b592c738c556ea2efa50993bf771501b14ff75f7d911332d67079b29bbc"
+        },
+        {
+          "file": "DPM-star-trails-029-1600px.jpg",
+          "sha256": "d9b69793d404c6ff22250c7bf5f98f74ff1f4d3fedfc5472f5a457ea65d0d454"
+        },
+        {
+          "file": "DPM-star-trails-030-1600px.jpg",
+          "sha256": "304e77120e9b94ef70df6deab7a93084b9a50ebb6b49556c22c58f14dc60f8ac"
+        },
+        {
+          "file": "DPM-star-trails-031-1600px.jpg",
+          "sha256": "9766adbdab63d1bcc06f1e35f073b05badcce00eb4d177cff8535a5134bff099"
+        },
+        {
+          "file": "DPM-star-trails-032-1600px.jpg",
+          "sha256": "31772e7d7adbc939ff0f1c942da68da9274713979ed895a99ced3d085a7cb469"
+        },
+        {
+          "file": "DPM-star-trails-033-1600px.jpg",
+          "sha256": "c76d2cf6ca6a4f60b5a3d4cef8602deb822a4232330b9782b2231a958dedb883"
+        },
+        {
+          "file": "DPM-star-trails-034-1600px.jpg",
+          "sha256": "f53825ecfba3d031ff8a7992a9a01e0966a0dd76d276250b4c45032a395f45b3"
+        },
+        {
+          "file": "DPM-star-trails-035-1600px.jpg",
+          "sha256": "2bc123827c10884370dcdebeae4a9550de14e863ffe464de9b3f47d0b34c48fd"
+        },
+        {
+          "file": "DPM-star-trails-036-1600px.jpg",
+          "sha256": "5a08ec68292076d04581a6154e349d5bdc3d1d921f961455cb3fce576bbfddff"
+        },
+        {
+          "file": "DPM-star-trails-037-1600px.jpg",
+          "sha256": "75b49a115b8218e2a99b6059003a5a4cbf73fe7d9bd44b63a58ae936e43ff8f8"
+        },
+        {
+          "file": "DPM-star-trails-038-1600px.jpg",
+          "sha256": "f198e06d81ff1838958223a611b0f07c7181d441b3beded7d0d33afcc76b3bdd"
+        },
+        {
+          "file": "DPM-star-trails-039-1600px.jpg",
+          "sha256": "0d4ba1e460a8aa636f814cc41774520df57b31eb6ad6b434c06c7c94e5fe167d"
+        },
+        {
+          "file": "DPM-star-trails-040-1600px.jpg",
+          "sha256": "76ca12417a147d0c378de6832c637766e1e6e4d6710630ae719629b73640eba2"
+        },
+        {
+          "file": "DPM-star-trails-041-1600px.jpg",
+          "sha256": "859ae7572493bb5fafebd272b1f5d70d120ce565e449a080e14f928878bd921f"
+        },
+        {
+          "file": "DPM-star-trails-042-1600px.jpg",
+          "sha256": "5e01cc583e4790d09270a160181f1b27a054e0afc4a119b9a759859edd794da8"
+        },
+        {
+          "file": "DPM-star-trails-043-1600px.jpg",
+          "sha256": "45bdb44da95cd104d002579095a4555c290d62682dfe761ec3a46e62081cd80c"
+        },
+        {
+          "file": "DPM-star-trails-044-1600px.jpg",
+          "sha256": "68870e17655012d28278d6c564bb299c0f626df9c57e08d50cf88f096b081694"
+        },
+        {
+          "file": "DPM-star-trails-045-1600px.jpg",
+          "sha256": "5a65c6ca3fa8231a144c2f432fee8fc0537ce0ca085603436d200d2fc1428f9d"
+        },
+        {
+          "file": "DPM-star-trails-046-1600px.jpg",
+          "sha256": "94243217d6b63faad3e4db2763dd7f43f5f251461447e37f0bef9e9c72d9ec66"
+        },
+        {
+          "file": "DPM-star-trails-047-1600px.jpg",
+          "sha256": "feecbd11cfdb19aeda18f006ce0e917023091e826c4d3e4d450f1bce1f69f3bd"
+        },
+        {
+          "file": "DPM-star-trails-048-1600px.jpg",
+          "sha256": "35ad25bd7d4bdb76986d338bbad4eec48060055894a57bdd9e6611784f5aa64b"
+        },
+        {
+          "file": "DPM-star-trails-049-1600px.jpg",
+          "sha256": "cc37cf45febbe3f03dc485a1040174e7fb15aeae90f3cf910dc229ba03b3920e"
+        },
+        {
+          "file": "DPM-star-trails-050-1600px.jpg",
+          "sha256": "5f08f4b3eeaf2836a53266ac6a50284f374a8d7d9d77d03ab78688849bcacfd2"
+        },
+        {
+          "file": "DPM-star-trails-051-1600px.jpg",
+          "sha256": "ec0fa57de898e0be20ac1330dfb36fec0cfed348fc80c81f2a59e8b581c9cc03"
+        },
+        {
+          "file": "DPM-star-trails-052-1600px.jpg",
+          "sha256": "7e63eb76c2f577dd76967269ad128a82c409e8bed3fc92d3f3d2bcfc2b12d794"
+        },
+        {
+          "file": "DPM-star-trails-053-1600px.jpg",
+          "sha256": "5e60bbf7e03f159cf6a8282c5f4868e0220eb7297e9f70952021fd68a8b6c60b"
+        },
+        {
+          "file": "DPM-star-trails-054-1600px.jpg",
+          "sha256": "7f1cf35b18b29e4418c068861c4af009013b0e4ea909d01088d24f6e1db7894a"
+        },
+        {
+          "file": "DPM-star-trails-055-1600px.jpg",
+          "sha256": "366a2b8228ec79afcf92ef80e9e0919d0a7d830a6040ed3a4ee9b278ec71593a"
+        },
+        {
+          "file": "DPM-star-trails-056-1600px.jpg",
+          "sha256": "32589d35c8376365dff084d731a7c1017a5ac47a4e4b8ae9ff7601737d851c9b"
+        },
+        {
+          "file": "DPM-star-trails-057-1600px.jpg",
+          "sha256": "8dd0a5099d8247426a6dd845b359ce803003032297320e5f5438aea23bba3e6e"
+        },
+        {
+          "file": "DPM-star-trails-058-1600px.jpg",
+          "sha256": "af0a3135f3d3462a7c38ab3c22d907be8378c4b7dd0202a5bafa0b3f78649b80"
+        },
+        {
+          "file": "DPM-star-trails-059-1600px.jpg",
+          "sha256": "8f5ab2ac4b1ee25c671fed319f743fbd2f50a39b45692c875a2ebb9dfa5296ce"
+        },
+        {
+          "file": "DPM-star-trails-060-1600px.jpg",
+          "sha256": "5087b1cf9a1c64e98ed64c540dc0de67a367e4cab02692df397cad7b98f50b6b"
+        },
+        {
+          "file": "DPM-star-trails-061-1600px.jpg",
+          "sha256": "994131732ab0e5b2b1e19ba3a97d5e3523c1ddf6edecd134b663f055ee80fd01"
+        },
+        {
+          "file": "DPM-star-trails-062-1600px.jpg",
+          "sha256": "54b9336afd07925033d26fc425d1db32869bc7bc6c14ee1df308006d709c10f2"
+        },
+        {
+          "file": "DPM-star-trails-063-1600px.jpg",
+          "sha256": "d8ff28decd797d5a23af516402e0bfb7fed70092ccecfbb12164482cc0d0cd6c"
+        },
+        {
+          "file": "DPM-star-trails-064-1600px.jpg",
+          "sha256": "1fe2cf31360a552c0e812ecd0158fbaafbc59d1856ccc2deb2bb3d6f6696f6cd"
+        },
+        {
+          "file": "DPM-star-trails-065-1600px.jpg",
+          "sha256": "8a92c9e48222d7bbbc48eb921a9ee27c9bddb84a3ad642b57c02eb5ee8ccf51b"
+        },
+        {
+          "file": "DPM-star-trails-066-1600px.jpg",
+          "sha256": "889eb0eeb4bd3d73241e04dcbb8fca986816c6ca3231cfbe5ecd5122cc43b495"
+        },
+        {
+          "file": "DPM-star-trails-067-1600px.jpg",
+          "sha256": "84c4214ecb8a56bb9232701fdef644713aa98cee6d33715b0518dcf11b13fe2f"
+        },
+        {
+          "file": "DPM-star-trails-068-1600px.jpg",
+          "sha256": "8a54979035f8bf9c83250d9d85fa3db7dd51c5ebccd96e3bc474de29025ec38a"
+        },
+        {
+          "file": "DPM-star-trails-069-1600px.jpg",
+          "sha256": "86adba2fec72ca7d4932de2676098cd107b79e265d93aa3784ee0c7307b659b1"
+        },
+        {
+          "file": "DPM-star-trails-070-1600px.jpg",
+          "sha256": "59a1997cdc58822aa331b85e6260ada61902676d62b3b3a07953fb50e5b7da3b"
+        },
+        {
+          "file": "DPM-star-trails-071-1600px.jpg",
+          "sha256": "aac9a07b57c87b0686f4d0392dd12b9a9a0fe33b2e920ffd6d59dbd96a1334bc"
+        },
+        {
+          "file": "DPM-star-trails-072-1600px.jpg",
+          "sha256": "5aba08861d68729c1be08a567539326aa66b6111b3f3bc505c4cd646e7075697"
+        },
+        {
+          "file": "DPM-star-trails-073-1600px.jpg",
+          "sha256": "1f3bf14115771397b9148f071ba8c12dd9cee48d2703af3a5ec564e6516e42bb"
+        },
+        {
+          "file": "DPM-star-trails-074-1600px.jpg",
+          "sha256": "715ad4d54c8eb20248753ccfd1682e5b1c125792a2655c194ecba404207bbbe5"
+        },
+        {
+          "file": "DPM-star-trails-075-1600px.jpg",
+          "sha256": "fb80cc16d72871a151f8a7219c1e93a17bd28c3a77a0375ee1b5420747b3ffe2"
+        },
+        {
+          "file": "DPM-star-trails-076-1600px.jpg",
+          "sha256": "ebf22ba7204db656fe5b26e3def365ecbe79f7db58d6c35b4b3cdb437ce82bdd"
+        },
+        {
+          "file": "DPM-star-trails-077-1600px.jpg",
+          "sha256": "29afaeffa796782da0d5646a2534f010fef26c778a5270420ec3467db87f4ddd"
+        },
+        {
+          "file": "DPM-star-trails-078-1600px.jpg",
+          "sha256": "be027358b3f83f5166836a542e96644a0677569f793a0d06b5423bcd1086cb6a"
+        },
+        {
+          "file": "DPM-star-trails-079-1600px.jpg",
+          "sha256": "dbedaa6d264071bd1e1b67b8b19ef954b9a70a3d6ae8e58e073246f298a7586f"
+        },
+        {
+          "file": "DPM-star-trails-080-1600px.jpg",
+          "sha256": "ab111d91b34e4c72a6c28b455e8fdb467591a4f93543f06a6d163d87bead8114"
+        },
+        {
+          "file": "DPM-star-trails-081-1600px.jpg",
+          "sha256": "9930f006031dc309fd1a48b93047ba328ae56d1e8e4b5a1d1b01be4a2625eccc"
+        },
+        {
+          "file": "DPM-star-trails-082-1600px.jpg",
+          "sha256": "b19e824a1248dd41a4e4620e820ab83d0f6979eee520e49e3cdaacd7417c96a4"
+        },
+        {
+          "file": "DPM-star-trails-083-1600px.jpg",
+          "sha256": "c35d9eb4fa21e8316bab5106b5dcdbd7c786346c1253087f84948d29d7c68ec8"
+        },
+        {
+          "file": "DPM-star-trails-084-1600px.jpg",
+          "sha256": "5677c2686f2dc23adc6192aaf114af2a89db0003198192e9ab8936d334da107d"
+        },
+        {
+          "file": "DPM-star-trails-085-1600px.jpg",
+          "sha256": "31ae347af1dc701443bdc16818dfd01249d954de3634f8213e7aded25e179771"
+        },
+        {
+          "file": "DPM-star-trails-086-1600px.jpg",
+          "sha256": "40baedde3a124039f569ce49a0e78acca7b19abf5f41448f2de6266b7302879c"
+        },
+        {
+          "file": "DPM-star-trails-087-1600px.jpg",
+          "sha256": "6e760efbe8e4e9a4ef80127d530582323edbfbd450c9e15a5280b09f1ef3f841"
+        },
+        {
+          "file": "DPM-star-trails-088-1600px.jpg",
+          "sha256": "f486fcf98838fa575a22371569df90ec7c1603fee0d42b105fc0ac7318c4ad02"
+        },
+        {
+          "file": "DPM-star-trails-089-1600px.jpg",
+          "sha256": "91811a0f52bc870563498f08074f6a1dbe73506e9c43d4bb66dffc6db84b10a6"
+        },
+        {
+          "file": "DPM-star-trails-090-1600px.jpg",
+          "sha256": "37bb3726f1b345c0cc602bee160739d518db87f467c0db291839e2701bac68b3"
         }
       ]
     }

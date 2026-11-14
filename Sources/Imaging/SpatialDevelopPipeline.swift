@@ -15,7 +15,7 @@ enum SpatialDevelopPipeline {
     }
     private static let kernels: Result<[String: CIColorKernel], Error> = Result {
         let data = try library.get()
-        let names = ["logLuminance", "linearLuminance", "guideMoments", "guideProduct", "guideCoefficients", "guideReconstruct", "darkChannel", "transmission", "removeHaze", "toneEqualize", "detailEnhance", "toneCurves", "zoneExposure", "blackWhiteMix", "pointColorInput", "pointColorRange", "pointColorMix", "guideWeight", "guideUnweight", "alphaCoverage", "rasterExposure"]
+        let names = ["mergeReadback", "logLuminance", "linearLuminance", "guideMoments", "guideProduct", "guideCoefficients", "guideReconstruct", "darkChannel", "transmission", "removeHaze", "toneEqualize", "detailEnhance", "toneCurves", "zoneExposure", "blackWhiteMix", "pointColorInput", "pointColorRange", "pointColorMix", "guideWeight", "guideUnweight", "alphaCoverage", "rasterExposure"]
         return try Dictionary(uniqueKeysWithValues: names.map {
             ($0, try CIColorKernel(functionName: $0, fromMetalLibraryData: data, outputPixelFormat: .RGBAf))
         })

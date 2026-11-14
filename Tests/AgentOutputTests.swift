@@ -387,4 +387,101 @@ final class AgentOutputTests: XCTestCase {
             XCTAssertTrue([CGImageAlphaInfo.last, .premultipliedLast, .first, .premultipliedFirst].contains(image.alphaInfo))
         }
     }
+    func testMergeRetouchRevisionHistoryImageGatingAndSavedProjectReopen() async throws {
+        let files = try fixture(),client = files.client,photos = try await imported(files)
+        let plan = succeeded(try await client.finished(.planMerge,files.ordered(photos,adding:["merge_kind":"lighten"])))
+        let rendered = succeeded(try await client.finished(.renderMerge,["plan_id":try XCTUnwrap(plan["plan_id"])]))
+        let preview = try XCTUnwrap(rendered["preview_id"])
+        let begun = succeeded(try await client.finished(.editMergeRetouch,["action":"begin","preview_id":preview]))
+        func reference(_ state: Fields) throws -> Fields {
+            ["preview_id":try XCTUnwrap(state["preview_id"]),"draft_id":try XCTUnwrap(state["draft_id"]),"draft_revision":try XCTUnwrap(state["draft_revision"])]
+        }
+        let first = try reference(begun)
+        var sources = first; sources["view"] = "sources"; sources["point"] = ["x":0,"y":0.2]
+        let listed = await client.call(.getMergeRetouch,sources)
+        XCTAssertEqual(listed["items"]?.arrayValue?.count,3)
+        XCTAssertEqual(listed["items"]?.arrayValue?.first?.objectValue?["coverage_at_point"],.double(0))
+        var request = first; request["view"] = "result"
+        let gated = await client.call(.getMergeRetouch,request)
+        XCTAssertEqual(gated["tool_error"],"image_access_disabled")
+        request["plan_only"] = true
+        let planned = await client.call(.getMergeRetouch,request)
+        XCTAssertEqual(planned["canvas_width"],96); XCTAssertNil(planned["tool_error"])
+        client.tools.setSharesImages(true); request["plan_only"] = nil
+        let before = try png(await client.response(.getMergeRetouch,request))
+        var edit = first
+        edit["action"] = "set"; edit["request_id"] = "retouch-stroke"
+        edit["changes"] = ["append_stroke":["source_index":0,"operation":"keep", "path":[["x":0.72,"y":0.2]],
+            "radius":0.14,"hardness":1,"opacity":1],"excluded_sources":[2],"star_trails":["gap":2,"threshold":0.4,"strength":0.5]]
+        let accepted = await client.call(.editMergeRetouch,edit)
+        let changed = succeeded(try await client.job(accepted))
+        let duplicate = await client.call(.editMergeRetouch,edit)
+        XCTAssertEqual(duplicate["job_id"],accepted["job_id"])
+        XCTAssertEqual(changed["draft_revision"],1); XCTAssertEqual(changed["stroke_count"],1)
+        let stale = await client.call(.getMergeRetouch,first); XCTAssertEqual(stale["tool_error"],"stale_merge_retouch")
+        var current = try reference(changed); current["view"] = "result"
+        let after = try png(await client.response(.getMergeRetouch,current)); XCTAssertNotEqual(before,after)
+        current["view"] = "source"; current["source_index"] = 1
+        current["region_pixels"] = ["x":17,"y":9,"width":24,"height":19]
+        let tile = await client.response(.getMergeRetouch,current)
+        _ = try png(tile); XCTAssertEqual(Client.data(tile)["width"],24); XCTAssertEqual(Client.data(tile)["height"],19)
+        var undo = try reference(changed); undo["action"] = "undo"
+        let undone = succeeded(try await client.finished(.editMergeRetouch,undo)); XCTAssertEqual(undone["stroke_count"],0)
+        var redo = try reference(undone); redo["action"] = "redo"
+        let redone = succeeded(try await client.finished(.editMergeRetouch,redo)); XCTAssertEqual(redone["stroke_count"],1)
+        let destination = try await client.access(.mergeDestination,directory:files.masters)
+        var save: Fields = ["preview_id":preview,"destination_access_id":destination,"filename":"retouched.dng","master_format":"dng","stack_with_sources":false]
+        let missingRevision = await client.call(.saveMerge,save); XCTAssertEqual(missingRevision["tool_error"],"stale_merge_retouch")
+        save.merge(try reference(redone)) { _,value in value }
+        let saved = succeeded(try await client.finished(.saveMerge,save))
+        let photo = try files.current(XCTUnwrap(saved["photo_id"]?.stringValue))
+        let master = try MergeMasterCodec.read(files.masters.appendingPathComponent("retouched.dng"),context:MergeMasterCodec.context())
+        let project = try MergeRetouchProject.read(from:files.masters.appendingPathComponent("retouched.dng"),reference:XCTUnwrap(master.provenance.retouchProject))
+        XCTAssertEqual(project.settings.strokes[0].points,[MaskPoint(0.72,0.2)],"merge coordinates stay top-left; do not apply Develop's Y inversion")
+        var reopen = MCPDevelopPhoto.revisions(photo); reopen["action"] = "reopen"
+        let restored = succeeded(try await client.finished(.editMergeRetouch,reopen))
+        XCTAssertEqual(restored["stroke_count"],1); XCTAssertNotEqual(restored["draft_id"],begun["draft_id"])
+        var cancel = try reference(restored); cancel["action"] = "cancel"
+        let discarded = succeeded(try await client.finished(.editMergeRetouch,cancel)); XCTAssertEqual(discarded["active"],false)
+        let gone = await client.call(.getMergeRetouch,try reference(restored)); XCTAssertEqual(gone["tool_error"],"stale_merge_retouch")
+        let restarted = succeeded(try await client.finished(.editMergeRetouch,["action":"begin","preview_id":try XCTUnwrap(restored["preview_id"])]))
+        XCTAssertNotEqual(restarted["draft_id"],restored["draft_id"],"cancel/begin cannot revive a stale draft identity")
+    }
+
+    func testCancelledMergeRetouchRenderRollsBackSaveSettings() async throws {
+        let files = try fixture(),client = files.client,photos = try await imported(files)
+        let cancellation = OSAllocatedUnfairLock(initialState:false)
+        client.tools.workflows.makeMergeEngine = {
+            PhotoMergeEngine(checkpoint:{ phase in
+                if phase == "retouch-settings",cancellation.withLock({ value in let fail = value; value = false; return fail }) { throw CancellationError() }
+            })
+        }
+        let plan = succeeded(try await client.finished(.planMerge,files.ordered(photos,adding:["merge_kind":"hdr","options":["align":false]])))
+        let rendered = succeeded(try await client.finished(.renderMerge,["plan_id":try XCTUnwrap(plan["plan_id"])]))
+        let begun = succeeded(try await client.finished(.editMergeRetouch,["action":"begin","preview_id":try XCTUnwrap(rendered["preview_id"])]))
+        let ref: Fields = ["preview_id":try XCTUnwrap(begun["preview_id"]),"draft_id":try XCTUnwrap(begun["draft_id"]),"draft_revision":0]
+        var edit = ref; edit["action"] = "set"
+        edit["changes"] = ["append_stroke":["source_index":0,"operation":"keep","path":[["x":0.6,"y":0.2]],"radius":0.2,"hardness":1,"opacity":1]]
+        cancellation.withLock { $0 = true }
+        let failed = try await client.finished(.editMergeRetouch,edit); XCTAssertEqual(failed["state"],"cancelled")
+        let state = await client.call(.getMergeRetouch,ref); XCTAssertEqual(state["stroke_count"],0); XCTAssertEqual(state["draft_revision"],0)
+        let prepared = try XCTUnwrap(client.tools.workflows.mergePreview)
+        let settings = try await prepared.engine.retouchSettings(prepared.id)
+        XCTAssertEqual(settings,MergeRetouchSettings())
+        var save = ref; save["destination_access_id"] = try await client.access(.mergeDestination,directory:files.masters)
+        save["filename"] = "after-cancel.tif"; save["stack_with_sources"] = false
+        let saved = succeeded(try await client.finished(.saveMerge,save)); XCTAssertEqual(saved["verified"],true)
+        let master = try MergeMasterCodec.read(files.masters.appendingPathComponent("after-cancel.tif"),context:MergeMasterCodec.context())
+        let project = try MergeRetouchProject.read(from:files.masters.appendingPathComponent("after-cancel.tif"),reference:XCTUnwrap(master.provenance.retouchProject))
+        XCTAssertTrue(project.settings.strokes.isEmpty)
+    }
+
+    func testMergeRetouchSchemaRejectsIncompleteStrokesAndInvalidFrameLists() {
+        XCTAssertFalse(AppMCPTool.Field.retouchChanges.accepts(["append_stroke":["source_index":0]],for:.editMergeRetouch))
+        XCTAssertFalse(AppMCPTool.Field.retouchChanges.accepts(["excluded_sources":[0,0]],for:.editMergeRetouch))
+        XCTAssertFalse(AppMCPTool.Field.retouchChanges.accepts(["excluded_sources":[-1]],for:.editMergeRetouch))
+        XCTAssertFalse(AppMCPTool.Field.retouchChanges.accepts(["star_trails":["gap":17]],for:.editMergeRetouch))
+        XCTAssertTrue(AppMCPTool.Field.retouchChanges.accepts(["excluded_sources":[]],for:.editMergeRetouch))
+    }
+
 }

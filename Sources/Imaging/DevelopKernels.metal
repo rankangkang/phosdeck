@@ -654,4 +654,7 @@ float4 clipWarning(sample_t s, float3 shadow, float3 highlight, float showShadow
     if (showShadow > 0.5f && min(c.r, min(c.g, c.b)) < 0.000152f) return premultiply(float4(shadow, s.a));
     return s;
 }
+// Keep raster merge readback on the float render graph. Identity preserves
+// signed RGB and coverage; it must not sanitize invalid input or tone map it.
+float4 mergeReadback(sample_t s) { return s; }
 } }

@@ -242,7 +242,12 @@ actor ImagePipeline {
                 } else { image = decoded }
             }
             try Task.checkCancellation()
-            let pixels = try MergeImage.read(image,context:developContext)
+            // A real full-size JPEG can take a broken CPU conversion shortcut
+            // in Core Image on macOS 27, even after ImageIO materialization.
+            // An identity float kernel keeps profile conversion and readback on
+            // the normal render graph without quantization or a CGImage round trip.
+            let readback = request.photo.isRAW ? image : try SpatialDevelopPipeline.run("mergeReadback",extent:image.extent,[image])
+            let pixels = try MergeImage.read(readback,context:developContext)
             guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self,from:request.photo.identity) else { throw LRCError(L10n.text("merge.sourceChanged", defaultValue:"A source changed during the merge. Reopen the merge window")) }
             let metadata = request.photo.details
             var exposure: Double?

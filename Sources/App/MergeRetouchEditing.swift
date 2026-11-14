@@ -11,6 +11,13 @@ import AppKit
     var restore = false
     var exclude = false
     var overlay = false
+    var overlayMode = MergeRetouchOverlay.none
+    var inspecting = false
+    var inspectionPoint = MaskPoint(0.5,0.5)
+    var sourcePage = 0
+    var sources: MergeSourcePage?
+    var sourcesPending = false
+    var sourcesError: String?
     var zoom = 0.0 // 0 = fit; 1 = one image pixel per backing pixel.
     var preview: MergeRetouchPreview?
     var pending = false

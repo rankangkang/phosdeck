@@ -240,6 +240,8 @@ final class AppMCPWorkflows {
             return try await listPresets(arguments, catalog: model.catalog!, session: session!)
         case .getMergePreview:
             return try await readMergePreview(arguments, catalog: model.catalog!)
+        case .getMergeRetouch:
+            return try await readMergeRetouch(arguments,catalog:model.catalog!)
         case .listExportPresets:
             return try listExportPresets(arguments)
         case .getExportPreview:
@@ -271,6 +273,7 @@ final class AppMCPWorkflows {
             return start(tool, waitingFor: purpose.rawValue) { job in try await self.requestAccess(purpose, job: job) }
         case .planMerge: return try planMerge(arguments, catalog: model.catalog!)
         case .renderMerge: return try renderMerge(arguments, catalog: model.catalog!)
+        case .editMergeRetouch: return try editMergeRetouch(arguments,catalog:model.catalog!)
         case .editExportPreset: return try editExportPreset(arguments)
         case .planExport: return try planExport(arguments, catalog: model.catalog!)
         case .runExport: return try runExport(arguments, catalog: model.catalog!)
