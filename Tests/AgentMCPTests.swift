@@ -305,9 +305,15 @@ final class AgentMCPTests: XCTestCase {
         XCTAssertEqual(empty.content.count, 1)
 
         try PNGFixture.data(width: 250, height: 160).write(to: file, options: .atomic)
-        let stale = data(await call(tools, .listPhotos, arguments))
-        XCTAssertEqual(stale["items"]?.arrayValue?.first?.objectValue?["thumbnail_error"], "file_access_required")
-        XCTAssertEqual(stale["items"]?.arrayValue?.first?.objectValue?["image_pixels"], .null)
+        let coldModel = AppModel()
+        coldModel.catalog = catalog
+        try coldModel.reload()
+        for (client, catalogSession) in [(tools, session), (self.tools(coldModel), .string(try XCTUnwrap(coldModel.catalogSessionID)))] {
+            client.setSharesImages(true)
+            let stale = data(await call(client, .listPhotos, arguments.merging(["catalog_session_id": catalogSession]) { _, current in current }))
+            XCTAssertEqual(stale["items"]?.arrayValue?.first?.objectValue?["thumbnail_error"], "file_access_required")
+            XCTAssertEqual(stale["items"]?.arrayValue?.first?.objectValue?["image_pixels"], .null)
+        }
     }
 
     @MainActor func testContactSheetRejectsInFlightCatalogChangesAndRevokedSharing() async throws {

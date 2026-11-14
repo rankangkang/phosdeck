@@ -75,11 +75,25 @@ struct MCPContactSheet: Sendable {
         guard photo.availability == "available", let root else { return (nil, .fileAccess) }
         do {
             let recipe = try photo.recipe.map { try MCPDevelopPhoto.decode($0, for: photo) }
+            let request = ImageRequest(photo: photo, root: root, recipe: recipe)
             // Grid cache hits skip the source read. Sharing a photo still requires
             // the same saved identity and digest checks used by quality previews.
-            let image = try await service.image(photo: photo, root: root)
-            do { try pipeline.verifySource(.init(photo: photo, root: root, recipe: recipe)) }
-            catch { return (nil, .fileAccess) }
+            func verifySource() throws {
+                do { try pipeline.verifySource(request) }
+                catch is CancellationError { throw CancellationError() }
+                catch { throw MCPToolProblem.fileAccess }
+            }
+            let image: CGImage
+            do {
+                image = try await service.image(photo: photo, root: root)
+            } catch {
+                try Task.checkCancellation()
+                if error is CancellationError { throw error }
+                // A cold render may reject a replaced source before returning pixels.
+                try verifySource()
+                throw error
+            }
+            try verifySource()
             return (image, nil)
         } catch is CancellationError { throw CancellationError() }
         catch let problem as MCPToolProblem { return (nil, problem) }
