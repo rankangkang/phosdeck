@@ -281,8 +281,10 @@ extension FoundationTests {
         model.catalog = first; try first.restoreSnapshot(snapshot); try model.reloadEditContext()
         model.undo.beginUndoGrouping(); model.deleteSnapshot(snapshot); model.undo.endUndoGrouping()
         XCTAssertTrue(model.undo.canUndo)
+        XCTAssertTrue(model.undoAvailability.canUndo)
         try model.activateCatalog(second)
         XCTAssertFalse(model.undo.canUndo); XCTAssertFalse(model.undo.canRedo)
+        XCTAssertEqual(model.undoAvailability, .init())
         XCTAssertEqual(try second.snapshots(photoID: "a"), [snapshot])
     }
     @MainActor func testModelHistoryRestoreSnapshotsAndPasteUndo() throws {

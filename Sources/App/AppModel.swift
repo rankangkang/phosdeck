@@ -4,6 +4,7 @@ import AppKit
 import UniformTypeIdentifiers
 import GRDB
 import CoreImage
+import Combine
 
 /// Countable progress of the running batch; nil when the task has no known item count.
 struct TaskProgress: Equatable {
@@ -536,6 +537,12 @@ final class AppModel {
     @ObservationIgnored private(set) var catalogTransfer: Task<Void, Never>?
     let viewport = PhotoViewport()
     let undo = UndoManager()
+    struct UndoAvailability: Equatable {
+        var canUndo = false
+        var canRedo = false
+    }
+    private(set) var undoAvailability = UndoAvailability()
+    @ObservationIgnored private var undoObservers: [AnyCancellable] = []
     @ObservationIgnored lazy var mcp = AppMCPService()
     let pipeline: ImagePipeline
     private let renderPreview: (ImageRequest, Bool, Int?) async throws -> RenderedImage
@@ -726,6 +733,11 @@ final class AppModel {
         self.pipeline = pipeline
         let interactivePipeline = ImagePipeline(cacheIntermediates: true)
         self.renderPreview = previewRenderer ?? Self.makePreviewRenderer(quality: pipeline, draft: interactivePipeline)
+        undoObservers = [.NSUndoManagerDidCloseUndoGroup, .NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange].map { name in
+            NotificationCenter.default.publisher(for: name, object: undo).sink { [weak self] _ in
+                self?.refreshUndoAvailability()
+            }
+        }
         if let defaults = self.workspacePreferences {
             autoAdvance = defaults.bool(forKey: "autoAdvance")
             libraryFiltersOpen = defaults.object(forKey: "libraryFiltersOpen") as? Bool ?? true
@@ -1823,6 +1835,10 @@ final class AppModel {
         undo.registerUndo(withTarget: self, handler: action)
         undo.setActionName(title)
         if closed { undo.endUndoGrouping(); undo.groupsByEvent = grouped }
+    }
+    private func refreshUndoAvailability() {
+        let available = UndoAvailability(canUndo: undo.canUndo, canRedo: undo.canRedo)
+        if undoAvailability != available { undoAvailability = available }
     }
     private func registerOrganizationUndo(_ changes: [PhotoMarkChange], preservingSelection: Bool, closed: Bool = false) {
         registerCatalogUndo(L10n.text("app.ratingAndFlags", defaultValue: "Rating and Flags"), closed: closed) {
@@ -3655,7 +3671,9 @@ extension AppModel {
         endDevelopReference(); pinnedDevelopPhoto = nil
         previewTask?.cancel(); previewGeneration = UUID(); pendingPreview = nil; pendingQualityPreview = nil
         qualityWorker?.cancel(); qualityRender?.cancel(); maskReferenceTask?.cancel(); maskReferenceToken = UUID()
-        undo.removeAllActions(); scrollPositions = [:]; scrollActiveIDs = [:]
+        undo.removeAllActions()
+        refreshUndoAvailability()
+        scrollPositions = [:]; scrollActiveIDs = [:]
         cancelTargetedAdjustment(clearReference: true)
         cancelPointColorTools(); selectedPointColorID = nil
         cancelWhiteBalanceSampling()

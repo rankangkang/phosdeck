@@ -1,5 +1,6 @@
 import ImageIO
 import MCP
+import Observation
 import XCTest
 @testable import Phosdeck
 
@@ -1167,6 +1168,47 @@ final class AgentDevelopTests: XCTestCase {
         for field in ["source_id", "query", "page_offset", "active_photo_id", "selected_photo_ids", "view", "viewport"] {
             XCTAssertEqual(before[field], after[field], field)
         }
+    }
+
+    @MainActor func testFilteredOutBatchPublishesUndoAndRedoAvailability() async throws {
+        let (catalog, _) = try await catalog(ids: ["a", "b", "c"])
+        let client = try await Client(catalog)
+        let model = client.model
+        _ = try client.data(await client.call(.setQuery, ["search": "c.png"]))
+        _ = try client.data(await client.call(.selectPhotos, ["action": "replace", "photo_ids": ["c"]]))
+        XCTAssertEqual(model.photos.map(\.id), ["c"])
+        XCTAssertEqual(model.activeID, "c")
+        XCTAssertEqual(model.undoAvailability, .init(canUndo: false, canRedo: false))
+
+        func observeAvailability(_ step: String) -> XCTestExpectation {
+            let changed = expectation(description: step)
+            withObservationTracking { _ = model.undoAvailability } onChange: { changed.fulfill() }
+            return changed
+        }
+
+        let edits: Value = [.object(try client.edits("a", ["adjustments": ["global": ["exposure": 0.5]]])),
+                            .object(try client.edits("b", ["adjustments": ["global": ["exposure": -0.5]]]))]
+        let plan = try await client.job(await client.call(.planAdjustmentBatch, ["edits": edits]))
+        let committed = observeAvailability("Committing edits outside the current filter enables Undo")
+        let applied = try await client.job(await client.call(.applyAdjustmentBatch, ["plan_id": try XCTUnwrap(plan["plan_id"])]))
+        XCTAssertEqual(applied["commit_state"], "committed")
+        XCTAssertEqual(applied["changed_count"], 2)
+        await fulfillment(of: [committed], timeout: 1)
+        XCTAssertEqual(model.undoAvailability, .init(canUndo: true, canRedo: false))
+
+        let undone = observeAvailability("A native undo enables Redo")
+        model.undo.undo()
+        await fulfillment(of: [undone], timeout: 1)
+        XCTAssertEqual(model.undoAvailability, .init(canUndo: false, canRedo: true))
+        XCTAssertEqual(try ["a", "b"].map { try client.recipe($0).exposure }, [0, 0])
+
+        let redone = observeAvailability("A native redo enables Undo again")
+        model.undo.redo()
+        await fulfillment(of: [redone], timeout: 1)
+        XCTAssertEqual(model.undoAvailability, .init(canUndo: true, canRedo: false))
+        XCTAssertEqual(try ["a", "b"].map { try client.recipe($0).exposure }, [0.5, -0.5])
+        XCTAssertEqual(model.photos.map(\.id), ["c"])
+        XCTAssertEqual(model.activeID, "c")
     }
 
     @MainActor func testAdjustmentBatchRejectsInvalidStaleAndMissingTargetsWithoutSavingAnEarlierItem() async throws {

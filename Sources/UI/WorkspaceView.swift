@@ -1313,14 +1313,14 @@ struct WorkspaceView: View {
     private var inspectorFooter: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: Metrics.gap) {
-                inspectorUndoControls.fixedSize()
+                WorkspaceRegion { inspectorUndoControls }.fixedSize()
                 Spacer(minLength: 0)
                 inspectorTransferControl.fixedSize()
                 inspectorResetControl.fixedSize()
             }
             VStack(alignment: .leading, spacing: Metrics.gap) {
                 HStack(spacing: Metrics.gap) {
-                    inspectorUndoControls.fixedSize()
+                    WorkspaceRegion { inspectorUndoControls }.fixedSize()
                     Spacer(minLength: 0)
                     inspectorResetControl.fixedSize()
                 }
@@ -1329,9 +1329,15 @@ struct WorkspaceView: View {
         }
     }
     @ViewBuilder private var inspectorUndoControls: some View {
+        let undoAvailability = model.undoAvailability
         Button(L10n.text("app.undo_244", defaultValue: "Undo")) { if model.smartMaskSession != nil { model.undoSmartPrompt() } else { model.undo.undo() } }.buttonStyle(.key)
-            .editingDisabled(model.editMode && !model.canEdit || (model.smartMaskSession.map { $0.busy || $0.promptHistory.isEmpty } ?? !model.undo.canUndo), temporarilyLocked: model.editorUsesPreviousPhoto && model.undo.canUndo).help(L10n.text("app.undoZ", defaultValue: "Undo (⌘Z)"))
-        Button(L10n.text("app.redo_245", defaultValue: "Redo")) { model.undo.redo() }.buttonStyle(.key).editingDisabled(model.editMode && !model.canEdit || model.smartMaskSession != nil || !model.undo.canRedo, temporarilyLocked: model.editorUsesPreviousPhoto && model.undo.canRedo).help(L10n.text("app.redoZ", defaultValue: "Redo (⇧⌘Z)"))
+            .editingDisabled(model.editMode && !model.canEdit || (model.smartMaskSession.map { $0.busy || $0.promptHistory.isEmpty } ?? !undoAvailability.canUndo),
+                             temporarilyLocked: model.editorUsesPreviousPhoto && undoAvailability.canUndo)
+            .help(L10n.text("app.undoZ", defaultValue: "Undo (⌘Z)"))
+        Button(L10n.text("app.redo_245", defaultValue: "Redo")) { model.undo.redo() }.buttonStyle(.key)
+            .editingDisabled(model.editMode && !model.canEdit || model.smartMaskSession != nil || !undoAvailability.canRedo,
+                             temporarilyLocked: model.editorUsesPreviousPhoto && undoAvailability.canRedo)
+            .help(L10n.text("app.redoZ", defaultValue: "Redo (⇧⌘Z)"))
     }
     @ViewBuilder private var inspectorTransferControl: some View {
         if model.editMode, model.selection.subtracting(Set([model.activeID].compactMap { $0 })).count > 0 {
