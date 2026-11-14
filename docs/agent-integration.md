@@ -328,6 +328,8 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 合成计划支持 `panorama`、`hdr`、`hdrPanorama`、`focus`、`average`、`median`、`additive`、`lighten`、`darken`、`screen`。HDR 全景按 `bracket_size` 将连续来源分组。`render_merge_preview` 返回可供 `get_merge_preview` 查看和 `save_photo_merge` 保存的 `preview_id`，重新渲染会替换已准备的预览。`display_ev` 仅影响回读图像。保存前在原生面板授权 `merge_destination`，选择 `tiff` 或 `dng` 母版和新文件名。结果的 `published`、`verified` 和 `indexed` 分别记录发布、核验和入库。堆叠可用返回的 `operation_id` 撤销，母版保留。若文件已发布但未入库，用返回的 `file_id` 定位母版并检查，再按需要引用导入。
 
+对焦合成保存的母版包含可继续编辑的工程；来源修正画笔、完整尺寸双视图与工程重开目前在原生合成面板中操作，MCP 尚未提供这些精修动作。
+
 导出使用 `export_destination` 授权。单规格可直接传 `options`，多规格各自指定 `title`、`subfolder` 及所需选项。可通过 `preset_id` 和 `preset_revision` 选用内置或自定义预设，再覆盖单项选项。`jpeg` 必须选 `black` 或 `white` 铺底。`png` 和 `tiff` 保留透明度，TIFF 使用 16 位。`metadata_policy` 支持 `none`、`capture`、`description` 和 `captureAndDescription`。题注和关键词取自计划时的图库，相机数据仅写入原生允许的拍摄字段。`get_export_preview` 分页显示名称和冲突，传 `output_id` 时返回像素预览。所有像素预览均需要开启照片预览共享。
 
 仅对 `ready: true` 的计划调用 `run_export`。运行前重新核对修订和目标，再冻结配方、原片身份和元数据。任务分别报告 `published_count`、`verified_count`、`completed_count` 及每个输出的 `record_id`。连接中断时先回读任务，服务重启后可用 `list_export_records` 查询持久记录。`verify_or_retry_export` 校验已发布文件的摘要，缺失时用原冻结设置重新生成，遇到同名外部文件会保留原文件。授权失效时用原生面板选择每条记录的原始父目录，再调用 `reauthorize_export_location`。`reveal_file_in_finder` 按导出记录、已入库母版、临时母版文件 ID、当前图库或导入备份定位文件。

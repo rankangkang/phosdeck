@@ -83,7 +83,7 @@ enum MergeDNGCodec {
         while !header.count.isMultiple(of:4) { header.append(0) }
         let rgbOffset = header.count,maskPixels = rgbOffset+image.width*image.height*12
         let total = UInt64(maskPixels)+UInt64(hasMask ? image.width*image.height*4 : 0)
-        guard total <= UInt64(UInt32.max) else { throw MergeMasterCodec.invalid }
+        guard total+UInt64(provenance.focusProject?.bytes ?? 0) <= UInt64(UInt32.max) else { throw MergeMasterCodec.invalid }
         // Only replace the inline strip offsets; metadata payload offsets stay stable.
         func setStrip(_ entries: [Entry],_ ifd: Int,_ value: Int) {
             let index = entries.sorted { $0.tag < $1.tag }.firstIndex { $0.tag == 273 }!
@@ -168,7 +168,7 @@ enum MergeDNGCodec {
             mask = try pixels(fields,channels:1,isMask:true)
             guard mask! >= rgb+width*height*12 else { throw MergeMasterCodec.invalid }
         }
-        guard rgb >= reader.headerEnd,(mask.map { $0+width*height*4 } ?? rgb+width*height*12) == data.count else { throw MergeMasterCodec.invalid }
+        guard rgb >= reader.headerEnd,(mask.map { $0+width*height*4 } ?? rgb+width*height*12) == data.count-(provenance.focusProject?.bytes ?? 0) else { throw MergeMasterCodec.invalid }
         return File(width:width,height:height,provenance:provenance,data:data,rgb:rgb,mask:mask)
     }
     private struct Field { let type: Int;let bytes: Data }

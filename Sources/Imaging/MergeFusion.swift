@@ -227,12 +227,16 @@ final class MergeFusionAccumulator {
         sum = MergeImage(width:width,height:height); weight = .init(repeating:0,count:width*height); coverage = weight
         focusFusion = plan.depth.map { FocusStackFusion(width:width,height:height,depth:$0,reference:plan.reference) }
     }
-    func add(_ frame: MergeImage,index: Int) throws {
+    static func aligned(_ frame: MergeImage,index: Int,plan: MergeFusionPlan,width: Int,height: Int) throws -> MergeImage {
         let r = plan.frames[plan.reference].image, s = plan.frames[index].image
         let toSmall = MergeMatrix.scale(Double(r.width)/Double(width),Double(r.height)/Double(height))
         let toFull = MergeMatrix.scale(Double(frame.width)/Double(s.width),Double(frame.height)/Double(s.height))
         let transform = toSmall.followed(by:plan.transforms[index]).followed(by:toFull)
-        var image = try MergeRegistration.warp(frame,to:(width,height),transform:transform)
+        return try MergeRegistration.warp(frame,to:(width,height),transform:transform)
+    }
+    func add(_ frame: MergeImage,index: Int) throws {
+        let r = plan.frames[plan.reference].image
+        var image = try Self.aligned(frame,index:index,plan:plan,width:width,height:height)
         let kind = plan.options.kind
         var mask = MergePlane(width:width,height:height)
         let clip = plan.frames[index].clip, ratio = plan.exposureRatios[index]

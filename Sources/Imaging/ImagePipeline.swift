@@ -202,6 +202,7 @@ actor ImagePipeline {
             defer { withExtendedLifetime(lease) {} }
             let image: CIImage
             let native: CGSize
+            var resolvedLensCorrection: Bool?
             if request.photo.isRAW {
                 let raw = try PhotoFileType.rawFilter(url)
                 if let recipe = request.recipe {
@@ -211,6 +212,7 @@ actor ImagePipeline {
                     // Lens geometry belongs to the source decode. Creative RAW detail settings do not.
                     if let lens = recipe.rawDetails.lensCorrection,raw.isLensCorrectionSupported { raw.isLensCorrectionEnabled = lens }
                 }
+                resolvedLensCorrection = raw.isLensCorrectionSupported ? raw.isLensCorrectionEnabled : nil
                 native = raw.orientation.rawValue >= 5 ? CGSize(width:raw.nativeSize.height,height:raw.nativeSize.width) : raw.nativeSize
                 raw.scaleFactor = longEdge.map { Float(min(1,Double($0)/max(native.width,native.height))) } ?? 1
                 raw.isDraftModeEnabled = false; raw.exposure = 0; raw.baselineExposure = 0
@@ -247,7 +249,7 @@ actor ImagePipeline {
             if let t = metadata?.exposureTime,let f = metadata?.aperture,let iso = metadata?.iso,t > 0,f > 0,iso > 0 {
                 exposure = log2(t*Double(iso)/(100*f*f))
             }
-            return MergeFrame(image:pixels,exposure:exposure,focal35mm:metadata?.focal35mm,nativeWidth:Int(native.width.rounded()),nativeHeight:Int(native.height.rounded()),raw:request.photo.isRAW,focalLength:metadata?.focalLength,cameraModel:request.photo.camera)
+            return MergeFrame(image:pixels,exposure:exposure,focal35mm:metadata?.focal35mm,nativeWidth:Int(native.width.rounded()),nativeHeight:Int(native.height.rounded()),raw:request.photo.isRAW,focalLength:metadata?.focalLength,cameraModel:request.photo.camera,resolvedLensCorrection:resolvedLensCorrection)
         }
     }
     nonisolated func verifySource(_ request: ImageRequest) throws {

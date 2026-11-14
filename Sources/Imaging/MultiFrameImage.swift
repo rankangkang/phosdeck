@@ -227,6 +227,7 @@ struct MergeFrame {
     var raw = false
     var focalLength: Double?
     var cameraModel: String?
+    var resolvedLensCorrection: Bool?
     var exposureFloor: Float { raw ? 0.01 : 0.04 }
     var fullWidth: Int { nativeWidth ?? image.width }
     var fullHeight: Int { nativeHeight ?? image.height }
@@ -238,6 +239,7 @@ struct MergeProvenance: Codable, Equatable {
     var version = 2
     var options: PhotoMergeOptions
     var sources: [Source]
+    var focusProject: FocusMergeProject.Reference?
     struct Source: Codable, Equatable {
         let photoID: String
         let digest: String
@@ -262,6 +264,8 @@ struct MergeProvenance: Codable, Equatable {
         let value = try JSONDecoder().decode(Self.self,from:Data(text.dropFirst(prefix.count).utf8))
         try value.options.validate(count:value.sources.count)
         guard value.version == 2,value.sources.allSatisfy({ !$0.photoID.isEmpty && $0.digest.count == 64 && $0.digest.allSatisfy(\.isHexDigit) }) else { throw MergeMasterCodec.invalid }
+        try value.focusProject?.validate()
+        guard value.focusProject == nil || value.options.kind == .focus else { throw MergeMasterCodec.invalid }
         return value
     }
 }

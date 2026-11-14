@@ -8,6 +8,8 @@ import CoreGraphics
     let collectionID: String?
     var options = PhotoMergeOptions()
     var stackWithSources = true
+    let retouch = FocusRetouchState()
+    private(set) var reopening = false
     private(set) var inputs: [ImageRequest] = []
     private(set) var working = false
     private(set) var saving = false
@@ -40,11 +42,58 @@ import CoreGraphics
             working = false; job = nil
         }
     }
+    init(catalog: CatalogStore,reopening photo: Photo,collectionID: String? = nil) {
+        self.catalog = catalog; self.collectionID = collectionID; reopening = true
+        options = .defaults(for:.focus); working = true
+        filename = URL(fileURLWithPath:photo.name).deletingPathExtension().lastPathComponent+"-Refined.tif"
+        let token = self.token
+        job = Task {
+            do {
+                let loaded = try await engine.reopenFocus(photo,catalog:catalog) { [weak self] value,phase in
+                    await self?.report(value,phase:phase,token:token)
+                }
+                try Task.checkCancellation()
+                inputs = loaded.inputs; options = loaded.options
+                updateFilenameExtension()
+                // SwiftUI option observation must not invalidate the freshly restored solve.
+                preview = loaded.preview; retouch.load(loaded.project.strokes)
+                retouch.active = true
+            } catch is CancellationError { }
+            catch { self.error = error.localizedDescription }
+            working = false; job = nil
+            if preview != nil { refreshRetouch() }
+        }
+    }
+    func refreshRetouch() {
+        displayJob?.cancel(); displayToken = UUID()
+        guard retouch.active,let preview,!working else { return }
+        let token = displayToken, strokes = retouch.strokes, source = retouch.source, ev = previewEV
+        retouch.pending = true; retouch.error = nil
+        displayJob = Task {
+            do {
+                // One cancelled in-flight request plus latest desired state. No
+                // rendering per pointer event; a stroke commits on mouse-up.
+                try await Task.sleep(for:.milliseconds(80))
+                let result = try await engine.focusPreview(preview.id,strokes:strokes,source:source,ev:ev) { _,_ in }
+                try Task.checkCancellation()
+                guard displayToken == token else { return }
+                retouch.preview = result; retouch.pending = false
+            } catch is CancellationError { }
+            catch { if displayToken == token { retouch.error = error.localizedDescription; retouch.pending = false } }
+        }
+    }
+    func startRetouch() {
+        guard options.kind == .focus,preview != nil,!working else { return }
+        retouch.active = true; refreshRetouch()
+    }
     func invalidate() {
+        guard !reopening else { return }
+        retouch.active = false; retouch.preview = nil; retouch.load([]); retouch.pending = false
         if working && !saving { job?.cancel() }
         preview = nil; error = nil; displayJob?.cancel(); displayToken = UUID()
     }
     func applyModeDefaults() {
+        guard !reopening else { return }
         options.align = options.kind.defaultAlignment; options.autoCrop = options.kind.isPanorama
         invalidate()
     }
@@ -75,6 +124,7 @@ import CoreGraphics
         }
     }
     func updateDisplay() {
+        if retouch.active { refreshRetouch(); return }
         displayJob?.cancel()
         guard let preview,!working else { return }
         let token = UUID(); displayToken = token
@@ -92,12 +142,13 @@ import CoreGraphics
         }
     }
     func save(completion: @escaping (MergeSaved) -> Void) {
-        guard !working,let preview,let directoryBookmark else { return }
+        guard !working,!retouch.pending,let preview,let directoryBookmark,retouch.error == nil else { return }
         displayJob?.cancel(); working = true; saving = true; progress = 0; error = nil
         let token = UUID(); self.token = token
         let filename = filename,stackWithSources = stackWithSources
         job = Task {
             do {
+                if options.kind == .focus { try await engine.setFocusStrokes(preview.id,strokes:retouch.strokes) }
                 let result = try await engine.save(preview.id,to:directoryBookmark,filename:filename,catalog:catalog,stackWithSources:stackWithSources,collectionID:collectionID) { [weak self] value,phase in
                     await self?.report(value,phase:phase,token:token)
                 }
@@ -112,7 +163,7 @@ import CoreGraphics
         }
     }
     func cancel() {
-        job?.cancel(); displayJob?.cancel(); displayToken = UUID()
+        job?.cancel(); displayJob?.cancel(); displayToken = UUID(); retouch.pending = false
         if working { phase = L10n.text("merge.cancelling", defaultValue:"Cancelling…") }
     }
     func cancelAndWait() async {
@@ -128,6 +179,14 @@ import CoreGraphics
 
 extension AppModel {
     var canMergePhotos: Bool { workspaceAvailable && catalog != nil && (2...128).contains(selection.count) }
+    var canReopenFocusMerge: Bool {
+        workspaceAvailable && selection.count == 1 && photos.first(where:{ selection.contains($0.id) })?.details?.composite?.focusProject != nil
+    }
+    func reopenFocusMerge() {
+        guard canReopenFocusMerge,commitRecipe(),let catalog,
+              let photo = photos.first(where:{ selection.contains($0.id) }) else { return }
+        mergeSession = PhotoMergeSession(catalog:catalog,reopening:photo,collectionID:regularCollectionID)
+    }
     func requestPhotoMerge(_ kind: PhotoMergeKind) {
         guard canMergePhotos,commitRecipe(),let catalog else { return }
         mergeSession = PhotoMergeSession(catalog:catalog,ids:selection,kind:kind,collectionID:regularCollectionID)

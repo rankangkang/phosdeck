@@ -9,9 +9,14 @@ enum MergeMasterCodec {
         CIContext(options:[.workingColorSpace:MergeImage.space,.workingFormat:CIFormat.RGBAf,.cacheIntermediates:false])
     }
     /// The caller owns this unpublished file and publishes only after a successful readback.
-    static func write(_ image: MergeImage,to url: URL,provenance: MergeProvenance,context: CIContext,stagingIdentity: FileIdentity? = nil) throws {
+    static func write(_ image: MergeImage,to url: URL,provenance: MergeProvenance,context: CIContext,stagingIdentity: FileIdentity? = nil, focusProject: Data? = nil) throws {
         try provenance.options.validate(count:provenance.sources.count)
         try Task.checkCancellation()
+        if let reference = provenance.focusProject {
+            try reference.validate()
+            guard let focusProject, focusProject.count == reference.bytes,
+                  FocusMergeProject.digest(focusProject) == reference.sha256 else { throw invalid }
+        } else if focusProject != nil { throw invalid }
         // ImageIO's URL destination atomically replaces the file. A data consumer
         // keeps the O_EXCL staging inode owned by SafeFileWriter throughout.
         let flags = O_WRONLY | O_NOFOLLOW | (stagingIdentity == nil ? O_CREAT | O_EXCL : 0)
@@ -46,7 +51,17 @@ enum MergeMasterCodec {
         if let failure = sink.failure { throw NSError(domain:NSPOSIXErrorDomain,code:Int(failure)) }
         guard finalized else { throw invalid }
         }
+        // TIFF/DNG readers follow IFD offsets. The bounded, checksummed project
+        // trailer travels with copies/archives without a second publication.
+        if let focusProject {
+            let count = focusProject.withUnsafeBytes { sink.write($0.baseAddress!,count:$0.count) }
+            guard count == focusProject.count else { throw invalid }
+        }
         guard fsync(descriptor) == 0 else { throw SafeFileWriter.posix(L10n.text("app.flushTemporaryFile", defaultValue:"Flush Temporary File")) }
+        if let reference = provenance.focusProject {
+            let project = try FocusMergeProject.read(from:url,reference:reference)
+            guard project.sources == provenance.sources else { throw invalid }
+        }
         let back = try read(url,context:context)
         guard back.provenance == provenance,back.image.width == image.width,back.image.height == image.height else { throw invalid }
         // Compare every value, including out-of-range highlights and alpha. A sampled check

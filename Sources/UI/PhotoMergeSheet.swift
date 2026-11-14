@@ -4,12 +4,14 @@ import AppKit
 struct PhotoMergeMenu: View {
     @Bindable var model: AppModel
     var body: some View {
+        Button(L10n.text("merge.retouch.reopen",defaultValue:"Edit Focus Merge…")) { model.reopenFocusMerge() }.disabled(!model.canReopenFocusMerge)
+        Divider()
         ForEach([PhotoMergeKind.panorama,.hdr,.hdrPanorama,.focus]) { kind in
-            Button(kind.title+"…") { model.requestPhotoMerge(kind) }
+            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos)
         }
         Divider()
         ForEach([PhotoMergeKind.average,.median,.additive,.lighten,.darken,.screen]) { kind in
-            Button(kind.title+"…") { model.requestPhotoMerge(kind) }
+            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos)
         }
     }
 }
@@ -18,6 +20,7 @@ struct PhotoMergeSheet: View {
     @Bindable var session: PhotoMergeSession
     let completed: (MergeSaved) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmDiscard = false
     @AppStorage("photoMat") private var mat = PhotoMat.dark
     var body: some View {
         VStack(alignment:.leading,spacing:12) {
@@ -31,6 +34,9 @@ struct PhotoMergeSheet: View {
             HStack(alignment:.top,spacing:16) {
                 controls.frame(width:300)
                 VStack(alignment:.leading,spacing:8) {
+                    if session.retouch.active {
+                        FocusRetouchView(state:session.retouch,sourceCount:session.inputs.count,enabled:!session.working,mat:mat)
+                    } else {
                     GeometryReader { geometry in
                         ZStack {
                             mat.color
@@ -44,6 +50,7 @@ struct PhotoMergeSheet: View {
                             }
                         }.clipped()
                     }.frame(maxWidth:.infinity,maxHeight:.infinity).accessibilityIdentifier("merge-preview")
+                    }
                     if let preview = session.preview {
                         Text(L10n.text("merge.canvasSize", defaultValue:"Canvas before crop: \(preview.width) × \(preview.height) px")).font(.caption11).foregroundStyle(Theme.textSecondary).monospacedDigit()
                     }
@@ -81,16 +88,24 @@ struct PhotoMergeSheet: View {
                 }
                 Spacer()
                 Button(session.working ? L10n.text("app.cancel", defaultValue:"Cancel") : L10n.text("app.close", defaultValue:"Close")) {
-                    if session.working { session.cancel() } else { dismiss() }
+                    if session.working { session.cancel() } else if session.retouch.hasChanges { confirmDiscard = true } else { dismiss() }
                 }.buttonStyle(.key).keyboardShortcut(.cancelAction).accessibilityIdentifier("merge-close")
+                if session.options.kind == .focus,session.preview != nil,!session.retouch.active {
+                    Button(L10n.text("merge.retouch.start",defaultValue:"Refine Focus…"),action:session.startRetouch).buttonStyle(.key).disabled(session.working)
+                        .accessibilityIdentifier("focus-retouch-start")
+                }
                 Button(L10n.text("merge.buildPreview", defaultValue:"Build Preview"),action:session.makePreview).buttonStyle(.key)
-                    .disabled(session.working || session.inputs.isEmpty).accessibilityIdentifier("merge-build-preview")
+                    .disabled(session.working || session.inputs.isEmpty || session.retouch.active || session.reopening).accessibilityIdentifier("merge-build-preview")
                 Button(L10n.text("merge.save", defaultValue:"Merge and Save")) { session.save(completion:completed) }.buttonStyle(PrimaryKeyStyle())
-                    .disabled(session.working || session.preview == nil || session.directoryBookmark == nil || session.filename.isEmpty)
+                    .disabled(session.working || session.retouch.pending || session.retouch.error != nil || session.preview == nil || session.directoryBookmark == nil || session.filename.isEmpty)
                     .keyboardShortcut(.defaultAction).accessibilityIdentifier("merge-save")
             }
         }.padding(24).frame(width:1000,height:740).instrumentForm()
-            .interactiveDismissDisabled(session.working)
+            .interactiveDismissDisabled(session.working || session.retouch.active)
+            .confirmationDialog(L10n.text("merge.retouch.discardQuestion",defaultValue:"Discard unsaved focus corrections?"),isPresented:$confirmDiscard) {
+                Button(L10n.text("merge.retouch.discard",defaultValue:"Discard Corrections"),role:.destructive) { dismiss() }
+                Button(L10n.text("app.cancel",defaultValue:"Cancel"),role:.cancel) { }
+            }
             .onChange(of:session.options) { session.invalidate() }
             .onChange(of:session.options.kind) { session.applyModeDefaults() }
             .onChange(of:session.options.masterFormat) { session.updateFilenameExtension() }
@@ -100,6 +115,13 @@ struct PhotoMergeSheet: View {
     private var controls: some View {
         ScrollView {
         VStack(alignment:.leading,spacing:12) {
+            if session.retouch.active {
+                FocusRetouchControls(session:session,state:session.retouch)
+                Text(L10n.text("merge.retouch.locked",defaultValue:"Source order and merge settings are fixed during retouching. Cropping is applied when saving; comparison shows the full canvas."))
+                    .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
+                Seam()
+            }
+            Group {
             Picker(L10n.text("merge.mode", defaultValue:"Mode"),selection:$session.options.kind) {
                 ForEach(PhotoMergeKind.allCases) { Text($0.title).tag($0) }
             }.accessibilityIdentifier("merge-mode")
@@ -159,6 +181,7 @@ struct PhotoMergeSheet: View {
                     }
                 }.padding(8)
                 .background(Theme.inset)
+            }.disabled(session.retouch.active || session.reopening)
         }.disabled(session.working)
         }
     }

@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
@@ -735,4 +736,129 @@ final class PhotoMergeTests: XCTestCase {
         session.options.kind = .focus; session.applyModeDefaults(); XCTAssertTrue(session.options.align)
         model.mergeSession = nil; XCTAssertTrue(model.canSwitchCatalog)
     }
+    func testFocusRetouchStrokePreservesHDRAlphaAndRestoresAutomaticPixels() throws {
+        let base = constant(SIMD4(-0.2,0.1,3,0.5),w:40,h:20)
+        var source = constant(SIMD4(2,-0.4,0.2,1),w:40,h:20)
+        source.pixels[4*40+10] = .zero
+        var result = base
+        let stroke = FocusRetouchStroke(source:1,points:[MaskPoint(0.25,0.25),MaskPoint(0.75,0.25)],radius:0.12,hardness:1,opacity:0.5)
+        try stroke.validate(count:2)
+        try stroke.apply(to:&result,from:source)
+        XCTAssertEqual(result.pixels[5*40+20].x,0.9,accuracy:1e-6)
+        XCTAssertEqual(result.pixels[5*40+20].z,1.6,accuracy:1e-6)
+        XCTAssertEqual(result.pixels[5*40+20].w,0.5)
+        XCTAssertEqual(result.pixels[4*40+10],base.pixels[4*40+10],"transparent source cannot erase coverage")
+        XCTAssertEqual(result.pixels[15*40+20],base.pixels[15*40+20],"top-left stroke must not flip vertically")
+        var restore = stroke; restore.restore = true; restore.opacity = 1
+        try restore.apply(to:&result,from:base)
+        for i in result.pixels.indices { XCTAssertEqual(result.pixels[i],base.pixels[i],"pixel \(i)") }
+        var invalid = stroke; invalid.radius = .nan
+        XCTAssertThrowsError(try invalid.validate(count:2))
+    }
+
+    func testFocusRetouchSelfIntersectionDoesNotAccumulateOpacity() throws {
+        let base = constant(SIMD4(0,0,0,1),w:64,h:64), source = constant(SIMD4(1,1,1,1),w:64,h:64)
+        var once = base, twice = base
+        let stroke = FocusRetouchStroke(source:0,points:[MaskPoint(0.2,0.5),MaskPoint(0.8,0.5)],radius:0.1,hardness:0.5,opacity:0.3)
+        var repeated = stroke; repeated.points += stroke.points.reversed()
+        try stroke.apply(to:&once,from:source); try repeated.apply(to:&twice,from:source)
+        XCTAssertEqual(once.pixels,twice.pixels)
+    }
+
+    func testFocusRetouchMastersReopenWithFrozenSolveAndRejectDamagedProject() async throws {
+        let catalog = try CatalogStore(directory:directory.appendingPathComponent("focus-catalog"))
+        let root = try catalog.addRoot(url:directory,bookmark:AccessLease.bookmark(directory,readOnly:false))
+        for i in 0..<2 {
+            var image = texture(w:48,h:32)
+            for p in image.pixels.indices { image.pixels[p].x += Float(i)*0.2 }
+            let url = try writeSource(image,name:"focus-source-\(i)")
+            try catalog.index(ReferenceImporter.inspect(url:url,root:root,rootURL:directory))
+        }
+        let engine = PhotoMergeEngine(), photos = try catalog.photos()
+        let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(photos.map(\.id)))
+        var options = PhotoMergeOptions.defaults(for:.focus); options.align = false
+        let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
+        let stroke = FocusRetouchStroke(source:1,points:[MaskPoint(0.25,0.25)],radius:0.2,hardness:1,opacity:1)
+        let detailed = try await engine.focusPreview(preview.id,strokes:[stroke],source:1,ev:0,progress:{ _,_ in })
+        XCTAssertEqual(detailed.width,48); XCTAssertEqual(detailed.height,32)
+        // Appended-stroke previews and full replay after undo must use the same base.
+        var restore = stroke; restore.restore = true; restore.opacity = 0.6
+        _ = try await engine.focusPreview(preview.id,strokes:[stroke,restore],source:0,ev:0,progress:{ _,_ in })
+        let replay = try await engine.focusPreview(preview.id,strokes:[stroke],source:1,ev:0,progress:{ _,_ in })
+        let a = try MergeImage.read(CIImage(cgImage:detailed.result),context:context)
+        let b = try MergeImage.read(CIImage(cgImage:replay.result),context:context)
+        XCTAssertEqual(a.pixels,b.pixels)
+        let first = try await engine.save(preview.id,to:root.bookmark,filename:"focus-edit.tif",catalog:catalog,progress:{ _,_ in })
+        let original = try MergeMasterCodec.read(first.url,context:context)
+        let ref = try XCTUnwrap(original.provenance.focusProject)
+        let frozen = try FocusMergeProject.read(from:first.url,reference:ref)
+        XCTAssertEqual(frozen.strokes,[stroke]); XCTAssertEqual(frozen.sources.map(\.photoID),inputs.map { $0.photo.id })
+        XCTAssertLessThan(try JSONEncoder().encode(original.provenance).count,65536,"catalog stores only a bounded reference")
+        let raw = try await ImagePipeline().mergeDecode(inputs[1],longEdge:nil,whiteBalance:WhiteBalanceValue(temperature:frozen.temperature,tint:frozen.tint))
+        XCTAssertEqual(original.image.pixels[8*48+12].x,raw.image.pixels[8*48+12].x,accuracy:2e-5)
+        let digest = try SafeFileWriter.sha256(first.url)
+        // Current source edits must not reinterpret the saved solve or white balance.
+        var changed = try await ImagePipeline().baseline(inputs[0]); changed.temperature = 9000; changed.exposure = 2
+        let recipe = try JSONEncoder().encode(changed)
+        try await catalog.database.write { db in
+            try db.execute(sql:"UPDATE photo SET recipe=?, recipeRevision=recipeRevision+1 WHERE id=?",arguments:[recipe,inputs[0].photo.id])
+        }
+        let reopened = try await engine.reopenFocus(first.photo,catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(reopened.project,frozen)
+        do {
+            _ = try await engine.save(reopened.preview.id,to:root.bookmark,filename:"focus-edit.tif",catalog:catalog,progress:{ _,_ in })
+            XCTFail("re-edit must never overwrite a master")
+        } catch { }
+        let second = try await engine.save(reopened.preview.id,to:root.bookmark,filename:"focus-edit.dng",catalog:catalog,masterFormat:.dng,progress:{ _,_ in })
+        let roundtrip = try MergeMasterCodec.read(second.url,context:context)
+        for i in original.image.pixels.indices { for c in 0..<4 {
+            XCTAssertEqual(roundtrip.image.pixels[i][c],original.image.pixels[i][c],accuracy:2e-5)
+        } }
+        XCTAssertEqual(try SafeFileWriter.sha256(first.url),digest,"re-edit must preserve the previous master")
+        let dngProject = try FocusMergeProject.read(from:second.url,reference:XCTUnwrap(roundtrip.provenance.focusProject))
+        XCTAssertEqual(dngProject,frozen)
+        let copied = directory.appendingPathComponent("damaged-project.tif")
+        try FileManager.default.copyItem(at:first.url,to:copied)
+        let handle = try FileHandle(forWritingTo:copied)
+        let end = try handle.seekToEnd(); try handle.seek(toOffset:end-1); try handle.write(contentsOf:Data([0])); try handle.close()
+        XCTAssertThrowsError(try FocusMergeProject.read(from:copied,reference:ref))
+        var malformed = frozen; malformed.transforms[0] = [0]
+        XCTAssertThrowsError(try malformed.validate())
+        malformed = frozen; malformed.strokes[0].source = 200
+        XCTAssertThrowsError(try malformed.validate())
+        let sourceURL = directory.appendingPathComponent(inputs[0].photo.relativePath)
+        try Data("synthetic changed source".utf8).write(to:sourceURL)
+        do {
+            _ = try await engine.reopenFocus(first.photo,catalog:catalog,progress:{ _,_ in })
+            XCTFail("changed source must not be used to reconstruct a saved merge")
+        } catch { }
+        XCTAssertEqual(try SafeFileWriter.sha256(first.url),digest)
+
+    }
+
+    @MainActor func testFocusRetouchHistoryAndPendingStrokeIsolation() throws {
+        let state = FocusRetouchState(); state.undo.groupsByEvent = false
+        state.undo.beginUndoGrouping(); state.add([MaskPoint(0.2,0.3)],sourceCount:2); state.undo.endUndoGrouping()
+        XCTAssertEqual(state.strokes.count,1)
+        state.undo.undo(); XCTAssertTrue(state.strokes.isEmpty)
+        state.undo.redo(); XCTAssertEqual(state.strokes.count,1)
+        state.pending = true; state.add([MaskPoint(0.7,0.7)],sourceCount:2)
+        XCTAssertEqual(state.strokes.count,1)
+        state.load([]); XCTAssertFalse(state.undo.canUndo)
+        state.pending = false
+        let cg = try XCTUnwrap(context.createCGImage(constant(SIMD4(0.2,0.3,0.4,1),w:16,h:16).ciImage(),from:CGRect(x:0,y:0,width:16,height:16)))
+        state.preview = FocusRetouchPreview(source:cg,result:cg,width:16,height:16)
+        let view = FocusRetouchNSView(frame:CGRect(x:0,y:0,width:400,height:300))
+        view.state = state; view.sourceCount = 2
+        let down = try XCTUnwrap(NSEvent.mouseEvent(with:.leftMouseDown,location:CGPoint(x:300,y:150),modifierFlags:[],timestamp:0,windowNumber:0,context:nil,eventNumber:1,clickCount:1,pressure:1))
+        let up = try XCTUnwrap(NSEvent.mouseEvent(with:.leftMouseUp,location:CGPoint(x:300,y:150),modifierFlags:[],timestamp:1,windowNumber:0,context:nil,eventNumber:2,clickCount:1,pressure:0))
+        view.interactionEnabled = false
+        view.mouseDown(with:down); view.mouseUp(with:up)
+        XCTAssertTrue(state.strokes.isEmpty,"saving locks the native canvas, not just SwiftUI controls")
+        view.interactionEnabled = true
+        state.undo.beginUndoGrouping(); view.mouseDown(with:down); view.mouseUp(with:up); state.undo.endUndoGrouping()
+        XCTAssertEqual(state.strokes.count,1)
+
+    }
+
 }
