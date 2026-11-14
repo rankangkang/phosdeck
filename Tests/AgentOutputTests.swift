@@ -140,6 +140,21 @@ final class AgentOutputTests: XCTestCase {
         _ = succeeded(try await client.finished(.revealFile,["kind":"star_sequence","file_id":try XCTUnwrap(result["file_id"])]))
         XCTAssertEqual(revealed.map(\.path),[folder.resolvingSymlinksInPath().path])
         XCTAssertEqual(try files.catalog.photoCount(),3)
+
+        let saved = succeeded(try await client.finished(.saveMerge,["preview_id":preview,"draft_id":draft,
+            "draft_revision":try XCTUnwrap(changed["draft_revision"]),"destination_access_id":destination,
+            "filename":"Stars.dng","master_format":"dng","stack_with_sources":false]))
+        let reopened = succeeded(try await client.finished(.editMergeRetouch,["action":"reopen","photo_id":try XCTUnwrap(saved["photo_id"]),
+            "source_revision":try XCTUnwrap(saved["source_revision"]),"recipe_revision":try XCTUnwrap(saved["recipe_revision"])]))
+        let reopenedID = try XCTUnwrap(reopened["preview_id"])
+        _ = succeeded(try await client.finished(.editMergeRetouch,["action":"cancel","preview_id":reopenedID,
+            "draft_id":try XCTUnwrap(reopened["draft_id"]),"draft_revision":try XCTUnwrap(reopened["draft_revision"])]))
+        let restored = succeeded(try await client.finished(.exportStarSequence,["preview_id":reopenedID,
+            "name":"Reopened Stars","destination_access_id":destination]))
+        func frameDigests(_ job: Fields) -> [Value] {
+            job["items"]?.arrayValue?.compactMap { $0.objectValue?["sha256"] } ?? []
+        }
+        XCTAssertEqual(frameDigests(restored),frameDigests(result),"Cancelling the reopened draft must keep the saved master settings")
     }
 
     func testRobustAveragePlanValidatesMinimumAndSavesFloatMaster() async throws {

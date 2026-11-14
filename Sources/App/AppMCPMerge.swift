@@ -196,7 +196,6 @@ extension AppMCPWorkflows {
             throw MCPToolProblem.invalid("Use a star-trail preview and a new sequence folder name.")
         }
         let grant = try self.grant(args["destination_access_id"],purpose:.mergeDestination)
-        let settings = prepared.retouch?.settings ?? MergeRetouchSettings()
         return start(.exportStarSequence) { job in
             job.data["name"] = .string(name)
             job.data["published"] = false
@@ -207,6 +206,9 @@ extension AppMCPWorkflows {
                 _ = try prepared.plan.sources.resolve(catalog)
             }
             try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+            let settings: MergeRetouchSettings
+            if let draft = prepared.retouch { settings = draft.settings }
+            else { settings = try await prepared.engine.retouchSettings(prepared.id) }
             let bookmark = try AccessLease.bookmark(grant.url,readOnly:false)
             self.running(job,phase:"exporting_star_sequence")
             do {
