@@ -61,7 +61,7 @@
 - **偶发测试失败**：`ComparisonTests.testAdjustmentReturnEndsEditingAndDoesNotReapplyAnUndoneValue` 多次在首次全量中失败、单跑通过，根因未定位；测试期间切换窗口可能影响焦点。
 - **预设测试的语言假设**：`PresetManagementTests.testUnicodeSearchFavoriteAndMultipleGroupsFilter` 将中文分组顺序写成固定期望，英文环境的收藏排序断言失败、中文通过；筛选和排序实现未改，测试的语言假设待处理。
 - **模型资源复制测试**：`SmartMaskTests.testOptionalModelCapabilitiesAndPartialBundleCopies` 仍会因测试宿主沙箱拒绝 `ditto` 的 `.BC.T_*` 临时文件而失败；对应脚本与测试未改动，具体触发机制未定位。
-- **测试环境**：免证书临时签名仍有权限身份随构建变化及 hardened runtime 关闭的限制；本机已统一稳定开发签名，后续实际测试是否仍有授权弹窗待观察。外置卷上的测试宿主、失败符号化及内置宿主读取外置仓库夹具曾停在 `__open`；内置盘暂存继续沿用同一路径，已能执行未过滤标识的全量原生检查；外置宿主路径与偶发夹具读取长等待仍待单独核对。
+- **测试环境**：免证书临时签名仍有权限身份随构建变化及 hardened runtime 关闭的限制；本机已统一稳定开发签名，后续实际测试是否仍有授权弹窗待观察。外置卷上的测试宿主、失败符号化及内置宿主读取外置仓库夹具曾停在 `__open`；内置盘暂存继续沿用同一路径，已能执行未过滤标识的全量原生检查；外置宿主路径与偶发夹具读取长等待仍待单独核对。`PhotoMergeTests.testPublicTenFrameFocusMacroDecodesAndFusesAtOriginalSize` 一次在保存时报告文件不存在，同次运行已暂存的 RAW 样片和 Xcode 结果暂存路径消失，缺失位置与原因待定位；隔离派生目录用合成十帧完成保存复测。
 - **应用分发**：本机已配置 Developer ID Application 证书；[`0.1.0-alpha.1`](https://github.com/rankangkang/phosdeck/releases/tag/v0.1.0-alpha.1) 已作为预发布公开，签名、公证、票据、`spctl` 评估及下载 ZIP 已核验。独立环境中的安装、启动与使用体验尚未验证。
 - **智能蒙版模型**：FaceParsing 权重标注 MIT，训练数据条款对权重分发的适用性尚不明确；LiteRT 预编译包的完整依赖清单与正式模型安装／分发方案仍待核对，见 [模型说明](smart-mask-models.md)。
 - **普通图像曝光响应表**：按用户决定保留现有表、显影行为与对照资料。[Adobe 通用条款第 17 节](https://www.adobe.com/legal/terms.html)限制为重建软件而跟踪输入与输出；当前表由 Lightroom 输出拟合，具体合同与法律适用尚未判定。数值对照见[现行 TIFF 比较](references/lightroom-exposure-v4-comparisons.json)与[JPEG 分区表](references/lightroom-exposure-v4-jpeg-regions.csv)，来源资料和公开使用依据仍须核对。
