@@ -67,6 +67,7 @@ enum AppMCPTool: String, CaseIterable {
 
     enum Field: String {
         case catalog = "catalog_session_id", photo = "photo_id", cursor, pageSize = "page_size"
+        case query, contactSheet = "contact_sheet"
         case sourceRevision = "source_revision", recipeRevision = "recipe_revision", longEdge = "long_edge"
         case expectedRating = "expected_rating", rating, epoch = "request_epoch", request = "request_id", operation = "operation_id"
         case offset, purpose, access = "access_id", recent = "recent_catalog_id", name, root = "root_id", folder = "folder_id"
@@ -182,7 +183,7 @@ enum AppMCPTool: String, CaseIterable {
              .filtersOpen, .clearFilters, .linked, .locked, .restricted, .highlights, .shadows, .advance,
              .manualOrder, .fromQuery, .sameCapture, .favorite, .favoritesOnly, .flipHorizontal, .flipVertical,
              .spotGuides, .affectedRange, .enabled, .inverted, .erase, .autoMask, .overlay, .guides, .hideEffect,
-             .separate, .wholePerson, .stackWithSources, .unfinishedOnly, .includeCompleted, .planOnly].contains(self)
+             .separate, .wholePerson, .stackWithSources, .unfinishedOnly, .includeCompleted, .planOnly, .contactSheet].contains(self)
         }
         private var textCriteria: Bool { [.search, .keyword, .camera, .lens, .dateFrom, .dateThrough, .presetGroup].contains(self) }
         private var maxString: Int {
@@ -207,13 +208,20 @@ enum AppMCPTool: String, CaseIterable {
             if let range = range(for: tool) {
                 var schema: [String: Value] = ["type": "integer", "minimum": .int(range.lowerBound)]
                 if range.upperBound != Int.max { schema["maximum"] = .int(range.upperBound) }
-                if self == .pageSize { schema["default"] = 50 }
+                if self == .pageSize {
+                    if tool == .listPhotos {
+                        schema["description"] = .string("Defaults to 50, or \(MCPContactSheet.defaultCount) with contact_sheet.")
+                    } else { schema["default"] = 50 }
+                }
                 if self == .longEdge { schema["default"] = 768 }
                 return .object(schema)
             }
             if let options = options(for: tool) { return ["type": "string", "enum": .array(options.map(Value.string))] }
             if isBoolean { return ["type": "boolean"] }
             switch self {
+            case .query:
+                return ["type": "object", "additionalProperties": false, "properties": .object(
+                    Dictionary(uniqueKeysWithValues: MCPLibraryCriteria.fields.map { ($0.rawValue, $0.schema(for: tool)) }))]
             case .adjustments: return tool == .pointColor ? MCPCanvasFields.pointColorSchema : MCPDevelopParameters.schema(tool)
             case .preferences: return MCPPreferences.schema
             case .quotaGiB: return ["type": "integer", "enum": .array(ThumbnailService.quotaOptions.map(Value.int))]
@@ -305,6 +313,10 @@ enum AppMCPTool: String, CaseIterable {
                 return values.allSatisfy { Self.isID($0.key) && ($0.value.stringValue.map(Self.isID) ?? false) }
             }
             switch self {
+            case .query:
+                guard let values = value.objectValue else { return false }
+                let fields = Dictionary(uniqueKeysWithValues: MCPLibraryCriteria.fields.map { ($0.rawValue, $0) })
+                return values.allSatisfy { name, item in fields[name]?.accepts(item, for: tool) == true }
             case .preferences: return MCPDevelopParameters.accepts(value, schema: MCPPreferences.schema)
             case .quotaGiB: return value.intValue.map(ThumbnailService.quotaOptions.contains) ?? false
             case .outputOptions: return MCPDevelopParameters.accepts(value, schema: schema(for: tool))
@@ -548,11 +560,9 @@ enum AppMCPTool: String, CaseIterable {
 
     private var optionalFields: [Field] {
         switch self {
-        case .listPhotos: [.cursor, .pageSize, .listing]
+        case .listPhotos: [.cursor, .pageSize, .listing, .query, .contactSheet]
         case .listSelected: [.cursor, .pageSize]
-        case .setQuery: [.source, .search, .ratingComparison, .ratingThreshold, .flags, .labels, .keyword,
-                         .camera, .lens, .minimumISO, .maximumISO, .dateFrom, .dateThrough, .sort, .descending, .hold,
-                         .filtersEnabled, .filterSections, .filtersOpen, .clearFilters, .queryRevision]
+        case .setQuery: MCPLibraryCriteria.fields + [.hold, .filtersEnabled, .filterSections, .filtersOpen, .clearFilters, .queryRevision]
         case .refreshQuery: [.queryRevision]
         case .selectPhotos: [.photoIDs, .photo, .activePhoto, .queryRevision, .selectionRevision]
         case .navigate: [.browseLocation]
@@ -668,8 +678,8 @@ enum AppMCPTool: String, CaseIterable {
             description = "Read the current catalog, query, active photo, selection and native task state before working on photos."
             output = "catalog_session_id, request_epoch, catalog_name, source, query, view, tool, active_photo, selected_photo_ids, selection_count, selection_truncated, busy, modal, draft, photo_draft, task, before_after, adjustment_preview, canvas, and adjustment transfer sources."
         case .listPhotos:
-            description = "Page through the current source, filters and sort. listing=visible (default) respects stack folding; listing=matches includes folded members in query order. Reuse next_cursor for the next page."
-            output = "items with photo_id, name, version_name, source_revision, recipe_revision, rating, flag, color_label, source_status, and stack. matched_count includes folded members. visible_count and next_cursor describe the displayed rows."
+            description = "Read photos without changing the workspace. Pass query with source_id (default all), filters and sort for an independent query, or omit it to read the current view. listing=matches includes folded stack members and defaults for independent queries; listing=visible respects folding. Continue with next_cursor and omit query. Set contact_sheet=true to receive a numbered PNG alongside the page (default 12, max \(MCPContactSheet.maximumCount) photos; requires photo preview sharing)."
+            output = "items with number, photo_id, name, version_name, source_revision, recipe_revision, marks, source_status and stack. query_mode, source_id, page_offset, matched_count, visible_count and next_cursor. With contact_sheet, items also describe cell_pixels, image_pixels and thumbnail_status for the numbered PNG. Pass a candidate's ID and revisions to get_photo_preview with resolution=native for a 1:1 region."
         case .preview:
             description = "Render an explicit photo version as an sRGB PNG when image sharing is on. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. The default scaled resolution accepts a normalized top-left region. Use resolution=native with region or an integer top-left region_pixels for an unscaled tile of the edited frame. Omit long_edge in native mode. Use plan_only=true to check the tile dimensions and limits without receiving pixels; omit the region to inspect the full frame. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
             output = "Photo revisions, canvas dimensions, region, actual width and height. Native requests also report region_pixels, fits and limits, and suggest a smaller region when needed. Rendered previews include preview_id, coordinate_space, editable_canvas, histogram, and a PNG content block."
@@ -722,7 +732,7 @@ struct MCPToolProblem: Error {
     static let stopped = Self(code: "service_stopped", summary: "The Phosdeck MCP service stopped.", next: "Reconnect using the current settings.")
     static let noCatalog = Self(code: "no_catalog", summary: "Phosdeck has no open catalog.", next: "Open or create a catalog in Phosdeck.")
     static let catalogChanged = Self(code: "catalog_changed", summary: "The catalog session changed.", next: "Call get_workspace and locate the target again.")
-    static let staleCursor = Self(code: "stale_cursor", summary: "The query, selection or catalog rows changed.", next: "Call get_workspace and restart the list without a cursor.")
+    static let staleCursor = Self(code: "stale_cursor", summary: "The query, selection or catalog rows changed.", next: "Read the current workspace and repeat the first page of the same query without a cursor.")
     static let photoUnavailable = Self(code: "photo_unavailable", summary: "The requested photo is unavailable.", next: "Call list_photos to locate the photo.")
     static let stalePhoto = Self(code: "stale_photo", summary: "The requested photo version changed.", next: "Call list_photos to obtain the current revisions.")
     static let stalePreview = Self(code: "stale_preview", summary: "The photo changed during rendering.", next: "Call list_photos and request the current saved version.")
@@ -779,15 +789,63 @@ extension Value {
 @MainActor
 final class AppMCPTools {
     private enum Listing: String { case visible, matches, selection }
+    private enum PhotoListScope {
+        case workspace(query: PhotoQuery, source: String, generation: UUID)
+        case selection(query: PhotoQuery, source: String, generation: UUID, selection: UUID)
+        case independent(MCPIndependentPhotoQuery)
+
+        var mode: String {
+            switch self {
+            case .workspace: "workspace"
+            case .selection: "selection"
+            case .independent: "independent"
+            }
+        }
+        var defaultListing: Listing {
+            switch self {
+            case .workspace: .visible
+            case .selection: .selection
+            case .independent: .matches
+            }
+        }
+        var source: String {
+            switch self {
+            case .workspace(_, let source, _), .selection(_, let source, _, _): source
+            case .independent(let query): query.source
+            }
+        }
+        var generation: UUID? {
+            switch self {
+            case .workspace(_, _, let generation), .selection(_, _, let generation, _): generation
+            case .independent: nil
+            }
+        }
+        func resolve(in db: Database) throws -> PhotoQuery {
+            switch self {
+            case .workspace(let query, _, _), .selection(let query, _, _, _): query
+            case .independent(let query): try query.resolve(in: db)
+            }
+        }
+        @MainActor func isCurrent(in model: AppModel) -> Bool {
+            switch self {
+            case .workspace(let query, let source, let generation):
+                return model.scope == source && model.browseGeneration == generation && model.query == query
+            case .selection(let query, let source, let generation, let selection):
+                return model.scope == source && model.browseGeneration == generation && model.query == query && model.selectionGeneration == selection
+            case .independent(let query):
+                if query.source.hasPrefix("import:") { return query.source == model.lastImport?.scope }
+                if query.source.hasPrefix("related:") { return query.source == model.scope }
+                return true
+            }
+        }
+    }
     private struct Cursor {
         let token = UUID().uuidString
-        let query: PhotoQuery
-        let generation: UUID
-        let databaseChanges: Int
+        let scope: PhotoListScope
+        let catalogRevision: UInt64
         let offset: Int
         let size: Int
         let listing: Listing
-        let selection: UUID?
     }
     private struct Write {
         let tool: AppMCPTool
@@ -820,6 +878,7 @@ final class AppMCPTools {
     private var currentUndo: UndoReceipt?
     private var undoObservers: [AnyCancellable] = []
     private var activeLists = 0
+    private var contactSheetWorker: Task<MCPContactSheet, Error>?
     private var previewWorker: Task<Preview, Error>?
     private var canvasPreviews: [MCPCanvasPreview] = []
     var photoDraft: MCPPhotoDraft?
@@ -847,6 +906,7 @@ final class AppMCPTools {
         sharesImages = value
         if !value {
             imageAccessGeneration = UUID()
+            contactSheetWorker?.cancel()
             previewWorker?.cancel()
             canvasPreviews.removeAll()
         }
@@ -855,6 +915,7 @@ final class AppMCPTools {
         stopped = true
         if let model, let id = mcpSmartSessionID, model.smartMaskSession?.id == id { model.cancelSmartMask() }
         mcpSmartSessionID = nil
+        contactSheetWorker?.cancel()
         previewWorker?.cancel()
         canvasPreviews.removeAll()
         clearPhotoDraft()
@@ -890,6 +951,7 @@ final class AppMCPTools {
         if observedCatalog != catalogSession {
             observedCatalog = catalogSession
             cursors.removeAll()
+            contactSheetWorker?.cancel()
             canvasPreviews.removeAll()
             clearPhotoDraft()
             currentUndo = nil
@@ -1000,7 +1062,7 @@ final class AppMCPTools {
             "catalog_session_id": model.catalogSessionID.map(Value.string) ?? .null,
             "request_epoch": .string(requestEpoch), "catalog_name": model.catalog == nil ? .null : .string(model.catalogName),
             "source": model.catalog == nil ? .null : .string(model.browseSourceName),
-            "active_photo": model.active.flatMap { $0.id == model.activeID ? Self.photo($0, badge: model.stackBadges[$0.id]) : nil } ?? .null,
+            "active_photo": model.active.flatMap { $0.id == model.activeID ? .object(Self.photo($0, badge: model.stackBadges[$0.id])) : nil } ?? .null,
             "busy": .bool(model.busy || model.applyingAdjustments || model.cacheMaintenance),
             "modal": .bool(nativeModal(model)),
             "draft": .bool(nativeInteraction(model)), "task": task, "agent_job": workflows.currentJob,
@@ -1021,74 +1083,143 @@ final class AppMCPTools {
 
     private func listPhotos(_ model: AppModel, catalog: CatalogStore, session: String, arguments: [String: Value],
                             selectionOnly: Bool) async throws -> MCPToolResult {
-        let query = model.query
-        let generation = model.browseGeneration
-        let selectionGeneration = selectionOnly ? model.selectionGeneration : nil
-        let selection = selectionOnly ? model.selection : []
+        let query = arguments["query"]?.objectValue
+        let withSheet = arguments["contact_sheet"] == true
+        if withSheet {
+            guard sharesImages else { throw MCPToolProblem.imageDisabled }
+            guard contactSheetWorker == nil else {
+                throw MCPToolProblem(code: "workspace_busy", summary: "A contact sheet is rendering.", next: "Retry the page after rendering finishes.")
+            }
+        }
         let cursor: Cursor?
+        let scope: PhotoListScope
         let requestedSize = arguments["page_size"]?.intValue
         let requestedListing = selectionOnly ? Listing.selection : arguments["listing"]?.stringValue.flatMap(Listing.init(rawValue:))
         if let token = arguments["cursor"]?.stringValue {
-            guard let saved = cursors.first(where: { $0.token == token }), saved.query == query, saved.generation == generation,
-                  saved.selection == selectionGeneration, requestedListing == nil || requestedListing == saved.listing,
+            guard query == nil else { throw MCPToolProblem.invalid("Omit query when continuing with a cursor.") }
+            guard let saved = cursors.first(where: { $0.token == token }),
+                  selectionOnly == (saved.listing == .selection), saved.scope.isCurrent(in: model),
+                  requestedListing == nil || requestedListing == saved.listing,
                   requestedSize == nil || requestedSize == saved.size else { throw MCPToolProblem.staleCursor }
             cursor = saved
-        } else { cursor = nil }
+            scope = saved.scope
+        } else {
+            cursor = nil
+            if let query {
+                let independent = try MCPIndependentPhotoQuery(query)
+                try MCPLibraryCriteria.validateSource(independent.source, model: model)
+                scope = .independent(independent)
+            } else if selectionOnly {
+                scope = .selection(query: model.query, source: model.scope, generation: model.browseGeneration, selection: model.selectionGeneration)
+            } else {
+                scope = .workspace(query: model.query, source: model.scope, generation: model.browseGeneration)
+            }
+        }
+        let size = cursor?.size ?? requestedSize ?? (withSheet ? MCPContactSheet.defaultCount : 50)
+        if withSheet, size > MCPContactSheet.maximumCount {
+            throw MCPToolProblem.invalid("Contact sheets support at most \(MCPContactSheet.maximumCount) photos per page. Start a new list with a smaller page_size.")
+        }
         guard activeLists < 2 else {
             throw MCPToolProblem(code: "workspace_busy", summary: "Photo queries are in progress.", next: "Retry the read after the current query finishes.")
         }
-        let size = cursor?.size ?? requestedSize ?? 50
-        let listing = cursor?.listing ?? requestedListing ?? .visible
+        let listing = cursor?.listing ?? requestedListing ?? scope.defaultListing
+        let selection = selectionOnly ? model.selection : []
+        let accessGeneration = imageAccessGeneration
         activeLists += 1
         defer { activeLists -= 1 }
-        let worker = Task.detached(priority: .userInitiated) {
+        let worker = Task.detached(priority: .userInitiated) { () throws -> (page: PhotoPage, items: [[String: Value]], nextOffset: Int, revision: UInt64) in
             try Task.checkCancellation()
-            let offset = cursor?.offset ?? 0
-            if listing == .selection {
-                let ids = selection.sorted().dropFirst(offset).prefix(size)
-                let (photos, changes) = try catalog.database.read { db in
-                    let changes = db.totalChangesCount
-                    if let previous = cursor?.databaseChanges, changes != previous { throw PhotoPageError.staleCursor }
+            let result = try catalog.database.read { db -> (PhotoPage, Int, UInt64) in
+                let revision = catalog.browseRevision
+                if let cursor, cursor.catalogRevision != revision { throw MCPToolProblem.staleCursor }
+                let offset = cursor?.offset ?? 0
+                if listing == .selection {
+                    let ids = selection.sorted().dropFirst(offset).prefix(size)
                     let photos = try CatalogStore.photos(ids: Set(ids), in: db)
-                    return (Dictionary(uniqueKeysWithValues: photos.map { ($0.id, $0) }), changes)
+                    let byID = Dictionary(uniqueKeysWithValues: photos.map { ($0.id, $0) })
+                    let page = PhotoPage(photos: ids.compactMap { byID[$0] }, total: selection.count, offset: offset, visibleTotal: selection.count)
+                    return (page, offset + ids.count, revision)
                 }
-                return (ids.compactMap { photos[$0].map { Self.photo($0, badge: nil) } },
-                        selection.count, selection.count, offset + ids.count, changes)
+                let page = try CatalogStore.page(scope.resolve(in: db), in: db, offset: offset, limit: size, includeCollapsed: listing == .matches)
+                return (page, page.offset + page.photos.count, revision)
             }
-            let page = try catalog.page(query, offset: offset, limit: size, expectedChanges: cursor?.databaseChanges,
-                                        includeCollapsed: listing == .matches)
-            let items = page.photos.map { Self.photo($0, badge: page.badges[$0.id]) }
-            return (items, page.total, page.visibleTotal, page.offset + items.count, page.databaseChanges)
+            let (page, nextOffset, revision) = result
+            let items = page.photos.enumerated().map { index, photo in
+                var item = Self.photo(photo, badge: page.badges[photo.id])
+                if listing != .selection { item["number"] = .int(page.offset + index + 1) }
+                return item
+            }
+            return (page, items, nextOffset, revision)
         }
-        let result: ([Value], Int, Int, Int, Int)
-        do {
-            result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
-        } catch PhotoPageError.staleCursor { throw MCPToolProblem.staleCursor }
-        guard !stopped, !Task.isCancelled else { throw MCPToolProblem.stopped }
-        guard model.catalogSessionID == session else { throw MCPToolProblem.catalogChanged }
-        guard model.query == query, model.browseGeneration == generation,
-              selectionGeneration == nil || selectionGeneration == model.selectionGeneration else { throw MCPToolProblem.staleCursor }
-        let (items, matched, visible, nextOffset, changes) = result
+        let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+        try verifyCanvasRead(session, model: model)
+        guard scope.isCurrent(in: model) else { throw MCPToolProblem.staleCursor }
+        let page = result.page
+        var items = result.items
+        var sheet: MCPContactSheet?
+        if withSheet {
+            guard sharesImages, imageAccessGeneration == accessGeneration else { throw MCPToolProblem.imageDisabled }
+            if !items.isEmpty {
+                let rendered = try await renderContactSheet(page, revision: result.revision, model: model, catalog: catalog,
+                                                            session: session, accessGeneration: accessGeneration)
+                guard scope.isCurrent(in: model) else { throw MCPToolProblem.staleCursor }
+                for (index, cell) in rendered.cells.enumerated() { items[index].merge(cell) { _, value in value } }
+                sheet = rendered
+            }
+        }
         var next: Value = .null
-        if nextOffset < (listing == .visible ? visible : matched) {
-            let cursor = Cursor(query: query, generation: generation, databaseChanges: changes, offset: nextOffset, size: size,
-                                listing: listing, selection: selectionGeneration)
+        if result.nextOffset < (listing == .visible ? page.visibleTotal : page.total) {
+            let cursor = Cursor(scope: scope, catalogRevision: result.revision, offset: result.nextOffset, size: size, listing: listing)
             if cursors.count >= 128 { cursors.removeFirst() }
             cursors.append(cursor)
             next = .string(cursor.token)
         }
-        var data: [String: Value] = ["items": .array(items), "listing": .string(listing.rawValue), "next_cursor": next]
+        var data: [String: Value] = ["items": .array(items.map(Value.object)), "listing": .string(listing.rawValue), "next_cursor": next]
         if selectionOnly {
-            data["selection_count"] = .int(matched)
-            data["selection_revision"] = .string(selectionGeneration!.uuidString)
+            data["selection_count"] = .int(page.total)
+            data["selection_revision"] = .string(model.selectionGeneration.uuidString)
         } else {
-            data["matched_count"] = .int(matched); data["visible_count"] = .int(visible)
-            data["query_revision"] = .string(generation.uuidString)
+            data["matched_count"] = .int(page.total)
+            data["visible_count"] = .int(page.visibleTotal)
+            data["query_mode"] = .string(scope.mode)
+            data["source_id"] = .string(scope.source)
+            data["page_offset"] = .int(page.offset)
+            if let generation = scope.generation { data["query_revision"] = .string(generation.uuidString) }
+            if withSheet { data["contact_sheet"] = sheet.map { .object($0.data) } ?? .null }
+        }
+        if let sheet {
+            let warning = sheet.unavailableCount > 0
+            return .init(warning ? "Read \(items.count) photos. \(sheet.unavailableCount) thumbnails are unavailable." : "Read \(items.count) photos.",
+                         data: data, warning: warning, image: sheet.png,
+                         next: [warning
+                                ? "Use ready cells for review and check thumbnail_error for unavailable cells."
+                                : "Choose an item by number and use its photo_id and revisions with get_photo_preview for a native 1:1 region."])
         }
         return .init("Read \(items.count) photos.", data: data)
     }
 
-    nonisolated static func photo(_ photo: Photo, badge: StackBadge?) -> Value {
+    private func renderContactSheet(_ page: PhotoPage, revision: UInt64, model: AppModel, catalog: CatalogStore,
+                                    session: String, accessGeneration: UUID) async throws -> MCPContactSheet {
+        guard contactSheetWorker == nil else {
+            throw MCPToolProblem(code: "workspace_busy", summary: "A contact sheet is rendering.", next: "Retry the page after rendering finishes.")
+        }
+        let thumbnails = model.thumbnails, roots = model.roots, pipeline = model.pipeline
+        let worker = Task.detached(priority: .utility) {
+            try await MCPContactSheet.render(photos: page.photos, offset: page.offset, roots: roots, thumbnails: thumbnails, pipeline: pipeline)
+        }
+        contactSheetWorker = worker
+        defer { contactSheetWorker = nil }
+        let result = await withTaskCancellationHandler { await worker.result } onCancel: { worker.cancel() }
+        try verifyCanvasRead(session, model: model)
+        guard sharesImages, imageAccessGeneration == accessGeneration else { throw MCPToolProblem.imageDisabled }
+        let current = try await catalog.database.read { _ in catalog.browseRevision }
+        try verifyCanvasRead(session, model: model)
+        guard sharesImages, imageAccessGeneration == accessGeneration else { throw MCPToolProblem.imageDisabled }
+        guard current == revision else { throw MCPToolProblem.staleCursor }
+        return try result.get()
+    }
+
+    nonisolated static func photo(_ photo: Photo, badge: StackBadge?) -> [String: Value] {
         let stack: Value = badge.map {
             ["stack_id": .string($0.stackID), "position": .int($0.position), "member_count": .int($0.count),
              "matched_count": .int($0.matching), "collapsed": .bool($0.collapsed)]

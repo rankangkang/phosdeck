@@ -94,6 +94,7 @@ struct PhotoQuery: Equatable {
     var snapshotID: String?
     var smart: SmartRules?
     var invalidSmart = false
+    var useRelatedSnapshotOrder = true
     /// Kept separate from PhotoSort so existing filename/date/rating sorting
     /// remains source-compatible. The AppModel exposes this only for regular
     /// collections.
@@ -117,7 +118,7 @@ struct PhotoQuery: Equatable {
     }
     var order: String {
         if snapshotID != nil { return "held.position" }
-        if smart == nil, scope.hasPrefix("related:") { return "related.position" }
+        if useRelatedSnapshotOrder, smart == nil, scope.hasPrefix("related:") { return "related.position" }
         let direction = descending ? " DESC" : " ASC"
         let primary: String
         switch sort {
@@ -193,14 +194,12 @@ struct PhotoPage {
     var offset: Int
     var visibleTotal: Int = 0
     var badges: [String:StackBadge] = [:]
-    var databaseChanges = 0
 }
-enum PhotoPageError: Error { case staleCursor }
 
 extension CatalogStore {
     // Arrange the WHOLE base result before LIMIT/OFFSET. Only IDs/ranks enter
     // the windows; recipes/metadata are fetched for the displayed page alone.
-    private func stackCTE(_ query: PhotoQuery) -> String {
+    private static func stackCTE(_ query: PhotoQuery) -> String {
         let (predicate,_) = query.predicate
         // A related temporary source represents an explicit stack/group
         // context. Show every captured member there even when the persistent
@@ -220,51 +219,52 @@ extension CatalogStore {
           FROM ranked WHERE \(visibleCondition))
         """
     }
-    func page(_ query: PhotoQuery, offset: Int, limit: Int = 200, expectedChanges: Int? = nil,
-              includeCollapsed: Bool = false) throws -> PhotoPage {
+    func page(_ query: PhotoQuery, offset: Int, limit: Int = 200) throws -> PhotoPage {
+        try database.read { try Self.page(query, in: $0, offset: offset, limit: limit) }
+    }
+
+    static func page(_ query: PhotoQuery, in db: Database, offset: Int, limit: Int,
+                     includeCollapsed: Bool = false) throws -> PhotoPage {
         let (_, args) = query.predicate, cte = stackCTE(query), size = max(1, min(1000, limit))
-        return try database.read { db in
-            let changes = db.totalChangesCount
-            if let expectedChanges, changes != expectedChanges { throw PhotoPageError.staleCursor }
-            let counts = try Row.fetchOne(db,sql:cte+" SELECT (SELECT count(*) FROM base) AS total,(SELECT count(*) FROM visible) AS shown",arguments:args)!
-            let count: Int = counts["total"], shown: Int = counts["shown"]
-            let length = includeCollapsed ? count : shown
-            let start = min(max(0, offset), max(0, ((length - 1) / size) * size))
-            let relation = includeCollapsed ? "ranked" : "visible"
-            let order = includeCollapsed ? "basePosition" : "displayPosition"
-            let rows = try Row.fetchAll(db, sql: cte + """
-                 SELECT photo.*,v.stackID,v.position,v.collapsed,v.matching,(SELECT count(*) FROM stackMember WHERE stackID=v.stackID) AS stackCount
-                 FROM \(relation) v JOIN photo ON photo.id=v.id ORDER BY v.\(order) LIMIT ? OFFSET ?
-                """, arguments: args + [size, start])
-            var badges = [String:StackBadge]()
-            for row in rows {
-                if let sid: String = row["stackID"] { let id: String = row["id"]; badges[id] = StackBadge(stackID:sid,position:row["position"],count:row["stackCount"],matching:row["matching"],collapsed:row["collapsed"]) }
-            }
-            return PhotoPage(photos:try rows.map { try Photo(row:$0) },total:count,offset:start,visibleTotal:shown,badges:badges,databaseChanges:changes)
+        let counts = try Row.fetchOne(db,sql:cte+" SELECT (SELECT count(*) FROM base) AS total,(SELECT count(*) FROM visible) AS shown",arguments:args)!
+        let count: Int = counts["total"], shown: Int = counts["shown"]
+        let length = includeCollapsed ? count : shown
+        let start = min(max(0, offset), max(0, ((length - 1) / size) * size))
+        let relation = includeCollapsed ? "ranked" : "visible"
+        let order = includeCollapsed ? "basePosition" : "displayPosition"
+        let rows = try Row.fetchAll(db, sql: cte + """
+             SELECT photo.*,v.stackID,v.position,v.collapsed,v.matching,(SELECT count(*) FROM stackMember WHERE stackID=v.stackID) AS stackCount
+             FROM \(relation) v JOIN photo ON photo.id=v.id ORDER BY v.\(order) LIMIT ? OFFSET ?
+            """, arguments: args + [size, start])
+        var badges = [String:StackBadge]()
+        for row in rows {
+            if let sid: String = row["stackID"] { let id: String = row["id"]; badges[id] = StackBadge(stackID:sid,position:row["position"],count:row["stackCount"],matching:row["matching"],collapsed:row["collapsed"]) }
         }
+        return PhotoPage(photos: try rows.map { try Photo(row: $0) }, total: count, offset: start,
+                         visibleTotal: shown, badges: badges)
     }
     func offset(of id: String, query: PhotoQuery, includingRepresentative: Bool = false) throws -> Int? {
         let (_,args) = query.predicate
         let select = includingRepresentative
             ? " SELECT v.displayPosition FROM visible v JOIN ranked r ON r.id=? WHERE v.id=r.id OR v.stackID=r.stackID ORDER BY (v.id=r.id) DESC, v.displayPosition LIMIT 1"
             : " SELECT displayPosition FROM visible WHERE id=?"
-        return try database.read { try Int.fetchOne($0, sql: stackCTE(query) + select, arguments: args + [id]) }
+        return try database.read { try Int.fetchOne($0, sql: Self.stackCTE(query) + select, arguments: args + [id]) }
     }
     func representative(of id: String, query: PhotoQuery) throws -> String? {
         let (_,args) = query.predicate
-        return try database.read { try String.fetchOne($0,sql:stackCTE(query)+" SELECT v.id FROM visible v JOIN ranked r ON r.id=? WHERE v.id=r.id OR v.stackID=r.stackID ORDER BY v.displayPosition LIMIT 1",arguments:args+[id]) }
+        return try database.read { try String.fetchOne($0,sql:Self.stackCTE(query)+" SELECT v.id FROM visible v JOIN ranked r ON r.id=? WHERE v.id=r.id OR v.stackID=r.stackID ORDER BY v.displayPosition LIMIT 1",arguments:args+[id]) }
     }
     func allResultIDs(_ query: PhotoQuery, visibleOnly: Bool = false) throws -> [String] {
         let (predicate,args) = query.predicate
         return try database.read { db in
-            if visibleOnly { return try String.fetchAll(db,sql:stackCTE(query)+" SELECT id FROM visible ORDER BY displayPosition",arguments:args) }
+            if visibleOnly { return try String.fetchAll(db,sql:Self.stackCTE(query)+" SELECT id FROM visible ORDER BY displayPosition",arguments:args) }
             return try String.fetchAll(db,sql:"SELECT photo.id FROM "+query.relation+" WHERE "+predicate+" ORDER BY "+query.order,arguments:args)
         }
     }
     func comparisonStacks(_ query: PhotoQuery) throws -> [PhotoStack] {
         let (_, args) = query.predicate
         return try database.read { db in
-            let rows = try Row.fetchCursor(db, sql: stackCTE(query) + """
+            let rows = try Row.fetchCursor(db, sql: Self.stackCTE(query) + """
                 SELECT stackID, id, collapsed FROM ranked
                 WHERE stackID IS NOT NULL AND matching >= 2
                 ORDER BY groupPosition, position

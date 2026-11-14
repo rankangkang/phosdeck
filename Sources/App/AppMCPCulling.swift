@@ -1,4 +1,5 @@
 import AppKit
+import GRDB
 import MCP
 
 extension AppMCPTool {
@@ -51,6 +52,80 @@ extension PhotoMarks {
     }
 }
 
+struct MCPLibraryCriteria {
+    static let attributes: [AppMCPTool.Field] = [.ratingComparison, .ratingThreshold, .flags, .labels]
+    static let metadataFields: [AppMCPTool.Field] = [.camera, .lens, .minimumISO, .maximumISO, .dateFrom, .dateThrough, .keyword]
+    static let fields: [AppMCPTool.Field] = [.source, .search, .sort, .descending] + attributes + metadataFields
+
+    static func contains(_ fields: [AppMCPTool.Field], in arguments: [String: Value]) -> Bool {
+        fields.contains { arguments[$0.rawValue] != nil }
+    }
+
+    static func metadata(_ arguments: [String: Value], startingWith initial: LibraryMetadataFilter = .init()) throws -> LibraryMetadataFilter {
+        var filter = initial
+        if let camera = arguments["camera"]?.stringValue { filter.camera = camera }
+        if let lens = arguments["lens"]?.stringValue { filter.lens = lens }
+        if let iso = arguments["minimum_iso"]?.intValue { filter.minimumISO = iso == 0 ? "" : String(iso) }
+        if let iso = arguments["maximum_iso"]?.intValue { filter.maximumISO = iso == 0 ? "" : String(iso) }
+        if let date = arguments["date_from"]?.stringValue { filter.dateFrom = date }
+        if let date = arguments["date_through"]?.stringValue { filter.dateThrough = date }
+        if let message = filter.validationMessage { throw MCPToolProblem.invalid(message) }
+        return filter
+    }
+
+    @MainActor static func validateSource(_ source: String, model: AppModel) throws {
+        let exists = source == "all" || source == model.scope || source == model.lastImport?.scope
+            || model.roots.contains { $0.id == source }
+            || model.collections.contains { "collection:" + $0.id == source }
+            || (source.hasPrefix("folder:") && model.folders.values.contains { AppMCPWorkflows.flatten($0).contains { $0.id == source } })
+        guard exists else { throw MCPToolProblem.invalid("Select a current source_id from list_library_sources.") }
+    }
+}
+
+struct MCPIndependentPhotoQuery {
+    let source: String
+    let criteria: PhotoQuery
+
+    init(_ arguments: [String: Value]) throws {
+        source = arguments["source_id"]?.stringValue ?? "all"
+        var query = PhotoQuery(scope: source)
+        query.search = arguments["search"]?.stringValue ?? ""
+        query.ratingComparison = arguments["rating_comparison"]?.stringValue.flatMap(RatingComparison.init(rawValue:)) ?? .atLeast
+        query.ratingThreshold = arguments["rating_threshold"]?.intValue ?? 0
+        query.flags = Set(arguments["flags"]?.arrayValue?.compactMap(\.intValue) ?? [])
+        query.colorLabels = Set(arguments["color_labels"]?.arrayValue?.compactMap(\.intValue) ?? [])
+        query.keyword = arguments["keyword"]?.stringValue ?? ""
+        query.metadata = try MCPLibraryCriteria.metadata(arguments)
+        query.sort = arguments["sort"]?.stringValue.flatMap(PhotoSort.init(rawValue:)) ?? .captureDate
+        query.descending = arguments["descending"]?.boolValue ?? false
+        query.manualCollectionOrder = arguments["sort"] == "manual"
+        query.useRelatedSnapshotOrder = false
+        criteria = query
+    }
+
+    func resolve(in db: Database) throws -> PhotoQuery {
+        var query = criteria
+        if source.hasPrefix("collection:") {
+            let id = String(source.dropFirst("collection:".count))
+            guard let collection = try PhotoCollection.fetchOne(db, key: id) else { throw MCPCollectionState.unavailable }
+            if collection.isSmart {
+                guard !query.manualCollectionOrder else { throw Self.manualOrderUnavailable }
+                guard let queryWithRules = try? collection.resultQuery() else {
+                    throw MCPToolProblem(code: "collection_unavailable", summary: "The smart collection's saved rules are invalid.",
+                                         next: "Check its rules in get_collection or choose a different source.")
+                }
+                query.scope = queryWithRules.scope
+                query.smart = queryWithRules.smart
+            }
+        } else if query.manualCollectionOrder {
+            throw Self.manualOrderUnavailable
+        }
+        return query
+    }
+
+    private static let manualOrderUnavailable = MCPToolProblem.invalid("Manual order is available in regular collections.")
+}
+
 extension AppMCPTools {
     static func browseState(_ model: AppModel) -> [String: Value] {
         let query = model.query
@@ -98,7 +173,7 @@ extension AppMCPTools {
     }
 
     private static func paneState(_ pane: ComparisonPhoto) -> Value {
-        ["photo": pane.photo.map { Self.photo($0, badge: nil) } ?? .null,
+        ["photo": pane.photo.map { .object(Self.photo($0, badge: nil)) } ?? .null,
          "viewport": viewportState(pane.viewport, scale: pane.zoom), "preview_ready": .bool(pane.image != nil)]
     }
 
@@ -157,12 +232,7 @@ extension AppMCPTools {
 
     private func setQuery(_ args: [String: Value], model: AppModel) throws {
         let source = args["source_id"]?.stringValue
-        if let source, source != "all", source != model.scope {
-            let exists = source == model.lastImport?.scope || model.roots.contains { $0.id == source }
-                || model.collections.contains { "collection:" + $0.id == source }
-                || (source.hasPrefix("folder:") && model.folders.values.contains { AppMCPWorkflows.flatten($0).contains { $0.id == source } })
-            guard exists else { throw MCPToolProblem.invalid("Select a current source_id from list_library_sources.") }
-        }
+        if let source { try MCPLibraryCriteria.validateSource(source, model: model) }
         let sort = args["sort"]?.stringValue
         if sort == "manual" {
             let target = source ?? model.scope
@@ -172,16 +242,7 @@ extension AppMCPTools {
         }
 
         let clear = args["clear_filters"]?.boolValue == true
-        let attributes = ["rating_threshold", "rating_comparison", "flags", "color_labels"]
-        let metadataFields = ["camera", "lens", "minimum_iso", "maximum_iso", "date_from", "date_through", "keyword"]
-        var metadata = clear ? LibraryMetadataFilter() : model.metadataFilter
-        if let camera = args["camera"]?.stringValue { metadata.camera = camera }
-        if let lens = args["lens"]?.stringValue { metadata.lens = lens }
-        if let iso = args["minimum_iso"]?.intValue { metadata.minimumISO = iso == 0 ? "" : String(iso) }
-        if let iso = args["maximum_iso"]?.intValue { metadata.maximumISO = iso == 0 ? "" : String(iso) }
-        if let date = args["date_from"]?.stringValue { metadata.dateFrom = date }
-        if let date = args["date_through"]?.stringValue { metadata.dateThrough = date }
-        if let message = metadata.validationMessage { throw MCPToolProblem.invalid(message) }
+        let metadata = try MCPLibraryCriteria.metadata(args, startingWith: clear ? .init() : model.metadataFilter)
         if let source, source != model.scope, source == model.lastImport?.scope {
             model.showLastImport()
             guard model.scope == source else { throw MCPToolProblem.failed }
@@ -197,8 +258,8 @@ extension AppMCPTools {
             model.metadataFilter = metadata
             let sections: [LibraryFilterSection] = [
                 args["search"] != nil ? .text : nil,
-                attributes.contains { args[$0] != nil } ? .attribute : nil,
-                metadataFields.contains { args[$0] != nil } ? .metadata : nil
+                MCPLibraryCriteria.contains(MCPLibraryCriteria.attributes, in: args) ? .attribute : nil,
+                MCPLibraryCriteria.contains(MCPLibraryCriteria.metadataFields, in: args) ? .metadata : nil
             ].compactMap { $0 }
             if !sections.isEmpty { model.filterSections.formUnion(sections); model.filtersEnabled = true }
             if let sections = args["filter_sections"]?.arrayValue {

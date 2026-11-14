@@ -43,7 +43,7 @@ extension AppMCPWorkflows {
         }
         guard let source = try catalog.source(id) else { throw MCPToolProblem.photoUnavailable }
         let versions = try catalog.versions(sourceID: id)
-        var data = Self.page(versions.map { AppMCPTools.photo($0, badge: nil) }, arguments: args)
+        var data = Self.page(versions.map { .object(AppMCPTools.photo($0, badge: nil)) }, arguments: args)
         data["source_id"] = .string(id)
         data["name"] = .string(source.name)
         data["source_status"] = .string(source.availability)

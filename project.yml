@@ -35,6 +35,7 @@ targets:
       # Includes automatic image analysis (Imaging/AutomaticAdjustments.swift, App/AutomaticAdjustmentEditing.swift) and folder comparison (Import/FolderReview.swift, UI/FolderReviewSheet.swift) and native direct adjustments.
       # Includes Imaging/ManualDefringe.swift.
       # Includes the local MCP service and tools under App/.
+      # Includes AppMCPContactSheet.swift for numbered Agent previews.
       # Includes AppMCPPreferences.swift, AppMCPMaintenance.swift, and AppMCPCameraDiagnostics.swift.
       # Includes MergePanoramaFinish.swift and MergeDNGCodec.swift for float panorama finishing and linear DNG masters.
       # Includes native multiframe merge registration, MergeCameraRefinement, depth-gated FocusStackFusion, float masters and UI.

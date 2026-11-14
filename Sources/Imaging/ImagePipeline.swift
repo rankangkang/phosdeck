@@ -116,7 +116,7 @@ actor ImagePipeline {
         else { developContext = CIContext(options: developOptions) }
     }
 
-    private func source(_ request: ImageRequest, verifyDigest: Bool = true) throws -> (AccessLease, URL) {
+    nonisolated private func source(_ request: ImageRequest, verifyDigest: Bool = true) throws -> (AccessLease, URL) {
         try request.recipe?.validate(for: request.photo)
         let lease = try AccessLease(bookmark: request.root.bookmark)
         let url = lease.url.appendingPathComponent(request.photo.relativePath)
@@ -250,8 +250,8 @@ actor ImagePipeline {
             return MergeFrame(image:pixels,exposure:exposure,focal35mm:metadata?.focal35mm,nativeWidth:Int(native.width.rounded()),nativeHeight:Int(native.height.rounded()),raw:request.photo.isRAW,focalLength:metadata?.focalLength,cameraModel:request.photo.camera)
         }
     }
-    func verifySource(_ request: ImageRequest) throws {
-        let (lease,_) = try source(request)
+    nonisolated func verifySource(_ request: ImageRequest) throws {
+        let (lease, _) = try source(request)
         withExtendedLifetime(lease) {}
     }
 

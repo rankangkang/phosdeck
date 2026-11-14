@@ -18,6 +18,23 @@ final class AgentMCPTests: XCTestCase {
         }
     }
 
+    private actor ThumbnailGate {
+        private var started: CheckedContinuation<Void, Never>?
+        private var pending: CheckedContinuation<Void, Never>?
+
+        func block() async {
+            await withCheckedContinuation { continuation in
+                pending = continuation
+                started?.resume()
+                started = nil
+            }
+        }
+        func waitForRender() async {
+            if pending == nil { await withCheckedContinuation { started = $0 } }
+        }
+        func resume() { pending?.resume(); pending = nil }
+    }
+
     private func temporaryCatalog() throws -> (URL, CatalogStore) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("phosdeck-mcp-" + UUID().uuidString)
         let catalog = try CatalogStore(directory: directory)
@@ -88,6 +105,213 @@ final class AgentMCPTests: XCTestCase {
         checkError(await call(tools, .listPhotos, ["catalog_session_id": session, "cursor": newCursor]), "stale_cursor")
         try model.activateCatalog(catalog)
         checkError(await call(tools, .listPhotos, continuation), "catalog_changed")
+    }
+
+    @MainActor func testIndependentPagingIgnoresNativeFiltersAndTemporarySnapshots() async throws {
+        let (catalog, model, tools) = try fixture(ids: ["a", "b", "c", "d"])
+        try catalog.setOrganization(ids: ["a"], rating: 4)
+        try catalog.setOrganization(ids: ["b", "c"], rating: 5)
+        try catalog.changeStacks(.group(top: "a", members: ["b"]))
+        try model.updateLibraryQuery {
+            model.search = "d.jpg"
+            model.holdFilterResults = true
+        }
+        let workspace = data(await call(tools, .workspace))
+        let session = try XCTUnwrap(workspace["catalog_session_id"])
+        let query: Value = ["rating_threshold": 4, "sort": "rating", "descending": true]
+        let start: [String: Value] = ["catalog_session_id": session, "page_size": 2, "query": query]
+        let first = data(await call(tools, .listPhotos, start))
+        XCTAssertEqual(first["query_mode"], "independent")
+        XCTAssertNil(first["query_revision"])
+        XCTAssertEqual(first["source_id"], "all")
+        XCTAssertEqual(first["matched_count"], 3)
+        XCTAssertEqual(first["visible_count"], 2)
+        XCTAssertEqual(first["items"]?.arrayValue?.compactMap { $0.objectValue?["photo_id"] }, ["b", "c"])
+        XCTAssertEqual(first["items"]?.arrayValue?.compactMap { $0.objectValue?["number"] }, [1, 2])
+        let afterward = data(await call(tools, .workspace))
+        for key in ["query", "query_revision", "selection_revision", "source_id", "page_offset", "active_photo_id",
+                    "selected_photo_ids", "filter_settings", "browse_locations", "view", "viewport"] {
+            XCTAssertEqual(afterward[key], workspace[key], key)
+        }
+
+        let cursor = try XCTUnwrap(first["next_cursor"])
+        let next: [String: Value] = ["catalog_session_id": session, "cursor": cursor]
+        checkError(await call(tools, .listPhotos, next.merging(["query": query]) { _, value in value }), "invalid_arguments")
+        checkError(await call(tools, .listSelected, next), "stale_cursor")
+        checkError(await call(tools, .listPhotos, next.merging(["listing": "visible"]) { _, value in value }), "stale_cursor")
+        try model.updateLibraryQuery {
+            model.search = "b.jpg"
+            model.photoSort = .filename
+        }
+        let continuation = await call(tools, .listPhotos, next)
+        XCTAssertEqual(continuation.isError, false, String(describing: continuation.structuredContent))
+        let second = data(continuation)
+        XCTAssertEqual(second["page_offset"], 2)
+        XCTAssertEqual(second["items"]?.arrayValue?.first?.objectValue?["photo_id"], "a")
+        XCTAssertEqual(second["items"]?.arrayValue?.first?.objectValue?["number"], 3)
+        XCTAssertEqual(second["next_cursor"], .null)
+        XCTAssertEqual(model.activeID, "b")
+        try catalog.setOrganization(ids: ["a"], rating: 3)
+        checkError(await call(tools, .listPhotos, next), "stale_cursor")
+    }
+
+    @MainActor func testIndependentQueryCombinesSmartRulesWithMetadataAndValidatesSort() async throws {
+        let (directory, catalog) = try temporaryCatalog()
+        let root = try catalog.addRoot(url: directory, bookmark: Data())
+        for (id, rating, day, lens) in [("a", 5, "12", "50 mm"), ("b", 4, "13", "50 mm"),
+                                        ("c", 5, "13", "35 mm"), ("d", 3, "13", "50 mm")] {
+            try catalog.index(Photo(id: id, rootID: root.id, relativePath: "Shoot/\(id).jpg", identity: Data(), identityKey: id,
+                                    captureDate: "2026:11:\(day) 12:00:00", width: 1, height: 1, camera: "Synthetic",
+                                    metadata: try JSONEncoder().encode(PhotoMetadata(lens: lens, iso: 400))))
+            try catalog.setOrganization(ids: [id], rating: rating)
+        }
+        let model = AppModel()
+        model.catalog = catalog
+        try model.reload()
+        let tools = tools(model)
+        let workspace = data(await call(tools, .workspace))
+        let session = try XCTUnwrap(workspace["catalog_session_id"])
+        let saved = await call(tools, .saveSmartCollection, [
+            "catalog_session_id": session, "request_epoch": try XCTUnwrap(workspace["request_epoch"]), "request_id": "smart-query",
+            "name": "Four or more", "rules": ["source_id": .string("folder:\(root.id):Shoot"),
+                                            "conditions": [["field": "rating", "operator": "atLeast", "value": "4"]]]
+        ])
+        let source = try XCTUnwrap(data(saved)["source_id"])
+        func list(_ query: Value) async -> CallTool.Result {
+            await call(tools, .listPhotos, ["catalog_session_id": session, "query": query])
+        }
+        let result = data(await list(["source_id": source, "camera": "Synthetic", "lens": "50",
+                                      "minimum_iso": 400, "date_from": "2026-11-13"]))
+        XCTAssertEqual(result["source_id"], source)
+        XCTAssertEqual(result["items"]?.arrayValue?.compactMap { $0.objectValue?["photo_id"] }, ["b"])
+        checkError(await list(["source_id": source, "sort": "manual"]), "invalid_arguments")
+        checkError(await list(["source_id": "unlisted"]), "invalid_arguments")
+        checkError(await list(["date_from": "2026-02-30"]), "invalid_arguments")
+        checkError(await list(["minimum_iso": 800, "maximum_iso": 400]), "invalid_arguments")
+        checkError(await list(["filters_enabled": true]), "invalid_arguments")
+        XCTAssertEqual(model.scope, "all")
+        XCTAssertTrue(model.search.isEmpty)
+
+        let related = "related:" + (try catalog.snapshotPhotos(["a", "b", "c"]))
+        try model.updateLibraryQuery(source: related)
+        let native = data(await call(tools, .listPhotos, ["catalog_session_id": session]))
+        XCTAssertEqual(native["items"]?.arrayValue?.compactMap { $0.objectValue?["photo_id"] }, ["a", "b", "c"])
+        let sorted = data(await list(["source_id": .string(related), "sort": "filename", "descending": true]))
+        XCTAssertEqual(sorted["items"]?.arrayValue?.compactMap { $0.objectValue?["photo_id"] }, ["c", "b", "a"])
+        XCTAssertEqual(model.scope, related)
+    }
+
+    @MainActor func testContactSheetMapsNativeTileAndDoesNotShareAStaleCachedSource() async throws {
+        let (directory, catalog) = try temporaryCatalog()
+        let root = try catalog.addRoot(url: directory, bookmark: AccessLease.bookmark(directory, readOnly: true))
+        let file = directory.appendingPathComponent("a.png")
+        try PNGFixture.data(width: 240, height: 160).write(to: file)
+        let photo = try ReferenceImporter.inspect(url: file, root: root, rootURL: directory)
+        try catalog.index(photo)
+        try catalog.index(Photo(id: "missing", rootID: root.id, relativePath: "b.png", identity: Data(), identityKey: "missing",
+                                width: 160, height: 240, availability: "missing"))
+        let model = AppModel()
+        model.catalog = catalog
+        try model.reload()
+        model.activeID = "missing"
+        model.selection = ["missing"]
+        let tools = tools(model)
+        let session = Value.string(try XCTUnwrap(model.catalogSessionID))
+        let arguments: [String: Value] = ["catalog_session_id": session, "query": ["sort": "filename"], "contact_sheet": true]
+        checkError(await call(tools, .listPhotos, arguments), "image_access_disabled")
+        let textOnly = await call(tools, .listPhotos, ["catalog_session_id": session, "query": [:]])
+        XCTAssertEqual(textOnly.isError, false)
+        XCTAssertEqual(textOnly.content.count, 1)
+        tools.setSharesImages(true)
+        checkError(await call(tools, .listPhotos, arguments.merging(["page_size": 25]) { _, value in value }), "invalid_arguments")
+        let workspace = data(await call(tools, .workspace))
+        let result = await call(tools, .listPhotos, arguments)
+        XCTAssertEqual(result.structuredContent?.objectValue?["status"], "warning")
+        let sheet = try XCTUnwrap(data(result)["contact_sheet"]?.objectValue)
+        XCTAssertEqual(sheet["columns"], 2)
+        XCTAssertEqual(sheet["unavailable_count"], 1)
+        let cells = try XCTUnwrap(data(result)["items"]?.arrayValue?.compactMap(\.objectValue))
+        XCTAssertEqual(cells.map { $0["number"] }, [1, 2])
+        XCTAssertEqual(cells.map { $0["thumbnail_status"] }, ["ready", "unavailable"])
+        XCTAssertEqual(cells[1]["image_pixels"], .null)
+        XCTAssertEqual(cells[1]["thumbnail_error"], "file_access_required")
+        guard case .image(let base64, "image/png", _, _) = result.content.last else { return XCTFail("Missing contact sheet PNG") }
+        let png = try XCTUnwrap(Data(base64Encoded: base64))
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(png as CFData, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        XCTAssertEqual(.int(image.width), sheet["width"])
+        XCTAssertEqual(.int(image.height), sheet["height"])
+        let rect = try XCTUnwrap(cells[0]["image_pixels"]?.objectValue)
+        XCTAssertEqual(rect["width"], 192)
+        XCTAssertEqual(rect["height"], 128)
+        XCTAssertLessThan(rect["x"]?.intValue ?? image.width, image.width / 2)
+
+        let tile = await call(tools, .preview, [
+            "catalog_session_id": session, "photo_id": try XCTUnwrap(cells[0]["photo_id"]),
+            "source_revision": try XCTUnwrap(cells[0]["source_revision"]), "recipe_revision": try XCTUnwrap(cells[0]["recipe_revision"]),
+            "resolution": "native", "region_pixels": ["x": 32, "y": 20, "width": 64, "height": 48]
+        ])
+        XCTAssertEqual(tile.isError, false, String(describing: tile.structuredContent))
+        XCTAssertEqual(data(tile)["width"], 64)
+        XCTAssertEqual(data(tile)["height"], 48)
+        XCTAssertEqual(data(tile)["resolution"], "native")
+        let after = data(await call(tools, .workspace))
+        for key in ["source_id", "query", "query_revision", "selection_revision", "active_photo_id", "selected_photo_ids", "page_offset", "view"] {
+            XCTAssertEqual(after[key], workspace[key], key)
+        }
+        XCTAssertNil(try catalog.photo(photo.id)?.recipe)
+
+        let numbered = data(await call(tools, .listPhotos, arguments.merging(["page_size": 1]) { _, value in value }))
+        let next = try XCTUnwrap(numbered["next_cursor"])
+        let continued = data(await call(tools, .listPhotos, ["catalog_session_id": session, "cursor": next, "contact_sheet": true]))
+        XCTAssertEqual(continued["items"]?.arrayValue?.first?.objectValue?["number"], 2)
+        XCTAssertEqual(continued["next_cursor"], .null)
+        let empty = await call(tools, .listPhotos, arguments.merging(["query": ["search": "no match"]]) { _, value in value })
+        XCTAssertEqual(data(empty)["contact_sheet"], .null)
+        XCTAssertEqual(empty.content.count, 1)
+
+        try PNGFixture.data(width: 250, height: 160).write(to: file, options: .atomic)
+        let stale = data(await call(tools, .listPhotos, arguments))
+        XCTAssertEqual(stale["items"]?.arrayValue?.first?.objectValue?["thumbnail_error"], "file_access_required")
+        XCTAssertEqual(stale["items"]?.arrayValue?.first?.objectValue?["image_pixels"], .null)
+    }
+
+    @MainActor func testContactSheetRejectsInFlightCatalogChangesAndRevokedSharing() async throws {
+        let (directory, catalog) = try temporaryCatalog()
+        let root = try catalog.addRoot(url: directory, bookmark: AccessLease.bookmark(directory, readOnly: true))
+        let file = directory.appendingPathComponent("photo.png")
+        let png = try PNGFixture.data(width: 160, height: 120)
+        try png.write(to: file)
+        let photo = try ReferenceImporter.inspect(url: file, root: root, rootURL: directory)
+        try catalog.index(photo)
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(png as CFData, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let gate = ThumbnailGate()
+        let thumbnails = ThumbnailService(renderer: { _, _ in await gate.block(); return image })
+        let model = AppModel(thumbnails: thumbnails)
+        model.catalog = catalog
+        try model.reload()
+        let tools = tools(model)
+        tools.setSharesImages(true)
+        let session = Value.string(try XCTUnwrap(model.catalogSessionID))
+        let arguments: [String: Value] = ["catalog_session_id": session, "query": [:], "contact_sheet": true]
+        let changed = Task { await call(tools, .listPhotos, arguments) }
+        await gate.waitForRender()
+        do { try catalog.setOrganization(ids: [photo.id], rating: 5) }
+        catch { await gate.resume(); throw error }
+        await gate.resume()
+        checkError(await changed.value, "stale_cursor")
+
+        _ = try await thumbnails.clear()
+        let revoked = Task { await call(tools, .listPhotos, arguments) }
+        await gate.waitForRender()
+        tools.setSharesImages(false)
+        tools.setSharesImages(true)
+        await gate.resume()
+        let revokedResult = await revoked.value
+        checkError(revokedResult, "image_access_disabled")
+        XCTAssertEqual(revokedResult.content.count, 1)
+        XCTAssertNil(model.activeID)
     }
 
     @MainActor func testRatingIsExplicitDeduplicatedAndUsesNativeUndo() async throws {

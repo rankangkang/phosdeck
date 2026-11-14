@@ -34,11 +34,29 @@ struct PhotoMarkChange {
     let current: PhotoMarks
 }
 
+/// GRDB delivers these callbacks on the same queue that serves page reads.
+private final class CatalogBrowseChanges: TransactionObserver {
+    private static let tables: Set<String> = ["photo", "photoSource", "storageRoot", "collection", "membership",
+                                               "photoKeyword", "displayStack", "stackMember"]
+    private(set) var revision: UInt64 = 0
+    private var changed = false
+
+    func observes(eventsOfKind eventKind: DatabaseEventKind) -> Bool { Self.tables.contains(eventKind.tableName) }
+    func databaseDidChange() { changed = true }
+    func databaseDidChange(with event: DatabaseEvent) { if event.databaseName == "main" { changed = true } }
+    func databaseDidCommit(_ db: Database) {
+        if changed { revision &+= 1 }
+        changed = false
+    }
+    func databaseDidRollback(_ db: Database) { changed = false }
+}
+
 final class CatalogStore: @unchecked Sendable {
     let fileURL: URL
     var directory: URL { fileURL.deletingLastPathComponent() }
     private let access: AccessLease?
     private let lock: CatalogLock
+    private let browseChanges = CatalogBrowseChanges()
     let database: DatabaseQueue
     static let schemaVersion = 13
 
@@ -102,6 +120,7 @@ final class CatalogStore: @unchecked Sendable {
             try db.execute(sql: "PRAGMA synchronous = FULL")
         }
         database = try DatabaseQueue(path: self.fileURL.path, configuration: configuration)
+        database.add(transactionObserver: browseChanges)
         if create {
             try database.write { db in
                 try db.execute(sql: """
@@ -180,6 +199,9 @@ final class CatalogStore: @unchecked Sendable {
             }
         }
     }
+
+    /// Read on the catalog's database queue in the same snapshot as the photos.
+    var browseRevision: UInt64 { browseChanges.revision }
 
     func diagnostics() throws -> String {
         try database.read { db in

@@ -125,7 +125,7 @@ enum MCPDevelopPhoto {
         let request = ImageRequest(photo: photo, root: root, recipe: recipe)
         do {
             if photo.isRAW { return (recipe, try await pipeline.rawDefaults(request)) }
-            if photo.recipe != nil { try await pipeline.verifySource(request) }
+            if photo.recipe != nil { try pipeline.verifySource(request) }
             return (recipe, nil)
         } catch is CancellationError { throw CancellationError() }
         catch { throw MCPToolProblem.fileAccess }
