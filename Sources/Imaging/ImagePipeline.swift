@@ -255,6 +255,42 @@ actor ImagePipeline {
         withExtendedLifetime(lease) {}
     }
 
+    /// Analyze originals on a dedicated lane without consulting edited previews.
+    func cullingThumbnail(_ request: ImageRequest) throws -> CGImage {
+        try autoreleasepool {
+            let (lease, url) = try source(request, verifyDigest: false)
+            defer { withExtendedLifetime(lease) {} }
+            let edge = CullingMetrics.longEdge
+            try Task.checkCancellation()
+            let image: CGImage?
+            if url.pathExtension.lowercased() == "dng", let file = try MergeDNGCodec.open(url) {
+                let pixels = try file.image().resized(longEdge: edge)
+                image = context.createCGImage(pixels.ciImage(), from: CGRect(x: 0, y: 0, width: pixels.width, height: pixels.height),
+                                              format: .RGBA8, colorSpace: Self.outputSpace)
+            } else if request.photo.isRAW {
+                let raw = try PhotoFileType.rawFilter(url)
+                try PhotoGeometry.checkSize(raw.nativeSize)
+                raw.scaleFactor = Float(min(1, CGFloat(edge) / max(raw.nativeSize.width, raw.nativeSize.height)))
+                raw.isDraftModeEnabled = false
+                raw.extendedDynamicRangeAmount = 0
+                image = raw.outputImage.flatMap {
+                    let scaled = Self.resized($0, longEdge: edge)
+                    return context.createCGImage(scaled, from: scaled.extent.integral, format: .RGBA8, colorSpace: Self.outputSpace)
+                }
+            } else {
+                let input = try PhotoFileType.imageSource(url)
+                image = CGImageSourceCreateThumbnailAtIndex(input, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: edge
+                ] as CFDictionary)
+            }
+            try Task.checkCancellation()
+            try verifySource(request)
+            guard let image else { throw LRCError(L10n.text("app.noThumbnailAvailable", defaultValue: "No thumbnail available")) }
+            return image
+        }
+    }
+
     private func graph(_ request: ImageRequest, url: URL, orientedSourceSize: inout CGSize, previewEdge: Int? = nil,
                        zoneReferenceOnly: Bool = false, pointReferenceOnly: Bool = false, decodeOnly: Bool = false,
                        reuseDecoded: Bool = false, nativeArea: ((CGSize) throws -> NativePreviewArea)? = nil) throws -> CIImage {

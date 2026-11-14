@@ -5,6 +5,9 @@ import MCP
 extension AppMCPTool {
     var cullingDescription: (String, String)? {
         switch self {
+        case .cullPhotos:
+            ("Analyze up to \(MCPCullingReport.maximumPhotos) explicit photo versions or matches from an independent query without changing the native view. By default find bursts using visual similarity within the capture-time window, and recommend the sharpest photo of each group. Supply reference_photo_id to find similar photos without a time restriction. The report measures originals, returns no image, and only suggests candidates. Poll or cancel with the job tools.",
+             "job_id, then paged photo items with source and recipe revisions, original-thumbnail sharpness, clipping, group number, rank and recommendation, or similarity to the reference. Includes analysis counts and per-photo errors.")
         case .setQuery:
             ("Set library source, filters and sort. Use source_id from list_library_sources. Omitted criteria are preserved, and clear_filters clears stored criteria before applying any supplied fields. ISO 0 clears that bound. hold_results freezes membership and order.", "source_id, query, filter_settings, query_revision, counts and selection")
         case .refreshQuery:
@@ -121,6 +124,12 @@ struct MCPIndependentPhotoQuery {
             throw Self.manualOrderUnavailable
         }
         return query
+    }
+
+    @MainActor func isCurrent(in model: AppModel) -> Bool {
+        if source.hasPrefix("import:") { return source == model.lastImport?.scope }
+        if source.hasPrefix("related:") { return source == model.scope }
+        return true
     }
 
     private static let manualOrderUnavailable = MCPToolProblem.invalid("Manual order is available in regular collections.")

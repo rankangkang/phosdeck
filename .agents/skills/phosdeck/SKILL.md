@@ -11,7 +11,7 @@ Discover the connected tools and use their current schemas. Call `get_capabiliti
 If the server is off, have the user enable **Local MCP Server** in **Settings → Agent**. For a client that accepts `mcpServers` JSON, use **Copy JSON Configuration** for the Streamable HTTP address and bearer header. For Codex, use **Copy Codex Configuration** and supply the copied token through the named environment variable. Copy fresh connection details after a server restart.
 
 - For catalog changes, file access, import, folder review or recovery, read [Library and import workflows](references/library-and-import.md).
-- For filtering, selecting, comparing, marking or editing metadata, read [Culling and photo metadata](references/culling-and-metadata.md).
+- For filtering, assisted culling, comparing, selecting, marking or editing metadata, read [Culling and photo metadata](references/culling-and-metadata.md).
 - For collections, virtual copies, display stacks or RAW/JPEG pairs, read [Photo organization](references/organization.md).
 - For development, per-photo adjustment batches, exposure, color and preset strength trials, before/after, adjustment transfer or saved edits, read [Development and edit records](references/development.md).
 - For crop, perspective, pixel sampling, spot repair or local and smart masks, read [Canvas and local editing](references/canvas.md). Use a photo draft to try local edits on a 1:1 preview before saving.

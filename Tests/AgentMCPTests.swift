@@ -68,6 +68,40 @@ final class AgentMCPTests: XCTestCase {
         await tools.call(.init(name: tool.rawValue, arguments: arguments))
     }
 
+    private func cullingJob(_ tools: AppMCPTools, jobID: Value, pageSize: Int = 50) async throws -> [String: Value] {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+        repeat {
+            let result = await call(tools, .job, ["job_id": jobID, "page_size": .int(pageSize)])
+            XCTAssertEqual(result.isError, false, String(describing: result.structuredContent))
+            let state = data(result)
+            if state["phase"] == "finished" { return state }
+            try await Task.sleep(for: .milliseconds(15))
+        } while ContinuousClock.now < deadline
+        XCTFail("Timed out waiting for assisted culling.")
+        return [:]
+    }
+
+    private func cullingPNG(_ url: URL, detail: Bool = false, other: Bool = false) throws {
+        let width = 320, height = 192
+        var pixels = [UInt8](repeating: 255, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let base = other ? 70 + (x * 124 / width) : 70 + (y * 124 / height)
+                let texture = detail ? ((x / 2 + y / 2).isMultiple(of: 2) ? 38 : -38) : 0
+                let code = UInt8(base + texture), offset = (y * width + x) * 4
+                pixels[offset] = code; pixels[offset + 1] = code; pixels[offset + 2] = code
+            }
+        }
+        let provider = try XCTUnwrap(CGDataProvider(data: Data(pixels) as CFData))
+        let image = try XCTUnwrap(CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
+                                        bytesPerRow: width * 4, space: ImagePipeline.outputSpace,
+                                        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue),
+                                        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+    }
+
     @MainActor func testPagingTracksQueryAndDatabaseWithoutChangingSelection() async throws {
         let (catalog, model, tools) = try fixture()
         let emptyModel = AppModel()
@@ -312,6 +346,171 @@ final class AgentMCPTests: XCTestCase {
         checkError(revokedResult, "image_access_disabled")
         XCTAssertEqual(revokedResult.content.count, 1)
         XCTAssertNil(model.activeID)
+    }
+
+    @MainActor func testAssistedCullingRanksBurstAndFindsReferenceWithoutChangingWorkspace() async throws {
+        let (directory, catalog) = try temporaryCatalog()
+        let root = try catalog.addRoot(url: directory, bookmark: AccessLease.bookmark(directory, readOnly: true))
+        for (index, id) in ["soft", "sharp", "other", "later"].enumerated() {
+            let url = directory.appendingPathComponent(id + ".png")
+            try cullingPNG(url, detail: id == "sharp", other: id == "other")
+            var photo = try ReferenceImporter.inspect(url: url, root: root, rootURL: directory)
+            photo.id = id
+            photo.captureDate = "2026-10-21T08:00:" + ["00", "01", "02", "30"][index] + "+08:00"
+            try catalog.index(photo)
+        }
+        let alias = try XCTUnwrap(catalog.createVirtualCopies(ids: ["sharp"]).first?.id)
+        try catalog.index(Photo(id: "missing", rootID: root.id, relativePath: "missing.png",
+                                identity: Data(), identityKey: "missing", width: 320, height: 192, availability: "missing"))
+        let model = AppModel()
+        model.catalog = catalog
+        model.search = "other"
+        model.selection = ["other"]
+        model.activeID = "other"
+        try model.reload()
+        let tools = tools(model)
+        let workspace = data(await call(tools, .workspace))
+        let session = try XCTUnwrap(workspace["catalog_session_id"])
+        let args: [String: Value] = ["catalog_session_id": session, "query": ["sort": "filename"]]
+        let accepted = await call(tools, .cullPhotos, args)
+        XCTAssertEqual(accepted.content.count, 1)
+        let jobID = try XCTUnwrap(data(accepted)["job_id"])
+        let finished = try await cullingJob(tools, jobID: jobID, pageSize: 2)
+        XCTAssertEqual(finished["state"], "partially_succeeded", String(describing: finished))
+        XCTAssertEqual(finished["commit_state"], "not_committed")
+        XCTAssertEqual(finished["analyzed_count"], 5)
+        XCTAssertEqual(finished["group_count"], 1)
+        XCTAssertEqual(finished["grouped_count"], 2)
+        let rows = try XCTUnwrap(finished["items"]?.arrayValue?.compactMap(\.objectValue))
+        XCTAssertEqual(rows.map { $0["photo_id"] }, ["sharp", "soft"])
+        XCTAssertEqual(rows.map { $0["recommended"] }, [true, false])
+        XCTAssertEqual(rows.map { $0["rank"] }, [1, 2])
+        XCTAssertGreaterThan(try XCTUnwrap(rows[0]["sharpness"]?.number), try XCTUnwrap(rows[1]["sharpness"]?.number))
+        let next = data(await call(tools, .job, ["job_id": jobID, "offset": try XCTUnwrap(finished["next_offset"])]))
+        let remaining = try XCTUnwrap(next["items"]?.arrayValue?.compactMap(\.objectValue))
+        for id in ["other", "later", alias] {
+            XCTAssertEqual(remaining.first { $0["photo_id"] == .string(id) }?["group_number"], .null)
+        }
+        XCTAssertEqual(remaining.last?["error_code"], "file_access_required")
+        let rankedIDs = try rows.map { try XCTUnwrap($0["photo_id"]) }
+        let sheetArgs: [String: Value] = ["catalog_session_id": session, "photo_ids": .array(rankedIDs),
+                                          "page_size": 1, "contact_sheet": true]
+        checkError(await call(tools, .listPhotos, sheetArgs), "image_access_disabled")
+        tools.setSharesImages(true)
+        let sheet = await call(tools, .listPhotos, sheetArgs)
+        XCTAssertEqual(sheet.content.count, 2)
+        let firstCell = try XCTUnwrap(data(sheet)["items"]?.arrayValue?.first?.objectValue)
+        XCTAssertEqual(firstCell["photo_id"], "sharp")
+        XCTAssertEqual(firstCell["number"], 1)
+        XCTAssertEqual(data(sheet)["query_mode"], "explicit")
+        let nextSheet = data(await call(tools, .listPhotos, ["catalog_session_id": session,
+            "cursor": try XCTUnwrap(data(sheet)["next_cursor"]), "contact_sheet": true]))
+        XCTAssertEqual(nextSheet["items"]?.arrayValue?.first?.objectValue?["photo_id"], "soft")
+        XCTAssertEqual(nextSheet["items"]?.arrayValue?.first?.objectValue?["number"], 2)
+        let tile = await call(tools, .preview, ["catalog_session_id": session, "photo_id": "sharp",
+            "source_revision": try XCTUnwrap(rows[0]["source_revision"]), "recipe_revision": try XCTUnwrap(rows[0]["recipe_revision"]),
+            "resolution": "native", "region_pixels": ["x": 16, "y": 16, "width": 32, "height": 24]])
+        XCTAssertEqual(tile.content.count, 2)
+        XCTAssertEqual(data(tile)["width"], 32)
+        XCTAssertEqual(data(tile)["height"], 24)
+        checkError(await call(tools, .listPhotos, ["catalog_session_id": session, "photo_ids": ["absent"]]), "photo_unavailable")
+
+        let similar = data(await call(tools, .cullPhotos, ["catalog_session_id": session,
+            "photo_ids": ["later", "missing", "other", "sharp", "soft", .string(alias)], "reference_photo_id": "sharp"]))
+        let matches = try await cullingJob(tools, jobID: XCTUnwrap(similar["job_id"]))
+        XCTAssertEqual(matches["mode"], "similar")
+        XCTAssertEqual(matches["match_count"], 2)
+        let matched = try XCTUnwrap(matches["items"]?.arrayValue?.compactMap(\.objectValue))
+        XCTAssertEqual(Set(matched.prefix(2).compactMap { $0["photo_id"]?.stringValue }), ["soft", "later"])
+
+        let before = try XCTUnwrap(catalog.photo("sharp"))
+        let baseline = try await model.pipeline.baseline(.init(photo: before, root: root, recipe: nil))
+        var darkened = baseline
+        darkened.exposure = -3
+        darkened.crop = Crop(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        try catalog.saveRecipe(id: "sharp", recipe: darkened)
+        let afterEdit = data(await call(tools, .cullPhotos, ["catalog_session_id": session, "photo_ids": ["sharp", "soft"]]))
+        let repeated = try await cullingJob(tools, jobID: XCTUnwrap(afterEdit["job_id"]))
+        XCTAssertEqual(repeated["items"]?.arrayValue?.first?.objectValue?["sharpness"], rows[0]["sharpness"])
+        XCTAssertEqual(repeated["items"]?.arrayValue?.first?.objectValue?["recipe_revision"], 1)
+        let final = data(await call(tools, .workspace))
+        for key in ["source_id", "query", "query_revision", "selection_revision", "active_photo_id", "selected_photo_ids", "page_offset", "view"] {
+            XCTAssertEqual(final[key], workspace[key], key)
+        }
+        XCTAssertEqual(try catalog.photo("sharp")?.flag, 0)
+        XCTAssertNil(try catalog.photo("soft")?.recipe)
+        XCTAssertTrue(try catalog.stacks().isEmpty)
+        XCTAssertFalse(model.undo.canUndo)
+
+        try cullingPNG(directory.appendingPathComponent("soft.png"), other: true)
+        let changed = data(await call(tools, .cullPhotos, ["catalog_session_id": session, "photo_ids": ["soft"]]))
+        let staleFile = try await cullingJob(tools, jobID: XCTUnwrap(changed["job_id"]))
+        XCTAssertEqual(staleFile["state"], "failed")
+        XCTAssertEqual(staleFile["items"]?.arrayValue?.first?.objectValue?["state"], "unavailable")
+        checkError(await call(tools, .cullPhotos, ["catalog_session_id": session]), "invalid_arguments")
+    }
+
+    @MainActor func testCullingCancellationAndCatalogScopeDoNotAffectTheWorkspace() async throws {
+        let (catalog, model, tools) = try fixture()
+        _ = await call(tools, .workspace)
+        let start = data(try tools.workflows.startCulling(["query": [:]], catalog: catalog).response())
+        let jobID = try XCTUnwrap(start["job_id"])
+        XCTAssertTrue(model.workspaceAvailable)
+        XCTAssertNil(model.task)
+        XCTAssertThrowsError(try tools.workflows.startCulling(["query": [:]], catalog: catalog)) { error in
+            XCTAssertEqual((error as? MCPToolProblem)?.code, "workspace_busy")
+        }
+        let response = try tools.workflows.control(.cancelJob, arguments: ["job_id": jobID])
+        XCTAssertEqual(data(response.response())["cancel_requested"], true)
+        let cancelled = try await cullingJob(tools, jobID: jobID)
+        XCTAssertEqual(cancelled["state"], "cancelled")
+        XCTAssertEqual(cancelled["total"], 0)
+        XCTAssertEqual(cancelled["commit_state"], "not_committed")
+        try model.activateCatalog(catalog)
+        checkError(await call(tools, .job, ["job_id": jobID]), "catalog_changed")
+    }
+
+    @MainActor func testCullingMeasuresPublicRAWWithoutCreatingAnEditRecipe() async throws {
+        let fixture = try MoreRAWTests.sample("leica_m8_8bit_uncompressed.DNG")
+        let (directory, catalog) = try temporaryCatalog()
+        let root = try catalog.addRoot(url: directory, bookmark: AccessLease.bookmark(directory, readOnly: true))
+        let url = directory.appendingPathComponent("raw.DNG")
+        try FileManager.default.copyItem(at: fixture, to: url)
+        let photo = try ReferenceImporter.inspect(url: url, root: root, rootURL: directory)
+        XCTAssertTrue(photo.isRAW)
+        try catalog.index(photo)
+        let model = AppModel()
+        model.catalog = catalog
+        try model.reload()
+        let tools = tools(model)
+        let session = Value.string(try XCTUnwrap(model.catalogSessionID))
+        let start = data(await call(tools, .cullPhotos, ["catalog_session_id": session, "photo_ids": [.string(photo.id)]]))
+        let report = try await cullingJob(tools, jobID: XCTUnwrap(start["job_id"]))
+        XCTAssertEqual(report["state"], "succeeded", String(describing: report))
+        let row = try XCTUnwrap(report["items"]?.arrayValue?.first?.objectValue)
+        XCTAssertTrue((0...100).contains(try XCTUnwrap(row["sharpness"]?.number)))
+        XCTAssertTrue((0...1).contains(try XCTUnwrap(row["shadow_clip_fraction"]?.number)))
+        XCTAssertTrue((0...1).contains(try XCTUnwrap(row["highlight_clip_fraction"]?.number)))
+        XCTAssertNil(try catalog.photo(photo.id)?.recipe)
+        XCTAssertTrue(try catalog.editHistory(photoID: photo.id).isEmpty)
+        XCTAssertEqual(try SafeFileWriter.sha256(url), try SafeFileWriter.sha256(fixture))
+    }
+
+    func testCullingClippingCountsOpaqueSamplesAndRejectsFeaturelessSimilarity() throws {
+        let bytes: [UInt8] = [
+            0, 0, 0, 255, 255, 0, 0, 255, 0, 0, 0, 0, 64, 64, 64, 128
+        ]
+        let provider = try XCTUnwrap(CGDataProvider(data: Data(bytes) as CFData))
+        let image = try XCTUnwrap(CGImage(width: 4, height: 1, bitsPerComponent: 8, bitsPerPixel: 32,
+                                        bytesPerRow: 16, space: ImagePipeline.outputSpace,
+                                        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue),
+                                        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+        let metrics = try XCTUnwrap(CullingMetrics.measure(image))
+        let expected = 1 / (2 + 128.0 / 255)
+        XCTAssertEqual(metrics.shadowClipFraction, expected, accuracy: 0.00001)
+        XCTAssertEqual(metrics.highlightClipFraction, expected, accuracy: 0.00001)
+        XCTAssertNil(metrics.sharpness)
+        XCTAssertNil(metrics.similarity(to: metrics))
     }
 
     @MainActor func testRatingIsExplicitDeduplicatedAndUsesNativeUndo() async throws {

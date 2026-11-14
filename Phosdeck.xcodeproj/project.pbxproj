@@ -19,6 +19,8 @@
 		AA790000000000000000003A /* AppMCPCulling.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004A /* AppMCPCulling.swift */; };
 		AA79000000000000000000C0 /* AppMCPContactSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA79000000000000000000C1 /* AppMCPContactSheet.swift */; };
 		AA79000000000000000000C2 /* AppMCPAdjustmentBatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA79000000000000000000C3 /* AppMCPAdjustmentBatch.swift */; };
+		AA79000000000000000000C4 /* AppMCPCullingReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA79000000000000000000C5 /* AppMCPCullingReport.swift */; };
+		AA79000000000000000000C6 /* CullingMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA79000000000000000000C7 /* CullingMetrics.swift */; };
 		AA790000000000000000003B /* AppMCPMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004B /* AppMCPMetadata.swift */; };
 		AA790000000000000000003C /* AppMCPCollections.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004C /* AppMCPCollections.swift */; };
 		AA790000000000000000003D /* AppMCPVersions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004D /* AppMCPVersions.swift */; };
@@ -288,6 +290,8 @@
 		AA790000000000000000004A /* AppMCPCulling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPCulling.swift; sourceTree = "<group>"; };
 		AA79000000000000000000C1 /* AppMCPContactSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPContactSheet.swift; sourceTree = "<group>"; };
 		AA79000000000000000000C3 /* AppMCPAdjustmentBatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPAdjustmentBatch.swift; sourceTree = "<group>"; };
+		AA79000000000000000000C5 /* AppMCPCullingReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPCullingReport.swift; sourceTree = "<group>"; };
+		AA79000000000000000000C7 /* CullingMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CullingMetrics.swift; sourceTree = "<group>"; };
 		AA790000000000000000004B /* AppMCPMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPMetadata.swift; sourceTree = "<group>"; };
 		AA790000000000000000004C /* AppMCPCollections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPCollections.swift; sourceTree = "<group>"; };
 		AA790000000000000000004D /* AppMCPVersions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPVersions.swift; sourceTree = "<group>"; };
@@ -762,6 +766,7 @@
 				AA790000000000000000004A /* AppMCPCulling.swift */,
 				AA79000000000000000000C1 /* AppMCPContactSheet.swift */,
 				AA79000000000000000000C3 /* AppMCPAdjustmentBatch.swift */,
+				AA79000000000000000000C5 /* AppMCPCullingReport.swift */,
 				AA790000000000000000004B /* AppMCPMetadata.swift */,
 				AA790000000000000000004C /* AppMCPCollections.swift */,
 				AA790000000000000000004D /* AppMCPVersions.swift */,
@@ -847,6 +852,7 @@
 				D18B00020000000000000001 /* PhotoFileType.swift */,
 				D19000020000000000000001 /* PNGValidation.swift */,
 				764A78C6D034125EE59E8F92 /* ImageHistogram.swift */,
+				AA79000000000000000000C7 /* CullingMetrics.swift */,
 				DD7FF6D65F7384866D5FA9BD /* ImagePipeline.swift */,
 				DCF21A75CCEEC04B8D2BBE53 /* Masking.swift */,
 				A7E3C91B4D2F48A0B6C1E905 /* SpotRepair.swift */,
@@ -1186,6 +1192,7 @@
 				AA790000000000000000003A /* AppMCPCulling.swift in Sources */,
 				AA79000000000000000000C0 /* AppMCPContactSheet.swift in Sources */,
 				AA79000000000000000000C2 /* AppMCPAdjustmentBatch.swift in Sources */,
+				AA79000000000000000000C4 /* AppMCPCullingReport.swift in Sources */,
 				AA790000000000000000003B /* AppMCPMetadata.swift in Sources */,
 				AA790000000000000000003C /* AppMCPCollections.swift in Sources */,
 				AA790000000000000000003D /* AppMCPVersions.swift in Sources */,
@@ -1251,6 +1258,7 @@
 				D18B00010000000000000001 /* PhotoFileType.swift in Sources */,
 				D19000010000000000000001 /* PNGValidation.swift in Sources */,
 				6D3B86F581439582577B2F90 /* ImageHistogram.swift in Sources */,
+				AA79000000000000000000C6 /* CullingMetrics.swift in Sources */,
 				C6519DE165001862FA01C861 /* ImagePipeline.swift in Sources */,
 				2D1AD4390B30DFEE30FC8851 /* ImportPlanner.swift in Sources */,
 				1EFFA155B4E1DC28F66EE1C5 /* ImportRecoverySheet.swift in Sources */,

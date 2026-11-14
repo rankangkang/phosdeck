@@ -37,6 +37,7 @@ targets:
       # Includes the local MCP service and tools under App/.
       # Includes AppMCPContactSheet.swift for numbered Agent previews.
       # Includes AppMCPAdjustmentBatch.swift for per-photo adjustment plans.
+      # Includes AppMCPCullingReport.swift and CullingMetrics.swift for assisted culling.
       # Includes AppMCPPreferences.swift, AppMCPMaintenance.swift, and AppMCPCameraDiagnostics.swift.
       # Includes MergePanoramaFinish.swift and MergeDNGCodec.swift for float panorama finishing and linear DNG masters.
       # Includes native multiframe merge registration, MergeCameraRefinement, depth-gated FocusStackFusion, float masters and UI.

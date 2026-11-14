@@ -34,6 +34,7 @@
 |---|---|---|
 | `set_library_query`、`refresh_library_query` | 切换来源、筛选分区和开关，设置文件名、星级比较、旗标、色标、关键词、相机／镜头／ISO／日期、排序方向、手工顺序及冻结结果。返回新的查询状态 | `setScope`、`filterChanged`、`clearFilters`、`refreshResults`、`CatalogStore.holdResults`。复用冻结范围和排序 |
 | `list_photos`、`list_selected_photos`、`select_photos` | 对当前视图或独立来源和筛选分页，可返回带编号的缩略图拼图。读取当前选择，显式选择、取消或打开指定版本 | `CatalogStore.page`、`ThumbnailService`、`choose`、`selectAllResults`／`selectStackMembers`、`openVersion`。全选包含跨页和折叠的匹配成员 |
+| `analyze_photo_culling` | 从指定范围找相似连拍并按清晰度排序，或围绕一张参考照查相似画面。报告含照片版本与剪切比例 | 后台分析原片缩略图，沿用独立筛选、文件身份检查与可取消的分页任务 |
 | `navigate_library` | 前后照片、页、浏览前进／后退及已有位置 ID。返回新位置、可见范围与活动照片 | `move`、`changePage`、`navigateBrowse`、`recentBrowseLocations`。保留原有浏览历史 |
 | `set_workspace_view`、`set_viewport` | 网格／单图／编辑／比较／调查视图、编辑工具、适合／填满／倍率、平移中心、锁定位置及比较联动。返回当前视图及实际倍率 | `selectWorkspace`／`selectDevelopTool`／`selectZoom`、`PhotoViewport`、`PhotoComparison.setLinked`。只改变工作区 |
 | `set_compare_photos`、`set_survey_photos` | 指定比较对象、交换、候选转参考、限定当前组／全部结果、比较相关版本。调查选择、移除、翻页及打开单张 | `beginComparison`／`swapComparison`／`promoteComparisonCandidate`／`restrictComparisonToGroup`／`compareRelatedVersions`、`beginSurvey`／`updateSurveySelection`／`removeFromSurvey`／`changeSurveyPage` |
@@ -162,7 +163,7 @@
 
 导入、智能选择、合成和导出以任务 ID 连接准备、预览、执行及结果。任务提供进度、阶段、已完成对象、失败原因、取消入口及实际支持的恢复动作。文件或选项选择面板对应等待用户输入状态，用户完成后可继续同一任务。
 
-任务使用 `queued`、`running`、`waiting_for_user`、`succeeded`、`partially_succeeded`、`failed` 和 `cancelled`。同一工作区一次运行一个任务，服务保留最近 64 个临时任务；复制导入和导出的持久记录可从原图库查询。取消请求先返回当前状态，达到终态后按已提交或已发布内容报告结果。客户端断线后通过 `get_job` 查询业务状态，取消通过 `cancel_job` 进入原生取消流程。服务关闭时停止接受新调用，并按现有任务的提交边界结束或取消执行。
+任务使用 `queued`、`running`、`waiting_for_user`、`succeeded`、`partially_succeeded`、`failed` 和 `cancelled`。同一工作区一次运行一个工作区任务，另可同时运行一个辅助选片分析。服务保留最近 64 个临时任务，复制导入和导出的持久记录可从原图库查询。取消请求先返回当前状态，达到终态后按已提交或已发布内容报告结果。客户端断线后通过 `get_job` 查询业务状态，`cancel_job` 取消指定任务。服务关闭时停止接受新调用，并按现有任务的提交边界结束或取消执行。
 
 ### 本地连接
 
@@ -203,7 +204,7 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 |---|---|---|
 | `get_capabilities` | `{}` | 应用名称、版本、bundle ID、`instance_id`、各已注册工具的当前可用性及原因，图像共享状态。取自 `Bundle`、服务设置及 `AppModel` 的可用条件 |
 | `get_workspace` | `{}` | `catalog_session_id`、`request_epoch`、图库显示名、当前来源和查询、视图和工具、活动 `photo_id` 与修订号、选择数量及最多 50 个 ID、是否截断、任务和原生编辑状态。MCP 试修单独返回 `photo_draft`，为空表示没有草稿。完整选择用 `list_selected_photos` 分页 |
-| `list_photos` | `catalog_session_id`，可选 `query`、`cursor`、`page_size`、`listing`、`contact_sheet` | `items`、`source_id`、`query_mode`、`page_offset`、`matched_count`、`visible_count`、`next_cursor`。每项含编号、`photo_id`、名称、版本、源与配方修订号、拍摄信息、评级、旗标、色标、源可用性和堆叠信息。拼图请求另附 PNG 和格子坐标 |
+| `list_photos` | `catalog_session_id`，可选 `query` 或 `photo_ids`、`cursor`、`page_size`、`listing`、`contact_sheet` | `items`、`source_id`、`query_mode`、`page_offset`、`matched_count`、`visible_count`、`next_cursor`。每项含编号、`photo_id`、名称、版本、源与配方修订号、拍摄信息、评级、旗标、色标、源可用性和堆叠信息。拼图请求另附 PNG 和格子坐标 |
 | `get_photo_preview` | `catalog_session_id`、`photo_id`、`source_revision`、`recipe_revision`，支持缩放预览、[1:1 局部预览和尺寸检查](#画布几何和局部编辑接口) | `preview_id`、目标身份、原分辨率画布与实际图像尺寸、坐标空间与直方图，另附 PNG。使用 `CatalogStore.photo`、`ImageRequest` 和 `ImagePipeline.render`，校验图像共享、来源及版本 |
 | `set_photo_rating` | `catalog_session_id`、`photo_id`、`expected_rating`、`rating`（两种评级均为 0 至 5 的整数）、`request_epoch`、`request_id` | `photo_id`、`previous_rating`、`rating`、`changed`、`commit_state`、`operation_id`。复用 `AppModel.updateOrganization` 的保存和回读。MCP 明确指定目标，事务校验期望评级，并关闭自动前进 |
 | `undo_operation` | `catalog_session_id`、`operation_id`、`request_epoch`、`request_id` | 被撤销的 `operation_id`、已核对的恢复结果及 `commit_state`。复用 `AppModel.undo`，栈顶身份或当前值冲突返回 `undo_conflict` |
@@ -224,11 +225,20 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 `set_library_query` 接受 `list_library_sources` 返回的 `source_id`、原生筛选条件和排序。传入条件会启用相应筛选分区，也可显式控制 `filter_sections` 和 `filters_enabled`。`filters_open` 只控制筛选器显示。`hold_results` 冻结成员和顺序，`refresh_library_query` 重新计算。根据 `get_workspace` 的 `query_revision` 和 `selection_revision` 可核对全选、增减选择等依赖当前工作区的操作。
 
-`list_photos` 省略 `query` 时读取当前工作区，默认 `listing=visible`。传入 `query` 对象时独立查询，`{}` 从所有照片开始，`source_id` 可取自 `list_library_sources`。支持文件名、星级比较、旗标、色标、关键词、相机、镜头、ISO、包含两端的拍摄日期，以及文件名、拍摄时间、星级和普通集合手工顺序。独立查询默认按拍摄时间升序，`listing=matches` 包含折叠组员；可显式改用 `visible`。智能集合保存的规则与本次条件同时生效。续页传 `next_cursor`，省略 `query`，并沿用首屏页大小和列表类型。原生来源、筛选、排序、页位置、选中和活动照片由用户继续控制。独立查询的 `query_mode` 为 `independent`，需要界面查询代次的写入仍从 `get_workspace` 读取 `query_revision`。
+`list_photos` 省略 `query` 和 `photo_ids` 时读取当前工作区，默认 `listing=visible`。传入 `query` 对象时独立查询，`{}` 从所有照片开始，`source_id` 可取自 `list_library_sources`。支持文件名、星级比较、旗标、色标、关键词、相机、镜头、ISO、包含两端的拍摄日期，以及文件名、拍摄时间、星级和普通集合手工顺序。独立查询默认按拍摄时间升序，`listing=matches` 包含折叠组员，可显式改用 `visible`。智能集合保存的规则与本次条件同时生效。也可单独提供 `photo_ids`，按指定顺序读取候选，结果的 `query_mode` 为 `explicit`。续页传 `next_cursor`，省略 `query` 和 `photo_ids`，并沿用首屏页大小和列表类型。原生来源、筛选、排序、页位置、选中和活动照片由用户继续控制。独立查询的 `query_mode` 为 `independent`，需要界面查询代次的写入仍从 `get_workspace` 读取 `query_revision`。
 
 例如，用 `{"catalog_session_id":"…","query":{"rating_threshold":4,"date_from":"2026-11-09","date_through":"2026-11-15","sort":"captureDate","descending":true},"contact_sheet":true}` 查看指定日期内四星及以上的照片。拼图默认每页 12 张，最大 24 张，复用原生缩略图并显示保存版本。续页仍需传 `contact_sheet:true`。照片的 `number` 贯穿这次列表的各页，PNG 从左至右、从上至下排布。每行给出从拼图左上角起算的 `cell_pixels` 和实际照片的 `image_pixels`。原片失效或无法读取时，该格保留编号和缺图标记，行内的 `thumbnail_status` 和 `thumbnail_error` 给出原因。空页返回空列表。取图沿用预览共享开关。
 
 选出候选后，用对应条目的 `photo_id`、`source_revision` 和 `recipe_revision` 调用 `get_photo_preview`。设置 `resolution=native` 并传照片内的 `region` 或 `region_pixels` 可获取 1:1 局部。把拼图中的目标区域相对于该格的 `image_pixels` 换算为照片内的归一化坐标，再作为 `region` 传入。需要先知道原生尺寸或分块大小时，使用 `plan_only:true`。
+
+#### 辅助选片
+
+`analyze_photo_culling` 需要 `catalog_session_id`，并接受一组明确的 `photo_ids` 或一个与 `list_photos` 同结构的独立 `query`。一次最多分析 1,000 个照片版本，超过时先缩小范围。调用会返回 `job_id`，用 `get_job` 查看进度和结果，用 `next_offset` 翻页。分析期间用户可继续浏览。图库内容在分析期间变化时，任务提示重新分析。
+
+- **按连拍找候选。** 相邻照片的拍摄间隔默认不超过 10 秒，并且须与组内第一张达到 0.93 的画面相似度。用 `interval_seconds` 与 `minimum_similarity` 调整阈值。同一原片的虚拟版本只算一次，缺少可比较时间的照片仍可得到清晰度与剪切比例。结果把同组照片排在一起，`rank=1` 和 `recommended=true` 表示组内清晰度最高的候选。
+- **按参考照找相似。** 传入 `reference_photo_id` 后，按与参考照的相似度从高到低返回匹配，默认阈值为 0.8。搜索范围内参考照的同原片版本会排除，候选无需满足拍摄时间条件。
+
+指标来自最长边 320 像素的原片缩略图。清晰度 `sharpness` 为 0–100，适合在同一组内比较。高光与阴影剪切分别给出 0–1 的比例，依据缩略图显示值。报告只返回数值和身份字段。可用候选的 `photo_ids` 调用 `list_photos(contact_sheet=true)` 取有序拼图，再取候选的 1:1 局部，两种取图都沿用照片预览共享。看完后可用 `edit_photo_stack` 建堆叠或用 `set_photo_marks` 打标。结果中的不可读取项含 `error_code`。
 
 `list_selected_photos` 按版本 ID 分页，包含跨页或折叠的已选版本。`select_photos` 可替换、增加、移除或清空选择，也可选中全部命中或一个堆叠的匹配成员。打开指定版本使用 `open_version`，浏览位置和前后页用 `navigate_library`。
 

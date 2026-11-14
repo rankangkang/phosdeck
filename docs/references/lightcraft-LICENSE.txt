@@ -187,3 +187,12 @@ by LightCraft at fd0b914e6c2bdb274ef05d8904f6f631a4c7d44a (2026-11-12), in
 crates/engine/src/lightroom_catalog.rs, preset_import.rs and
 lightroom_catalog/tests.rs. Swift parsing, GRDB reads, file handling, reporting
 and Phosdeck recipe conversion are native implementations. MIT option.
+
+CullingMetrics.swift adapts the block Laplacian focus response and the 8-by-8
+normalized luminance signature from crates/pipeline/src/cull.rs at
+361e3bc0c838ffe5e5cea515b1fe5b71951989c6 (2026-11-12), including its
+blur_lowers_focus_and_signatures_match regression. The burst and reference
+workflows were reviewed in crates/engine/src/cmd/{cull,similar}.rs and the
+similar.rs worker tests. Phosdeck uses its own color and alpha sampling,
+source decoding and verification, group boundaries, candidate report and
+MCP job lifecycle. MIT option.

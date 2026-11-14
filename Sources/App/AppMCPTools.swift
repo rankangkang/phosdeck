@@ -7,6 +7,7 @@ enum AppMCPTool: String, CaseIterable {
     case capabilities = "get_capabilities"
     case workspace = "get_workspace"
     case listPhotos = "list_photos"
+    case cullPhotos = "analyze_photo_culling"
     case preview = "get_photo_preview"
     case editPhotoDraft = "edit_photo_draft"
     case rate = "set_photo_rating"
@@ -69,6 +70,7 @@ enum AppMCPTool: String, CaseIterable {
     enum Field: String {
         case catalog = "catalog_session_id", photo = "photo_id", cursor, pageSize = "page_size"
         case query, contactSheet = "contact_sheet"
+        case minimumSimilarity = "minimum_similarity"
         case sourceRevision = "source_revision", recipeRevision = "recipe_revision", longEdge = "long_edge"
         case expectedRating = "expected_rating", rating, epoch = "request_epoch", request = "request_id", operation = "operation_id"
         case offset, purpose, access = "access_id", recent = "recent_catalog_id", name, root = "root_id", folder = "folder_id"
@@ -270,7 +272,12 @@ enum AppMCPTool: String, CaseIterable {
                 return ["type": "array", "minItems": .int(count.lowerBound), "maxItems": .int(count.upperBound),
                         "uniqueItems": true, "items": identifierSchema]
             case .interval:
-                return ["type": "number", "minimum": 0, "maximum": 86400]
+                var schema: [String: Value] = ["type": "number", "minimum": 0, "maximum": 86400]
+                if tool == .cullPhotos { schema["default"] = .double(MCPCullingReport.defaultInterval) }
+                return .object(schema)
+            case .minimumSimilarity:
+                return ["type": "number", "minimum": 0, "maximum": 1,
+                        "description": "Defaults to 0.93 for bursts or 0.8 when a reference photo is supplied."]
             case .rules: return MCPCollectionState.rulesSchema
             case .versionRevisions:
                 let revision: Value = ["type": "integer", "minimum": 0]
@@ -357,6 +364,7 @@ enum AppMCPTool: String, CaseIterable {
             case .amount: return value.number.map((tool == .localAdjustments ? 0.0...1.0 : 0.0...2.0).contains) ?? false
             case .delta: return value.number.map((tool == .adjustPreview ? -200.0...200.0 : -5.0...5.0).contains) ?? false
             case .interval: return value.number.map((0...86400).contains) ?? false
+            case .minimumSimilarity: return value.number.map((0...1).contains) ?? false
             case .rules: return value.objectValue != nil
             case .versionRevisions:
                 guard let values = value.objectValue, (1...1000).contains(values.count) else { return false }
@@ -453,6 +461,7 @@ enum AppMCPTool: String, CaseIterable {
         switch self {
         case .capabilities, .workspace, .recentCatalogs: []
         case .listPhotos, .listSelected, .librarySources, .importRecords, .setQuery, .refreshQuery, .viewport, .clipping, .keywords: [.catalog]
+        case .cullPhotos: [.catalog]
         case .preview: [.catalog, .photo, .sourceRevision, .recipeRevision]
         case .editPhotoDraft: [.catalog, .action]
         case .rate: [.catalog, .photo, .expectedRating, .rating]
@@ -565,7 +574,8 @@ enum AppMCPTool: String, CaseIterable {
 
     private var optionalFields: [Field] {
         switch self {
-        case .listPhotos: [.cursor, .pageSize, .listing, .query, .contactSheet]
+        case .listPhotos: [.cursor, .pageSize, .listing, .query, .contactSheet, .photoIDs]
+        case .cullPhotos: [.query, .photoIDs, .referencePhoto, .interval, .minimumSimilarity]
         case .listSelected: [.cursor, .pageSize]
         case .setQuery: MCPLibraryCriteria.fields + [.hold, .filtersEnabled, .filterSections, .filtersOpen, .clearFilters, .queryRevision]
         case .refreshQuery: [.queryRevision]
@@ -661,7 +671,7 @@ enum AppMCPTool: String, CaseIterable {
     }
     var writes: Bool {
         switch self {
-        case .capabilities, .workspace, .listPhotos, .listSelected, .preview, .librarySources, .recentCatalogs, .importRecords, .job, .keywords,
+        case .capabilities, .workspace, .listPhotos, .listSelected, .cullPhotos, .preview, .librarySources, .recentCatalogs, .importRecords, .job, .keywords,
              .getCollection, .listVersions, .listEditRecords, .listStacks, .listPairs, .photoRecipe, .listPresets,
              .samplePreview, .spotRepairs, .maskState, .listLocalPresets, .getMergePreview, .listExportPresets, .getExportPreview, .exportRecords,
              .getPreferences, .listLanguagePacks, .storageUsage, .getCameraDiagnosticPreview: false
@@ -683,7 +693,7 @@ enum AppMCPTool: String, CaseIterable {
             description = "Read the current catalog, query, active photo, selection and native task state before working on photos."
             output = "catalog_session_id, request_epoch, catalog_name, source, query, view, tool, active_photo, selected_photo_ids, selection_count, selection_truncated, busy, modal, draft, photo_draft, task, before_after, adjustment_preview, canvas, and adjustment transfer sources."
         case .listPhotos:
-            description = "Read photos without changing the workspace. Pass query with source_id (default all), filters and sort for an independent query, or omit it to read the current view. listing=matches includes folded stack members and defaults for independent queries; listing=visible respects folding. Continue with next_cursor and omit query. Set contact_sheet=true to receive a numbered PNG alongside the page (default 12, max \(MCPContactSheet.maximumCount) photos; requires photo preview sharing)."
+            description = "Read photos without changing the workspace. Pass query with source_id (default all), filters and sort for an independent query, or pass photo_ids to review explicit versions in input order. Omit both to read the current view. listing=matches includes folded stack members and defaults for independent queries; listing=visible respects folding. Explicit IDs include all supplied versions. Continue with next_cursor and omit query and photo_ids. Set contact_sheet=true to receive a numbered PNG alongside the page (default 12, max \(MCPContactSheet.maximumCount) photos; requires photo preview sharing)."
             output = "items with number, photo_id, name, version_name, source_revision, recipe_revision, marks, source_status and stack. query_mode, source_id, page_offset, matched_count, visible_count and next_cursor. With contact_sheet, items also describe cell_pixels, image_pixels and thumbnail_status for the numbered PNG. Pass a candidate's ID and revisions to get_photo_preview with resolution=native for a 1:1 region."
         case .preview:
             description = "Render an explicit photo version as an sRGB PNG when image sharing is on. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. The default scaled resolution accepts a normalized top-left region. Use resolution=native with region or an integer top-left region_pixels for an unscaled tile of the edited frame. Omit long_edge in native mode. Use plan_only=true to check the tile dimensions and limits without receiving pixels; omit the region to inspect the full frame. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
@@ -803,37 +813,34 @@ final class AppMCPTools {
         case workspace(query: PhotoQuery, source: String, generation: UUID)
         case selection(query: PhotoQuery, source: String, generation: UUID, selection: UUID)
         case independent(MCPIndependentPhotoQuery)
+        case explicit([String])
 
         var mode: String {
             switch self {
             case .workspace: "workspace"
             case .selection: "selection"
             case .independent: "independent"
+            case .explicit: "explicit"
             }
         }
         var defaultListing: Listing {
             switch self {
             case .workspace: .visible
             case .selection: .selection
-            case .independent: .matches
+            case .independent, .explicit: .matches
             }
         }
-        var source: String {
+        var source: String? {
             switch self {
             case .workspace(_, let source, _), .selection(_, let source, _, _): source
             case .independent(let query): query.source
+            case .explicit: nil
             }
         }
         var generation: UUID? {
             switch self {
             case .workspace(_, _, let generation), .selection(_, _, let generation, _): generation
-            case .independent: nil
-            }
-        }
-        func resolve(in db: Database) throws -> PhotoQuery {
-            switch self {
-            case .workspace(let query, _, _), .selection(let query, _, _, _): query
-            case .independent(let query): try query.resolve(in: db)
+            case .independent, .explicit: nil
             }
         }
         @MainActor func isCurrent(in model: AppModel) -> Bool {
@@ -842,10 +849,8 @@ final class AppMCPTools {
                 return model.scope == source && model.browseGeneration == generation && model.query == query
             case .selection(let query, let source, let generation, let selection):
                 return model.scope == source && model.browseGeneration == generation && model.query == query && model.selectionGeneration == selection
-            case .independent(let query):
-                if query.source.hasPrefix("import:") { return query.source == model.lastImport?.scope }
-                if query.source.hasPrefix("related:") { return query.source == model.scope }
-                return true
+            case .independent(let query): return query.isCurrent(in: model)
+            case .explicit: return true
             }
         }
     }
@@ -983,6 +988,8 @@ final class AppMCPTools {
             case .listPhotos, .listSelected:
                 return try await listPhotos(model, catalog: model.catalog!, session: catalogSession!, arguments: arguments,
                                             selectionOnly: tool == .listSelected)
+            case .cullPhotos:
+                return try workflows.startCulling(arguments, catalog: model.catalog!)
             case .preview:
                 return try await preview(model, catalog: model.catalog!, session: catalogSession!, arguments: arguments)
             case .photoRecipe:
@@ -1044,6 +1051,7 @@ final class AppMCPTools {
             switch tool {
             case .capabilities, .workspace, .recentCatalogs, .job, .cancelJob: problem = nil
             case .listPhotos, .listSelected: problem = model.catalog == nil ? .noCatalog : nil
+            case .cullPhotos: problem = model.catalog == nil ? .noCatalog : workflows.cullingJob == nil ? nil : .busy
             case .preview, .samplePreview, .getMergePreview: problem = model.catalog == nil ? .noCatalog : sharesImages ? nil : .imageDisabled
             case .getCameraDiagnosticPreview: problem = sharesImages ? nil : .imageDisabled
             case .rate: problem = model.catalog == nil ? .noCatalog : writeProblem(model)
@@ -1094,6 +1102,7 @@ final class AppMCPTools {
     private func listPhotos(_ model: AppModel, catalog: CatalogStore, session: String, arguments: [String: Value],
                             selectionOnly: Bool) async throws -> MCPToolResult {
         let query = arguments["query"]?.objectValue
+        let photoIDs = arguments["photo_ids"]?.arrayValue?.compactMap(\.stringValue)
         let withSheet = arguments["contact_sheet"] == true
         if withSheet {
             guard sharesImages else { throw MCPToolProblem.imageDisabled }
@@ -1106,7 +1115,7 @@ final class AppMCPTools {
         let requestedSize = arguments["page_size"]?.intValue
         let requestedListing = selectionOnly ? Listing.selection : arguments["listing"]?.stringValue.flatMap(Listing.init(rawValue:))
         if let token = arguments["cursor"]?.stringValue {
-            guard query == nil else { throw MCPToolProblem.invalid("Omit query when continuing with a cursor.") }
+            guard query == nil, photoIDs == nil else { throw MCPToolProblem.invalid("Omit query and photo_ids when continuing with a cursor.") }
             guard let saved = cursors.first(where: { $0.token == token }),
                   selectionOnly == (saved.listing == .selection), saved.scope.isCurrent(in: model),
                   requestedListing == nil || requestedListing == saved.listing,
@@ -1115,7 +1124,12 @@ final class AppMCPTools {
             scope = saved.scope
         } else {
             cursor = nil
-            if let query {
+            if let photoIDs {
+                guard query == nil, requestedListing != .visible else {
+                    throw MCPToolProblem.invalid("Use photo_ids alone or with listing=matches.")
+                }
+                scope = .explicit(photoIDs)
+            } else if let query {
                 let independent = try MCPIndependentPhotoQuery(query)
                 try MCPLibraryCriteria.validateSource(independent.source, model: model)
                 scope = .independent(independent)
@@ -1143,14 +1157,28 @@ final class AppMCPTools {
                 let revision = catalog.browseRevision
                 if let cursor, cursor.catalogRevision != revision { throw MCPToolProblem.staleCursor }
                 let offset = cursor?.offset ?? 0
-                if listing == .selection {
-                    let ids = selection.sorted().dropFirst(offset).prefix(size)
+                func pageOfIDs(_ orderedIDs: [String], requireExisting: Bool) throws -> (PhotoPage, Int, UInt64) {
+                    let ids = orderedIDs.dropFirst(offset).prefix(size)
                     let photos = try CatalogStore.photos(ids: Set(ids), in: db)
                     let byID = Dictionary(uniqueKeysWithValues: photos.map { ($0.id, $0) })
-                    let page = PhotoPage(photos: ids.compactMap { byID[$0] }, total: selection.count, offset: offset, visibleTotal: selection.count)
+                    if requireExisting, let missing = ids.first(where: { byID[$0] == nil }) {
+                        throw MCPToolProblem.photoUnavailable.forPhoto(missing)
+                    }
+                    let page = PhotoPage(photos: ids.compactMap { byID[$0] }, total: orderedIDs.count, offset: offset, visibleTotal: orderedIDs.count)
                     return (page, offset + ids.count, revision)
                 }
-                let page = try CatalogStore.page(scope.resolve(in: db), in: db, offset: offset, limit: size, includeCollapsed: listing == .matches)
+                let resolvedQuery: PhotoQuery
+                switch scope {
+                case .selection:
+                    return try pageOfIDs(selection.sorted(), requireExisting: false)
+                case .explicit(let ids):
+                    return try pageOfIDs(ids, requireExisting: true)
+                case .workspace(let query, _, _):
+                    resolvedQuery = query
+                case .independent(let query):
+                    resolvedQuery = try query.resolve(in: db)
+                }
+                let page = try CatalogStore.page(resolvedQuery, in: db, offset: offset, limit: size, includeCollapsed: listing == .matches)
                 return (page, page.offset + page.photos.count, revision)
             }
             let (page, nextOffset, revision) = result
@@ -1192,7 +1220,7 @@ final class AppMCPTools {
             data["matched_count"] = .int(page.total)
             data["visible_count"] = .int(page.visibleTotal)
             data["query_mode"] = .string(scope.mode)
-            data["source_id"] = .string(scope.source)
+            data["source_id"] = scope.source.map(Value.string) ?? .null
             data["page_offset"] = .int(page.offset)
             if let generation = scope.generation { data["query_revision"] = .string(generation.uuidString) }
             if withSheet { data["contact_sheet"] = sheet.map { .object($0.data) } ?? .null }

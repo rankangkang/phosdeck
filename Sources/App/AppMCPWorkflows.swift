@@ -148,6 +148,10 @@ final class AppMCPWorkflows {
     private let chooseFile: FilePicker?
     private var jobs: [Job] = []
     private(set) var activeJob: Job?
+    var cullingJob: Job?
+    var cullingTask: Task<Void, Never>?
+    lazy var cullingPipeline = ImagePipeline(qualityCacheLimit: 0)
+    var cullingCache = NSCache<NSString, MCPCullingReport.CachedMetrics>()
     private var cancelPanel: (() -> Void)?
     private var grants: [String: Grant] = [:]
     private var recentIDs: [String: String] = [:]
@@ -181,12 +185,14 @@ final class AppMCPWorkflows {
         return model.importConflict != nil
     }
     var currentJob: Value {
-        guard let job = activeJob else { return .null }
+        guard let job = activeJob ?? cullingJob else { return .null }
         return ["job_id": .string(job.id), "state": .string(state(of: job).rawValue), "operation": .string(job.tool.rawValue)]
     }
 
     func catalogChanged() {
         let current = model.catalogSessionID
+        if let cullingJob, cullingJob.session != current { cancel(cullingJob) }
+        cullingCache.removeAllObjects()
         mergePreview = nil
         for job in jobs where job.session != current {
             grants[job.id] = nil
@@ -203,13 +209,17 @@ final class AppMCPWorkflows {
     }
 
     func stop() -> Task<Void, Never>? {
-        guard let job = activeJob else { return nil }
+        if let cullingJob { cancel(cullingJob) }
+        guard let job = activeJob else { return cullingTask }
         cancel(job)
-        return model.task
+        guard let analysis = cullingTask else { return model.task }
+        let foreground = model.task
+        return Task { await foreground?.value; await analysis.value }
     }
 
     func read(_ tool: AppMCPTool, arguments: Arguments, draft: MCPPhotoDraft? = nil) async throws -> MCPToolResult {
         if tool == .job, let job = jobs.first(where: { $0.id == arguments["job_id"]?.stringValue }) {
+            if job.tool == .cullPhotos, job.session != model.catalogSessionID { throw MCPToolProblem.catalogChanged }
             return result(job, arguments: arguments)
         }
         guard activeReads < 2 else { throw MCPToolProblem.busy }
@@ -311,10 +321,10 @@ final class AppMCPWorkflows {
         }
     }
 
-    func start(_ tool: AppMCPTool, waitingFor action: String? = nil, _ work: @escaping @MainActor (Job) async throws -> Void) -> MCPToolResult {
-        let job = Job(tool: tool, session: model.catalogSessionID)
+    func remember(_ job: Job) {
         if jobs.count >= 64 {
-            let oldest = jobs.removeFirst()
+            let index = jobs.firstIndex { $0 !== activeJob && $0 !== cullingJob }!
+            let oldest = jobs.remove(at: index)
             grants[oldest.id] = nil
             importPlans[oldest.id] = nil
             folderPlans[oldest.id] = nil
@@ -326,8 +336,13 @@ final class AppMCPWorkflows {
             mergeFiles[oldest.id] = nil
             exportPlans[oldest.id] = nil
         }
-        if let action { wait(job, action: action) }
         jobs.append(job)
+    }
+
+    func start(_ tool: AppMCPTool, waitingFor action: String? = nil, _ work: @escaping @MainActor (Job) async throws -> Void) -> MCPToolResult {
+        let job = Job(tool: tool, session: model.catalogSessionID)
+        if let action { wait(job, action: action) }
+        remember(job)
         activeJob = job
         model.busy = true
         model.task = Task { [self, model] in
@@ -339,9 +354,7 @@ final class AppMCPWorkflows {
             } catch is CancellationError {
                 job.finish(.cancelled, "The job was cancelled.", committed: job.data["commit_state"]?.stringValue ?? "not_committed")
             } catch let problem as MCPToolProblem {
-                job.finish(.failed, problem.summary, committed: job.data["commit_state"]?.stringValue ?? "not_committed", error: problem.code)
-                job.data["follow_up"] = .string(problem.next)
-                if !problem.details.isEmpty { job.data["error_details"] = .object(problem.details) }
+                fail(job, with: problem)
             } catch {
                 model.reports = [error.localizedDescription]
                 model.status = L10n.text("app.actionIncomplete", defaultValue: "Action Incomplete")
@@ -362,6 +375,11 @@ final class AppMCPWorkflows {
         job.phase = phase
         job.action = nil
     }
+    func fail(_ job: Job, with problem: MCPToolProblem) {
+        job.finish(.failed, problem.summary, committed: job.data["commit_state"]?.stringValue ?? "not_committed", error: problem.code)
+        job.data["follow_up"] = .string(problem.next)
+        if !problem.details.isEmpty { job.data["error_details"] = .object(problem.details) }
+    }
     func progress(_ job: Job, title: String, done: Int, total: Int) {
         let progress = TaskProgress(title: title, done: done, total: total)
         job.progress = progress
@@ -371,7 +389,7 @@ final class AppMCPWorkflows {
     func control(_ tool: AppMCPTool, arguments: Arguments) throws -> MCPToolResult {
         guard let job = jobs.first(where: { $0.id == arguments["job_id"]?.stringValue }) else { throw Self.missingJob }
         if tool == .cancelJob {
-            if job === activeJob { cancel(job) }
+            if job === activeJob || job === cullingJob { cancel(job) }
             return result(job)
         }
         let id = arguments["conflict_id"]!.stringValue!
@@ -393,6 +411,7 @@ final class AppMCPWorkflows {
     private func cancel(_ job: Job) {
         guard !job.cancelRequested else { return }
         job.cancelRequested = true
+        if job === cullingJob { cullingTask?.cancel(); return }
         model.task?.cancel()
         job.onCancel?()
         cancelPanel?()
