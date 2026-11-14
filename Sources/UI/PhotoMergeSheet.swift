@@ -7,11 +7,11 @@ struct PhotoMergeMenu: View {
         Button(L10n.text("merge.retouch.reopen",defaultValue:"Edit Saved Merge…")) { model.reopenEditableMerge() }.disabled(!model.canReopenEditableMerge)
         Divider()
         ForEach([PhotoMergeKind.panorama,.hdr,.hdrPanorama,.focus]) { kind in
-            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos || model.selection.count > kind.selectionLimit)
+            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos || !(kind.minimumSources...kind.selectionLimit).contains(model.selection.count))
         }
         Divider()
-        ForEach([PhotoMergeKind.average,.median,.additive,.lighten,.darken,.screen]) { kind in
-            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos || model.selection.count > kind.selectionLimit)
+        ForEach([PhotoMergeKind.average,.robustAverage,.median,.additive,.lighten,.darken,.screen]) { kind in
+            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos || !(kind.minimumSources...kind.selectionLimit).contains(model.selection.count))
         }
     }
 }
@@ -153,6 +153,10 @@ struct PhotoMergeSheet: View {
             }
             if session.options.kind != .panorama {
                 Toggle(session.options.kind == .hdrPanorama ? L10n.text("merge.alignBrackets", defaultValue:"Auto Align Brackets") : L10n.text("merge.align", defaultValue:"Auto Align"),isOn:$session.options.align).toggleStyle(.instrument).accessibilityIdentifier("merge-align")
+            }
+            if session.options.kind == .robustAverage {
+                Text(L10n.text("merge.robust.hint",defaultValue:"Use at least five matching exposures of the same scene. The stack rejects unusual pixels before averaging. Full-size stacks use temporary disk space."))
+                    .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
             }
             if session.options.kind.isHDR {
                 Picker(L10n.text("merge.deghost", defaultValue:"Deghost"),selection:$session.options.deghost) {

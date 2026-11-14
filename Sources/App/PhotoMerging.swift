@@ -259,7 +259,7 @@ extension AppModel {
         mergeSession = PhotoMergeSession(catalog:catalog,reopening:photo,collectionID:regularCollectionID)
     }
     func requestPhotoMerge(_ kind: PhotoMergeKind) {
-        guard canMergePhotos,selection.count <= kind.selectionLimit,commitRecipe(),let catalog else { return }
+        guard canMergePhotos,(kind.minimumSources...kind.selectionLimit).contains(selection.count),commitRecipe(),let catalog else { return }
         mergeSession = PhotoMergeSession(catalog:catalog,ids:selection,kind:kind,collectionID:regularCollectionID)
     }
     func completePhotoMerge(_ result: MergeSaved) {

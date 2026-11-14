@@ -77,11 +77,11 @@ struct MergeFusionPlan {
                 transforms[index] = transforms[anchor].followed(by:local)
             }
         }
-        let aligned = try frames.indices.map { i in try MergeRegistration.warp(frames[i].image,to:(size.width,size.height),transform:transforms[i]) }
         var ratios = [Float](repeating:1,count:n)
         var ghosts = [MergePlane]()
         var depth: StackDepthMap?
         if options.kind == .hdr {
+            let aligned = try frames.indices.map { i in try MergeRegistration.warp(frames[i].image,to:(size.width,size.height),transform:transforms[i]) }
             var logs = [Double](repeating:0,count:n)
             for position in 1..<n {
                 let a = order[position-1], b = order[position]

@@ -142,7 +142,25 @@ final class AgentOutputTests: XCTestCase {
         XCTAssertEqual(try files.catalog.photoCount(),3)
     }
 
-    private func fixture(opaque: Bool = false) throws -> Fixture {
+    func testRobustAveragePlanValidatesMinimumAndSavesFloatMaster() async throws {
+        let files = try fixture(exposures:[0.92,1,1.02,0.98,1.05,2.5]),client = files.client
+        let photos = try await imported(files,count:6)
+        let tooShort = try await client.finished(.planMerge,files.ordered(Array(photos.prefix(4)),adding:["merge_kind":"robustAverage"]))
+        XCTAssertEqual(tooShort["error_code"],"invalid_arguments")
+        let plan = succeeded(try await client.finished(.planMerge,files.ordered(photos,adding:["merge_kind":"robustAverage","options":["align":false]])))
+        XCTAssertEqual(plan["options"]?.objectValue?["merge_kind"],"robustAverage")
+        let rendered = succeeded(try await client.finished(.renderMerge,["plan_id":try XCTUnwrap(plan["plan_id"])]))
+        let destination = try await client.access(.mergeDestination,directory:files.masters)
+        let saved = succeeded(try await client.finished(.saveMerge,["preview_id":try XCTUnwrap(rendered["preview_id"]),
+            "destination_access_id":destination,"filename":"robust.dng","master_format":"dng","stack_with_sources":false]))
+        XCTAssertEqual(saved["indexed"],true)
+        let master = try MergeMasterCodec.read(files.masters.appendingPathComponent("robust.dng"),context:MergeMasterCodec.context())
+        XCTAssertEqual(master.provenance.options.kind,.robustAverage)
+        XCTAssertEqual(master.provenance.sources.count,6)
+        XCTAssertTrue(try files.catalog.stacks().isEmpty)
+    }
+
+    private func fixture(opaque: Bool = false,exposures: [Double] = [0.4,1,2.5]) throws -> Fixture {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("phosdeck-agent-output-" + UUID().uuidString)
         let source = directory.appendingPathComponent("bracket"), masters = directory.appendingPathComponent("masters")
         let output = directory.appendingPathComponent("outputs")
@@ -152,7 +170,7 @@ final class AgentOutputTests: XCTestCase {
             try catalog.database.close()
             try FileManager.default.removeItem(at: directory)
         }
-        for (index, exposure) in [0.4, 1.0, 2.5].enumerated() {
+        for (index, exposure) in exposures.enumerated() {
             let width = 96, height = 72
             var raw = Data()
             for y in 0..<height {
@@ -176,14 +194,14 @@ final class AgentOutputTests: XCTestCase {
         return Fixture(source: source, masters: masters, output: output, catalog: catalog, client: Client(model: model))
     }
 
-    private func imported(_ fixture: Fixture) async throws -> [Photo] {
+    private func imported(_ fixture: Fixture,count: Int = 3) async throws -> [Photo] {
         let client = fixture.client
         let access = try await client.access(.importSource, directory: fixture.source)
         let plan = try await client.finished(.planImport, ["mode": "reference", "source_access_id": access])
         let run = try await client.finished(.startImport, ["plan_id": try XCTUnwrap(plan["plan_id"]), "select_all": true])
         XCTAssertEqual(run["state"], "succeeded", "\(run)")
         let photos = try fixture.catalog.photos()
-        XCTAssertEqual(photos.count, 3)
+        XCTAssertEqual(photos.count,count)
         return photos
     }
 

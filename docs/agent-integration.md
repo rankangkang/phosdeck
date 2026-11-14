@@ -84,7 +84,7 @@
 
 | 工具 | 操作、输入及结果 | 原生入口和边界 |
 |---|---|---|
-| `plan_photo_merge` | 明确源照片版本及顺序，选择全景、HDR、HDR 全景、对焦、平均、中值、加法、变亮、变暗或滤色。校验对齐、去鬼影、投影、裁剪、收边、包围组和源尺寸，可标记暗场 | `PhotoMergeOptions.validate`、`PhotoMergeEngine`。计划绑定原片身份与集合范围 |
+| `plan_photo_merge` | 明确源照片版本及顺序，选择全景、HDR、HDR 全景、对焦、平均、稳健均值、中值、加法、变亮、变暗或滤色。校验对齐、去鬼影、投影、裁剪、收边、包围组和源尺寸，可标记暗场 | `PhotoMergeOptions.validate`、`PhotoMergeEngine`。计划绑定原片身份与集合范围 |
 | `render_merge_preview`、`get_merge_preview` | 用计划 ID 生成预览，按 `preview_id`、显示 EV 和长边回读对应图像 | `PhotoMergeEngine.prepare`／`display`。复用原生引擎的取消和失效语义 |
 | `save_photo_merge` | 预览 ID、TIFF32／DNG、授权位置和文件名，设置与来源堆叠。返回文件 ID、入库版本 ID、普通集合 ID 和堆叠结果 | `PhotoMergeEngine.save`、`completePhotoMerge`。分别报告发布、核验和入库，可撤销堆叠时返回撤销 ID |
 | `export_star_trail_sequence` | 用当前星轨预览和精修修订写出累计 PNG | 共用星轨渲染，整组无覆盖发布，返回文件夹 ID 和逐帧摘要 |
@@ -329,7 +329,7 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 `plan_photo_merge` 和 `plan_export` 接受有序 `photo_ids` 与每张照片的 `expected_revisions`，其中包含 `source_revision` 和 `recipe_revision`。用 `get_job` 读取计划、进度与分页结果。图库切换或服务重启后重新规划，照片修订变化后先回读当前状态。运行中的合成和导出可用 `cancel_job` 取消，随后查看已经发布的结果。
 
-合成计划支持 `panorama`、`hdr`、`hdrPanorama`、`focus`、`average`、`median`、`additive`、`lighten`、`darken`、`screen`。HDR 全景按 `bracket_size` 将连续来源分组。星轨、均值和中值可用 `dark_photo_ids` 标记 `photo_ids` 中至多 128 张暗场；每张亮场与暗场都须提供修订，计划按 `role` 返回 `light` 或 `dark`。精修索引只计算亮场，母版另外记录暗场来源。`render_merge_preview` 返回可供 `get_merge_preview` 查看和 `save_photo_merge` 保存的 `preview_id`，重新渲染会替换已准备的预览。`display_ev` 仅影响回读图像。保存前在原生面板授权 `merge_destination`，选择 `tiff` 或 `dng` 母版和新文件名。结果的 `published`、`verified` 和 `indexed` 分别记录发布、核验和入库。堆叠可用返回的 `operation_id` 撤销，母版保留。若文件已发布但未入库，用返回的 `file_id` 定位母版并检查，再按需要引用导入。
+合成计划支持 `panorama`、`hdr`、`hdrPanorama`、`focus`、`average`、`robustAverage`、`median`、`additive`、`lighten`、`darken`、`screen`。HDR 全景按 `bracket_size` 将连续来源分组。星轨、均值、稳健均值和中值可用 `dark_photo_ids` 标记 `photo_ids` 中至多 128 张暗场；每张亮场与暗场都须提供修订，计划按 `role` 返回 `light` 或 `dark`。精修索引只计算亮场，母版另外记录暗场来源。`robustAverage` 需要 5–128 张曝光一致的亮场，完整尺寸保存会使用临时空间。`render_merge_preview` 返回可供 `get_merge_preview` 查看和 `save_photo_merge` 保存的 `preview_id`，重新渲染会替换已准备的预览。`display_ev` 仅影响回读图像。保存前在原生面板授权 `merge_destination`，选择 `tiff` 或 `dng` 母版和新文件名。结果的 `published`、`verified` 和 `indexed` 分别记录发布、核验和入库。堆叠可用返回的 `operation_id` 撤销，母版保留。若文件已发布但未入库，用返回的 `file_id` 定位母版并检查，再按需要引用导入。
 
 对焦、HDR、全景、HDR 全景和星轨母版包含可继续编辑的工程。`edit_merge_retouch(action: begin)` 从 `preview_id` 开始；`reopen` 使用母版的 `photo_id`、`source_revision` 和 `recipe_revision`。任务返回 `preview_id`、`draft_id` 和 `draft_revision`，后续设置、撤销、读取与保存必须使用同一当前修订。`set` 的 `changes` 可追加一条 `append_stroke`、删除 `remove_stroke_index`、替换 `excluded_sources` 或修改 `star_trails`。笔画的 `source_index` 从 0 开始，HDR 全景指一个完整曝光组；`path` 是预收边画布的左上原点归一化坐标，`radius` 是短边比例，操作为 `keep`／`exclude`／`automatic`。原生范围校验、笔画预算与至少保留一帧的约束不变。 `star_trails.comet_half_life` 为 0–128 帧，0 关闭。
 

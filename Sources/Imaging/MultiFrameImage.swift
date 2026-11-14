@@ -6,7 +6,7 @@ import simd
 import Accelerate
 
 enum PhotoMergeKind: String, Codable, CaseIterable, Identifiable {
-    case panorama, hdr, hdrPanorama, focus, average, median, additive, lighten, darken, screen
+    case panorama, hdr, hdrPanorama, focus, average, robustAverage, median, additive, lighten, darken, screen
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -15,6 +15,7 @@ enum PhotoMergeKind: String, Codable, CaseIterable, Identifiable {
         case .hdrPanorama: L10n.text("merge.kind.hdrPanorama", defaultValue: "HDR Panorama")
         case .focus: L10n.text("merge.kind.focus", defaultValue: "Focus Stack")
         case .average: L10n.text("merge.kind.average", defaultValue: "Average · Noise Reduction")
+        case .robustAverage: L10n.text("merge.kind.robustAverage", defaultValue: "Robust Average · Reject Outliers")
         case .median: L10n.text("merge.kind.median", defaultValue: "Median · Remove Transients")
         case .additive: L10n.text("merge.kind.additive", defaultValue: "Multiple Exposure · Add")
         case .lighten: L10n.text("merge.kind.lighten", defaultValue: "Lighten · Star Trails")
@@ -22,8 +23,9 @@ enum PhotoMergeKind: String, Codable, CaseIterable, Identifiable {
         case .screen: L10n.text("merge.kind.screen", defaultValue: "Multiple Exposure · Screen")
         }
     }
-    var supportsDarkFrames: Bool { [.lighten,.average,.median].contains(self) }
+    var supportsDarkFrames: Bool { [.lighten,.average,.robustAverage,.median].contains(self) }
     var selectionLimit: Int { sourceLimit + (supportsDarkFrames ? 128 : 0) }
+    var minimumSources: Int { self == .robustAverage ? MergeRobustAverage.minimumSamples : 2 }
     var supportsRetouch: Bool { [.focus,.hdr,.panorama,.hdrPanorama,.lighten].contains(self) }
     var sourceLimit: Int { self == .lighten ? 2048 : 128 }
     var isPanorama: Bool { self == .panorama || self == .hdrPanorama }
@@ -78,7 +80,10 @@ struct PhotoMergeOptions: Codable, Equatable {
         Self(kind: kind, align: kind.defaultAlignment, autoCrop: kind.isPanorama)
     }
     func validate(count: Int) throws {
-        guard (2...kind.sourceLimit).contains(count), (count <= 128 || !align), (0...3).contains(deghost), (2...9).contains(bracketSize),
+        if kind == .robustAverage,count < kind.minimumSources {
+            throw LRCError(L10n.text("merge.robust.minimum",defaultValue:"Robust Average needs at least five light frames."))
+        }
+        guard (kind.minimumSources...kind.sourceLimit).contains(count), (count <= 128 || !align), (0...3).contains(deghost), (2...9).contains(bracketSize),
               boundaryWarp.isFinite, (0...100).contains(boundaryWarp),
               [0,2000,4000,6000].contains(sourceLongEdge),
               kind != .hdrPanorama || (count >= bracketSize * 2 && count.isMultiple(of: bracketSize)) else {

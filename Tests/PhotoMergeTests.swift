@@ -14,6 +14,12 @@ final class PhotoMergeTests: XCTestCase {
         try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
     }
     override func tearDownWithError() throws { try FileManager.default.removeItem(at:directory) }
+    private func sRGBBytes(_ image: CGImage) throws -> Data {
+        let drawing = try XCTUnwrap(CGContext(data:nil,width:image.width,height:image.height,bitsPerComponent:8,
+            bytesPerRow:image.width*4,space:ImagePipeline.outputSpace,bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
+        drawing.draw(image,in:CGRect(x:0,y:0,width:image.width,height:image.height))
+        return Data(bytes:try XCTUnwrap(drawing.data),count:image.width*image.height*4)
+    }
     func constant(_ value: SIMD4<Float>,w: Int = 8,h: Int = 6) -> MergeImage {
         MergeImage(width:w,height:h,pixels:.init(repeating:value,count:w*h))
     }
@@ -515,6 +521,56 @@ final class PhotoMergeTests: XCTestCase {
         XCTAssertEqual(light.pixels[1],.zero)
         XCTAssertThrowsError(try MergeDarkCalibration.accumulate(constant(SIMD4(0,0,0,0.5)),into:&mean,count:3))
         XCTAssertThrowsError(try MergeDarkCalibration.subtract(constant(.zero,w:7,h:5),from:&light))
+    }
+
+    func testRobustAverageRejectsTransientRGBSamplesAndUsesCoveredMeanAtEdges() async throws {
+        let width = 32,height = 16
+        let base = SIMD4<Float>(-0.05,0.2,1.3,1)
+        let noise: [Float] = [-0.01,-0.005,0,0.005,0.01,0,0]
+        let frames = noise.enumerated().map { index,delta -> MergeImage in
+            var frame = constant(base+SIMD4(delta,delta,delta,0),w:width,h:height)
+            frame.pixels[5] = index < 2 ? SIMD4(Float(index),0.2,1.3,index == 0 ? 0.5 : 1) : .zero
+            frame.pixels[6] = .zero
+            if index == 5 { frame.pixels[0] = SIMD4(1.5,2,3,1) }
+            if index == 6 { frame.pixels[0] = SIMD4(-2,-2,-2,1) }
+            if index == 6 { frame.pixels[1].x = 1.5 }
+            return frame
+        }
+        let (catalog,root,photos) = try mergeFixture(frames)
+        let engine = PhotoMergeEngine()
+        let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(photos.map(\.id)))
+        var options = PhotoMergeOptions.defaults(for:.robustAverage)
+        options.align = false; options.masterFormat = .dng
+        XCTAssertThrowsError(try options.validate(count:4))
+        let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
+        let saved = try await engine.save(preview.id,to:root.bookmark,filename:"robust.dng",catalog:catalog,progress:{ _,_ in })
+        let master = try MergeMasterCodec.read(saved.url,context:context)
+        XCTAssertEqual(master.provenance.options.kind,.robustAverage)
+        XCTAssertEqual(master.provenance.sources.map(\.photoID),inputs.map { $0.photo.id })
+        for channel in 0..<4 { XCTAssertEqual(master.image.pixels[0][channel],base[channel],accuracy:2e-5) }
+        XCTAssertLessThan(master.image.pixels[1].x,0)
+        XCTAssertEqual(master.image.pixels[5].x,2.0/3,accuracy:2e-5)
+        XCTAssertEqual(master.image.pixels[5].w,1)
+        XCTAssertEqual(master.image.pixels[6],.zero)
+        XCTAssertEqual(preview.image.width,master.image.width)
+        XCTAssertEqual(try catalog.photoCount(),8)
+        for (input,source) in zip(inputs,master.provenance.sources) {
+            XCTAssertEqual(try SafeFileWriter.sha256(directory.appendingPathComponent(input.photo.relativePath)),source.digest)
+        }
+        let ordinary = try fusion(frames,kind:.average)
+        XCTAssertGreaterThan(abs(ordinary.pixels[0].x-base.x),0.02)
+    }
+
+    func testRobustAverageCancelsTemporaryStackDuringReduction() async throws {
+        let image = constant(SIMD4(0.2,0.3,0.4,1),w:48,h:24)
+        let scratch = try XCTUnwrap(directory)
+        let task = Task {
+            _ = try await MergeRobustAverage.render(width:48,height:24,count:5,temporaryDirectory:scratch) { _ in image } progress: { _,_ in
+                withUnsafeCurrentTask { $0?.cancel() }
+            }
+        }
+        do { try await task.value; XCTFail("Cancelled reduction must stop") } catch is CancellationError {}
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath:scratch.path),[])
     }
     func testDarkCalibratedMasterReopensAndKeepsDarksOutsideSourceStack() async throws {
         let catalog = try CatalogStore(directory:directory.appendingPathComponent("catalog"))
@@ -1100,13 +1156,7 @@ final class PhotoMergeTests: XCTestCase {
             let bitmap = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source,0,nil))
             let expected = index == 0 ? try MergeCrop.crop(a) : master
             let quantized = try ImagePipeline.materialize8(expected.ciImage(),context:context)
-            func bitmapBytes(_ item: CGImage) throws -> Data {
-                let rgb = try XCTUnwrap(CGContext(data:nil,width:item.width,height:item.height,bitsPerComponent:8,
-                    bytesPerRow:item.width*4,space:ImagePipeline.outputSpace,bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
-                rgb.draw(item,in:CGRect(x:0,y:0,width:item.width,height:item.height))
-                return Data(bytes:try XCTUnwrap(rgb.data),count:item.width*item.height*4)
-            }
-            let actual = try bitmapBytes(bitmap),reference = try bitmapBytes(quantized)
+            let actual = try sRGBBytes(bitmap),reference = try sRGBBytes(quantized)
             if index == 0 {
                 // A foreground locked to a future frame is transparent there
                 // until the chosen source arrives. The earlier sky is intact.
@@ -1164,6 +1214,11 @@ final class PhotoMergeTests: XCTestCase {
         options.align = true; XCTAssertThrowsError(try options.validate(count:129)); options.align = false
         options.masterFormat = .dng
         let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
+        let sequence = try await engine.exportStarSequence(preview.id,settings:MergeRetouchSettings(),to:root.bookmark,
+            folderName:"all-trails",catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(sequence.frames.map(\.sourceIndex),Array(0..<count))
+        XCTAssertEqual(sequence.frames.last?.name,"frame-2048.png")
+        XCTAssertEqual(try catalog.photoCount(),count)
         let saved = try await engine.save(preview.id,to:root.bookmark,filename:"long-trails.dng",catalog:catalog,progress:{ _,_ in })
         let result = try MergeMasterCodec.read(saved.url,context:context)
         XCTAssertGreaterThan(try result.provenance.description.utf8.count,65536)
@@ -1264,6 +1319,41 @@ final class PhotoMergeTests: XCTestCase {
         let foreground = MergeRetouchStroke(source:0,points:[MaskPoint(0.1,0.86),MaskPoint(0.3,0.86)],radius:0.08,hardness:0.6,opacity:1)
         let settings = MergeRetouchSettings(strokes:[foreground],excludedSources:[1],trails:StarTrailSettings(gap:2,threshold:0.12,strength:0.5))
         try await verifyPublicRetouch(publicMergeFiles("dpm-star-trails"),kind:.lighten,settings:settings,source:0)
+    }
+
+    func testPublicStarTrailCometExportsCompleteSequence() async throws {
+        let files = try publicMergeFiles("dpm-star-trails")
+        XCTAssertEqual(files.count,90)
+        let catalog = try CatalogStore(directory:directory.appendingPathComponent("catalog"))
+        let source = files[0].deletingLastPathComponent()
+        let inputRoot = try catalog.addRoot(url:source,bookmark:AccessLease.bookmark(source,readOnly:true))
+        for file in files { try catalog.index(ReferenceImporter.inspect(url:file,root:inputRoot,rootURL:source)) }
+        let originalDigests = try files.map { try SafeFileWriter.sha256($0) }
+        let engine = PhotoMergeEngine()
+        let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(try catalog.photos().map(\.id)))
+        let bookmark = try AccessLease.bookmark(directory,readOnly:false)
+        var options = PhotoMergeOptions.defaults(for:.lighten); options.masterFormat = .dng
+        let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
+        let settings = MergeRetouchSettings(excludedSources:[1],trails:StarTrailSettings(gap:2,threshold:0.2,strength:0.5,cometHalfLife:8))
+        let started = ContinuousClock.now
+        let result = try await engine.exportStarSequence(preview.id,settings:settings,to:bookmark,
+            folderName:"public-star-comet",catalog:catalog,progress:{ _,_ in })
+        print("PUBLIC_COMET",result.frames.count,"frames",result.width,result.height,"export elapsed",ContinuousClock.now-started)
+        XCTAssertEqual(result.frames.map(\.sourceIndex),[0]+Array(2..<90))
+        XCTAssertEqual(result.width,1600); XCTAssertEqual(result.height,1067)
+        XCTAssertGreaterThan(Set(result.frames.map(\.digest)).count,1)
+        XCTAssertEqual(try catalog.photoCount(),90)
+        try await engine.setRetouchSettings(preview.id,settings:settings)
+        let saved = try await engine.save(preview.id,to:bookmark,filename:"public-star-comet.dng",catalog:catalog,progress:{ _,_ in })
+        let master = try MergeMasterCodec.read(saved.url,context:context).image
+        let quantized = try ImagePipeline.materialize8(master.ciImage(),context:context)
+        let last = try XCTUnwrap(result.frames.last)
+        let reference = try XCTUnwrap(CGImageSourceCreateWithURL(result.url.appendingPathComponent(last.name) as CFURL,nil))
+        let observed = try XCTUnwrap(CGImageSourceCreateImageAtIndex(reference,0,nil))
+        XCTAssertTrue(try sRGBBytes(observed) == sRGBBytes(quantized),"Final wide photographic PNG must match the quantized master")
+        let attachment = XCTAttachment(contentsOfFile:result.url.appendingPathComponent(last.name))
+        attachment.name = "public-comet-png"; attachment.lifetime = .keepAlways; add(attachment)
+        XCTAssertEqual(try files.map { try SafeFileWriter.sha256($0) },originalDigests)
     }
 
     func testRetouchConstraintOverlayTracksLatestSourceAndAutomaticRestoration() throws {

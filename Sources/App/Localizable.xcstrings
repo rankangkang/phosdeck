@@ -47300,6 +47300,108 @@
         }
       }
     },
+    "merge.kind.robustAverage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Robust Average · Reject Outliers"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稳健均值 · 剔除异常像素"
+          }
+        }
+      }
+    },
+    "merge.robust.minimum": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Robust Average needs at least five light frames."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稳健均值至少需要五张亮场。"
+          }
+        }
+      }
+    },
+    "merge.robust.progress": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rejecting outliers and averaging…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在剔除异常像素并求平均…"
+          }
+        }
+      }
+    },
+    "merge.robust.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use at least five matching exposures of the same scene. The stack rejects unusual pixels before averaging. Full-size stacks use temporary disk space."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用至少五张曝光一致的同场景照片。剔除异常像素后再求平均。完整尺寸合成需要临时磁盘空间。"
+          }
+        }
+      }
+    },
+    "merge.robust.space": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The temporary stack needs more disk space. Free space or select a smaller source size."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "堆栈所需的临时磁盘空间不足。请释放空间或减小来源尺寸。"
+          }
+        }
+      }
+    },
+    "merge.robust.scratch": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prepare Temporary Stack"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "准备临时堆栈"
+          }
+        }
+      }
+    },
     "merge.sourceCount": {
       "extractionState": "manual",
       "localizations": {

@@ -417,6 +417,21 @@ actor PhotoMergeEngine {
     }
     private func fuseSmall(_ plan: MergeFusionPlan) throws -> MergeImage {
         let image = plan.frames[plan.reference].image
+        if plan.options.kind == .robustAverage {
+            let (width,height) = (image.width,image.height)
+            let tileSize = MergeRobustAverage.tileSize(frameCount:plan.frames.count)
+            var result = MergeImage(width:width,height:height)
+            let rows = max(1,tileSize/width)
+            for y in stride(from:0,to:height,by:rows) {
+                try Task.checkCancellation()
+                let rect = CGRect(x:0,y:y,width:width,height:min(rows,height-y))
+                let samples = try plan.frames.indices.map { index in
+                    try MergeFusionAccumulator.aligned(plan.frames[index].image,index:index,plan:plan,width:width,height:height,region:rect).pixels
+                }
+                try MergeRobustAverage.combine(samples,into:&result.pixels,offset:y*width)
+            }
+            return result
+        }
         let fusion = try MergeFusionAccumulator(plan:plan,width:image.width,height:image.height)
         for i in plan.frames.indices { try fusion.add(plan.frames[i].image,index:i) }
         return try fusion.finish()
@@ -444,11 +459,23 @@ actor PhotoMergeEngine {
         let edge: Int? = value.options.sourceLongEdge == 0 ? nil : value.options.sourceLongEdge
         func decode(_ index: Int) async throws -> MergeImage {
             try Task.checkCancellation()
-            await progress(Double(index)/Double(value.requests.count)*0.8,L10n.text("merge.fusing", defaultValue:"Merging full-size originals…"))
+            let limit = value.options.kind == .robustAverage ? 0.56 : 0.8
+            await progress(Double(index)/Double(value.requests.count)*limit,L10n.text("merge.fusing", defaultValue:"Merging full-size originals…"))
             return try await self.decode(value.requests[index],longEdge:edge,whiteBalance:value.whiteBalance,dark:value.darkMaster).image
         }
         switch value.plan {
         case .fusion(let plan):
+            if value.options.kind == .robustAverage {
+                let image = try await MergeRobustAverage.render(width:plan.width,height:plan.height,count:value.requests.count,
+                    temporaryDirectory:FileManager.default.temporaryDirectory) { index in
+                        let image = try await decode(index)
+                        return try MergeFusionAccumulator.aligned(image,index:index,plan:plan,width:plan.width,height:plan.height)
+                    } progress: { completed,total in
+                        await progress(0.56+0.28*Double(completed)/Double(total),
+                            L10n.text("merge.robust.progress",defaultValue:"Rejecting outliers and averaging…"))
+                    }
+                return try finished(image,options:value.options)
+            }
             let trails = value.retouchProject?.settings.trails ?? StarTrailSettings()
             let fusion = try MergeFusionAccumulator(plan:plan,width:plan.width,height:plan.height,trails:trails)
             for index in value.requests.indices where value.options.kind != .lighten || value.retouchProject?.settings.excludedSources.contains(index) != true {
