@@ -34,6 +34,10 @@ struct PhotoMarkChange {
     let current: PhotoMarks
 }
 
+struct RecipeBatchConflict: Error {
+    let photoID: String
+}
+
 /// GRDB delivers these callbacks on the same queue that serves page reads.
 private final class CatalogBrowseChanges: TransactionObserver {
     private static let tables: Set<String> = ["photo", "photoSource", "storageRoot", "collection", "membership",
@@ -309,36 +313,49 @@ final class CatalogStore: @unchecked Sendable {
         }
     }
     func saveRecipe(id: String, recipe: EditRecipe, title: String? = nil) throws {
-        try database.write { try Self.saveRecipe(db: $0, id: id, recipe: recipe, title: title) }
+        _ = try database.write { try Self.saveRecipe(db: $0, id: id, recipe: recipe, title: title) }
     }
-    private static func saveRecipe(db: Database, id: String, recipe: EditRecipe, title: String?) throws {
+    private static func saveRecipe(db: Database, id: String, recipe: EditRecipe, title: String?) throws -> Photo? {
         try recipe.validate()
         let encoded = try JSONEncoder().encode(recipe)
-        guard let photo = try Photo.fetchOne(db, key: id), photo.availability == "available" else { throw LRCError(L10n.text("app.theSourceIsUnavailableEditDraftPreserved", defaultValue: "The source is unavailable. Edit draft preserved")) }
+        guard var photo = try Photo.fetchOne(db, key: id), photo.availability == "available" else { throw LRCError(L10n.text("app.theSourceIsUnavailableEditDraftPreserved", defaultValue: "The source is unavailable. Edit draft preserved")) }
         try recipe.validate(for: photo)
         if let digest = photo.digest, digest != recipe.sourceDigest { throw LRCError(L10n.text("app.sourceIdentityMismatchRecipeWasNotSaved", defaultValue: "Source identity mismatch. Recipe was not saved")) }
         let previous = try photo.recipe.map { try JSONDecoder().decode(EditRecipe.self, from: $0) }
-        guard previous != recipe else { return }
+        guard previous != recipe else { return nil }
         try db.execute(sql: "UPDATE photo SET recipe = ?, digest = ?, recipeRevision = recipeRevision + 1 WHERE id = ?", arguments: [encoded, recipe.sourceDigest, id])
         try db.execute(sql: "INSERT INTO editHistory (photoID,title,createdAt,recipe) VALUES (?,?,?,?)",
                        arguments: [id, title ?? recipe.changeTitle(from: previous), Date().timeIntervalSince1970, encoded])
+        photo.recipe = encoded
+        photo.digest = recipe.sourceDigest
+        photo.recipeRevision += 1
+        return photo
     }
 
     /// Prepare image baselines outside the transaction; publish the successful subset together.
-    func saveRecipes(_ changes: [(photo: Photo, recipe: EditRecipe)], title: String, expecting: [Photo] = []) throws {
+    @discardableResult
+    func saveRecipes(_ changes: [(photo: Photo, recipe: EditRecipe)], title: String, expecting: [Photo] = [],
+                     expectingRoots: [StorageRoot] = []) throws -> [Photo] {
         try database.write { db in
+            for expected in expectingRoots {
+                guard let root = try StorageRoot.fetchOne(db, key: expected.id), root.path == expected.path,
+                      root.bookmark == expected.bookmark else { throw OrganizationError.versionConflict }
+            }
             for expected in expecting {
-                guard let current = try Photo.fetchOne(db, key: expected.id), !current.deleted,
-                      current.revision == expected.revision, current.recipeRevision == expected.recipeRevision,
-                      current.identity == expected.identity, current.availability == expected.availability else {
-                    throw OrganizationError.versionConflict
+                let stillCurrent = try Bool.fetchOne(db, sql: """
+                    SELECT 1 FROM photo WHERE id=? AND deleted=0 AND revision=? AND recipeRevision=?
+                        AND rootID=? AND relativePath=? AND identity=? AND availability=?
+                    """, arguments: [expected.id, expected.revision, expected.recipeRevision, expected.rootID,
+                                     expected.relativePath, expected.identity, expected.availability]) ?? false
+                guard stillCurrent else {
+                    throw RecipeBatchConflict(photoID: expected.id)
                 }
             }
-            for change in changes {
+            return try changes.compactMap { change in
                 guard let current = try Photo.fetchOne(db, key: change.photo.id), !current.deleted,
                       current.recipeRevision == change.photo.recipeRevision, current.revision == change.photo.revision,
                       current.identity == change.photo.identity else { throw LRCError(L10n.text("app.aPhotoChangedDuringSynchronizationBatchAdjustmentsWereNot", defaultValue: "A photo changed during synchronization. Batch adjustments were not saved")) }
-                try Self.saveRecipe(db: db, id: current.id, recipe: change.recipe, title: title)
+                return try Self.saveRecipe(db: db, id: current.id, recipe: change.recipe, title: title)
             }
         }
     }

@@ -38,6 +38,7 @@ enum AppMCPTool: String, CaseIterable {
     case toneCurve = "set_tone_curve", zoneLighting = "set_zone_lighting", colorAdjustments = "set_color_adjustments"
     case detailAdjustments = "set_detail_adjustments", effects = "set_effects"
     case automaticAdjustment = "run_automatic_adjustment", relativeExposure = "apply_relative_exposure", matchExposure = "match_total_exposures"
+    case planAdjustmentBatch = "plan_adjustment_batch", applyAdjustmentBatch = "apply_adjustment_batch"
     case transferAdjustments = "transfer_adjustments", beforeAfter = "set_before_after", adjustmentPreview = "preview_adjustment"
     case listPresets = "list_adjustment_presets", editPreset = "edit_adjustment_preset"
     case planXMP = "plan_xmp_preset_import", importXMP = "import_xmp_presets"
@@ -91,7 +92,7 @@ enum AppMCPTool: String, CaseIterable {
         case versionRevisions = "expected_revisions", historyID = "history_id", snapshotID = "snapshot_id", recordType = "record_type"
         case stackID = "stack_id", stackIDs = "stack_ids", stackRevision = "stack_revision", direction, scope
         case interval = "interval_seconds", pairID = "pair_id", rawSource = "raw_source_id", jpegSource = "jpeg_source_id", sameCapture = "same_capture"
-        case adjustments, group, groups, channel, points, pointIndex = "point_index", gains, amount, delta
+        case adjustments, edits, group, groups, channel, points, pointIndex = "point_index", gains, amount, delta
         case presetID = "preset_id", presetRevision = "preset_revision", snapshotRevision = "snapshot_revision"
         case presetGroup = "preset_group", favorite, favoritesOnly = "favorites_only", previewVariant = "preview_variant", beforeLayout = "before_layout"
         case previewID = "preview_id", region, point, rect, aspectRatio = "aspect_ratio", turns
@@ -223,6 +224,7 @@ enum AppMCPTool: String, CaseIterable {
                 return ["type": "object", "additionalProperties": false, "properties": .object(
                     Dictionary(uniqueKeysWithValues: MCPLibraryCriteria.fields.map { ($0.rawValue, $0.schema(for: tool)) }))]
             case .adjustments: return tool == .pointColor ? MCPCanvasFields.pointColorSchema : MCPDevelopParameters.schema(tool)
+            case .edits: return MCPAdjustmentBatch.editsSchema
             case .preferences: return MCPPreferences.schema
             case .quotaGiB: return ["type": "integer", "enum": .array(ThumbnailService.quotaOptions.map(Value.int))]
             case .outputOptions: return tool == .planMerge ? MCPMergeOptions.schema : MCPExportOptions.schema
@@ -325,6 +327,7 @@ enum AppMCPTool: String, CaseIterable {
             case .adjustments:
                 return tool == .pointColor ? MCPDevelopParameters.accepts(value, schema: MCPCanvasFields.pointColorSchema)
                     : MCPDevelopParameters.accepts(value, for: tool)
+            case .edits: return MCPAdjustmentBatch.acceptsEdits(value)
             case .start, .end: return MCPCanvasFields.point(value, range: tool == .maskShape ? MaskPoint.gradientRange : 0...1) != nil
             case .point, .sourcePoint: return MCPCanvasFields.point(value) != nil
             case .path:
@@ -482,6 +485,8 @@ enum AppMCPTool: String, CaseIterable {
         case .resetAdjustments: [.catalog, .photo, .sourceRevision, .recipeRevision, .group]
         case .automaticAdjustment: [.catalog, .photo, .sourceRevision, .recipeRevision, .action]
         case .relativeExposure: [.catalog, .photoIDs, .versionRevisions, .delta]
+        case .planAdjustmentBatch: [.catalog, .edits]
+        case .applyAdjustmentBatch: [.catalog, .plan]
         case .matchExposure: [.catalog, .photo, .photoIDs, .versionRevisions]
         case .transferAdjustments: [.catalog, .action, .versionRevisions]
         case .beforeAfter: [.catalog, .photo, .sourceRevision, .recipeRevision, .beforeLayout]
@@ -747,6 +752,11 @@ struct MCPToolProblem: Error {
     static let failed = Self(code: "operation_failed", summary: "Phosdeck could not complete the operation.", next: "Check the current state in Phosdeck before retrying.")
     static func invalid(_ message: String) -> Self {
         Self(code: "invalid_arguments", summary: message, next: "Read the tool's input schema and refresh the target IDs.")
+    }
+    func forPhoto(_ id: String) -> Self {
+        var problem = self
+        problem.details["photo_id"] = .string(id)
+        return problem
     }
     static func ratingConflict(_ actual: Int) -> Self {
         Self(code: "rating_conflict", summary: "The photo has a different current rating.", next: "Use the actual rating to reassess the intended edit.",
@@ -1451,6 +1461,8 @@ final class AppMCPTools {
             case .globalAdjustments, .resetAdjustments, .toneCurve, .zoneLighting, .colorAdjustments, .detailAdjustments, .effects,
                  .automaticAdjustment, .relativeExposure, .matchExposure, .transferAdjustments, .applyEditRecord:
                 result = try writeRecipes(tool, args: arguments, model: model, catalog: model.catalog!)
+            case .planAdjustmentBatch, .applyAdjustmentBatch:
+                result = try writeAdjustmentBatch(tool, args: arguments, model: model, catalog: model.catalog!)
             case .beforeAfter, .adjustmentPreview, .editPreset, .planXMP, .importXMP, .saveSnapshot, .deleteSnapshot:
                 result = try writeEditContext(tool, args: arguments, model: model, catalog: model.catalog!)
             case .setCrop, .photoGeometry, .solvePerspective, .perspectiveGuides, .canvasGuides, .adjustPreview, .pointColor, .editSpot:

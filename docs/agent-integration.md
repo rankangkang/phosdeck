@@ -51,6 +51,7 @@
 | `set_tone_curve`、`set_zone_lighting`、`set_color_adjustments` | 曲线通道及点增删改、通道重置、五区 EV、HSL 八色、黑白混色、阴影／中间调／高光／全局色彩分级与混合平衡 | `ToneCurvePanel`、`ToneZones`、`ColorGrading`、`DevelopPanel`。点颜色与画布取样见第五步 |
 | `set_detail_adjustments`、`set_effects` | 通用锐化／降噪、RAW 锐化／降噪／镜头校正、紫边／绿边数量及范围、暗角样式和形状、颗粒大小和粗糙度。返回实际接受的参数 | `GeneralDetail`、`RAWDetailSettings`、`ManualDefringe`、`CreativeVignette`、`FilmGrain`。沿用渲染顺序与支持范围 |
 | `run_automatic_adjustment`、`apply_relative_exposure`、`match_total_exposures` | 自动白平衡／色调、按 EV 调整目标、以明确源照片匹配总曝光。返回任务及跳过原因 | `AutomaticAdjustmentEditing`、`applyRelativeExposure`／`matchTotalExposures`。按现有批次事务保存与撤销 |
+| `plan_adjustment_batch`、`apply_adjustment_batch` | 为每个显式照片版本安排不同的显影调整，先查看逐张参数变化，再一次提交整批 | 共用单张显影参数校验和 `CatalogStore.saveRecipes`。提交前核对所有版本和原片，整批对应一条原生撤销 |
 | `transfer_adjustments` | 复制、粘贴、同步、沿用上一张、应用预设，显式传源、目标和 `RecipePasteOptions` 组。预设强度可在单张草稿里反复试用 | `copyAdjustments`／`applyAdjustments`、`AdjustmentPreview`。只改所选参数组，批量结果逐项回读 |
 | `list_adjustment_presets`、`edit_adjustment_preset` | 搜索、筛选收藏／分组、保存／更新／改名／删除、收藏与分组。返回预设及是否可撤销 | `PresetBrowser`、`PresetManagement`、`savePreset`。按原生能力报告撤销 |
 | `plan_xmp_preset_import`、`import_xmp_presets` | 从授权 XMP 读取支持字段、预检诊断、选择记录后批量导入。返回导入及跳过项 | `XMPPresetReader`、`XMPPresetImportSheet`、`importXMPPresets`。保留支持的 XMP 子集 |
@@ -262,6 +263,36 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 `list_adjustment_presets` 按名称、分组和收藏查找预设，预设变更和应用使用返回的 ID 与修订标识。`transfer_adjustments` 支持 App 内复制粘贴、同步、沿用上一张和按强度应用预设。选择明确的参数组。预设未指定组时沿用它保存的选择。XMP 通过 `request_file_access(purpose=xmp_presets)` 由用户选择文件，经 `plan_xmp_preset_import` 查看转换诊断后导入选定候选，沿用原生稀疏参数和重复检查。
 
 `list_edit_records` 分页返回历史与快照。`apply_edit_record` 将历史或快照恢复为一条新编辑记录。创建及改名快照沿用原生保存行为，改名和删除核对 `snapshot_revision`。删除快照、修改已有预设及导入 XMP 可用返回的操作 ID 撤销。
+
+#### 逐张调整并批量提交
+
+1. 用 `plan_adjustment_batch` 提交 `edits`。每项包含从 `list_photos` 或 `get_photo_recipe` 取得的 `photo_id`、`source_revision`、`recipe_revision` 和该照片的 `adjustments`。每批最多 64 个不同的照片版本，请求仍受本地 MCP 64 KiB 请求体上限约束。
+2. 从 `get_job` 读取 `plan_id` 和按输入顺序返回的 `items`。每项的 `changes` 按参数组列出 `before` 和 `after`。计划期间只计算参数，照片历史保持原样。若无变化，该项为 `unchanged`。
+3. 用 `apply_adjustment_batch` 一次提交该 `plan_id`。任一目标的保存版本、位置、来源或原片校验失败，整批都不会写入。成功时每张有变化的照片增加一条编辑历史，并返回更新后的修订号和整批的 `operation_id`。用相同的 `request_id` 和参数重试提交可取回原任务。提交后可用 `get_photo_recipe` 或 `get_photo_preview` 核对更新，用 `undo_operation` 或原生 ⌘Z 撤销整批。
+
+`adjustments` 可包含 `global`、`color`、`detail`、`effects`、`curves` 和 `zone_gains`，范围与对应的单张工具一致。曲线按通道提供完整点列，分区光为五个 EV 值。省略的参数沿用该版本保存值。以下仅列出 `edits` 的示例值。
+
+```json
+[
+  {
+    "photo_id": "photo-a",
+    "source_revision": 1,
+    "recipe_revision": 4,
+    "adjustments": {"global": {"exposure": 0.45, "temperature": 5900}}
+  },
+  {
+    "photo_id": "photo-b",
+    "source_revision": 1,
+    "recipe_revision": 2,
+    "adjustments": {
+      "global": {"exposure": -0.35},
+      "color": {"hsl": {"blue": {"saturation": -12}}}
+    }
+  }
+]
+```
+
+规划和提交都以照片版本 ID 为目标，沿用用户当前的图库来源、筛选、排序、页位置和选中照片。计划留在本次图库会话，切库、服务重启、计划任务从历史中淘汰或提交成功后需要重新规划。任务的 `error_code` 给出失败原因，涉及单张照片时可用 `error_details.photo_id` 定位。
 
 ### 画布、几何和局部编辑接口
 

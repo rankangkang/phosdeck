@@ -1095,6 +1095,184 @@ final class AgentDevelopTests: XCTestCase {
         XCTAssertTrue((-3...3).contains(try client.recipe("b").exposure))
     }
 
+    @MainActor func testPerPhotoAdjustmentPlanCommitsDistinctPatchesAndUndoesTheWholeBatch() async throws {
+        let (catalog, folder) = try await catalog(ids: ["a", "b", "c"])
+        let client = try await Client(catalog)
+        _ = try client.data(await client.call(.setQuery, ["search": ".png", "sort": "filename", "descending": true]))
+        _ = try client.data(await client.call(.selectPhotos, ["action": "replace", "photo_ids": ["c"]]))
+        let before = try client.data(await client.call(.workspace))
+        XCTAssertEqual(before["active_photo_id"], "c")
+        let original = try ["a", "b", "c"].map(client.recipe)
+        let sources = try ["a", "b", "c"].map { try SafeFileWriter.sha256(folder.appendingPathComponent($0 + ".png")) }
+        let edits: Value = [.object(try client.edits("b", ["adjustments": [
+            "global": ["exposure": -0.75, "temperature": 6200],
+            "detail": ["sharpening_amount": 28], "effects": ["grain_amount": 24]
+        ]])), .object(try client.edits("a", ["adjustments": [
+            "global": ["exposure": 0.5, "contrast": 1.12],
+            "color": ["hsl": ["red": ["saturation": 20]]],
+            "curves": ["blue": [["x": 0, "y": 0], ["x": 0.5, "y": 0.6], ["x": 1, "y": 1]]],
+            "zone_gains": [0, 0, 0.25, 0, 0]
+        ]])), .object(try client.edits("c", ["adjustments": ["global": ["exposure": 0]]]))]
+
+        let planned = try await client.job(await client.call(.planAdjustmentBatch, ["edits": edits]))
+        XCTAssertEqual(planned["state"], "succeeded", String(describing: planned))
+        XCTAssertEqual(planned["commit_state"], "not_committed")
+        XCTAssertEqual(planned["changed_count"], 2)
+        let items = try XCTUnwrap(planned["items"]?.arrayValue)
+        XCTAssertEqual(items.map { $0.objectValue?["photo_id"] }, ["b", "a", "c"])
+        XCTAssertEqual(items.map { $0.objectValue?["state"] }, ["planned", "planned", "unchanged"])
+        let whiteBalance = try XCTUnwrap(items.first?.objectValue?["changes"]?.objectValue?["global"]?.objectValue)
+        XCTAssertEqual(whiteBalance["temperature"], ["before": 5500.0, "after": 6200.0])
+        XCTAssertEqual(whiteBalance["as_shot_white_balance"], ["before": true, "after": false])
+        XCTAssertEqual(try ["a", "b", "c"].map(client.recipe), original)
+        XCTAssertFalse(client.model.undo.canUndo)
+
+        let args = ["plan_id": try XCTUnwrap(planned["plan_id"])]
+        let first = await client.call(.applyAdjustmentBatch, args, request: "apply-per-photo")
+        let applied = try await client.job(first)
+        XCTAssertEqual(applied["state"], "succeeded", String(describing: applied))
+        XCTAssertEqual(applied["commit_state"], "committed")
+        XCTAssertEqual(applied["changed_count"], 2)
+        XCTAssertEqual(applied["items"]?.arrayValue?.map { $0.objectValue?["photo_id"] }, ["b", "a", "c"])
+        XCTAssertEqual(applied["items"]?.arrayValue?.map { $0.objectValue?["recipe_revision"] }, [2, 2, 1])
+        let saved = try ["a", "b", "c"].map(client.recipe)
+        XCTAssertEqual(client.model.photos.map(\.id), ["c", "b", "a"])
+        XCTAssertEqual(client.model.photos.map(\.recipeRevision), [1, 2, 2])
+        XCTAssertEqual(client.model.active?.recipeRevision, 1)
+        XCTAssertEqual(saved.map(\.exposure), [0.5, -0.75, 0])
+        XCTAssertEqual(saved[0].crop, original[0].crop)
+        XCTAssertEqual(saved[0].develop.mixer[0].saturation, 20)
+        XCTAssertEqual(saved[0].develop.curves?.channels[3][1].y, 0.6)
+        XCTAssertEqual(saved[0].develop.zones?.gains, [0, 0, 0.25, 0, 0])
+        XCTAssertEqual(saved[1].sharpening.amount, 28)
+        XCTAssertEqual(saved[1].grain.amount, 24)
+        XCTAssertNotEqual(saved[1].grain.seed, 0)
+        XCTAssertEqual(saved[2], original[2])
+        XCTAssertEqual(try ["a", "b", "c"].map { try catalog.editHistory(photoID: $0).count }, [2, 2, 1])
+        let replay = await client.call(.applyAdjustmentBatch, args, request: "apply-per-photo")
+        XCTAssertEqual(first.structuredContent, replay.structuredContent)
+        client.error(await client.call(.applyAdjustmentBatch, args), "adjustment_plan_expired")
+
+        let operation = try XCTUnwrap(applied["operation_id"])
+        let undone = try client.data(await client.call(.undo, ["operation_id": operation]))
+        XCTAssertEqual(undone["commit_state"], "committed")
+        XCTAssertEqual(try ["a", "b", "c"].map(client.recipe), original)
+        XCTAssertFalse(client.model.undo.canUndo)
+        _ = try client.data(await client.call(.redo, ["operation_id": operation]))
+        XCTAssertEqual(try ["a", "b", "c"].map(client.recipe), saved)
+        client.model.undo.undo()
+        XCTAssertEqual(try ["a", "b", "c"].map(client.recipe), original)
+        XCTAssertEqual(try ["a", "b", "c"].map { try SafeFileWriter.sha256(folder.appendingPathComponent($0 + ".png")) }, sources)
+        let after = try client.data(await client.call(.workspace))
+        for field in ["source_id", "query", "page_offset", "active_photo_id", "selected_photo_ids", "view", "viewport"] {
+            XCTAssertEqual(before[field], after[field], field)
+        }
+    }
+
+    @MainActor func testAdjustmentBatchRejectsInvalidStaleAndMissingTargetsWithoutSavingAnEarlierItem() async throws {
+        let (catalog, folder) = try await catalog(withRecipes: false)
+        let client = try await Client(catalog)
+        func edit(_ id: String, _ adjustments: Value) throws -> Value {
+            .object(try client.edits(id, ["adjustments": adjustments]))
+        }
+        let a = try edit("a", ["global": ["exposure": 1]])
+        let b = try edit("b", ["global": ["exposure": -1]])
+        client.error(await client.call(.planAdjustmentBatch, ["edits": [a, try edit("a", ["global": ["exposure": 2]])]]), "invalid_arguments")
+        client.error(await client.call(.planAdjustmentBatch, ["edits": [a, try edit("b", ["global": ["exposure": 6]])]]), "invalid_arguments")
+        client.error(await client.call(.planAdjustmentBatch, ["edits": [a, try edit("b", [:])]]), "invalid_arguments")
+
+        let invalid = try await client.job(await client.call(.planAdjustmentBatch, [
+            "edits": [a, try edit("b", ["detail": ["raw_sharpness": 0.5]])]
+        ]))
+        XCTAssertEqual(invalid["state"], "failed")
+        XCTAssertEqual(invalid["error_code"], "invalid_arguments")
+        XCTAssertEqual(invalid["error_details"]?.objectValue?["photo_id"], "b")
+        XCTAssertNil(invalid["plan_id"])
+        XCTAssertNil(try catalog.photo("a")?.recipe)
+
+        let plan = try await client.job(await client.call(.planAdjustmentBatch, ["edits": [a, b]]))
+        XCTAssertEqual(plan["state"], "succeeded")
+        let args = ["plan_id": try XCTUnwrap(plan["plan_id"])]
+        let bFile = folder.appendingPathComponent("b.png")
+        let parked = folder.appendingPathComponent("parked")
+        try FileManager.default.moveItem(at: bFile, to: parked)
+        let unavailable = try await client.job(await client.call(.applyAdjustmentBatch, args))
+        XCTAssertEqual(unavailable["state"], "failed")
+        XCTAssertEqual(unavailable["commit_state"], "not_committed")
+        XCTAssertEqual(unavailable["error_code"], "file_access_required")
+        XCTAssertEqual(unavailable["error_details"]?.objectValue?["photo_id"], "b")
+        XCTAssertNil(try catalog.photo("a")?.recipe)
+        XCTAssertTrue(try catalog.editHistory(photoID: "a").isEmpty)
+        XCTAssertFalse(client.model.undo.canUndo)
+        try FileManager.default.moveItem(at: parked, to: bFile)
+
+        let native = try await client.job(await client.call(.globalAdjustments, client.edits("b", ["adjustments": ["exposure": 0.25]])))
+        XCTAssertEqual(native["commit_state"], "committed")
+        let stale = try await client.job(await client.call(.applyAdjustmentBatch, args))
+        XCTAssertEqual(stale["state"], "failed")
+        XCTAssertEqual(stale["error_code"], "stale_photo")
+        XCTAssertEqual(stale["error_details"]?.objectValue?["photo_id"], "b")
+        XCTAssertEqual(stale["commit_state"], "not_committed")
+        XCTAssertNil(try catalog.photo("a")?.recipe)
+        XCTAssertEqual(try client.recipe("b").exposure, 0.25)
+    }
+
+    @MainActor func testAdjustmentBatchSkipsUnchangedRecipesAndRestoresAnUntouchedVersion() async throws {
+        let (catalog, _) = try await catalog(withRecipes: false)
+        let client = try await Client(catalog)
+        let neutralCurve: Value = .array(ToneCurves.identity.map { ["x": .double($0.x), "y": .double($0.y)] })
+        let initial = try client.edits("a", ["adjustments": [
+            "global": ["exposure": 0], "curves": ["luminance": neutralCurve]
+        ]])
+        let noOp = try await client.job(await client.call(.planAdjustmentBatch, ["edits": [.object(initial)]]))
+        XCTAssertEqual(noOp["changed_count"], 0)
+        let notSaved = try await client.job(await client.call(.applyAdjustmentBatch, ["plan_id": try XCTUnwrap(noOp["plan_id"])]))
+        XCTAssertEqual(notSaved["state"], "succeeded")
+        XCTAssertEqual(notSaved["commit_state"], "not_committed")
+        XCTAssertEqual(notSaved["operation_id"], .null)
+        XCTAssertNil(try catalog.photo("a")?.recipe)
+        XCTAssertTrue(try catalog.editHistory(photoID: "a").isEmpty)
+
+        let grain = try client.edits("a", ["adjustments": ["effects": ["grain_amount": 40]]])
+        let planned = try await client.job(await client.call(.planAdjustmentBatch, ["edits": [.object(grain)]]))
+        let saved = try await client.job(await client.call(.applyAdjustmentBatch, ["plan_id": try XCTUnwrap(planned["plan_id"])]))
+        XCTAssertEqual(saved["commit_state"], "committed")
+        let recipe = try client.recipe("a")
+        XCTAssertEqual(recipe.grain.amount, 40)
+        XCTAssertNotEqual(recipe.grain.seed, 0)
+        let operation = try XCTUnwrap(saved["operation_id"])
+        _ = try client.data(await client.call(.undo, ["operation_id": operation]))
+        XCTAssertNil(try catalog.photo("a")?.recipe)
+        _ = try client.data(await client.call(.redo, ["operation_id": operation]))
+        XCTAssertEqual(try client.recipe("a"), recipe)
+    }
+
+    @MainActor func testAdjustmentBatchValidatesIndividuallySupportedRAWAndRasterParameters() async throws {
+        let sample = try MoreRAWTests.sample("leica_m8_8bit_uncompressed.DNG")
+        let (catalog, folder) = try await catalog(ids: ["png"])
+        let root = try XCTUnwrap(catalog.roots().first)
+        let url = folder.appendingPathComponent("public.DNG")
+        try FileManager.default.copyItem(at: sample, to: url)
+        let raw = try ReferenceImporter.inspect(url: url, root: root, rootURL: folder)
+        try catalog.index(raw)
+        let client = try await Client(catalog)
+        let values = try client.data(await client.call(.photoRecipe, ["photo_id": .string(raw.id)]))
+        let defaults = try XCTUnwrap(values["recipe"]?.objectValue?["raw_defaults"]?.objectValue)
+        let supported = try XCTUnwrap(defaults.keys.sorted().first { defaults[$0]?.number != nil })
+        let edits: Value = [.object(try client.edits(raw.id, ["adjustments": [
+            "global": ["exposure": 0.4], "detail": .object([supported: 0.37])
+        ]])), .object(try client.edits("png", ["adjustments": ["global": ["exposure": -0.2]]]))]
+        let plan = try await client.job(await client.call(.planAdjustmentBatch, ["edits": edits]))
+        XCTAssertEqual(plan["state"], "succeeded")
+        let saved = try await client.job(await client.call(.applyAdjustmentBatch, ["plan_id": try XCTUnwrap(plan["plan_id"])]))
+        XCTAssertEqual(saved["commit_state"], "committed")
+        let recipe = try client.recipe(raw.id)
+        XCTAssertEqual(recipe.exposure, 0.4)
+        XCTAssertEqual(MCPDevelopParameters.describe(recipe)["detail"]?.objectValue?[supported], 0.37)
+        XCTAssertEqual(try client.recipe("png").exposure, -0.2)
+        XCTAssertEqual(try SafeFileWriter.sha256(url), try SafeFileWriter.sha256(sample))
+    }
+
     @MainActor func testXMPPlanUsesNativeAuthorizationAndImportsReviewedSparseSettings() async throws {
         let (catalog, folder) = try await catalog()
         let url = folder.appendingPathComponent("synthetic.xmp")

@@ -28,6 +28,10 @@ extension AppMCPTool {
             return ("Add a nonzero EV delta to each explicit photo_id, clamping to ±5 EV. Supply expected_revisions for every target.", recipeJob)
         case .matchExposure:
             return ("Match total exposure using the source photo_id's aperture, shutter speed, ISO, decoder baseline and saved exposure. Pass distinct target photo_ids and expected_revisions for source and targets.", recipeJob)
+        case .planAdjustmentBatch:
+            return ("Plan a different Develop patch for each explicit photo version, without changing the active photo or saving. Supply up to \(MCPAdjustmentBatch.maximumPhotos) distinct edits with source_revision, recipe_revision and adjustments. Omitted parameters keep their current values. Poll get_job to review the changes before applying the plan.", "job_id, then plan_id, changed_count and ordered items with state and changes containing before and after values")
+        case .applyAdjustmentBatch:
+            return ("Save the entire reviewed plan_id from plan_adjustment_batch in one transaction. All target versions and original files are rechecked. If a target is stale or unavailable, nothing is saved. A successful commit registers one undo action for all changed photos.", recipeJob)
         case .transferAdjustments:
             return ("Copy settings from photo_id to Phosdeck's adjustment clipboard, or paste, sync from photo_id, use the previous photo's stored settings, or apply preset_id with preset_revision and optional amount (1 = 100%). Use explicit photo_ids for targets and expected_revisions for supplied photos. Choose groups, or omit groups to use the preset's saved groups. Draft transfers require action=preset and one target. Consecutive trials share a starting recipe. Use amount=0 to restore it. Other draft edits end the current preset trial.", draftRecipeJob + " Draft preset trials also return preset_trial.")
         case .beforeAfter:
@@ -358,7 +362,9 @@ extension AppMCPTools {
 
     func recordRecipeUndo(before: [Photo], after: [Photo]) -> Value {
         let ids = Set(before.map(\.id))
-        return recordUndo(before: before.map { RecipeState(photo: $0) }, after: after.map { RecipeState(photo: $0) },
+        let previous = before.sorted { $0.id < $1.id }.map { RecipeState(photo: $0) }
+        let saved = after.sorted { $0.id < $1.id }.map { RecipeState(photo: $0) }
+        return recordUndo(before: previous, after: saved,
                           describe: { states in ["items": .array(states.map { .object(MCPDevelopPhoto.revisions($0.photo)) })] },
                           read: { try $0.photos(ids: ids).sorted { $0.id < $1.id }.map { RecipeState(photo: $0) } })
     }
@@ -544,29 +550,28 @@ extension AppMCPTools {
             }
             guard !model.dirty, model.undo.groupingLevel == 0, model.undo.isUndoRegistrationEnabled else { throw MCPToolProblem.nativeInteraction }
             try beforeSave()
+            let after: [Photo]
             do {
-                try model.publishRecipeBatch(changes, title: title, catalog: catalog, expecting: targets + [source].compactMap { $0 }, closedUndo: true)
-            } catch OrganizationError.versionConflict { throw MCPToolProblem.stalePhoto }
+                after = try model.publishRecipeBatch(changes, title: title, catalog: catalog, expecting: targets + [source].compactMap { $0 }, closedUndo: true)
+            } catch let conflict as RecipeBatchConflict { throw MCPToolProblem.stalePhoto.forPhoto(conflict.photoID) }
             afterSave()
 
-            let committed = changes.isEmpty ? "not_committed" : "committed"
+            let committed = after.isEmpty ? "not_committed" : "committed"
             job.data["commit_state"] = .string(committed)
-            let changedIDs = Set(changes.map { $0.photo.id })
-            let refreshed = changes.isEmpty || model.perform { try model.refreshAfterBatch(ids: changedIDs) }
-            let after = try catalog.photos(ids: changedIDs).sorted { $0.id < $1.id }
             let revisions = Dictionary(uniqueKeysWithValues: after.map { ($0.id, $0.recipeRevision) })
-            job.data["workspace_refreshed"] = .bool(refreshed)
-            job.data["changed_count"] = .int(changes.count)
-            if singleEdit, let saved = changes.first?.recipe { job.data["recipe"] = .object(MCPDevelopParameters.describe(saved)) }
-            job.data["operation_id"] = changes.isEmpty ? .null : recordRecipeUndo(before: changes.map(\.photo), after: after)
+            job.data["workspace_refreshed"] = .bool(after.isEmpty || model.perform { try model.refreshAfterBatch(ids: Set(revisions.keys)) })
+            job.data["changed_count"] = .int(after.count)
+            if singleEdit, !after.isEmpty, let saved = changes.first?.recipe { job.data["recipe"] = .object(MCPDevelopParameters.describe(saved)) }
+            job.data["operation_id"] = after.isEmpty ? .null : recordRecipeUndo(before: changes.map(\.photo).filter { revisions[$0.id] != nil }, after: after)
             job.items = items.map { item in
                 var value = item
                 if let id = item["photo_id"]?.stringValue, let revision = revisions[id] { value["recipe_revision"] = .int(revision) }
+                else if item["state"] == "updated" { value["state"] = "unchanged" }
                 return .object(value)
             }
             workflows.progress(job, title: title, done: targets.count, total: targets.count)
             let skipped = items.filter { $0["state"] == "skipped" }.count
-            model.status = L10n.text("app.completeUpdatedPhotos", defaultValue: "\(title) complete · Updated \(changes.count)/\(targets.count) photos")
+            model.status = L10n.text("app.completeUpdatedPhotos", defaultValue: "\(title) complete · Updated \(after.count)/\(targets.count) photos")
             model.reports = zip(targets, items).compactMap { photo, item in
                 let notes = item["reason"]?.stringValue.map { [$0] } ?? item["notes"]?.arrayValue?.compactMap(\.stringValue) ?? []
                 return notes.isEmpty ? nil : photo.displayName + ": " + notes.joined(separator: " · ")
@@ -575,7 +580,7 @@ extension AppMCPTools {
                 job.finish(.failed, "No photos could be adjusted.", error: "adjustment_failed")
             } else {
                 job.finish(skipped > 0 ? .partial : .succeeded,
-                           changes.isEmpty ? "The saved adjustments were unchanged." : "Saved the photo adjustments.", committed: committed)
+                           after.isEmpty ? "The saved adjustments were unchanged." : "Saved the photo adjustments.", committed: committed)
             }
         }
     }

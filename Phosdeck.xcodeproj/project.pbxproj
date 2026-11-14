@@ -18,6 +18,7 @@
 		AA7900000000000000000038 /* AppMCPImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7900000000000000000048 /* AppMCPImport.swift */; };
 		AA790000000000000000003A /* AppMCPCulling.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004A /* AppMCPCulling.swift */; };
 		AA79000000000000000000C0 /* AppMCPContactSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA79000000000000000000C1 /* AppMCPContactSheet.swift */; };
+		AA79000000000000000000C2 /* AppMCPAdjustmentBatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA79000000000000000000C3 /* AppMCPAdjustmentBatch.swift */; };
 		AA790000000000000000003B /* AppMCPMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004B /* AppMCPMetadata.swift */; };
 		AA790000000000000000003C /* AppMCPCollections.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004C /* AppMCPCollections.swift */; };
 		AA790000000000000000003D /* AppMCPVersions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA790000000000000000004D /* AppMCPVersions.swift */; };
@@ -286,6 +287,7 @@
 		AA7900000000000000000048 /* AppMCPImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPImport.swift; sourceTree = "<group>"; };
 		AA790000000000000000004A /* AppMCPCulling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPCulling.swift; sourceTree = "<group>"; };
 		AA79000000000000000000C1 /* AppMCPContactSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPContactSheet.swift; sourceTree = "<group>"; };
+		AA79000000000000000000C3 /* AppMCPAdjustmentBatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPAdjustmentBatch.swift; sourceTree = "<group>"; };
 		AA790000000000000000004B /* AppMCPMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPMetadata.swift; sourceTree = "<group>"; };
 		AA790000000000000000004C /* AppMCPCollections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPCollections.swift; sourceTree = "<group>"; };
 		AA790000000000000000004D /* AppMCPVersions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPVersions.swift; sourceTree = "<group>"; };
@@ -759,6 +761,7 @@
 				AA7900000000000000000048 /* AppMCPImport.swift */,
 				AA790000000000000000004A /* AppMCPCulling.swift */,
 				AA79000000000000000000C1 /* AppMCPContactSheet.swift */,
+				AA79000000000000000000C3 /* AppMCPAdjustmentBatch.swift */,
 				AA790000000000000000004B /* AppMCPMetadata.swift */,
 				AA790000000000000000004C /* AppMCPCollections.swift */,
 				AA790000000000000000004D /* AppMCPVersions.swift */,
@@ -1182,6 +1185,7 @@
 				AA7900000000000000000038 /* AppMCPImport.swift in Sources */,
 				AA790000000000000000003A /* AppMCPCulling.swift in Sources */,
 				AA79000000000000000000C0 /* AppMCPContactSheet.swift in Sources */,
+				AA79000000000000000000C2 /* AppMCPAdjustmentBatch.swift in Sources */,
 				AA790000000000000000003B /* AppMCPMetadata.swift in Sources */,
 				AA790000000000000000003C /* AppMCPCollections.swift in Sources */,
 				AA790000000000000000003D /* AppMCPVersions.swift in Sources */,

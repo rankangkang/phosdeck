@@ -116,7 +116,7 @@ enum MCPDevelopParameters {
             var basic = schema(.globalAdjustments).objectValue!["properties"]!.objectValue!
             basic.removeValue(forKey: "pipeline_version")
             return objectSchema(["basic": objectSchema(basic), "color": schema(.colorAdjustments), "zone_gains": gainsSchema,
-                                 "curves": objectSchema(Dictionary(uniqueKeysWithValues: channels.map { ($0, pointsSchema) }))])
+                                 "curves": curvesSchema])
         default: preconditionFailure("Only adjustment patches have a parameter schema.")
         }
     }
@@ -159,6 +159,7 @@ enum MCPDevelopParameters {
                   "properties": ["x": numberSchema(unit), "y": numberSchema(unit)]]
     ]
     static let gainsSchema: Value = ["type": "array", "minItems": 5, "maxItems": 5, "items": numberSchema(-1...1)]
+    static let curvesSchema = objectSchema(Dictionary(uniqueKeysWithValues: channels.map { ($0, pointsSchema) }))
 
     static func points(_ value: Value) throws -> [CurvePoint] {
         guard let items = value.arrayValue, (2...ToneCurves.maxPoints).contains(items.count) else {

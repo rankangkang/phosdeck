@@ -2264,12 +2264,21 @@ final class AppModel {
         }
     }
     private func reloadSavedRecipe(id: String) throws {
+        try reloadSavedRecipes(ids: [id])
+    }
+    private func reloadSavedRecipes(ids: Set<String>) throws {
         guard let catalog else { return }
         if comparison != nil || survey != nil { try reloadPhotos(); return }
         // Recipe changes do not affect query membership, order, stacks or organization counts.
-        guard let photo = try catalog.photo(id) else { throw LRCError(L10n.text("app.thePhotoIsNoLongerInTheCatalog", defaultValue: "The photo is no longer in the catalog")) }
-        if let index = photos.firstIndex(where: { $0.id == id }) { photos[index] = photo }
-        if activeID == id { activePhoto = photo }
+        let onPage = ids.intersection(photos.map(\.id))
+        let visible = onPage.union(ids.filter { $0 == activeID })
+        let rows = try visible.isEmpty ? [] : catalog.photos(ids: visible)
+        guard rows.count == visible.count else { throw LRCError(L10n.text("app.thePhotoIsNoLongerInTheCatalog", defaultValue: "The photo is no longer in the catalog")) }
+        if !onPage.isEmpty {
+            let updated = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+            photos = photos.map { updated[$0.id] ?? $0 }
+        }
+        if let active = rows.first(where: { $0.id == activeID }) { activePhoto = active }
         try refreshDevelopReference()
     }
     private func reloadEditHistory(keepingLoaded: Bool = false) throws {
@@ -2714,25 +2723,23 @@ final class AppModel {
         } catch { self.error = error.localizedDescription; return false }
     }
 
+    @discardableResult
     func publishRecipeBatch(_ changes: [(photo: Photo, recipe: EditRecipe)], title: String, catalog: CatalogStore,
-                            expecting: [Photo] = [], closedUndo: Bool = false) throws {
-        try catalog.saveRecipes(changes, title: title, expecting: expecting)
-        guard !changes.isEmpty else { return }
-        let previous = changes.map(\.photo)
+                            expecting: [Photo] = [], expectingRoots: [StorageRoot] = [], closedUndo: Bool = false) throws -> [Photo] {
+        let saved = try catalog.saveRecipes(changes, title: title, expecting: expecting, expectingRoots: expectingRoots)
+        guard !saved.isEmpty else { return [] }
+        let savedIDs = Set(saved.map(\.id))
+        let previous = changes.map(\.photo).filter { savedIDs.contains($0.id) }
         if !closedUndo { undo.beginUndoGrouping() }
         registerCatalogUndo(title, closed: closedUndo) { $0.restoreRecipeBatch(previous, title: title) }
         if !closedUndo { undo.endUndoGrouping() }
+        return saved
     }
 
     func refreshAfterBatch(ids: Set<String>) throws {
-        if let id = ids.first, ids.count == 1 {
-            try reloadSavedRecipe(id: id)
-            if id == activeID { try reloadEditHistory(keepingLoaded: true) }
-        } else {
-            try reloadPhotos()
-            try reloadEditContext()
-        }
+        try reloadSavedRecipes(ids: ids)
         if let activeID, ids.contains(activeID) {
+            try reloadEditHistory(keepingLoaded: true)
             clearSavedEditPreview()
             // Undo can restore an untouched row. Its display baseline must not write a new revision.
             guard let data = activePhoto?.recipe, !loadingPhoto else { loadActive(persistBaseline: false); return }

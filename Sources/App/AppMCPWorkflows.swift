@@ -156,6 +156,7 @@ final class AppMCPWorkflows {
     var stackPlans: [String: MCPAutoStackPlan] = [:]
     var pairPlans: [String: MCPPairPlan] = [:]
     var xmpPlans: [String: [XMPPresetImportItem]] = [:]
+    var adjustmentPlans: [String: MCPAdjustmentBatch] = [:]
     var mergePlans: [String: MCPMergePlan] = [:]
     var mergePreview: MCPPreparedMerge?
     var mergeFiles: [String: MCPPublishedMerge] = [:]
@@ -194,6 +195,7 @@ final class AppMCPWorkflows {
             stackPlans[job.id] = nil
             pairPlans[job.id] = nil
             xmpPlans[job.id] = nil
+            adjustmentPlans[job.id] = nil
             mergePlans[job.id] = nil
             mergeFiles[job.id] = nil
             exportPlans[job.id] = nil
@@ -319,6 +321,7 @@ final class AppMCPWorkflows {
             stackPlans[oldest.id] = nil
             pairPlans[oldest.id] = nil
             xmpPlans[oldest.id] = nil
+            adjustmentPlans[oldest.id] = nil
             mergePlans[oldest.id] = nil
             mergeFiles[oldest.id] = nil
             exportPlans[oldest.id] = nil
@@ -338,6 +341,7 @@ final class AppMCPWorkflows {
             } catch let problem as MCPToolProblem {
                 job.finish(.failed, problem.summary, committed: job.data["commit_state"]?.stringValue ?? "not_committed", error: problem.code)
                 job.data["follow_up"] = .string(problem.next)
+                if !problem.details.isEmpty { job.data["error_details"] = .object(problem.details) }
             } catch {
                 model.reports = [error.localizedDescription]
                 model.status = L10n.text("app.actionIncomplete", defaultValue: "Action Incomplete")

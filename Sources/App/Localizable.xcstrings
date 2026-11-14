@@ -885,6 +885,23 @@
         }
       }
     },
+    "agent.adjustmentBatch": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batch Adjustments"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "批量调整"
+          }
+        }
+      }
+    },
     "agent.configCopied": {
       "extractionState": "manual",
       "localizations": {

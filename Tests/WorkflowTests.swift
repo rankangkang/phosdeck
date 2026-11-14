@@ -521,7 +521,14 @@ final class WorkflowTests: XCTestCase {
         var invalid = a; invalid.exposure = .nan
         XCTAssertThrowsError(try catalog.saveRecipes([(original[0], a), (original[1], invalid)], title: "batch"))
         XCTAssertTrue(try catalog.photos().allSatisfy { $0.recipe == nil && $0.digest == nil })
-        try catalog.saveRecipes(original.map { ($0, a) }, title: "batch")
+        let saved = try catalog.saveRecipes(original.map { ($0, a) }, title: "batch", expecting: original, expectingRoots: [root])
+        XCTAssertEqual(saved, try catalog.photos())
+        XCTAssertThrowsError(try catalog.saveRecipes([], title: "stale reviewed plan", expecting: original)) { error in
+            XCTAssertEqual((error as? RecipeBatchConflict)?.photoID, original[0].id)
+        }
+        var oldRoot = root
+        oldRoot.bookmark = Data([1])
+        XCTAssertThrowsError(try catalog.saveRecipes([], title: "stale root", expecting: saved, expectingRoots: [oldRoot]))
         let redo = try catalog.restoreRecipes(original, title: "undo")
         XCTAssertTrue(try catalog.photos().allSatisfy { $0.recipe == nil && $0.digest == nil })
         _ = try catalog.restoreRecipes(redo, title: "redo")

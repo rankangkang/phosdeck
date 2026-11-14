@@ -20,12 +20,19 @@ struct MCPOutputSources {
         let ids = arguments["photo_ids"]!.arrayValue!.compactMap(\.stringValue)
         let revisions = arguments["expected_revisions"]!.objectValue!
         guard Set(ids) == Set(revisions.keys) else { throw MCPToolProblem.invalid("Supply expected_revisions for exactly the requested photo IDs.") }
-        let rows = try read(ids, catalog: catalog)
-        let sources = try rows.map { photo, root in
-            let revision = revisions[photo.id]!.objectValue!
-            let version = PhotoVersionRevision(source: revision["source_revision"]!.intValue!, recipe: revision["recipe_revision"]!.intValue!)
-            guard version.matches(photo) else { throw MCPToolProblem.stalePhoto }
-            return Source(id: photo.id, version: version, identity: photo.identity, root: root, relativePath: photo.relativePath)
+        let targets = ids.map { id in
+            let revision = revisions[id]!.objectValue!
+            return (id, PhotoVersionRevision(source: revision["source_revision"]!.intValue!, recipe: revision["recipe_revision"]!.intValue!))
+        }
+        return try capture(targets, catalog: catalog)
+    }
+
+    static func capture(_ targets: [(id: String, version: PhotoVersionRevision)], catalog: CatalogStore) throws -> (Self, [Row]) {
+        let rows = try read(targets.map(\.id), catalog: catalog)
+        let sources = try zip(targets, rows).map { target, row in
+            let (photo, root) = row
+            guard target.version.matches(photo) else { throw MCPToolProblem.stalePhoto.forPhoto(photo.id) }
+            return Source(id: photo.id, version: target.version, identity: photo.identity, root: root, relativePath: photo.relativePath)
         }
         return (Self(sources: sources), rows)
     }
@@ -38,7 +45,7 @@ struct MCPOutputSources {
             guard expected.version.matches(row.photo), expected.identity == row.photo.identity,
                   expected.relativePath == row.photo.relativePath, expected.root.id == row.root.id,
                   expected.root.path == row.root.path, expected.root.bookmark == row.root.bookmark else {
-                throw MCPToolProblem.stalePhoto
+                throw MCPToolProblem.stalePhoto.forPhoto(expected.id)
             }
         }
         return rows
@@ -49,8 +56,8 @@ struct MCPOutputSources {
             let photos = Dictionary(uniqueKeysWithValues: try CatalogStore.photos(ids: Set(ids), in: db).map { ($0.id, $0) })
             let roots = Dictionary(uniqueKeysWithValues: try StorageRoot.fetchAll(db).map { ($0.id, $0) })
             return try ids.map { id in
-                guard let photo = photos[id] else { throw MCPToolProblem.photoUnavailable }
-                guard photo.availability == "available", let root = roots[photo.rootID] else { throw MCPToolProblem.fileAccess }
+                guard let photo = photos[id] else { throw MCPToolProblem.photoUnavailable.forPhoto(id) }
+                guard photo.availability == "available", let root = roots[photo.rootID] else { throw MCPToolProblem.fileAccess.forPhoto(id) }
                 return (photo, root)
             }
         }
