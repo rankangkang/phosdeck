@@ -1,46 +1,98 @@
 import SwiftUI
 import AppKit
 
-struct FocusRetouchControls: View {
+struct MergeRetouchControls: View {
     @Bindable var session: PhotoMergeSession
-    @Bindable var state: FocusRetouchState
+    @Bindable var state: MergeRetouchState
     var body: some View {
         VStack(alignment:.leading,spacing:8) {
-            SubgroupLabel(L10n.text("merge.retouch.title",defaultValue:"Focus Retouching"))
+            SubgroupLabel(L10n.text("merge.retouch.title",defaultValue:"Merge Retouching"))
             Picker(L10n.text("merge.retouch.source",defaultValue:"Source"),selection:$state.source) {
-                ForEach(Array(session.inputs.enumerated()),id:\.offset) { index,input in
-                    Text("\(index+1) · \(input.photo.name)").tag(index)
+                ForEach(Array(session.retouchSourceNames.enumerated()),id:\.offset) { index,name in
+                    Text("\(index+1) · \(name)").tag(index)
                 }
             }
             HStack {
                 Button(L10n.text("merge.retouch.previous",defaultValue:"Previous")) { state.source -= 1 }
                     .disabled(state.source == 0)
                 Button(L10n.text("merge.retouch.next",defaultValue:"Next")) { state.source += 1 }
-                    .disabled(state.source+1 >= session.inputs.count)
+                    .disabled(state.source+1 >= session.retouchSourceNames.count)
             }.buttonStyle(.key)
-            Toggle(L10n.text("merge.retouch.restore",defaultValue:"Restore Automatic Result"),isOn:$state.restore).toggleStyle(.instrument)
+            KeyRow(title:L10n.text("merge.retouch.brushMode",defaultValue:"Brush Operation"),options:brushModes,
+                selection:Binding(get:{ state.restore ? 2 : state.exclude ? 1 : 0 },set:{ state.restore = $0 == 2; state.exclude = $0 == 1 }),expand:true,wrappingColumns:1)
+            if session.options.kind == .lighten {
+                Toggle(L10n.text("merge.retouch.excludeFrame",defaultValue:"Exclude Entire Frame"),isOn:Binding(
+                    get:{ state.settings.excludedSources.contains(state.source) },
+                    set:{ state.excludeSource($0,count:session.retouchSourceNames.count) })).toggleStyle(.instrument)
+                    .disabled(state.pending)
+                Text(L10n.text("merge.retouch.enabledCount",defaultValue:"\(session.retouchSourceNames.count-state.settings.excludedSources.count) of \(session.retouchSourceNames.count) frames enabled"))
+                    .font(.caption11).foregroundStyle(Theme.textSecondary)
+            }
+            MergeRetouchBrushParameters(state:state)
+            HStack {
+                Button(L10n.text("app.undo_244",defaultValue:"Undo")) { state.undo.undo() }.disabled(!state.undo.canUndo || state.pending)
+                Button(L10n.text("app.redo_245",defaultValue:"Redo")) { state.undo.redo() }.disabled(!state.undo.canRedo || state.pending)
+                Button(L10n.text("merge.retouch.reset",defaultValue:"Reset")) { state.replaceSettings(MergeRetouchSettings()) }.disabled(state.settings == MergeRetouchSettings() || state.pending)
+            }.buttonStyle(.key)
+            Toggle(L10n.text("merge.retouch.overlay",defaultValue:"Show Stroke Paths"),isOn:$state.overlay).toggleStyle(.instrument)
+            Text(modeHint)
+                .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
+            if session.options.kind == .lighten { MergeStarTrailControls(state:state) }
+            Text(L10n.text("merge.retouch.hint",defaultValue:"Paint on the result. Space-drag or scroll to pan; left/right arrows switch sources. Escape cancels the current stroke. Corrections are saved with the new master."))
+                .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
+        }
+            .onChange(of:state.source) { session.refreshRetouch() }
+            .onChange(of:state.revision) { session.refreshRetouch() }
+    }
+    private var brushModes: [KeyOption<Int>] {
+        var modes = [KeyOption(0,L10n.text("merge.retouch.keep",defaultValue:"Keep Source"))]
+        if session.options.kind.isPanorama || session.options.kind == .lighten { modes.append(KeyOption(1,L10n.text("merge.retouch.exclude",defaultValue:"Exclude Source"))) }
+        modes.append(KeyOption(2,L10n.text("merge.retouch.automatic",defaultValue:"Automatic")))
+        return modes
+    }
+    private var modeHint: String {
+        switch session.options.kind {
+        case .hdr: L10n.text("merge.retouch.hdrHint",defaultValue:"Sources are aligned and matched to the HDR exposure. Paint to choose one moment and remove ghosts. Clipped detail in the chosen frame cannot be recovered.")
+        case .panorama,.hdrPanorama: L10n.text("merge.retouch.panoramaHint",defaultValue:"Keep or exclude this source in the painted area. HDR panoramas select an exposure bracket group. Excluding every covering source leaves a transparent area; Automatic restores the original blend.")
+        case .lighten: L10n.text("merge.retouch.starHint",defaultValue:"Keep Source protects a foreground; Exclude Source removes local light trails from that frame. Disable bad frames with Exclude Entire Frame. Fixed-camera sequences should not align the stars.")
+        default: L10n.text("merge.retouch.focusHint",defaultValue:"Copy a sharp region from the selected aligned source, or restore the automatic focus stack.")
+        }
+    }
+}
+
+private struct MergeRetouchBrushParameters: View {
+    @Bindable var state: MergeRetouchState
+    var body: some View {
+        VStack(spacing:8) {
             AdjustmentRow(label:L10n.text("merge.retouch.radius",defaultValue:"Radius"),value:state.radius*100,range:0.01...50,step:0.1,digits:2,unit:"%",
                 change:{ value,_ in state.radius = value/100 },commit:{})
             AdjustmentRow(label:L10n.text("merge.retouch.hardness",defaultValue:"Hardness"),value:state.hardness*100,range:0...100,step:1,digits:0,unit:"%",
                 change:{ value,_ in state.hardness = value/100 },commit:{})
             AdjustmentRow(label:L10n.text("merge.retouch.opacity",defaultValue:"Opacity"),value:state.opacity*100,range:0...100,step:1,digits:0,unit:"%",
                 change:{ value,_ in state.opacity = value/100 },commit:{})
-            HStack {
-                Button(L10n.text("app.undo_244",defaultValue:"Undo")) { state.undo.undo() }.disabled(!state.undo.canUndo || state.pending)
-                Button(L10n.text("app.redo_245",defaultValue:"Redo")) { state.undo.redo() }.disabled(!state.undo.canRedo || state.pending)
-                Button(L10n.text("merge.retouch.reset",defaultValue:"Reset")) { state.replace([]) }.disabled(state.strokes.isEmpty || state.pending)
-            }.buttonStyle(.key)
-            Toggle(L10n.text("merge.retouch.overlay",defaultValue:"Show Stroke Paths"),isOn:$state.overlay).toggleStyle(.instrument)
-            Text(L10n.text("merge.retouch.hint",defaultValue:"Paint on the result to copy the selected aligned source. Space-drag or scroll to pan; left/right arrows switch sources. Escape cancels the current stroke. Corrections are saved with the new master."))
-                .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
         }
-            .onChange(of:state.source) { session.refreshRetouch() }
-            .onChange(of:state.revision) { session.refreshRetouch() }
     }
 }
 
-struct FocusRetouchView: View {
-    @Bindable var state: FocusRetouchState
+private struct MergeStarTrailControls: View {
+    @Bindable var state: MergeRetouchState
+    var body: some View {
+        VStack(alignment:.leading,spacing:8) {
+            SubgroupLabel(L10n.text("merge.retouch.gaps",defaultValue:"Star Trail Gaps"))
+            AdjustmentRow(label:L10n.text("merge.retouch.gapSize",defaultValue:"Maximum Gap"),value:Double(state.trailDraft.gap),range:0...16,step:1,digits:0,unit:"px",
+                change:{ value,_ in state.trailDraft.gap = Int(value) },commit:{ state.commitTrails() })
+            AdjustmentRow(label:L10n.text("merge.retouch.gapThreshold",defaultValue:"Highlight Threshold"),value:state.trailDraft.threshold*100,range:1...100,step:1,digits:0,unit:"%",
+                change:{ value,_ in state.trailDraft.threshold = value/100 },commit:{ state.commitTrails() })
+            AdjustmentRow(label:L10n.text("merge.retouch.gapStrength",defaultValue:"Fill Strength"),value:state.trailDraft.strength*100,range:0...100,step:1,digits:0,unit:"%",
+                change:{ value,_ in state.trailDraft.strength = value/100 },commit:{ state.commitTrails() })
+            Text(L10n.text("merge.retouch.gapHint",defaultValue:"0 disables filling. Small gaps between nearby bright endpoints are interpolated in output pixels. Inspect at 100%; larger values can join unrelated lights. Painted source constraints take priority over filling."))
+                .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
+        }
+    }
+}
+
+struct MergeRetouchView: View {
+    @Bindable var state: MergeRetouchState
     let sourceCount: Int
     let enabled: Bool
     let mat: PhotoMat
@@ -56,7 +108,7 @@ struct FocusRetouchView: View {
                 Button("200%") { state.zoom = 2 }.buttonStyle(.key(height:24))
                 }.frame(maxWidth:.infinity)
             }.font(.caption11)
-            FocusRetouchCanvas(state:state,sourceCount:sourceCount,enabled:enabled,mat:mat)
+            MergeRetouchCanvas(state:state,sourceCount:sourceCount,enabled:enabled,mat:mat)
                 .overlay(alignment:.bottom) {
                     if state.pending {
                         Text(L10n.text("merge.retouch.rendering",defaultValue:"Preparing full-size comparison…"))
@@ -68,24 +120,24 @@ struct FocusRetouchView: View {
     }
 }
 
-struct FocusRetouchCanvas: NSViewRepresentable {
-    var state: FocusRetouchState
+struct MergeRetouchCanvas: NSViewRepresentable {
+    var state: MergeRetouchState
     var sourceCount: Int
     var enabled: Bool
     var mat: PhotoMat
-    func makeNSView(context: Context) -> FocusRetouchNSView { FocusRetouchNSView() }
-    func updateNSView(_ view: FocusRetouchNSView,context: Context) {
+    func makeNSView(context: Context) -> MergeRetouchNSView { MergeRetouchNSView() }
+    func updateNSView(_ view: MergeRetouchNSView,context: Context) {
         view.state = state; view.sourceCount = sourceCount; view.mat = mat; view.interactionEnabled = enabled
         // Read only here: updates remain confined to the comparison canvas.
         _ = state.preview; _ = state.pending; _ = state.zoom; _ = state.radius
-        _ = state.overlay; _ = state.strokes; _ = state.restore
+        _ = state.overlay; _ = state.strokes; _ = state.restore; _ = state.exclude
         if state.pending || !enabled { view.cancelStroke() }
         view.needsDisplay = true
     }
 }
 
-final class FocusRetouchNSView: NSView {
-    var state: FocusRetouchState?
+final class MergeRetouchNSView: NSView {
+    var state: MergeRetouchState?
     var sourceCount = 0
     var interactionEnabled = true
     var mat = PhotoMat.dark
@@ -103,8 +155,8 @@ final class FocusRetouchNSView: NSView {
         super.init(frame:frameRect)
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
-        setAccessibilityLabel(L10n.text("merge.retouch.canvas",defaultValue:"Focus source and result comparison"))
-        setAccessibilityIdentifier("focus-retouch-canvas")
+        setAccessibilityLabel(L10n.text("merge.retouch.canvas",defaultValue:"Merge source and result comparison"))
+        setAccessibilityIdentifier("merge-retouch-canvas")
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     private var panes: [CGRect] {
@@ -134,7 +186,7 @@ final class FocusRetouchNSView: NSView {
         }
         let pane = panes[1], rect = imageRect(in:pane)
         cg.saveGState(); cg.clip(to:pane.intersection(rect))
-        func path(_ points: [MaskPoint],radius: Double,restore: Bool) {
+        func path(_ points: [MaskPoint],radius: Double,restore: Bool,exclude: Bool) {
             guard let first = points.first else { return }
             let line = NSBezierPath(); line.lineCapStyle = .round; line.lineJoinStyle = .round
             func position(_ p: MaskPoint) -> CGPoint { CGPoint(x:rect.minX+p.x*rect.width,y:rect.minY+p.y*rect.height) }
@@ -142,10 +194,10 @@ final class FocusRetouchNSView: NSView {
             if points.count == 1 { line.line(to:CGPoint(x:start.x+0.01,y:start.y)) }
             for point in points.dropFirst() { line.line(to:position(point)) }
             line.lineWidth = max(1,radius*min(rect.width,rect.height)*2)
-            (restore ? NSColor.white : Palette.accentSignal).withAlphaComponent(0.22).setStroke(); line.stroke()
+            (restore ? NSColor.white : exclude ? Palette.error : Palette.accentSignal).withAlphaComponent(0.22).setStroke(); line.stroke()
         }
-        if state.overlay { for stroke in state.strokes { path(stroke.points,radius:stroke.radius,restore:stroke.restore) } }
-        path(points,radius:state.radius,restore:state.restore)
+        if state.overlay { for stroke in state.strokes { path(stroke.points,radius:stroke.radius,restore:stroke.restore,exclude:stroke.exclude) } }
+        path(points,radius:state.radius,restore:state.restore,exclude:state.exclude)
         if let cursor,point(cursor) != nil,!space {
             let r = state.radius*min(rect.width,rect.height)
             let outline = NSBezierPath(ovalIn:CGRect(x:cursor.x-r,y:cursor.y-r,width:2*r,height:2*r))

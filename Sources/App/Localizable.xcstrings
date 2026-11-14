@@ -48224,13 +48224,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Select 2–128 photos; HDR panoramas need at least two complete exposure brackets"
+            "value": "Select 2–128 photos, or up to 2048 fixed-camera star-trail frames without alignment. HDR panoramas need complete brackets"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "请选择 2–128 张照片；HDR 全景至少需要两个完整的曝光包围组"
+            "value": "请选择 2–128 张照片；固定机位星轨关闭自动对齐时最多 2048 帧。HDR 全景需要完整的曝光包围组"
           }
         }
       }
@@ -48394,13 +48394,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Focus Correction"
+            "value": "Merge Correction"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "对焦修正"
+            "value": "合成修正"
           }
         }
       }
@@ -48411,13 +48411,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Focus Retouching"
+            "value": "Merge Retouching"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "对焦精修"
+            "value": "合成精修"
           }
         }
       }
@@ -48581,13 +48581,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Paint on the result to copy the selected aligned source. Space-drag or scroll to pan; left/right arrows switch sources. Escape cancels the current stroke. Corrections are saved with the new master."
+            "value": "Paint on the result. Space-drag or scroll to pan; left/right arrows switch sources. Escape cancels the current stroke. Corrections are saved with the new master."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在结果上涂抹，复制选中的已对齐来源。按住空格拖动或滚动可平移，左右方向键切换来源。Esc 取消当前笔画。修正记录随新母版保存。"
+            "value": "在结果上涂抹。按住空格拖动或滚动可平移，左右方向键切换来源。Esc 取消当前笔画。修正记录随新母版保存。"
           }
         }
       }
@@ -48649,13 +48649,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Focus source and result comparison"
+            "value": "Merge source and result comparison"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "对焦来源与结果对照"
+            "value": "合成来源与结果对照"
           }
         }
       }
@@ -48683,13 +48683,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The editable focus merge is invalid or uses an unavailable processing version."
+            "value": "The editable merge is invalid or uses an unavailable processing version."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "可编辑的对焦合成无效，或使用了当前不可用的处理版本。"
+            "value": "可编辑合成工程无效，或使用了当前不可用的处理版本。"
           }
         }
       }
@@ -48700,13 +48700,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Edit Focus Merge…"
+            "value": "Edit Saved Merge…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "继续编辑对焦合成…"
+            "value": "继续编辑合成…"
           }
         }
       }
@@ -48717,13 +48717,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Refine Focus…"
+            "value": "Refine Merge…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "精修对焦…"
+            "value": "精修合成…"
           }
         }
       }
@@ -48734,13 +48734,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Source order and merge settings are fixed during retouching. Cropping is applied when saving; comparison shows the full canvas."
+            "value": "Source order and geometry are fixed during retouching. Comparison shows the projection canvas before boundary warp, fill and crop; these are applied when saving."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "精修期间固定来源顺序和合成设置。对照显示完整画布，边缘裁剪在保存时应用。"
+            "value": "精修期间固定来源顺序和几何设置。对照显示边界变形、填边与裁剪之前的投影画布，这些收边操作在保存时应用。"
           }
         }
       }
@@ -48751,13 +48751,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Discard unsaved focus corrections?"
+            "value": "Discard unsaved merge corrections?"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "放弃尚未保存的对焦修正？"
+            "value": "放弃尚未保存的合成修正？"
           }
         }
       }
@@ -48775,6 +48775,295 @@
           "stringUnit": {
             "state": "translated",
             "value": "放弃修正"
+          }
+        }
+      }
+    },
+    "merge.retouch.bracketGroup": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bracket %lld: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "包围组 %lld：%@"
+          }
+        }
+      }
+    },
+    "merge.retouch.lastSource": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep at least one frame enabled."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "至少保留一帧启用。"
+          }
+        }
+      }
+    },
+    "merge.retouch.brushMode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brush Operation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画笔操作"
+          }
+        }
+      }
+    },
+    "merge.retouch.excludeFrame": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exclude Entire Frame"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排除整帧"
+          }
+        }
+      }
+    },
+    "merge.retouch.enabledCount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld of %lld frames enabled"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已启用 %lld / %lld 帧"
+          }
+        }
+      }
+    },
+    "merge.retouch.keep": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep Source"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保留来源"
+          }
+        }
+      }
+    },
+    "merge.retouch.exclude": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exclude Source"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排除来源"
+          }
+        }
+      }
+    },
+    "merge.retouch.automatic": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "恢复自动"
+          }
+        }
+      }
+    },
+    "merge.retouch.hdrHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sources are aligned and matched to the HDR exposure. Paint to choose one moment and remove ghosts. Clipped detail in the chosen frame cannot be recovered."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来源已对齐并换算到 HDR 的曝光基准。涂抹可指定一个拍摄瞬间，消除重影；所选帧已剪切的细节无法恢复。"
+          }
+        }
+      }
+    },
+    "merge.retouch.panoramaHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep or exclude this source in the painted area. HDR panoramas select an exposure bracket group. Excluding every covering source leaves a transparent area; Automatic restores the original blend."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在涂抹区域保留或排除所选来源。HDR 全景按曝光包围组选择来源。排除所有覆盖来源会留下透明区域；“恢复自动”恢复原始融合。"
+          }
+        }
+      }
+    },
+    "merge.retouch.starHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep Source protects a foreground; Exclude Source removes local light trails from that frame. Disable bad frames with Exclude Entire Frame. Fixed-camera sequences should not align the stars."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“保留来源”可保护前景；“排除来源”可移除该帧的局部光迹。坏帧可用“排除整帧”停用。固定机位的星轨序列不应对齐星星。"
+          }
+        }
+      }
+    },
+    "merge.retouch.focusHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy a sharp region from the selected aligned source, or restore the automatic focus stack."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从已对齐的所选来源复制清晰区域，或恢复自动对焦合成。"
+          }
+        }
+      }
+    },
+    "merge.retouch.gaps": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Star Trail Gaps"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "星轨断点"
+          }
+        }
+      }
+    },
+    "merge.retouch.gapSize": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maximum Gap"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最大断点"
+          }
+        }
+      }
+    },
+    "merge.retouch.gapThreshold": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Highlight Threshold"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "亮部阈值"
+          }
+        }
+      }
+    },
+    "merge.retouch.gapStrength": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fill Strength"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "填补强度"
+          }
+        }
+      }
+    },
+    "merge.retouch.gapHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0 disables filling. Small gaps between nearby bright endpoints are interpolated in output pixels. Inspect at 100%; larger values can join unrelated lights. Painted source constraints take priority over filling."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0 表示关闭。按输出像素插值填补相邻亮点之间的小断点。请在 100% 检查；较大数值可能连接无关亮点。涂抹的来源约束优先于填补。"
           }
         }
       }

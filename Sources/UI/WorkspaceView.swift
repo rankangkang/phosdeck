@@ -304,7 +304,7 @@ struct WorkspaceView: View {
             Button(L10n.text("app.locateCurrentOriginal", defaultValue: "Locate Current Original…"), action: model.locateOriginal).disabled(!model.canLocateOriginal)
             Divider()
             Menu(L10n.text("app.stacking", defaultValue: "Stacking")) { StackMenu(model:model) }
-            Menu(L10n.text("merge.title", defaultValue:"Merge Photos")) { PhotoMergeMenu(model:model) }.disabled(!model.canMergePhotos && !model.canReopenFocusMerge)
+            Menu(L10n.text("merge.title", defaultValue:"Merge Photos")) { PhotoMergeMenu(model:model) }.disabled(!model.canMergePhotos && !model.canReopenEditableMerge)
             Menu(L10n.text("app.rawJPEGPairing", defaultValue: "RAW/JPEG Pairing")) { PairMenu(model:model) }
             Divider()
             Button(L10n.text("app.createVirtualCopiesOfSelection", defaultValue: "Create Virtual Copies of Selection"),action:model.createVirtualCopies).disabled(model.selection.isEmpty)
@@ -856,7 +856,7 @@ struct WorkspaceView: View {
             Menu {
                 if narrow { Menu(L10n.text("app.sort", defaultValue: "Sort")) { resultSort }; Divider() }
                 Menu(L10n.text("app.stacking", defaultValue: "Stacking")) { StackMenu(model:model) }
-                Menu(L10n.text("merge.title", defaultValue:"Merge Photos")) { PhotoMergeMenu(model:model) }.disabled(!model.canMergePhotos && !model.canReopenFocusMerge)
+                Menu(L10n.text("merge.title", defaultValue:"Merge Photos")) { PhotoMergeMenu(model:model) }.disabled(!model.canMergePhotos && !model.canReopenEditableMerge)
                 Menu(L10n.text("app.rawJPEGPairing", defaultValue: "RAW/JPEG Pairing")) { PairMenu(model:model) }
                 Divider()
                 Button(L10n.text("app.createVirtualCopiesOfSelection", defaultValue: "Create Virtual Copies of Selection"),action:model.createVirtualCopies).disabled(model.selection.isEmpty)
@@ -1283,7 +1283,7 @@ struct WorkspaceView: View {
                                 if let composite = info.composite {
                                     SubgroupLabel(L10n.text("merge.title", defaultValue:"Merge Photos"))
                                     Text(composite.options.kind.title)
-                                    Text(L10n.text("merge.masterInfo", defaultValue:"32-bit float · linear sRGB · \(composite.sources.count) sources")).font(.caption11).foregroundStyle(Theme.textSecondary)
+                                    Text(L10n.text("merge.masterInfo", defaultValue:"32-bit float · linear sRGB · \(composite.sourceCount) sources")).font(.caption11).foregroundStyle(Theme.textSecondary)
                                 }
                                 if let lens = info.lens { Text(lens) }
                                 if let iso = info.iso { Text("ISO \(iso)") }

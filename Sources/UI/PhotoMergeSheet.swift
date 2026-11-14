@@ -4,14 +4,14 @@ import AppKit
 struct PhotoMergeMenu: View {
     @Bindable var model: AppModel
     var body: some View {
-        Button(L10n.text("merge.retouch.reopen",defaultValue:"Edit Focus Merge…")) { model.reopenFocusMerge() }.disabled(!model.canReopenFocusMerge)
+        Button(L10n.text("merge.retouch.reopen",defaultValue:"Edit Saved Merge…")) { model.reopenEditableMerge() }.disabled(!model.canReopenEditableMerge)
         Divider()
         ForEach([PhotoMergeKind.panorama,.hdr,.hdrPanorama,.focus]) { kind in
-            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos)
+            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos || model.selection.count > kind.sourceLimit)
         }
         Divider()
         ForEach([PhotoMergeKind.average,.median,.additive,.lighten,.darken,.screen]) { kind in
-            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos)
+            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos || model.selection.count > kind.sourceLimit)
         }
     }
 }
@@ -35,7 +35,7 @@ struct PhotoMergeSheet: View {
                 controls.frame(width:300)
                 VStack(alignment:.leading,spacing:8) {
                     if session.retouch.active {
-                        FocusRetouchView(state:session.retouch,sourceCount:session.inputs.count,enabled:!session.working,mat:mat)
+                        MergeRetouchView(state:session.retouch,sourceCount:session.retouchSourceNames.count,enabled:!session.working,mat:mat)
                     } else {
                     GeometryReader { geometry in
                         ZStack {
@@ -90,9 +90,9 @@ struct PhotoMergeSheet: View {
                 Button(session.working ? L10n.text("app.cancel", defaultValue:"Cancel") : L10n.text("app.close", defaultValue:"Close")) {
                     if session.working { session.cancel() } else if session.retouch.hasChanges { confirmDiscard = true } else { dismiss() }
                 }.buttonStyle(.key).keyboardShortcut(.cancelAction).accessibilityIdentifier("merge-close")
-                if session.options.kind == .focus,session.preview != nil,!session.retouch.active {
-                    Button(L10n.text("merge.retouch.start",defaultValue:"Refine Focus…"),action:session.startRetouch).buttonStyle(.key).disabled(session.working)
-                        .accessibilityIdentifier("focus-retouch-start")
+                if session.options.kind.supportsRetouch,session.preview != nil,!session.retouch.active {
+                    Button(L10n.text("merge.retouch.start",defaultValue:"Refine Merge…"),action:session.startRetouch).buttonStyle(.key).disabled(session.working)
+                        .accessibilityIdentifier("merge-retouch-start")
                 }
                 Button(L10n.text("merge.buildPreview", defaultValue:"Build Preview"),action:session.makePreview).buttonStyle(.key)
                     .disabled(session.working || session.inputs.isEmpty || session.retouch.active || session.reopening).accessibilityIdentifier("merge-build-preview")
@@ -102,7 +102,7 @@ struct PhotoMergeSheet: View {
             }
         }.padding(24).frame(width:1000,height:740).instrumentForm()
             .interactiveDismissDisabled(session.working || session.retouch.active)
-            .confirmationDialog(L10n.text("merge.retouch.discardQuestion",defaultValue:"Discard unsaved focus corrections?"),isPresented:$confirmDiscard) {
+            .confirmationDialog(L10n.text("merge.retouch.discardQuestion",defaultValue:"Discard unsaved merge corrections?"),isPresented:$confirmDiscard) {
                 Button(L10n.text("merge.retouch.discard",defaultValue:"Discard Corrections"),role:.destructive) { dismiss() }
                 Button(L10n.text("app.cancel",defaultValue:"Cancel"),role:.cancel) { }
             }
@@ -116,8 +116,8 @@ struct PhotoMergeSheet: View {
         ScrollView {
         VStack(alignment:.leading,spacing:12) {
             if session.retouch.active {
-                FocusRetouchControls(session:session,state:session.retouch)
-                Text(L10n.text("merge.retouch.locked",defaultValue:"Source order and merge settings are fixed during retouching. Cropping is applied when saving; comparison shows the full canvas."))
+                MergeRetouchControls(session:session,state:session.retouch)
+                Text(L10n.text("merge.retouch.locked",defaultValue:"Source order and geometry are fixed during retouching. Comparison shows the projection canvas before boundary warp, fill and crop; these are applied when saving."))
                     .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
                 Seam()
             }

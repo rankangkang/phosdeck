@@ -7,9 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A790000000000000000D3002 /* FocusRetouchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A790000000000000000D3001 /* FocusRetouchView.swift */; };
-		A790000000000000000D2002 /* FocusRetouchEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A790000000000000000D2001 /* FocusRetouchEditing.swift */; };
-		A790000000000000000D1002 /* FocusRetouch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A790000000000000000D1001 /* FocusRetouch.swift */; };
+		AA79000000000000000E2002 /* MergeSourceConstraints.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA79000000000000000E2001 /* MergeSourceConstraints.swift */; };
+		AA79000000000000000E1002 /* MergeRetouchProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA79000000000000000E1001 /* MergeRetouchProject.swift */; };
+		A790000000000000000D3002 /* MergeRetouchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A790000000000000000D3001 /* MergeRetouchView.swift */; };
+		A790000000000000000D2002 /* MergeRetouchEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A790000000000000000D2001 /* MergeRetouchEditing.swift */; };
+		A790000000000000000D1002 /* MergeRetouch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A790000000000000000D1001 /* MergeRetouch.swift */; };
 		AA7900000000000000000001 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = AA7900000000000000000021 /* MCP */; };
 		AA7900000000000000000002 /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA7900000000000000000022 /* NIOCore */; };
 		AA7900000000000000000003 /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = AA7900000000000000000023 /* NIOHTTP1 */; };
@@ -285,9 +287,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		A790000000000000000D3001 /* FocusRetouchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusRetouchView.swift; sourceTree = "<group>"; };
-		A790000000000000000D2001 /* FocusRetouchEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusRetouchEditing.swift; sourceTree = "<group>"; };
-		A790000000000000000D1001 /* FocusRetouch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusRetouch.swift; sourceTree = "<group>"; };
+		AA79000000000000000E2001 /* MergeSourceConstraints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeSourceConstraints.swift; sourceTree = "<group>"; };
+		AA79000000000000000E1001 /* MergeRetouchProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeRetouchProject.swift; sourceTree = "<group>"; };
+		A790000000000000000D3001 /* MergeRetouchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeRetouchView.swift; sourceTree = "<group>"; };
+		A790000000000000000D2001 /* MergeRetouchEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeRetouchEditing.swift; sourceTree = "<group>"; };
+		A790000000000000000D1001 /* MergeRetouch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeRetouch.swift; sourceTree = "<group>"; };
 		AA7900000000000000000041 /* AppMCPService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPService.swift; sourceTree = "<group>"; };
 		AA7900000000000000000042 /* AppMCPTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPTools.swift; sourceTree = "<group>"; };
 		AA7900000000000000000046 /* AppMCPWorkflows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMCPWorkflows.swift; sourceTree = "<group>"; };
@@ -752,7 +756,7 @@
 			isa = PBXGroup;
 			children = (
 				C92A0D2DBD79D5F8A1D1524E /* PhotoMerging.swift */,
-				A790000000000000000D2001 /* FocusRetouchEditing.swift */,
+				A790000000000000000D2001 /* MergeRetouchEditing.swift */,
 				8CEA153F5198722E2FB01653 /* PerspectiveEditing.swift */,
 				37388F095F97F9A1A884022D /* InfoPlist.xcstrings */,
 				823069D53EBEA6FC1C67AC9E /* Localizable.xcstrings */,
@@ -826,7 +830,9 @@
 				752F5BA81E5C1F88CF14038F /* FocusStackAlignment.swift */,
 				6D4FA5B7FD5CF77DCEF5D582 /* FocusStackAnalysis.swift */,
 				F78D65D9026C1B3E59A04DB1 /* FocusStackFusion.swift */,
-				A790000000000000000D1001 /* FocusRetouch.swift */,
+				A790000000000000000D1001 /* MergeRetouch.swift */,
+				AA79000000000000000E2001 /* MergeSourceConstraints.swift */,
+				AA79000000000000000E1001 /* MergeRetouchProject.swift */,
 				00CBEB07378E00E9DD291DEF /* FocusStackDepth.swift */,
 				BC1BB5ABA7B92005E3FDE28E /* MergeFusion.swift */,
 				75BFD8D7316B96185ADB2770 /* MergeMasterCodec.swift */,
@@ -884,7 +890,7 @@
 			isa = PBXGroup;
 			children = (
 				70D5331A274CD8ED36FA5AC9 /* PhotoMergeSheet.swift */,
-				A790000000000000000D3001 /* FocusRetouchView.swift */,
+				A790000000000000000D3001 /* MergeRetouchView.swift */,
 				B8564E1CB8872537018DA81C /* CameraDiagnosticsView.swift */,
 				AC668E6AA888E9E161ECF22A /* PerspectiveGuides.swift */,
 				1AE0EE456E9FC2842A71E298 /* XMPPresetImportSheet.swift */,
@@ -1158,12 +1164,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				7853D22BD78931FEA6691CF5 /* PhotoMerging.swift in Sources */,
-				A790000000000000000D2002 /* FocusRetouchEditing.swift in Sources */,
+				A790000000000000000D2002 /* MergeRetouchEditing.swift in Sources */,
 				4CEFE7CAB72708F07D41744E /* MergedPhotos.swift in Sources */,
 				04B155382A483AE7086637B8 /* FocusStackAlignment.swift in Sources */,
 				248C55AEE583227D3C9971B8 /* FocusStackAnalysis.swift in Sources */,
 				9B032C364AB7C2558BD27E1A /* FocusStackFusion.swift in Sources */,
-				A790000000000000000D1002 /* FocusRetouch.swift in Sources */,
+				A790000000000000000D1002 /* MergeRetouch.swift in Sources */,
+				AA79000000000000000E2002 /* MergeSourceConstraints.swift in Sources */,
+				AA79000000000000000E1002 /* MergeRetouchProject.swift in Sources */,
 				C9EF6B4866E8FC05F0E28A9C /* FocusStackDepth.swift in Sources */,
 				9C6096AD3D2ACE1208F2BF3D /* MergeFusion.swift in Sources */,
 				D3A94D65BD7EF3663299D935 /* MergeMasterCodec.swift in Sources */,
@@ -1176,7 +1184,7 @@
 				0AEEB37A0EB6D589DB7FE8D1 /* MultiFrameImage.swift in Sources */,
 				732C3BD9732104B9046B3EFF /* PhotoMergeEngine.swift in Sources */,
 				551CFD04000E31F776B26934 /* PhotoMergeSheet.swift in Sources */,
-				A790000000000000000D3002 /* FocusRetouchView.swift in Sources */,
+				A790000000000000000D3002 /* MergeRetouchView.swift in Sources */,
 				B3C9E17B4A01206F174B01CC /* CameraDiagnosticsView.swift in Sources */,
 				9E896E2E24DD4845778D7BC5 /* PerspectiveGuides.swift in Sources */,
 				AFDDBC156179E2D2753AB7DD /* PerspectiveEditing.swift in Sources */,

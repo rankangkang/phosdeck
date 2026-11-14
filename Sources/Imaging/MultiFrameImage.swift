@@ -22,6 +22,8 @@ enum PhotoMergeKind: String, Codable, CaseIterable, Identifiable {
         case .screen: L10n.text("merge.kind.screen", defaultValue: "Multiple Exposure · Screen")
         }
     }
+    var supportsRetouch: Bool { [.focus,.hdr,.panorama,.hdrPanorama,.lighten].contains(self) }
+    var sourceLimit: Int { self == .lighten ? 2048 : 128 }
     var isPanorama: Bool { self == .panorama || self == .hdrPanorama }
     var isHDR: Bool { self == .hdr || self == .hdrPanorama }
     var defaultAlignment: Bool {
@@ -74,11 +76,11 @@ struct PhotoMergeOptions: Codable, Equatable {
         Self(kind: kind, align: kind.defaultAlignment, autoCrop: kind.isPanorama)
     }
     func validate(count: Int) throws {
-        guard (2...128).contains(count), (0...3).contains(deghost), (2...9).contains(bracketSize),
+        guard (2...kind.sourceLimit).contains(count), (count <= 128 || !align), (0...3).contains(deghost), (2...9).contains(bracketSize),
               boundaryWarp.isFinite, (0...100).contains(boundaryWarp),
               [0,2000,4000,6000].contains(sourceLongEdge),
               kind != .hdrPanorama || (count >= bracketSize * 2 && count.isMultiple(of: bracketSize)) else {
-            throw LRCError(L10n.text("merge.invalidInputs", defaultValue: "Select 2–128 photos; HDR panoramas need at least two complete exposure brackets"))
+            throw LRCError(L10n.text("merge.invalidInputs", defaultValue: "Select 2–128 photos, or up to 2048 fixed-camera star-trail frames without alignment. HDR panoramas need complete brackets"))
         }
     }
 }
@@ -239,13 +241,31 @@ struct MergeProvenance: Codable, Equatable {
     var version = 2
     var options: PhotoMergeOptions
     var sources: [Source]
-    var focusProject: FocusMergeProject.Reference?
+    var retouchProject: MergeRetouchProject.Reference?
+    // Long star sequences keep the complete manifest in the master, not in
+    // repeatedly decoded catalog rows. Small existing manifests stay inline.
+    var catalogSourceCount: Int?
+    // Keep the existing master-container field name. The editor payload has
+    // its own version and is rejected when obsolete; pixel decoding does not
+    // interpret or migrate it.
+    enum CodingKeys: String,CodingKey {
+        case version,options,sources,catalogSourceCount
+        case retouchProject = "focusProject"
+    }
+    var sourceCount: Int { catalogSourceCount ?? sources.count }
+    var catalogSummary: Self {
+        guard sources.count > 128 else { return self }
+        var summary = self; summary.catalogSourceCount = sources.count; summary.sources = []; return summary
+    }
     struct Source: Codable, Equatable {
         let photoID: String
         let digest: String
         let recipeRevision: Int
     }
-    var description: String { get throws { Self.prefix + String(decoding: try JSONEncoder().encode(self),as:UTF8.self) } }
+    var description: String { get throws {
+        guard catalogSourceCount == nil else { throw MergeMasterCodec.invalid }
+        return Self.prefix + String(decoding: try JSONEncoder().encode(self),as:UTF8.self)
+    } }
     static func read(_ properties: [String:Any]) throws -> Self? {
         guard let tiff = properties[kCGImagePropertyTIFFDictionary as String] as? [String:Any],
               let text = tiff[kCGImagePropertyTIFFImageDescription as String] as? String,
@@ -263,9 +283,9 @@ struct MergeProvenance: Codable, Equatable {
         guard text.hasPrefix(prefix) else { throw MergeMasterCodec.invalid }
         let value = try JSONDecoder().decode(Self.self,from:Data(text.dropFirst(prefix.count).utf8))
         try value.options.validate(count:value.sources.count)
-        guard value.version == 2,value.sources.allSatisfy({ !$0.photoID.isEmpty && $0.digest.count == 64 && $0.digest.allSatisfy(\.isHexDigit) }) else { throw MergeMasterCodec.invalid }
-        try value.focusProject?.validate()
-        guard value.focusProject == nil || value.options.kind == .focus else { throw MergeMasterCodec.invalid }
+        guard value.version == 2,value.catalogSourceCount == nil,value.sources.allSatisfy({ !$0.photoID.isEmpty && $0.digest.count == 64 && $0.digest.allSatisfy(\.isHexDigit) }) else { throw MergeMasterCodec.invalid }
+        try value.retouchProject?.validate()
+        guard value.retouchProject == nil || value.options.kind.supportsRetouch else { throw MergeMasterCodec.invalid }
         return value
     }
 }

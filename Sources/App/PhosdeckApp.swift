@@ -100,7 +100,7 @@ final class CommandResponder: ObservableObject {
     static func manager(model: AppModel, window: NSWindow?) -> UndoManager? {
         guard let window else { return nil }
         if let editor = window.firstResponder as? NSTextView { return editor.undoManager }
-        if let canvas = window.firstResponder as? FocusRetouchNSView,
+        if let canvas = window.firstResponder as? MergeRetouchNSView,
            let session = model.mergeSession,session.retouch.active,!session.working,!session.retouch.pending {
             return canvas.undoManager
         }
@@ -219,7 +219,7 @@ struct WorkspaceCommands: Commands {
             Button(L10n.text("app.locateCurrentOriginal", defaultValue: "Locate Current Original…"), action: model.locateOriginal).disabled(!model.canLocateOriginal)
             Button(L10n.text("app.createVirtualCopy", defaultValue: "Create Virtual Copy"), action: model.createVirtualCopies).disabled(!photoSelected)
             Menu(L10n.text("app.stacking", defaultValue: "Stacking")) { StackMenu(model: model) }.disabled(!workspace || model.catalog == nil)
-            Menu(L10n.text("merge.title", defaultValue:"Merge Photos")) { PhotoMergeMenu(model:model) }.disabled(!model.canMergePhotos && !model.canReopenFocusMerge)
+            Menu(L10n.text("merge.title", defaultValue:"Merge Photos")) { PhotoMergeMenu(model:model) }.disabled(!model.canMergePhotos && !model.canReopenEditableMerge)
             Menu(L10n.text("app.rawJPEGPairing", defaultValue: "RAW/JPEG Pairing")) { PairMenu(model: model) }.disabled(!workspace || model.catalog == nil)
             Divider()
             Menu(L10n.text("app.transferAdjustments", defaultValue: "Transfer Adjustments")) {

@@ -192,7 +192,7 @@ actor ReferenceImporter {
             orientation: props[kCGImagePropertyOrientation as String] as? Int,
             profile: inspected.composite != nil ? "sRGB IEC61966-2.1 Linear" : inspected.pngICC == false ? nil : props[kCGImagePropertyProfileName as String] as? String,
             focal35mm: (exif?[kCGImagePropertyExifFocalLenIn35mmFilm as String] as? NSNumber)?.doubleValue,
-            composite: inspected.composite)
+            composite: inspected.composite?.catalogSummary)
         var captured = exif?[kCGImagePropertyExifDateTimeOriginal as String] as? String
         if let original = captured {
             var precise = original

@@ -8,7 +8,7 @@ import CoreGraphics
     let collectionID: String?
     var options = PhotoMergeOptions()
     var stackWithSources = true
-    let retouch = FocusRetouchState()
+    let retouch = MergeRetouchState()
     private(set) var reopening = false
     private(set) var inputs: [ImageRequest] = []
     private(set) var working = false
@@ -44,19 +44,19 @@ import CoreGraphics
     }
     init(catalog: CatalogStore,reopening photo: Photo,collectionID: String? = nil) {
         self.catalog = catalog; self.collectionID = collectionID; reopening = true
-        options = .defaults(for:.focus); working = true
+        options = photo.details?.composite?.options ?? .defaults(for:.focus); working = true
         filename = URL(fileURLWithPath:photo.name).deletingPathExtension().lastPathComponent+"-Refined.tif"
         let token = self.token
         job = Task {
             do {
-                let loaded = try await engine.reopenFocus(photo,catalog:catalog) { [weak self] value,phase in
+                let loaded = try await engine.reopenMerge(photo,catalog:catalog) { [weak self] value,phase in
                     await self?.report(value,phase:phase,token:token)
                 }
                 try Task.checkCancellation()
                 inputs = loaded.inputs; options = loaded.options
                 updateFilenameExtension()
                 // SwiftUI option observation must not invalidate the freshly restored solve.
-                preview = loaded.preview; retouch.load(loaded.project.strokes)
+                preview = loaded.preview; retouch.load(loaded.project.settings)
                 retouch.active = true
             } catch is CancellationError { }
             catch { self.error = error.localizedDescription }
@@ -64,17 +64,25 @@ import CoreGraphics
             if preview != nil { refreshRetouch() }
         }
     }
+    var retouchSourceNames: [String] {
+        if options.kind == .hdrPanorama {
+            return stride(from:0,to:inputs.count,by:options.bracketSize).map { i in
+                L10n.text("merge.retouch.bracketGroup",defaultValue:"Bracket \(i/options.bracketSize+1): \(inputs[i].photo.name)")
+            }
+        }
+        return inputs.map { $0.photo.name }
+    }
     func refreshRetouch() {
         displayJob?.cancel(); displayToken = UUID()
         guard retouch.active,let preview,!working else { return }
-        let token = displayToken, strokes = retouch.strokes, source = retouch.source, ev = previewEV
+        let token = displayToken, settings = retouch.settings, source = retouch.source, ev = previewEV
         retouch.pending = true; retouch.error = nil
         displayJob = Task {
             do {
                 // One cancelled in-flight request plus latest desired state. No
                 // rendering per pointer event; a stroke commits on mouse-up.
                 try await Task.sleep(for:.milliseconds(80))
-                let result = try await engine.focusPreview(preview.id,strokes:strokes,source:source,ev:ev) { _,_ in }
+                let result = try await engine.retouchPreview(preview.id,settings:settings,source:source,ev:ev) { _,_ in }
                 try Task.checkCancellation()
                 guard displayToken == token else { return }
                 retouch.preview = result; retouch.pending = false
@@ -83,12 +91,12 @@ import CoreGraphics
         }
     }
     func startRetouch() {
-        guard options.kind == .focus,preview != nil,!working else { return }
+        guard options.kind.supportsRetouch,preview != nil,!working else { return }
         retouch.active = true; refreshRetouch()
     }
     func invalidate() {
         guard !reopening else { return }
-        retouch.active = false; retouch.preview = nil; retouch.load([]); retouch.pending = false
+        retouch.active = false; retouch.preview = nil; retouch.load(MergeRetouchSettings()); retouch.pending = false
         if working && !saving { job?.cancel() }
         preview = nil; error = nil; displayJob?.cancel(); displayToken = UUID()
     }
@@ -148,7 +156,7 @@ import CoreGraphics
         let filename = filename,stackWithSources = stackWithSources
         job = Task {
             do {
-                if options.kind == .focus { try await engine.setFocusStrokes(preview.id,strokes:retouch.strokes) }
+                if options.kind.supportsRetouch { try await engine.setRetouchSettings(preview.id,settings:retouch.settings) }
                 let result = try await engine.save(preview.id,to:directoryBookmark,filename:filename,catalog:catalog,stackWithSources:stackWithSources,collectionID:collectionID) { [weak self] value,phase in
                     await self?.report(value,phase:phase,token:token)
                 }
@@ -178,17 +186,17 @@ import CoreGraphics
 }
 
 extension AppModel {
-    var canMergePhotos: Bool { workspaceAvailable && catalog != nil && (2...128).contains(selection.count) }
-    var canReopenFocusMerge: Bool {
-        workspaceAvailable && selection.count == 1 && photos.first(where:{ selection.contains($0.id) })?.details?.composite?.focusProject != nil
+    var canMergePhotos: Bool { workspaceAvailable && catalog != nil && (2...2048).contains(selection.count) }
+    var canReopenEditableMerge: Bool {
+        workspaceAvailable && selection.count == 1 && photos.first(where:{ selection.contains($0.id) })?.details?.composite?.retouchProject != nil
     }
-    func reopenFocusMerge() {
-        guard canReopenFocusMerge,commitRecipe(),let catalog,
+    func reopenEditableMerge() {
+        guard canReopenEditableMerge,commitRecipe(),let catalog,
               let photo = photos.first(where:{ selection.contains($0.id) }) else { return }
         mergeSession = PhotoMergeSession(catalog:catalog,reopening:photo,collectionID:regularCollectionID)
     }
     func requestPhotoMerge(_ kind: PhotoMergeKind) {
-        guard canMergePhotos,commitRecipe(),let catalog else { return }
+        guard canMergePhotos,selection.count <= kind.sourceLimit,commitRecipe(),let catalog else { return }
         mergeSession = PhotoMergeSession(catalog:catalog,ids:selection,kind:kind,collectionID:regularCollectionID)
     }
     func completePhotoMerge(_ result: MergeSaved) {

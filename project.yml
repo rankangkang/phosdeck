@@ -34,7 +34,7 @@ targets:
     sources:
       # Includes automatic image analysis (Imaging/AutomaticAdjustments.swift, App/AutomaticAdjustmentEditing.swift) and folder comparison (Import/FolderReview.swift, UI/FolderReviewSheet.swift) and native direct adjustments.
       # Includes Imaging/ManualDefringe.swift.
-      # Includes FocusRetouch.swift, FocusRetouchEditing.swift and FocusRetouchView.swift for editable focus merges.
+      # Includes MergeRetouch.swift, MergeRetouchEditing.swift and MergeRetouchView.swift and MergeRetouchProject.swift / MergeSourceConstraints.swift for editable multiframe merges.
       # Includes the local MCP service and tools under App/.
       # Includes AppMCPContactSheet.swift for numbered Agent previews.
       # Includes AppMCPAdjustmentBatch.swift for per-photo adjustment plans.

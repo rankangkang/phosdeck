@@ -179,28 +179,33 @@ final class MergePanoramaAccumulator {
         self.plan = plan; pyramid = MergePyramid(width:plan.width,height:plan.height)
         coverage = .init(repeating:0,count:plan.width*plan.height)
     }
-    func add(_ image: MergeImage,index: Int) throws {
+    static func projected(_ image: MergeImage,index: Int,plan: MergePanoramaPlan,region: CGRect? = nil) throws -> (image: MergeImage,mask: MergePlane) {
+        let rect = region ?? CGRect(x:0,y:0,width:plan.width,height:plan.height)
+        let w = Int(rect.width),h = Int(rect.height),ox = Int(rect.minX),oy = Int(rect.minY)
         let analysis = plan.frames[index].image
         let sx = Double(image.width)/Double(analysis.width),sy = Double(image.height)/Double(analysis.height)
-        var warped = MergeImage(width:plan.width,height:plan.height),mask = MergePlane(width:plan.width,height:plan.height)
-        for y in 0..<plan.height {
+        var warped = MergeImage(width:w,height:h),mask = MergePlane(width:w,height:h)
+        for y in 0..<h {
             if y.isMultiple(of:16) { try Task.checkCancellation() }
-            for x in 0..<plan.width {
-                guard let q = plan.sourcePoint(x,y,index:index),let value = image.sample((q.x+0.5)*sx-0.5,(q.y+0.5)*sy-0.5),value.w > 0 else { continue }
-                let p = y*plan.width+x
-                let gain = plan.gains[index]
+            for x in 0..<w {
+                guard let q = plan.sourcePoint(x+ox,y+oy,index:index),let value = image.sample((q.x+0.5)*sx-0.5,(q.y+0.5)*sy-0.5),value.w > 0 else { continue }
+                let p = y*w+x,gain = plan.gains[index]
                 warped.pixels[p] = SIMD4(value.x*gain,value.y*gain,value.z*gain,value.w)
                 let dx = abs((q.x+0.5)/Double(analysis.width)*2-1),dy = abs((q.y+0.5)/Double(analysis.height)*2-1)
                 let edge = Float(max(1e-4,(1-dx*dx)*(1-dy*dy)))
                 mask.values[p] = edge*edge*edge*edge*value.w
-                coverage[p] = max(coverage[p],value.w)
             }
         }
-        try pyramid.add(warped,mask:mask)
+        return (warped,mask)
     }
-    func finish() throws -> MergeImage {
+    func add(_ image: MergeImage,index: Int) throws {
+        let projected = try Self.projected(image,index:index,plan:plan)
+        for p in coverage.indices { coverage[p] = max(coverage[p],projected.image.pixels[p].w) }
+        try pyramid.add(projected.image,mask:projected.mask)
+    }
+    func finish(applyFinishing: Bool = true) throws -> MergeImage {
         let image = try pyramid.finish(coverage:coverage)
-        return try MergePanoramaFinish.apply(image,options:plan.options)
+        return applyFinishing ? try MergePanoramaFinish.apply(image,options:plan.options) : image
     }
 }
 

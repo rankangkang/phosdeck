@@ -534,6 +534,13 @@ final class PhotoMergeTests: XCTestCase {
         XCTAssertGreaterThan(output.image.width,350); XCTAssertGreaterThan(output.image.pixels.map(\.x).max() ?? 0,1.3)
         XCTAssertTrue(output.image.pixels.allSatisfy { $0.w >= 0.999 && $0.x.isFinite })
         XCTAssertEqual(try catalog.photoCount(),7)
+        let reopened = try await engine.reopenMerge(saved.photo,catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(reopened.project.sourceCount,2,"HDR panorama retouch selects bracket groups")
+        let settings = MergeRetouchSettings(strokes:[MergeRetouchStroke(source:0,points:[MaskPoint(0.5,0.5)],radius:0.1,hardness:1,opacity:1,exclude:true)])
+        _ = try await engine.retouchPreview(reopened.preview.id,settings:settings,source:1,ev:-1,progress:{ _,_ in })
+        let edited = try await engine.save(reopened.preview.id,to:root.bookmark,filename:"hdr-pano-edited.dng",catalog:catalog,masterFormat:.dng,progress:{ _,_ in })
+        let restored = try await engine.reopenMerge(edited.photo,catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(restored.project.settings,settings)
     }
     func testPublicationCommitPointAndRegistrationFailurePreserveMasters() async throws {
         let catalog = try CatalogStore(directory:directory.appendingPathComponent("catalog"))
@@ -736,12 +743,12 @@ final class PhotoMergeTests: XCTestCase {
         session.options.kind = .focus; session.applyModeDefaults(); XCTAssertTrue(session.options.align)
         model.mergeSession = nil; XCTAssertTrue(model.canSwitchCatalog)
     }
-    func testFocusRetouchStrokePreservesHDRAlphaAndRestoresAutomaticPixels() throws {
+    func testMergeRetouchStrokePreservesHDRAlphaAndRestoresAutomaticPixels() throws {
         let base = constant(SIMD4(-0.2,0.1,3,0.5),w:40,h:20)
         var source = constant(SIMD4(2,-0.4,0.2,1),w:40,h:20)
         source.pixels[4*40+10] = .zero
         var result = base
-        let stroke = FocusRetouchStroke(source:1,points:[MaskPoint(0.25,0.25),MaskPoint(0.75,0.25)],radius:0.12,hardness:1,opacity:0.5)
+        let stroke = MergeRetouchStroke(source:1,points:[MaskPoint(0.25,0.25),MaskPoint(0.75,0.25)],radius:0.12,hardness:1,opacity:0.5)
         try stroke.validate(count:2)
         try stroke.apply(to:&result,from:source)
         XCTAssertEqual(result.pixels[5*40+20].x,0.9,accuracy:1e-6)
@@ -756,16 +763,16 @@ final class PhotoMergeTests: XCTestCase {
         XCTAssertThrowsError(try invalid.validate(count:2))
     }
 
-    func testFocusRetouchSelfIntersectionDoesNotAccumulateOpacity() throws {
+    func testMergeRetouchSelfIntersectionDoesNotAccumulateOpacity() throws {
         let base = constant(SIMD4(0,0,0,1),w:64,h:64), source = constant(SIMD4(1,1,1,1),w:64,h:64)
         var once = base, twice = base
-        let stroke = FocusRetouchStroke(source:0,points:[MaskPoint(0.2,0.5),MaskPoint(0.8,0.5)],radius:0.1,hardness:0.5,opacity:0.3)
+        let stroke = MergeRetouchStroke(source:0,points:[MaskPoint(0.2,0.5),MaskPoint(0.8,0.5)],radius:0.1,hardness:0.5,opacity:0.3)
         var repeated = stroke; repeated.points += stroke.points.reversed()
         try stroke.apply(to:&once,from:source); try repeated.apply(to:&twice,from:source)
         XCTAssertEqual(once.pixels,twice.pixels)
     }
 
-    func testFocusRetouchMastersReopenWithFrozenSolveAndRejectDamagedProject() async throws {
+    func testMergeRetouchMastersReopenWithFrozenSolveAndRejectDamagedProject() async throws {
         let catalog = try CatalogStore(directory:directory.appendingPathComponent("focus-catalog"))
         let root = try catalog.addRoot(url:directory,bookmark:AccessLease.bookmark(directory,readOnly:false))
         for i in 0..<2 {
@@ -778,21 +785,21 @@ final class PhotoMergeTests: XCTestCase {
         let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(photos.map(\.id)))
         var options = PhotoMergeOptions.defaults(for:.focus); options.align = false
         let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
-        let stroke = FocusRetouchStroke(source:1,points:[MaskPoint(0.25,0.25)],radius:0.2,hardness:1,opacity:1)
-        let detailed = try await engine.focusPreview(preview.id,strokes:[stroke],source:1,ev:0,progress:{ _,_ in })
+        let stroke = MergeRetouchStroke(source:1,points:[MaskPoint(0.25,0.25)],radius:0.2,hardness:1,opacity:1)
+        let detailed = try await engine.retouchPreview(preview.id,settings:MergeRetouchSettings(strokes:[stroke]),source:1,ev:0,progress:{ _,_ in })
         XCTAssertEqual(detailed.width,48); XCTAssertEqual(detailed.height,32)
         // Appended-stroke previews and full replay after undo must use the same base.
         var restore = stroke; restore.restore = true; restore.opacity = 0.6
-        _ = try await engine.focusPreview(preview.id,strokes:[stroke,restore],source:0,ev:0,progress:{ _,_ in })
-        let replay = try await engine.focusPreview(preview.id,strokes:[stroke],source:1,ev:0,progress:{ _,_ in })
+        _ = try await engine.retouchPreview(preview.id,settings:MergeRetouchSettings(strokes:[stroke,restore]),source:0,ev:0,progress:{ _,_ in })
+        let replay = try await engine.retouchPreview(preview.id,settings:MergeRetouchSettings(strokes:[stroke]),source:1,ev:0,progress:{ _,_ in })
         let a = try MergeImage.read(CIImage(cgImage:detailed.result),context:context)
         let b = try MergeImage.read(CIImage(cgImage:replay.result),context:context)
         XCTAssertEqual(a.pixels,b.pixels)
         let first = try await engine.save(preview.id,to:root.bookmark,filename:"focus-edit.tif",catalog:catalog,progress:{ _,_ in })
         let original = try MergeMasterCodec.read(first.url,context:context)
-        let ref = try XCTUnwrap(original.provenance.focusProject)
-        let frozen = try FocusMergeProject.read(from:first.url,reference:ref)
-        XCTAssertEqual(frozen.strokes,[stroke]); XCTAssertEqual(frozen.sources.map(\.photoID),inputs.map { $0.photo.id })
+        let ref = try XCTUnwrap(original.provenance.retouchProject)
+        let frozen = try MergeRetouchProject.read(from:first.url,reference:ref)
+        XCTAssertEqual(frozen.settings.strokes,[stroke]); XCTAssertEqual(frozen.sources.map(\.photoID),inputs.map { $0.photo.id })
         XCTAssertLessThan(try JSONEncoder().encode(original.provenance).count,65536,"catalog stores only a bounded reference")
         let raw = try await ImagePipeline().mergeDecode(inputs[1],longEdge:nil,whiteBalance:WhiteBalanceValue(temperature:frozen.temperature,tint:frozen.tint))
         XCTAssertEqual(original.image.pixels[8*48+12].x,raw.image.pixels[8*48+12].x,accuracy:2e-5)
@@ -803,7 +810,7 @@ final class PhotoMergeTests: XCTestCase {
         try await catalog.database.write { db in
             try db.execute(sql:"UPDATE photo SET recipe=?, recipeRevision=recipeRevision+1 WHERE id=?",arguments:[recipe,inputs[0].photo.id])
         }
-        let reopened = try await engine.reopenFocus(first.photo,catalog:catalog,progress:{ _,_ in })
+        let reopened = try await engine.reopenMerge(first.photo,catalog:catalog,progress:{ _,_ in })
         XCTAssertEqual(reopened.project,frozen)
         do {
             _ = try await engine.save(reopened.preview.id,to:root.bookmark,filename:"focus-edit.tif",catalog:catalog,progress:{ _,_ in })
@@ -815,40 +822,41 @@ final class PhotoMergeTests: XCTestCase {
             XCTAssertEqual(roundtrip.image.pixels[i][c],original.image.pixels[i][c],accuracy:2e-5)
         } }
         XCTAssertEqual(try SafeFileWriter.sha256(first.url),digest,"re-edit must preserve the previous master")
-        let dngProject = try FocusMergeProject.read(from:second.url,reference:XCTUnwrap(roundtrip.provenance.focusProject))
+        let dngProject = try MergeRetouchProject.read(from:second.url,reference:XCTUnwrap(roundtrip.provenance.retouchProject))
         XCTAssertEqual(dngProject,frozen)
         let copied = directory.appendingPathComponent("damaged-project.tif")
         try FileManager.default.copyItem(at:first.url,to:copied)
         let handle = try FileHandle(forWritingTo:copied)
         let end = try handle.seekToEnd(); try handle.seek(toOffset:end-1); try handle.write(contentsOf:Data([0])); try handle.close()
-        XCTAssertThrowsError(try FocusMergeProject.read(from:copied,reference:ref))
-        var malformed = frozen; malformed.transforms[0] = [0]
+        XCTAssertThrowsError(try MergeRetouchProject.read(from:copied,reference:ref))
+        var malformed = frozen
+        if case .fusion(var fusion) = malformed.snapshot { fusion.transforms[0] = [0]; malformed.snapshot = .fusion(fusion) }
         XCTAssertThrowsError(try malformed.validate())
-        malformed = frozen; malformed.strokes[0].source = 200
+        malformed = frozen; malformed.settings.strokes[0].source = 200
         XCTAssertThrowsError(try malformed.validate())
         let sourceURL = directory.appendingPathComponent(inputs[0].photo.relativePath)
         try Data("synthetic changed source".utf8).write(to:sourceURL)
         do {
-            _ = try await engine.reopenFocus(first.photo,catalog:catalog,progress:{ _,_ in })
+            _ = try await engine.reopenMerge(first.photo,catalog:catalog,progress:{ _,_ in })
             XCTFail("changed source must not be used to reconstruct a saved merge")
         } catch { }
         XCTAssertEqual(try SafeFileWriter.sha256(first.url),digest)
 
     }
 
-    @MainActor func testFocusRetouchHistoryAndPendingStrokeIsolation() throws {
-        let state = FocusRetouchState(); state.undo.groupsByEvent = false
+    @MainActor func testMergeRetouchHistoryAndPendingStrokeIsolation() throws {
+        let state = MergeRetouchState(); state.undo.groupsByEvent = false
         state.undo.beginUndoGrouping(); state.add([MaskPoint(0.2,0.3)],sourceCount:2); state.undo.endUndoGrouping()
         XCTAssertEqual(state.strokes.count,1)
         state.undo.undo(); XCTAssertTrue(state.strokes.isEmpty)
         state.undo.redo(); XCTAssertEqual(state.strokes.count,1)
         state.pending = true; state.add([MaskPoint(0.7,0.7)],sourceCount:2)
         XCTAssertEqual(state.strokes.count,1)
-        state.load([]); XCTAssertFalse(state.undo.canUndo)
+        state.load(MergeRetouchSettings()); XCTAssertFalse(state.undo.canUndo)
         state.pending = false
         let cg = try XCTUnwrap(context.createCGImage(constant(SIMD4(0.2,0.3,0.4,1),w:16,h:16).ciImage(),from:CGRect(x:0,y:0,width:16,height:16)))
-        state.preview = FocusRetouchPreview(source:cg,result:cg,width:16,height:16)
-        let view = FocusRetouchNSView(frame:CGRect(x:0,y:0,width:400,height:300))
+        state.preview = MergeRetouchPreview(source:cg,result:cg,width:16,height:16)
+        let view = MergeRetouchNSView(frame:CGRect(x:0,y:0,width:400,height:300))
         view.state = state; view.sourceCount = 2
         let down = try XCTUnwrap(NSEvent.mouseEvent(with:.leftMouseDown,location:CGPoint(x:300,y:150),modifierFlags:[],timestamp:0,windowNumber:0,context:nil,eventNumber:1,clickCount:1,pressure:1))
         let up = try XCTUnwrap(NSEvent.mouseEvent(with:.leftMouseUp,location:CGPoint(x:300,y:150),modifierFlags:[],timestamp:1,windowNumber:0,context:nil,eventNumber:2,clickCount:1,pressure:0))
@@ -859,6 +867,187 @@ final class PhotoMergeTests: XCTestCase {
         state.undo.beginUndoGrouping(); view.mouseDown(with:down); view.mouseUp(with:up); state.undo.endUndoGrouping()
         XCTAssertEqual(state.strokes.count,1)
 
+    }
+
+    func mergeFixture(_ images: [MergeImage]) throws -> (CatalogStore,StorageRoot,[Photo]) {
+        let catalog = try CatalogStore(directory:directory.appendingPathComponent("editable-catalog"))
+        let root = try catalog.addRoot(url:directory,bookmark:AccessLease.bookmark(directory,readOnly:false))
+        for (i,image) in images.enumerated() {
+            let url = try writeSource(image,name:String(format:"editable-%04d",i))
+            try catalog.index(ReferenceImporter.inspect(url:url,root:root,rootURL:directory))
+        }
+        return (catalog,root,try catalog.photos())
+    }
+    func testManualHDRUsesFrozenExposureRatiosAndReopensExactly() async throws {
+        let dark = texture(w:64,h:48)
+        var bright = dark
+        for p in bright.pixels.indices { bright.pixels[p] *= 2; bright.pixels[p].w = 1 }
+        for y in 15..<30 { for x in 20..<40 { bright.pixels[y*64+x] = SIMD4(1.2,0.1,0.1,1) } }
+        let (catalog,root,photos) = try mergeFixture([dark,bright]),engine = PhotoMergeEngine()
+        let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(photos.map(\.id)))
+        var options = PhotoMergeOptions.defaults(for:.hdr); options.align = false; options.deghost = 1
+        let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
+        let auto = try await engine.save(preview.id,to:root.bookmark,filename:"hdr-auto.tif",catalog:catalog,progress:{ _,_ in })
+        let reopened = try await engine.reopenMerge(auto.photo,catalog:catalog,progress:{ _,_ in })
+        let stroke = MergeRetouchStroke(source:0,points:[MaskPoint(0.45,0.45)],radius:0.25,hardness:1,opacity:1)
+        let settings = MergeRetouchSettings(strokes:[stroke])
+        _ = try await engine.retouchPreview(reopened.preview.id,settings:settings,source:0,ev:-1,progress:{ _,_ in })
+        let saved = try await engine.save(reopened.preview.id,to:root.bookmark,filename:"hdr-manual.dng",catalog:catalog,masterFormat:.dng,progress:{ _,_ in })
+        let result = try MergeMasterCodec.read(saved.url,context:context)
+        let original = try MergeMasterCodec.read(auto.url,context:context)
+        guard case .fusion(let frozen) = reopened.project.snapshot else { return XCTFail("HDR fusion snapshot") }
+        let decoded = try await ImagePipeline().mergeDecode(inputs[0],longEdge:nil,whiteBalance:WhiteBalanceValue(temperature:reopened.project.temperature,tint:reopened.project.tint)).image
+        let p = 22*64+29
+        XCTAssertEqual(result.image.pixels[p].x,decoded.pixels[p].x/frozen.ratios[0],accuracy:2e-5)
+        XCTAssertEqual(result.image.pixels[p].y,decoded.pixels[p].y/frozen.ratios[0],accuracy:2e-5)
+        XCTAssertEqual(result.image.pixels[0],original.image.pixels[0],"unpainted HDR pixels stay exact")
+        let again = try await engine.reopenMerge(saved.photo,catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(again.project.settings,settings)
+        let copy = try await engine.save(again.preview.id,to:root.bookmark,filename:"hdr-reopened.tif",catalog:catalog,masterFormat:.tiff,progress:{ _,_ in })
+        let copyImage = try MergeMasterCodec.read(copy.url,context:context).image
+        for i in result.image.pixels.indices { for c in 0..<4 { XCTAssertEqual(result.image.pixels[i][c],copyImage.pixels[i][c],accuracy:2e-5) } }
+    }
+    func testPanoramaConstraintsExcludeMultipleSourcesAndKeepHolesVisible() throws {
+        let base = constant(SIMD4(0.4,0.3,0.2,1),w:40,h:24)
+        let red = constant(SIMD4(2,-0.2,0.1,1),w:40,h:24)
+        let blue = constant(SIMD4(0.1,0.2,1.5,1),w:40,h:24)
+        let a = MergeRetouchStroke(source:0,points:[MaskPoint(0.5,0.5)],radius:0.25,hardness:1,opacity:1,exclude:true)
+        func render(_ strokes: [MergeRetouchStroke]) throws -> MergeImage {
+            let masks = try strokes.map { try $0.mask(width:40,height:24) }
+            let accumulator = try MergeConstrainedRegion(base:base,settings:MergeRetouchSettings(strokes:strokes),masks:masks,kind:.panorama)
+            for (index,source) in [red,blue].enumerated() {
+                let rect = accumulator.region
+                let tile = MergeImage(width:Int(rect.width),height:Int(rect.height),pixels:(Int(rect.minY)..<Int(rect.maxY)).flatMap { y in
+                    (Int(rect.minX)..<Int(rect.maxX)).map { x in source.pixels[y*40+x] }
+                })
+                try accumulator.add(tile,weights:MergePlane(width:tile.width,height:tile.height,values:.init(repeating:1,count:tile.pixels.count)),index:index)
+            }
+            return try accumulator.finish(over:base)
+        }
+        let center = 12*40+20
+        let excluded = try render([a])
+        XCTAssertEqual(excluded.pixels[center],blue.pixels[center]); XCTAssertEqual(excluded.pixels[0],base.pixels[0])
+        var b = a; b.source = 1
+        XCTAssertEqual(try render([a,b]).pixels[center],.zero,"no fallback to a forbidden source")
+        var keep = a; keep.exclude = false
+        XCTAssertEqual(try render([a,b,keep]).pixels[center],red.pixels[center],"last keep overrides exclusion for that source")
+        var restore = a; restore.exclude = false; restore.restore = true
+        XCTAssertEqual(try render([a,b,restore]).pixels,base.pixels)
+    }
+    func testPanoramaRetouchProjectionRegionMatchesFullProjection() throws {
+        let image = texture(w:160,h:96)
+        var options = PhotoMergeOptions.defaults(for:.panorama); options.projection = .spherical; options.autoCrop = false
+        let camera = MergeMatrix([120,0,79.5,0,120,47.5,0,0,1])
+        let plan = MergePanoramaPlan(options:options,frames:[MergeFrame(image:image)],reference:0,cameras:[camera],gains:[1.4],focal:120,origin:SIMD2(-70,-40),width:140,height:80)
+        let full = try MergePanoramaAccumulator.projected(image,index:0,plan:plan)
+        let rect = CGRect(x:33,y:17,width:51,height:29)
+        let tile = try MergePanoramaAccumulator.projected(image,index:0,plan:plan,region:rect)
+        for y in 0..<29 { for x in 0..<51 {
+            XCTAssertEqual(tile.image.pixels[y*51+x],full.image.pixels[(y+17)*140+x+33])
+            XCTAssertEqual(tile.mask.values[y*51+x],full.mask.values[(y+17)*140+x+33])
+        } }
+    }
+    func testEditablePanoramaFreezesProjectionAndAppliesFinishingAfterMasks() async throws {
+        let world = texture(w:360,h:192)
+        let (catalog,root,photos) = try mergeFixture([crop(world,x:0,w:260),crop(world,x:100,w:260)])
+        let engine = PhotoMergeEngine(),inputs = try await engine.loadInputs(catalog:catalog,ids:Set(photos.map(\.id)))
+        var options = PhotoMergeOptions.defaults(for:.panorama); options.projection = .perspective; options.boundaryWarp = 20; options.fillEdges = true
+        let first = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
+        let settings = MergeRetouchSettings(strokes:[MergeRetouchStroke(source:0,points:[MaskPoint(0.5,0.5)],radius:0.12,hardness:1,opacity:1,exclude:true)])
+        let pair = try await engine.retouchPreview(first.id,settings:settings,source:0,ev:0,progress:{ _,_ in })
+        XCTAssertEqual(pair.width,first.width); XCTAssertEqual(pair.height,first.height)
+        let saved = try await engine.save(first.id,to:root.bookmark,filename:"pano-manual.tif",catalog:catalog,progress:{ _,_ in })
+        let original = try MergeMasterCodec.read(saved.url,context:context)
+        let reopened = try await engine.reopenMerge(saved.photo,catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(reopened.project.settings,settings)
+        let again = try await engine.save(reopened.preview.id,to:root.bookmark,filename:"pano-manual-copy.tif",catalog:catalog,progress:{ _,_ in })
+        let copy = try MergeMasterCodec.read(again.url,context:context).image
+        XCTAssertEqual(copy.width,original.image.width); XCTAssertEqual(copy.height,original.image.height)
+        for i in copy.pixels.indices { for c in 0..<4 { XCTAssertEqual(copy.pixels[i][c],original.image.pixels[i][c],accuracy:2e-5) } }
+    }
+    func testStarTrailGapFillIsBoundedNonrecursiveAndPreservesCoverage() throws {
+        var image = constant(SIMD4(-0.01,0.01,0.02,1),w:16,h:5)
+        image.pixels[2*16+2] = SIMD4(1.5,0.7,0.3,1); image.pixels[2*16+5] = SIMD4(1.5,0.7,0.3,1)
+        image.pixels[2*16+10] = SIMD4(1.5,0.7,0.3,1)
+        let filled = try StarTrailFusion.fillGaps(image,settings:StarTrailSettings(gap:2,threshold:0.2,strength:1))
+        XCTAssertEqual(filled.pixels[2*16+3],image.pixels[2*16+2]); XCTAssertEqual(filled.pixels[2*16+4],image.pixels[2*16+2])
+        XCTAssertEqual(filled.pixels[2*16+7],image.pixels[2*16+7]); XCTAssertEqual(filled.pixels[0],image.pixels[0])
+        XCTAssertEqual(try StarTrailFusion.fillGaps(image,settings:StarTrailSettings(gap:1,threshold:0.2,strength:1)).pixels,image.pixels)
+        image.pixels[2*16+3] = .zero
+        XCTAssertEqual(try StarTrailFusion.fillGaps(image,settings:StarTrailSettings(gap:2,threshold:0.2,strength:1)).pixels[2*16+4],image.pixels[2*16+4])
+        XCTAssertEqual(try StarTrailFusion.fillGaps(image,settings:StarTrailSettings()).pixels,image.pixels)
+        var oblique = constant(SIMD4(0.01,0.01,0.01,1),w:12,h:9)
+        oblique.pixels[2*12+2] = SIMD4(1,0.8,0.6,1); oblique.pixels[5*12+8] = SIMD4(1,0.8,0.6,1)
+        let angled = try StarTrailFusion.fillGaps(oblique,settings:StarTrailSettings(gap:5,threshold:0.2,strength:1))
+        XCTAssertGreaterThan(angled.pixels[4*12+5].x,0.9,"non-axis-aligned gaps are filled")
+        XCTAssertEqual(try StarTrailFusion.fillGaps(oblique,settings:StarTrailSettings(gap:4,threshold:0.2,strength:1)).pixels,oblique.pixels)
+    }
+    func testStarTrailFrameExclusionForegroundAndProjectRoundTrip() async throws {
+        var a = constant(SIMD4(0.01,0.02,0.03,1),w:48,h:32),b = a,c = a
+        a.pixels[8*48+10] = SIMD4(1,0.7,0.4,1)
+        b.pixels[8*48+13] = SIMD4(1,0.7,0.4,1)
+        for x in 0..<48 { c.pixels[24*48+x] = SIMD4(3,2,1,1) }
+        let (catalog,root,photos) = try mergeFixture([a,b,c]),engine = PhotoMergeEngine()
+        let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(photos.map(\.id)))
+        let options = PhotoMergeOptions.defaults(for:.lighten)
+        let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
+        let foreground = MergeRetouchStroke(source:0,points:[MaskPoint(0.1,0.76),MaskPoint(0.9,0.76)],radius:0.1,hardness:1,opacity:1)
+        XCTAssertEqual(preview.image.width,48,"normal preview must not reuse the 32-pixel retained analysis")
+        var settings = MergeRetouchSettings(strokes:[foreground],excludedSources:[2],trails:StarTrailSettings(gap:2,threshold:0.2,strength:1))
+        _ = try await engine.retouchPreview(preview.id,settings:settings,source:2,ev:0,progress:{ _,_ in })
+        settings.excludedSources = [] // verify raw-base cache changes when a frame is re-enabled
+        _ = try await engine.retouchPreview(preview.id,settings:settings,source:0,ev:0,progress:{ _,_ in })
+        let saved = try await engine.save(preview.id,to:root.bookmark,filename:"trails.tif",catalog:catalog,progress:{ _,_ in })
+        let image = try MergeMasterCodec.read(saved.url,context:context).image
+        XCTAssertGreaterThan(image.pixels[8*48+11].x,0.9,"short star gap is filled")
+        XCTAssertLessThan(image.pixels[24*48+24].x,0.02,"foreground keep overrides the bright transient")
+        XCTAssertGreaterThan(image.pixels[24*48+47].x,2.9,"re-enabled frame contributes outside the protected foreground")
+        let reopened = try await engine.reopenMerge(saved.photo,catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(reopened.project.settings,settings)
+        let again = try await engine.save(reopened.preview.id,to:root.bookmark,filename:"trails-copy.dng",catalog:catalog,masterFormat:.dng,progress:{ _,_ in })
+        let copy = try MergeMasterCodec.read(again.url,context:context).image
+        for i in copy.pixels.indices { for c in 0..<4 { XCTAssertEqual(copy.pixels[i][c],image.pixels[i][c],accuracy:2e-5) } }
+    }
+    func testStarTrailLongSequenceUsesBoundedAnalysisAndLargeDNGProvenance() async throws {
+        let images = (0..<129).map { i in constant(SIMD4(Float(i)/200,0.2,0.3,1),w:8,h:6) }
+        let (catalog,root,photos) = try mergeFixture(images),engine = PhotoMergeEngine()
+        let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(photos.map(\.id)))
+        var options = PhotoMergeOptions.defaults(for:.lighten)
+        XCTAssertNoThrow(try options.validate(count:2048))
+        XCTAssertThrowsError(try options.validate(count:2049))
+        options.align = true; XCTAssertThrowsError(try options.validate(count:129)); options.align = false
+        let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
+        let saved = try await engine.save(preview.id,to:root.bookmark,filename:"long-trails.tif",catalog:catalog,progress:{ _,_ in })
+        let result = try MergeMasterCodec.read(saved.url,context:context)
+        XCTAssertEqual(result.provenance.sources.count,129)
+        XCTAssertEqual(saved.photo.details?.composite?.sourceCount,129)
+        XCTAssertEqual(saved.photo.details?.composite?.sources.count,0)
+        XCTAssertLessThan(saved.photo.metadata?.count ?? Int.max,4096,"catalog summary must stay small for long sequences")
+        let reopened = try await engine.reopenMerge(saved.photo,catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(reopened.inputs.count,129)
+        XCTAssertEqual(result.image.pixels[0].x,0.64,accuracy:2e-5)
+        let project = try MergeRetouchProject.read(from:saved.url,reference:XCTUnwrap(result.provenance.retouchProject))
+        if case .fusion(let f) = project.snapshot { XCTAssertTrue(f.sizes.allSatisfy { $0[0] <= 32 && $0[1] <= 32 }) }
+        else { XCTFail("streamed fusion snapshot") }
+        options.masterFormat = .dng
+        let large = MergeProvenance(options:options,sources:(0..<2048).map { .init(photoID:UUID().uuidString,digest:String(repeating:"a",count:64),recipeRevision:$0) })
+        XCTAssertGreaterThan(try large.description.utf8.count,65536)
+        let path = directory.appendingPathComponent("large-provenance.dng")
+        try MergeMasterCodec.write(constant(SIMD4(2,-0.1,0.3,1)),to:path,provenance:large,context:context)
+        XCTAssertEqual(try MergeMasterCodec.read(path,context:context).provenance,large)
+    }
+    @MainActor func testStarTrailSettingsShareUndoAndKeepOneFrameEnabled() throws {
+        let state = MergeRetouchState(); state.undo.groupsByEvent = false
+        state.undo.beginUndoGrouping(); state.excludeSource(true,count:2); state.undo.endUndoGrouping()
+        XCTAssertEqual(state.settings.excludedSources,[0]); XCTAssertTrue(state.hasChanges)
+        state.source = 1; state.excludeSource(true,count:2)
+        XCTAssertEqual(state.settings.excludedSources,[0]); XCTAssertNotNil(state.error)
+        state.undo.undo(); XCTAssertTrue(state.settings.excludedSources.isEmpty)
+        state.trailDraft.gap = 4
+        state.undo.beginUndoGrouping(); state.commitTrails(); state.undo.endUndoGrouping()
+        XCTAssertEqual(state.settings.trails.gap,4)
+        state.undo.undo(); XCTAssertEqual(state.trailDraft.gap,0)
+        state.undo.redo(); XCTAssertEqual(state.settings.trails.gap,4)
     }
 
 }

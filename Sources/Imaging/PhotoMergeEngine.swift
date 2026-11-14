@@ -8,7 +8,7 @@ struct MergePreview {
     let width: Int
     let height: Int
 }
-struct FocusRetouchPreview {
+struct MergeRetouchPreview {
     let source: CGImage
     let result: CGImage
     let width: Int
@@ -54,15 +54,15 @@ actor PhotoMergeEngine {
         let frames: [MergeFrame]
         let plan: Plan
         let preview: MergeImage
-        var focusProject: FocusMergeProject?
+        var retouchProject: MergeRetouchProject?
     }
     private lazy var pipeline = ImagePipeline(cacheIntermediates:false)
     private lazy var context = MergeMasterCodec.context()
     private let checkpoint: @Sendable (String) throws -> Void
     private var prepared: Prepared?
-    private var focusBase: MergeImage?
-    private var focusResult: (strokes: [FocusRetouchStroke], image: MergeImage)?
-    private var focusSource: (index: Int,image: MergeImage)?
+    private var retouchBase: (excluded: Set<Int>,image: MergeImage)?
+    private var retouchResult: (settings: MergeRetouchSettings, image: MergeImage)?
+    private var retouchSource: (index: Int,image: MergeImage)?
     init(checkpoint: @escaping @Sendable (String) throws -> Void = { _ in }) { self.checkpoint = checkpoint }
 
     func loadInputs(catalog: CatalogStore,ids: Set<String>) throws -> [ImageRequest] {
@@ -80,9 +80,10 @@ actor PhotoMergeEngine {
         }
     }
 
-    func prepare(_ inputs: [ImageRequest],options: PhotoMergeOptions,project: FocusMergeProject? = nil,progress: Progress) async throws -> MergePreview {
-        prepared = nil; focusBase = nil; focusResult = nil; focusSource = nil
+    func prepare(_ inputs: [ImageRequest],options: PhotoMergeOptions,project: MergeRetouchProject? = nil,progress: Progress) async throws -> MergePreview {
+        prepared = nil; retouchBase = nil; retouchResult = nil; retouchSource = nil
         try project?.validate()
+        guard project == nil || project?.kind == options.kind else { throw MergeRetouchProject.invalid }
         try options.validate(count:inputs.count)
         try Self.validateSources(inputs.map(\.photo))
         var requests = [ImageRequest](),frames = [MergeFrame]()
@@ -101,7 +102,7 @@ actor PhotoMergeEngine {
             if index == 0 { whiteBalance = WhiteBalanceValue(temperature:recipe.temperature,tint:recipe.tint) }
             if let project { whiteBalance = WhiteBalanceValue(temperature:project.temperature,tint:project.tint) }
             let request = ImageRequest(photo:input.photo,root:input.root,recipe:recipe)
-            var frame = try await pipeline.mergeDecode(request,longEdge:1000,whiteBalance:whiteBalance)
+            var frame = try await pipeline.mergeDecode(request,longEdge:options.kind == .lighten && !options.align ? 32 : 1000,whiteBalance:whiteBalance)
             let scale = options.sourceLongEdge == 0 ? 1 : min(1,Double(options.sourceLongEdge)/Double(max(frame.fullWidth,frame.fullHeight)))
             frame.nativeWidth = max(1,Int((Double(frame.fullWidth)*scale).rounded()))
             frame.nativeHeight = max(1,Int((Double(frame.fullHeight)*scale).rounded()))
@@ -112,14 +113,30 @@ actor PhotoMergeEngine {
             frames.append(frame); requests.append(request)
             await progress(Double(index+1)/Double(inputs.count)*0.45,L10n.text("merge.analyzing", defaultValue:"Analyzing originals…"))
         }
-        let plan: Plan = try project.map { .fusion(try $0.plan(frames:frames,options:options)) } ?? makePlan(frames,options:options)
+        let plan: Plan = try project.map { try restorePlan($0.snapshot,frames:frames,options:options) } ?? makePlan(frames,options:options)
         await progress(0.65,L10n.text("merge.previewing", defaultValue:"Building merge preview…"))
-        let preview = try smallResult(plan,frames:frames)
-        var focusProject = project
-        if focusProject == nil, options.kind == .focus, case .fusion(let fusion) = plan {
-            focusProject = try FocusMergeProject(plan:fusion,requests:requests,whiteBalance:whiteBalance)
+        let preview: MergeImage
+        if options.kind == .lighten,!options.align,case .fusion(let fusionPlan) = plan {
+            // The tiny retained analyses bound long-sequence memory. Decode
+            // preview pixels separately, retaining only one source at a time.
+            var accumulator: MergeFusionAccumulator?
+            for (index,request) in requests.enumerated() {
+                try Task.checkCancellation()
+                let image = try await pipeline.mergeDecode(request,longEdge:1000,whiteBalance:whiteBalance).image
+                if accumulator == nil {
+                    accumulator = try MergeFusionAccumulator(plan:fusionPlan,width:image.width,height:image.height)
+                }
+                try accumulator!.add(image,index:index)
+                await progress(0.65+Double(index+1)/Double(requests.count)*0.3,L10n.text("merge.previewing", defaultValue:"Building merge preview…"))
+            }
+            let result = try accumulator!.finish()
+            preview = options.autoCrop ? try MergeCrop.crop(result) : result
+        } else { preview = try smallResult(plan,frames:frames) }
+        var retouchProject = project
+        if retouchProject == nil, options.kind.supportsRetouch {
+            retouchProject = try MergeRetouchProject(plan:plan,requests:requests,frames:frames,whiteBalance:whiteBalance,kind:options.kind)
         }
-        let value = Prepared(id:UUID(),requests:requests,options:options,whiteBalance:whiteBalance,frames:frames,plan:plan,preview:preview,focusProject:focusProject)
+        let value = Prepared(id:UUID(),requests:requests,options:options,whiteBalance:whiteBalance,frames:frames,plan:plan,preview:preview,retouchProject:retouchProject)
         try Task.checkCancellation()
         prepared = value
         return try display(value,ev:0)
@@ -171,18 +188,18 @@ actor PhotoMergeEngine {
         guard maxSource*64+canvas*UInt64(160+consensusBytes) <= ProcessInfo.processInfo.physicalMemory/3 else {
             throw LRCError(L10n.text("merge.memoryBudget", defaultValue:"The full-size merge exceeds the memory budget. Choose a smaller source size"))
         }
-        let encodedProject = try value.focusProject?.encoded()
+        let encodedProject = try value.retouchProject?.encoded()
         try SafeFileWriter.requireCapacity(in:directory,bytes:Int64(canvas)*16+Int64(encodedProject?.0.count ?? 0)+1_048_576)
         let image = try await fullResult(value,progress:progress)
         await progress(0.86,L10n.text("merge.writing", defaultValue:"Writing and verifying float master…"))
-        let provenance = MergeProvenance(options:options,sources:value.focusProject?.sources ?? value.requests.map {
+        let provenance = MergeProvenance(options:options,sources:value.retouchProject?.sources ?? value.requests.map {
             MergeProvenance.Source(photoID:$0.photo.id,digest:$0.recipe!.sourceDigest,recipeRevision:$0.photo.recipeRevision)
-        },focusProject:encodedProject?.1)
+        },retouchProject:encodedProject?.1)
         let staging = try SafeFileWriter.stage(in:directory)
         let stagingIdentity = try FileIdentity.read(staging),stagingKey = stagingIdentity.key
         var ownsStaging = true
         defer { if ownsStaging,(try? FileIdentity.read(staging).key) == stagingKey { try? FileManager.default.removeItem(at:staging) } }
-        try MergeMasterCodec.write(image,to:staging,provenance:provenance,context:context,stagingIdentity:stagingIdentity,focusProject:encodedProject?.0)
+        try MergeMasterCodec.write(image,to:staging,provenance:provenance,context:context,stagingIdentity:stagingIdentity,retouchProject:encodedProject?.0)
         try checkpoint("staged")
         guard try FileIdentity.read(staging).key == stagingKey else { throw MergeMasterCodec.invalid }
         for request in value.requests { try pipeline.verifySource(request) }
@@ -191,7 +208,7 @@ actor PhotoMergeEngine {
         var recipe = EditRecipe(sourceDigest:digest,decoderVersion:EditRecipe.linearCompositeDecoderVersion,
             baselineExposure:0,baselineTemperature:5500,baselineTint:0,temperature:5500,tint:0)
         recipe.grain.ensureSeed()
-        let metadata = PhotoMetadata(orientation:1,profile:"sRGB IEC61966-2.1 Linear",composite:provenance)
+        let metadata = PhotoMetadata(orientation:1,profile:"sRGB IEC61966-2.1 Linear",composite:provenance.catalogSummary)
         let photoID = UUID().uuidString
         let photo = Photo(id:photoID,rootID:root.id,relativePath:String(destination.path.dropFirst(root.path.count+1)),
             identity:try JSONEncoder().encode(identity),identityKey:identity.key,digest:digest,captureDate:value.requests.first?.photo.captureDate,
@@ -213,7 +230,7 @@ actor PhotoMergeEngine {
         } catch {
             throw MergePublicationError(url: destination, identity: identity, verified: verified, cause: error)
         }
-        prepared = nil; focusBase = nil; focusResult = nil; focusSource = nil
+        prepared = nil; retouchBase = nil; retouchResult = nil; retouchSource = nil
         return MergeSaved(photo:registered.photo,url:destination,previousStacks:registered.previousStacks)
     }
     private func makePlan(_ frames: [MergeFrame],options: PhotoMergeOptions) throws -> Plan {
@@ -255,9 +272,9 @@ actor PhotoMergeEngine {
         }
     }
     private func fullResult(_ value: Prepared,retouch: Bool = true,progress: Progress) async throws -> MergeImage {
-        if retouch,prepared?.id == value.id,let project = value.focusProject,
-           let cached = focusResult,cached.strokes == project.strokes {
-            return value.options.autoCrop ? try MergeCrop.crop(cached.image) : cached.image
+        if retouch,prepared?.id == value.id,let project = value.retouchProject,
+           let cached = retouchResult,cached.settings == project.settings {
+            return try finished(cached.image,options:value.options)
         }
         let edge: Int? = value.options.sourceLongEdge == 0 ? nil : value.options.sourceLongEdge
         func decode(_ index: Int) async throws -> MergeImage {
@@ -268,16 +285,20 @@ actor PhotoMergeEngine {
         switch value.plan {
         case .fusion(let plan):
             let fusion = try MergeFusionAccumulator(plan:plan,width:plan.width,height:plan.height)
-            for index in value.requests.indices { try fusion.add(try await decode(index),index:index) }
-            var image = try fusion.finish()
-            if retouch, let project = value.focusProject {
-                image = try await corrected(image,strokes:project.strokes,value:value)
+            for index in value.requests.indices where value.options.kind != .lighten || value.retouchProject?.settings.excludedSources.contains(index) != true {
+                try fusion.add(try await decode(index),index:index)
             }
-            return retouch && value.options.autoCrop ? try MergeCrop.crop(image) : image
+            var image = try fusion.finish()
+            if retouch, let project = value.retouchProject {
+                image = try await corrected(image,settings:project.settings,value:value)
+            }
+            return retouch ? try finished(image,options:value.options) : image
         case .panorama(let plan):
             let fusion = MergePanoramaAccumulator(plan)
             for index in value.requests.indices { try fusion.add(try await decode(index),index:index) }
-            return try fusion.finish()
+            var image = try fusion.finish(applyFinishing:false)
+            if retouch,let project = value.retouchProject { image = try await corrected(image,settings:project.settings,value:value) }
+            return retouch ? try finished(image,options:value.options) : image
         case .hdrPanorama(let groups,let plan):
             let panorama = MergePanoramaAccumulator(plan)
             var offset = 0
@@ -286,19 +307,48 @@ actor PhotoMergeEngine {
                 for index in group.frames.indices { try fusion.add(try await decode(offset+index),index:index) }
                 try panorama.add(try fusion.finish(),index:number); offset += group.frames.count
             }
-            return try panorama.finish()
+            var image = try panorama.finish(applyFinishing:false)
+            if retouch,let project = value.retouchProject { image = try await corrected(image,settings:project.settings,value:value) }
+            return retouch ? try finished(image,options:value.options) : image
         }
     }
-    func reopenFocus(_ photo: Photo,catalog: CatalogStore,progress: Progress) async throws -> (inputs: [ImageRequest],options: PhotoMergeOptions,project: FocusMergeProject,preview: MergePreview) {
-        guard let provenance = photo.details?.composite, let reference = provenance.focusProject,
-              provenance.options.kind == .focus else { throw FocusMergeProject.invalid }
+    private func finished(_ image: MergeImage,options: PhotoMergeOptions) throws -> MergeImage {
+        if options.kind.isPanorama { return try MergePanoramaFinish.apply(image,options:options) }
+        return options.autoCrop ? try MergeCrop.crop(image) : image
+    }
+    private func restorePlan(_ snapshot: MergeRetouchProject.Snapshot,frames: [MergeFrame],options: PhotoMergeOptions) throws -> Plan {
+        switch snapshot {
+        case .fusion(let f): return .fusion(try f.restore(frames,options:options))
+        case .panorama(let p): return .panorama(try p.restore(frames,options:options))
+        case .hdrPanorama(let frozen,let panorama):
+            var groups = [MergeFusionPlan](),hdrFrames = [MergeFrame]()
+            var hdrOptions = options; hdrOptions.kind = .hdr; hdrOptions.autoCrop = false
+            guard frozen.count*options.bracketSize == frames.count else { throw MergeRetouchProject.invalid }
+            for (number,snapshot) in frozen.enumerated() {
+                let start = number*options.bracketSize
+                let group = try snapshot.restore(Array(frames[start..<start+options.bracketSize]),options:hdrOptions)
+                let merged = try fuseSmall(group),reference = group.frames[group.reference]
+                groups.append(group)
+                hdrFrames.append(MergeFrame(image:merged,clip:max(1,merged.pixels.map(MergeImage.peak).max() ?? 1),sourceIndex:number,
+                    focal35mm:reference.focal35mm,nativeWidth:reference.fullWidth,nativeHeight:reference.fullHeight,
+                    registrationImage:reference.image,focalLength:reference.focalLength,cameraModel:reference.cameraModel))
+            }
+            return .hdrPanorama(groups,try panorama.restore(hdrFrames,options:options))
+        }
+    }
+    func reopenMerge(_ photo: Photo,catalog: CatalogStore,progress: Progress) async throws -> (inputs: [ImageRequest],options: PhotoMergeOptions,project: MergeRetouchProject,preview: MergePreview) {
+        guard let summary = photo.details?.composite, let reference = summary.retouchProject,
+              summary.options.kind.supportsRetouch else { throw MergeRetouchProject.invalid }
         guard let master = try loadInputs(catalog:catalog,ids:[photo.id]).first else { throw Self.sourceChanged }
         let lease = try AccessLease(bookmark:master.root.bookmark)
         let url = lease.url.appendingPathComponent(master.photo.relativePath)
         try pipeline.verifySource(master)
         defer { withExtendedLifetime(lease) {} }
-        let project = try FocusMergeProject.read(from:url,reference:reference)
-        guard project.sources == provenance.sources else { throw FocusMergeProject.invalid }
+        guard let provenance = try PhotoFileType.inspectSource(url).composite,
+              provenance.retouchProject == reference,provenance.options == summary.options,
+              provenance.sources.count == summary.sourceCount else { throw MergeRetouchProject.invalid }
+        let project = try MergeRetouchProject.read(from:url,reference:reference)
+        guard project.sources == provenance.sources else { throw MergeRetouchProject.invalid }
         let loaded = try loadInputs(catalog:catalog,ids:Set(project.sources.map(\.photoID)))
         let byID = Dictionary(uniqueKeysWithValues:loaded.map { ($0.photo.id,$0) })
         let inputs = try project.sources.map { source -> ImageRequest in
@@ -309,81 +359,115 @@ actor PhotoMergeEngine {
         return (inputs,provenance.options,project,preview)
     }
 
-    func setFocusStrokes(_ id: UUID,strokes: [FocusRetouchStroke]) throws {
-        guard var value = prepared, value.id == id, var project = value.focusProject else { throw stale }
-        project.strokes = strokes
-        try project.validate()
-        value.focusProject = project; prepared = value
+    func setRetouchSettings(_ id: UUID,settings: MergeRetouchSettings) throws {
+        guard var value = prepared,value.id == id,var project = value.retouchProject else { throw stale }
+        project.settings = settings; try project.validate()
+        value.retouchProject = project; prepared = value
     }
-
-    private func alignedFocusSource(_ index: Int,value: Prepared) async throws -> MergeImage {
-        guard case .fusion(let plan) = value.plan, value.options.kind == .focus,
-              value.requests.indices.contains(index) else { throw stale }
-        if prepared?.id == value.id, let cached = focusSource, cached.index == index { return cached.image }
+    private func sourcePixels(_ index: Int,value: Prepared,region: CGRect? = nil) async throws -> (image: MergeImage,mask: MergePlane) {
+        guard let project = value.retouchProject,(0..<project.sourceCount).contains(index) else { throw stale }
         let edge = value.options.sourceLongEdge == 0 ? nil : value.options.sourceLongEdge
-        let frame = try await pipeline.mergeDecode(value.requests[index],longEdge:edge,whiteBalance:value.whiteBalance).image
-        var image = try MergeFusionAccumulator.aligned(frame,index:index,plan:plan,width:plan.width,height:plan.height)
-        let gain = plan.gains[index]
-        for i in image.pixels.indices {
-            if i.isMultiple(of:65536) { try Task.checkCancellation() }
-            let p = image.pixels[i]; image.pixels[i] = SIMD4(p.x*gain.x,p.y*gain.y,p.z*gain.z,p.w)
+        func decode(_ i: Int) async throws -> MergeImage {
+            try await pipeline.mergeDecode(value.requests[i],longEdge:edge,whiteBalance:value.whiteBalance).image
         }
+        switch value.plan {
+        case .fusion(let plan):
+            let frame = try await decode(index)
+            var image = try MergeFusionAccumulator.aligned(frame,index:index,plan:plan,width:plan.width,height:plan.height,region:region)
+            let gain: SIMD3<Float> = value.options.kind == .hdr ? SIMD3(repeating:1/plan.exposureRatios[index]) : plan.gains[index]
+            for i in image.pixels.indices {
+                if i.isMultiple(of:65536) { try Task.checkCancellation() }
+                let p = image.pixels[i]; image.pixels[i] = SIMD4(p.x*gain.x,p.y*gain.y,p.z*gain.z,p.w)
+            }
+            return (image,MergePlane(width:image.width,height:image.height,values:image.pixels.map(\.w)))
+        case .panorama(let plan):
+            return try MergePanoramaAccumulator.projected(try await decode(index),index:index,plan:plan,region:region)
+        case .hdrPanorama(let groups,let plan):
+            let group = groups[index],fusion = try MergeFusionAccumulator(plan:group,width:group.width,height:group.height)
+            let offset = groups.prefix(index).reduce(0,{ $0+$1.frames.count })
+            for i in group.frames.indices { try fusion.add(try await decode(offset+i),index:i) }
+            return try MergePanoramaAccumulator.projected(fusion.finish(),index:index,plan:plan,region:region)
+        }
+    }
+    private func alignedRetouchSource(_ index: Int,value: Prepared) async throws -> MergeImage {
+        if prepared?.id == value.id,let cached = retouchSource,cached.index == index { return cached.image }
+        let image = try await sourcePixels(index,value:value).image
+        try Task.checkCancellation()
         guard prepared?.id == value.id else { throw stale }
-        focusSource = (index,image)
-        return image
+        retouchSource = (index,image); return image
     }
-
-    private func corrected(_ base: MergeImage,strokes: [FocusRetouchStroke],value: Prepared) async throws -> MergeImage {
-        var result = base
-        for stroke in strokes {
-            try Task.checkCancellation()
-            let source = stroke.restore ? base : try await alignedFocusSource(stroke.source,value:value)
-            try stroke.apply(to:&result,from:source)
+    private func corrected(_ base: MergeImage,settings: MergeRetouchSettings,value: Prepared) async throws -> MergeImage {
+        if value.options.kind == .focus || value.options.kind == .hdr {
+            var result = base
+            for stroke in settings.strokes {
+                try Task.checkCancellation()
+                let source = stroke.restore ? base : try await alignedRetouchSource(stroke.source,value:value)
+                try stroke.apply(to:&result,from:source)
+            }
+            return result
         }
-        return result
+        let initial = value.options.kind == .lighten ? try StarTrailFusion.fillGaps(base,settings:settings.trails) : base
+        guard !settings.strokes.isEmpty,let project = value.retouchProject else { return initial }
+        var masks = [MergeBrushMask](),maskBytes = 0
+        for stroke in settings.strokes {
+            var mask = try stroke.mask(width:base.width,height:base.height)
+            if !stroke.restore && !stroke.exclude {
+                // A keep stroke outside its selected source's captured coverage
+                // must not hide the other captures or synthesize new coverage.
+                let pixels = try await sourcePixels(stroke.source,value:value,region:mask.rect).image
+                for p in mask.values.indices { mask.values[p] *= pixels.pixels[p].w > 0 ? 1 : 0 }
+            }
+            maskBytes += mask.values.count*4
+            guard maskBytes <= min(256*1024*1024,Int(ProcessInfo.processInfo.physicalMemory/12)) else {
+                throw LRCError(L10n.text("merge.memoryBudget",defaultValue:"The full-size merge exceeds the memory budget. Choose a smaller source size"))
+            }
+            masks.append(mask)
+        }
+        let local = try MergeConstrainedRegion(base:initial,settings:settings,masks:masks,kind:value.options.kind)
+        for i in 0..<project.sourceCount {
+            try Task.checkCancellation()
+            if settings.excludedSources.contains(i),!settings.strokes.contains(where:{ !$0.restore && !$0.exclude && $0.source == i }) { continue }
+            let pixels = try await sourcePixels(i,value:value,region:local.region)
+            try local.add(pixels.image,weights:pixels.mask,index:i)
+        }
+        return try local.finish(over:initial)
     }
-
-    func focusPreview(_ id: UUID,strokes: [FocusRetouchStroke],source: Int,ev: Double,progress: Progress) async throws -> FocusRetouchPreview {
-        guard let value = prepared,value.id == id,value.focusProject != nil,
-              ev.isFinite,(-5...5).contains(ev) else { throw stale }
-        try setFocusStrokes(id,strokes:strokes)
+    func retouchPreview(_ id: UUID,settings: MergeRetouchSettings,source: Int,ev: Double,progress: Progress) async throws -> MergeRetouchPreview {
+        try setRetouchSettings(id,settings:settings)
+        guard let value = prepared,value.id == id,let project = value.retouchProject,
+              (0..<project.sourceCount).contains(source),ev.isFinite,(-5...5).contains(ev) else { throw stale }
         let pixels = UInt64(value.plan.size.0)*UInt64(value.plan.size.1)
         guard pixels*256 <= ProcessInfo.processInfo.physicalMemory/3 else {
             throw LRCError(L10n.text("merge.memoryBudget",defaultValue:"The full-size merge exceeds the memory budget. Choose a smaller source size"))
         }
         let base: MergeImage
-        if let cached = focusBase { base = cached }
+        if let cached = retouchBase,cached.excluded == settings.excludedSources { base = cached.image }
         else {
             base = try await fullResult(value,retouch:false,progress:progress)
-            try Task.checkCancellation()
-            guard prepared?.id == id else { throw stale }
-            focusBase = base
+            try Task.checkCancellation(); guard prepared?.id == id else { throw stale }
+            retouchBase = (settings.excludedSources,base)
         }
         let result: MergeImage
-        if let cached = focusResult, cached.strokes == strokes { result = cached.image }
+        if let cached = retouchResult,cached.settings == settings { result = cached.image }
         else {
-            if let cached = focusResult, strokes.count == cached.strokes.count+1,
-               strokes.dropLast().elementsEqual(cached.strokes),let last = strokes.last {
+            if [.focus,.hdr].contains(value.options.kind),let cached = retouchResult,
+               settings.strokes.count == cached.settings.strokes.count+1,
+               settings.strokes.dropLast().elementsEqual(cached.settings.strokes),let last = settings.strokes.last {
                 var incremental = cached.image
-                let image = last.restore ? base : try await alignedFocusSource(last.source,value:value)
-                try last.apply(to:&incremental,from:image)
-                result = incremental
-            } else {
-                result = try await corrected(base,strokes:strokes,value:value)
-            }
-            try Task.checkCancellation()
-            guard prepared?.id == id else { throw stale }
-            focusResult = (strokes,result)
+                let image = last.restore ? base : try await alignedRetouchSource(last.source,value:value)
+                try last.apply(to:&incremental,from:image); result = incremental
+            } else { result = try await corrected(base,settings:settings,value:value) }
+            try Task.checkCancellation(); guard prepared?.id == id else { throw stale }
+            retouchResult = (settings,result)
         }
-        let selected = try await alignedFocusSource(source,value:value)
+        let selected = try await alignedRetouchSource(source,value:value)
         func display(_ image: MergeImage) throws -> CGImage {
             let ci = image.ciImage().applyingFilter("CIExposureAdjust",parameters:[kCIInputEVKey:ev])
             guard let output = context.createCGImage(ci,from:ci.extent,format:.RGBA8,colorSpace:CGColorSpace(name:CGColorSpace.sRGB)!) else { throw MergeMasterCodec.invalid }
             return output
         }
-        let pair = try FocusRetouchPreview(source:display(selected),result:display(result),width:base.width,height:base.height)
-        try Task.checkCancellation()
-        guard prepared?.id == id else { throw stale }
+        let pair = try MergeRetouchPreview(source:display(selected),result:display(result),width:base.width,height:base.height)
+        try Task.checkCancellation(); guard prepared?.id == id else { throw stale }
         return pair
     }
 
