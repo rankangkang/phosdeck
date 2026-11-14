@@ -19,9 +19,9 @@ extension CatalogStore {
     }
     /// Indexing, collection membership and optional stacking share one transaction.
     /// Move only participating versions; never absorb unselected members of old stacks.
-    func registerMergedPhoto(_ photo: Photo,root: StorageRoot,inputs: [ImageRequest],stackWithSources: Bool,collectionID: String?) throws -> (photo: Photo,previousStacks: [PhotoStack]?) {
+    func registerMergedPhoto(_ photo: Photo,root: StorageRoot,inputs: [ImageRequest],calibrationInputs: [ImageRequest] = [],stackWithSources: Bool,collectionID: String?) throws -> (photo: Photo,previousStacks: [PhotoStack]?) {
         try database.write { db in
-            try Self.validateMergeInputs(inputs,in:db)
+            try Self.validateMergeInputs(inputs+calibrationInputs,in:db)
             let sourceIDs = inputs.map { $0.photo.id },selected = Set(sourceIDs)
             guard sourceIDs.count >= 2,selected.count == sourceIDs.count,!selected.contains(photo.id) else { throw PhotoMergeEngine.sourceChanged }
             if let existing = try StorageRoot.fetchOne(db,key:root.id) {

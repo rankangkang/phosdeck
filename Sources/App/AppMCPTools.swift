@@ -114,6 +114,7 @@ enum AppMCPTool: String, CaseIterable {
         case workflow, smartSessionID = "smart_session_id", smartOverlay = "smart_overlay"
         case candidateIndex = "candidate_index", personIndices = "person_indices", faceIndex = "face_index", part
         case separate, wholePerson = "whole_person"
+        case darkPhotoIDs = "dark_photo_ids"
         case mergeKind = "merge_kind", outputOptions = "options", displayEV = "display_ev"
         case masterFormat = "master_format", filename, stackWithSources = "stack_with_sources"
         case sourceIndex = "source_index", retouchChanges = "changes"
@@ -271,8 +272,8 @@ enum AppMCPTool: String, CaseIterable {
                 default: LibraryFilterSection.allCases.map { .string($0.rawValue) }
                 }
                 return ["type": "array", "uniqueItems": true, "items": ["enum": .array(values)]]
-            case .photoIDs, .stackIDs, .recordIDs:
-                let count = tool == .planMerge ? 2...2048 : 1...1000
+            case .darkPhotoIDs, .photoIDs, .stackIDs, .recordIDs:
+                let count = self == .darkPhotoIDs ? 0...128 : tool == .planMerge ? 2...2176 : 1...1000
                 return ["type": "array", "minItems": .int(count.lowerBound), "maxItems": .int(count.upperBound),
                         "uniqueItems": true, "items": identifierSchema]
             case .interval:
@@ -285,7 +286,7 @@ enum AppMCPTool: String, CaseIterable {
             case .rules: return MCPCollectionState.rulesSchema
             case .versionRevisions:
                 let revision: Value = ["type": "integer", "minimum": 0]
-                return ["type": "object", "minProperties": 1, "maxProperties": .int(tool == .planMerge ? 2048 : 1000), "propertyNames": identifierSchema,
+                return ["type": "object", "minProperties": 1, "maxProperties": .int(tool == .planMerge ? 2176 : 1000), "propertyNames": identifierSchema,
                         "additionalProperties": ["type": "object", "additionalProperties": false,
                                                   "required": ["source_revision", "recipe_revision"],
                                                   "properties": ["source_revision": revision, "recipe_revision": revision]]]
@@ -315,8 +316,8 @@ enum AppMCPTool: String, CaseIterable {
         func accepts(_ value: Value, for tool: AppMCPTool) -> Bool {
             if let range = range(for: tool) { return value.intValue.map(range.contains) ?? false }
             if isBoolean { return value.boolValue != nil }
-            if [.candidates, .differences, .photoIDs, .stackIDs, .recordIDs].contains(self) {
-                let count = tool == .planMerge ? 2...2048 : 1...1000
+            if [.candidates, .differences, .darkPhotoIDs, .photoIDs, .stackIDs, .recordIDs].contains(self) {
+                let count = self == .darkPhotoIDs ? 0...128 : tool == .planMerge ? 2...2176 : 1...1000
                 guard let values = value.arrayValue, count.contains(values.count) else { return false }
                 let ids = values.compactMap(\.stringValue)
                 return Set(ids).count == values.count && ids.allSatisfy(Self.isID)
@@ -372,7 +373,7 @@ enum AppMCPTool: String, CaseIterable {
             case .minimumSimilarity: return value.number.map((0...1).contains) ?? false
             case .rules: return value.objectValue != nil
             case .versionRevisions:
-                guard let values = value.objectValue, (1...(tool == .planMerge ? 2048 : 1000)).contains(values.count) else { return false }
+                guard let values = value.objectValue, (1...(tool == .planMerge ? 2176 : 1000)).contains(values.count) else { return false }
                 return values.allSatisfy { id, value in
                     guard Self.isID(id), let revision = value.objectValue, revision.count == 2,
                           let source = revision["source_revision"]?.intValue, let recipe = revision["recipe_revision"]?.intValue else { return false }
@@ -640,7 +641,7 @@ enum AppMCPTool: String, CaseIterable {
         case .editLocalPreset: [.photo, .sourceRevision, .recipeRevision, .maskID, .presetID, .presetRevision, .name]
         case .smartStart: [.maskID, .componentID, .maskOperation]
         case .smartEdit: [.previewID, .point, .rect, .candidateIndex, .personIndices, .faceIndex, .part, .separate, .wholePerson]
-        case .planMerge: [.outputOptions, .collection]
+        case .planMerge: [.outputOptions, .collection, .darkPhotoIDs]
         case .getMergePreview: [.displayEV, .longEdge]
         case .saveMerge: [.filename, .masterFormat, .stackWithSources, .draftID, .draftRevision]
         case .editMergeRetouch: [.previewID, .draftID, .draftRevision, .photo, .sourceRevision, .recipeRevision, .retouchChanges, .sourceIndex]

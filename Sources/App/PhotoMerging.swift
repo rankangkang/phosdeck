@@ -8,6 +8,17 @@ import CoreGraphics
     let collectionID: String?
     var options = PhotoMergeOptions()
     var stackWithSources = true
+    private(set) var darkPhotoIDs = Set<String>()
+    var lightInputs: [ImageRequest] { inputs.filter { !darkPhotoIDs.contains($0.photo.id) } }
+    var darkInputs: [ImageRequest] { inputs.filter { darkPhotoIDs.contains($0.photo.id) } }
+    func toggleDark(_ id: String) {
+        guard !working,!reopening,!retouch.active,options.kind.supportsDarkFrames else { return }
+        let usesDefaultName = filename == defaultFilename(for:lightInputs.first)
+        if darkPhotoIDs.contains(id) { darkPhotoIDs.remove(id) }
+        else { darkPhotoIDs.insert(id) }
+        if usesDefaultName { filename = defaultFilename(for:lightInputs.first) }
+        invalidate()
+    }
     let retouch = MergeRetouchState()
     private(set) var reopening = false
     private(set) var inputs: [ImageRequest] = []
@@ -37,8 +48,7 @@ import CoreGraphics
                 let inputs = try await engine.loadInputs(catalog:catalog,ids:ids)
                 try Task.checkCancellation()
                 self.inputs = inputs
-                let base = inputs.first.map { URL(fileURLWithPath:$0.photo.name).deletingPathExtension().lastPathComponent } ?? "Merged"
-                filename = base+"-"+kind.suffix+"."+options.masterFormat.fileExtension
+                filename = defaultFilename(for:inputs.first)
             } catch is CancellationError { }
             catch { self.error = error.localizedDescription }
             working = false; job = nil
@@ -55,7 +65,7 @@ import CoreGraphics
                     await self?.report(value,phase:phase,token:token)
                 }
                 try Task.checkCancellation()
-                inputs = loaded.inputs; options = loaded.options
+                inputs = loaded.inputs+loaded.darkInputs; darkPhotoIDs = Set(loaded.darkInputs.map { $0.photo.id }); options = loaded.options
                 updateFilenameExtension()
                 // SwiftUI option observation must not invalidate the freshly restored solve.
                 preview = loaded.preview; retouch.load(loaded.project.settings)
@@ -72,7 +82,7 @@ import CoreGraphics
                 L10n.text("merge.retouch.bracketGroup",defaultValue:"Bracket \(i/options.bracketSize+1): \(inputs[i].photo.name)")
             }
         }
-        return inputs.map { $0.photo.name }
+        return lightInputs.map { $0.photo.name }
     }
     func refreshRetouch() {
         displayJob?.cancel(); displayToken = UUID()
@@ -121,8 +131,13 @@ import CoreGraphics
     }
     func applyModeDefaults() {
         guard !reopening else { return }
+        if !options.kind.supportsDarkFrames { darkPhotoIDs = [] }
         options.align = options.kind.defaultAlignment; options.autoCrop = options.kind.isPanorama
         invalidate()
+    }
+    private func defaultFilename(for first: ImageRequest?) -> String {
+        let base = first.map { URL(fileURLWithPath:$0.photo.name).deletingPathExtension().lastPathComponent } ?? "Merged"
+        return base+"-"+options.kind.suffix+"."+options.masterFormat.fileExtension
     }
     func updateFilenameExtension() {
         guard !filename.isEmpty else { return }
@@ -136,15 +151,15 @@ import CoreGraphics
         guard !working,!inputs.isEmpty else { return }
         displayJob?.cancel(); preview = nil; previewEV = 0; error = nil; working = true; saving = false; progress = 0
         let token = UUID(); self.token = token
-        let inputs = inputs,options = options
+        let inputs = lightInputs,darkInputs = darkInputs,options = options
         job = Task {
             do {
-                let result = try await engine.prepare(inputs,options:options) { [weak self] value,phase in
+                let result = try await engine.prepare(inputs,options:options,darkInputs:darkInputs) { [weak self] value,phase in
                     await self?.report(value,phase:phase,token:token)
                 }
                 try Task.checkCancellation()
                 guard self.token == token else { return }
-                if self.options == options,self.inputs.map({ $0.photo.id }) == inputs.map({ $0.photo.id }) { preview = result }
+                if self.options == options,self.lightInputs.map({ $0.photo.id }) == inputs.map({ $0.photo.id }) { preview = result }
             } catch is CancellationError { }
             catch { if self.token == token { self.error = error.localizedDescription } }
             if self.token == token { working = false; job = nil }
@@ -205,7 +220,7 @@ import CoreGraphics
 }
 
 extension AppModel {
-    var canMergePhotos: Bool { workspaceAvailable && catalog != nil && (2...2048).contains(selection.count) }
+    var canMergePhotos: Bool { workspaceAvailable && catalog != nil && (2...2176).contains(selection.count) }
     var canReopenEditableMerge: Bool {
         workspaceAvailable && selection.count == 1 && photos.first(where:{ selection.contains($0.id) })?.details?.composite?.retouchProject != nil
     }
@@ -215,7 +230,7 @@ extension AppModel {
         mergeSession = PhotoMergeSession(catalog:catalog,reopening:photo,collectionID:regularCollectionID)
     }
     func requestPhotoMerge(_ kind: PhotoMergeKind) {
-        guard canMergePhotos,selection.count <= kind.sourceLimit,commitRecipe(),let catalog else { return }
+        guard canMergePhotos,selection.count <= kind.selectionLimit,commitRecipe(),let catalog else { return }
         mergeSession = PhotoMergeSession(catalog:catalog,ids:selection,kind:kind,collectionID:regularCollectionID)
     }
     func completePhotoMerge(_ result: MergeSaved) {

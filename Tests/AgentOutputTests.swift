@@ -88,7 +88,29 @@ final class AgentOutputTests: XCTestCase {
         }
     }
 
-    private func fixture() throws -> Fixture {
+    func testMergeDarkSubsetUsesCompleteRevisionManifestAndRejectsStaleDark() async throws {
+        let files = try fixture(opaque: true),client = files.client
+        let photos = try await imported(files)
+        let args = files.ordered(photos,adding:["merge_kind":"lighten","dark_photo_ids":.array([.string(photos[0].id)])])
+        let plan = try await client.finished(.planMerge,args)
+        XCTAssertEqual(plan["state"],"succeeded")
+        XCTAssertEqual(plan["dark_photo_ids"],.array([.string(photos[0].id)]))
+        let rendered = try await client.finished(.renderMerge,["plan_id":try XCTUnwrap(plan["plan_id"])])
+        XCTAssertEqual(rendered["state"],"succeeded","\(rendered)")
+        let begun = try await client.finished(.editMergeRetouch,["action":"begin","preview_id":try XCTUnwrap(rendered["preview_id"])])
+        XCTAssertEqual(begun["state"],"succeeded")
+        try await files.catalog.database.write { db in try db.execute(sql:"UPDATE photo SET revision=revision+1 WHERE id=?",arguments:[photos[0].id]) }
+        let stale = try await client.finished(.renderMerge,["plan_id":try XCTUnwrap(plan["plan_id"])])
+        XCTAssertEqual(stale["state"],"failed")
+        var invalid = files.ordered(try files.catalog.photos(),adding:["merge_kind":"lighten","dark_photo_ids":.array([.string(UUID().uuidString)])])
+        let rejected = try await client.finished(.planMerge,invalid)
+        XCTAssertEqual(rejected["state"],"failed")
+        invalid["dark_photo_ids"] = .array(photos.map { .string($0.id) })
+        let noLights = try await client.finished(.planMerge,invalid)
+        XCTAssertEqual(noLights["state"],"failed")
+    }
+
+    private func fixture(opaque: Bool = false) throws -> Fixture {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("phosdeck-agent-output-" + UUID().uuidString)
         let source = directory.appendingPathComponent("bracket"), masters = directory.appendingPathComponent("masters")
         let output = directory.appendingPathComponent("outputs")
@@ -108,7 +130,7 @@ final class AgentOutputTests: XCTestCase {
                     let red = UInt8((pow(min(1, intensity * exposure), 1 / 2.2) * 255).rounded())
                     let green = UInt8((pow(min(1, intensity * exposure * 0.82), 1 / 2.2) * 255).rounded())
                     let blue = UInt8((pow(min(1, intensity * exposure * 0.64), 1 / 2.2) * 255).rounded())
-                    raw.append(contentsOf: [red, green, blue, x < 8 ? 0 : 255])
+                    raw.append(contentsOf: [red, green, blue, !opaque && x < 8 ? 0 : 255])
                 }
             }
             let header = PNGFixture.word(width) + PNGFixture.word(height) + Data([8, 6, 0, 0, 0])

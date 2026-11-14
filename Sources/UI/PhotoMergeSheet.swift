@@ -7,11 +7,11 @@ struct PhotoMergeMenu: View {
         Button(L10n.text("merge.retouch.reopen",defaultValue:"Edit Saved Merge…")) { model.reopenEditableMerge() }.disabled(!model.canReopenEditableMerge)
         Divider()
         ForEach([PhotoMergeKind.panorama,.hdr,.hdrPanorama,.focus]) { kind in
-            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos || model.selection.count > kind.sourceLimit)
+            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos || model.selection.count > kind.selectionLimit)
         }
         Divider()
         ForEach([PhotoMergeKind.average,.median,.additive,.lighten,.darken,.screen]) { kind in
-            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos || model.selection.count > kind.sourceLimit)
+            Button(kind.title+"…") { model.requestPhotoMerge(kind) }.disabled(!model.canMergePhotos || model.selection.count > kind.selectionLimit)
         }
     }
 }
@@ -164,6 +164,12 @@ struct PhotoMergeSheet: View {
             if session.options.masterFormat == .dng {
                 Text(L10n.text("merge.dngHint", defaultValue:"Float DNG masters reopen in Phosdeck. Some system image viewers cannot open this format; choose TIFF for those viewers.")).font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
             }
+            if session.options.kind.supportsDarkFrames {
+                Text(L10n.text("merge.dark.count",defaultValue:"\(session.lightInputs.count) light frames · \(session.darkPhotoIDs.count) dark frames"))
+                    .font(.caption11).foregroundStyle(Theme.textSecondary).accessibilityIdentifier("merge-dark-count")
+                Text(L10n.text("merge.dark.hint",defaultValue:"Select lights and darks together before merging, then mark darks below. Matching darks are averaged and subtracted in linear RGB before alignment. Use the same camera, exposure, ISO and similar temperature. RAW uses decoded pixels with lens correction off."))
+                    .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
+            }
             SubgroupLabel(L10n.text("merge.order", defaultValue:"Source Order"))
             Text(session.options.kind == .focus ? L10n.text("merge.focusOrder", defaultValue:"Arrange in focus order, near to far or far to near.") : L10n.text("merge.orderHint", defaultValue:"Starts in capture/name order. Reorder complete brackets here if needed."))
                 .font(.caption11).foregroundStyle(Theme.textSecondary)
@@ -173,6 +179,11 @@ struct PhotoMergeSheet: View {
                             Text(String(index+1)).font(.value).foregroundStyle(Theme.textSecondary).frame(width:23,alignment:.trailing)
                             Text(input.photo.name).font(.caption11).lineLimit(1).truncationMode(.middle).help(input.photo.relativePath)
                             Spacer(minLength:0)
+                            if session.options.kind.supportsDarkFrames {
+                                Toggle(L10n.text("merge.dark.frame",defaultValue:"Dark"),isOn:Binding(get:{ session.darkPhotoIDs.contains(input.photo.id) },set:{ _ in session.toggleDark(input.photo.id) }))
+                                    .toggleStyle(.instrument).accessibilityLabel(L10n.text("merge.dark.mark",defaultValue:"Dark frame: \(input.photo.name)"))
+                                    .accessibilityIdentifier("merge-dark-\(index)")
+                            }
                             Button { session.move(index,by:-1) } label: { Image(systemName:"chevron.up") }.buttonStyle(.key(height:24,padding:6))
                                 .disabled(index == 0).accessibilityLabel(L10n.text("merge.moveEarlier", defaultValue:"Move \(input.photo.name) earlier"))
                             Button { session.move(index,by:1) } label: { Image(systemName:"chevron.down") }.buttonStyle(.key(height:24,padding:6))

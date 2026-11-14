@@ -50,6 +50,9 @@ actor PhotoMergeEngine {
     struct Prepared {
         let id: UUID
         let requests: [ImageRequest]
+        let darkRequests: [ImageRequest]
+        let darkMaster: MergeImage?
+        let darkCalibration: MergeDarkCalibration?
         let options: PhotoMergeOptions
         let whiteBalance: WhiteBalanceValue
         let frames: [MergeFrame]
@@ -83,12 +86,21 @@ actor PhotoMergeEngine {
         }
     }
 
-    func prepare(_ inputs: [ImageRequest],options: PhotoMergeOptions,project: MergeRetouchProject? = nil,progress: Progress) async throws -> MergePreview {
+    func prepare(_ inputs: [ImageRequest],options: PhotoMergeOptions,darkInputs: [ImageRequest] = [],project: MergeRetouchProject? = nil,progress: Progress) async throws -> MergePreview {
         prepared = nil; retouchBase = nil; retouchResult = nil; retouchSource = nil; retouchMasksCache = nil; sourceThumbnails = nil
         try project?.validate()
         guard project == nil || project?.kind == options.kind else { throw MergeRetouchProject.invalid }
         try options.validate(count:inputs.count)
         try Self.validateSources(inputs.map(\.photo))
+        try MergeDarkCalibration.validate(lights:inputs.map(\.photo),darks:darkInputs.map(\.photo),kind:options.kind)
+        guard project == nil || (project?.darkCalibration?.sources.count ?? 0) == darkInputs.count else { throw MergeDarkCalibration.invalid }
+        if !darkInputs.isEmpty {
+            try PhotoGeometry.checkSize(CGSize(width:inputs[0].photo.width,height:inputs[0].photo.height))
+            let pixels = UInt64(inputs[0].photo.width)*UInt64(inputs[0].photo.height)
+            guard pixels*128 <= ProcessInfo.processInfo.physicalMemory/3 else { throw Self.memoryBudget }
+        }
+        var darkRequests = [ImageRequest](),darkMaster: MergeImage?,darkCalibration: MergeDarkCalibration?
+        let analysisCount = inputs.count + darkInputs.count
         var requests = [ImageRequest](),frames = [MergeFrame]()
         var whiteBalance = WhiteBalanceValue(temperature:5500,tint:0)
         for (index,input) in inputs.enumerated() {
@@ -104,8 +116,15 @@ actor PhotoMergeEngine {
             }
             if index == 0 { whiteBalance = WhiteBalanceValue(temperature:recipe.temperature,tint:recipe.tint) }
             if let project { whiteBalance = WhiteBalanceValue(temperature:project.temperature,tint:project.tint) }
+            if !darkInputs.isEmpty,input.photo.isRAW { recipe.rawDetails.lensCorrection = false }
+            if index == 0,!darkInputs.isEmpty {
+                let dark = try await prepareDarks(darkInputs,whiteBalance:whiteBalance,frozen:project?.darkCalibration) { completed in
+                    await progress(Double(completed)/Double(analysisCount)*0.45,L10n.text("merge.dark.analyzing",defaultValue:"Averaging dark frames…"))
+                }
+                darkRequests = dark.requests; darkMaster = dark.image; darkCalibration = dark.calibration
+            }
             let request = ImageRequest(photo:input.photo,root:input.root,recipe:recipe)
-            var frame = try await pipeline.mergeDecode(request,longEdge:options.kind == .lighten && !options.align ? 32 : 1000,whiteBalance:whiteBalance)
+            var frame = try await decode(request,longEdge:options.kind == .lighten && !options.align ? 32 : 1000,whiteBalance:whiteBalance,dark:darkMaster)
             let scale = options.sourceLongEdge == 0 ? 1 : min(1,Double(options.sourceLongEdge)/Double(max(frame.fullWidth,frame.fullHeight)))
             frame.nativeWidth = max(1,Int((Double(frame.fullWidth)*scale).rounded()))
             frame.nativeHeight = max(1,Int((Double(frame.fullHeight)*scale).rounded()))
@@ -114,7 +133,7 @@ actor PhotoMergeEngine {
             // estimated only for HDR weights; stored samples are never clamped.
             if input.photo.details?.composite != nil { frame.clip = max(1,frame.image.pixels.map(MergeImage.peak).max() ?? 1) }
             frames.append(frame); requests.append(request)
-            await progress(Double(index+1)/Double(inputs.count)*0.45,L10n.text("merge.analyzing", defaultValue:"Analyzing originals…"))
+            await progress(Double(index+1+darkInputs.count)/Double(analysisCount)*0.45,L10n.text("merge.analyzing", defaultValue:"Analyzing originals…"))
         }
         let plan: Plan = try project.map { try restorePlan($0.snapshot,frames:frames,options:options) } ?? makePlan(frames,options:options)
         await progress(0.65,L10n.text("merge.previewing", defaultValue:"Building merge preview…"))
@@ -125,7 +144,7 @@ actor PhotoMergeEngine {
             var accumulator: MergeFusionAccumulator?
             for (index,request) in requests.enumerated() {
                 try Task.checkCancellation()
-                let image = try await pipeline.mergeDecode(request,longEdge:1000,whiteBalance:whiteBalance).image
+                let image = try await decode(request,longEdge:1000,whiteBalance:whiteBalance,dark:darkMaster).image
                 if accumulator == nil {
                     accumulator = try MergeFusionAccumulator(plan:fusionPlan,width:image.width,height:image.height)
                 }
@@ -137,13 +156,52 @@ actor PhotoMergeEngine {
         } else { preview = try smallResult(plan,frames:frames) }
         var retouchProject = project
         if retouchProject == nil, options.kind.supportsRetouch {
-            retouchProject = try MergeRetouchProject(plan:plan,requests:requests,frames:frames,whiteBalance:whiteBalance,kind:options.kind)
+            retouchProject = try MergeRetouchProject(plan:plan,requests:requests,frames:frames,whiteBalance:whiteBalance,kind:options.kind,darkCalibration:darkCalibration)
         }
-        let value = Prepared(id:UUID(),requests:requests,options:options,whiteBalance:whiteBalance,frames:frames,plan:plan,preview:preview,retouchProject:retouchProject)
+        let value = Prepared(id:UUID(),requests:requests,darkRequests:darkRequests,darkMaster:darkMaster,darkCalibration:darkCalibration,options:options,whiteBalance:whiteBalance,frames:frames,plan:plan,preview:preview,retouchProject:retouchProject)
         try Task.checkCancellation()
         prepared = value
         return try display(value,ev:0)
     }
+    private func prepareDarks(_ inputs: [ImageRequest],whiteBalance: WhiteBalanceValue,frozen: MergeDarkCalibration?,progress: (Int) async -> Void) async throws
+        -> (requests: [ImageRequest],image: MergeImage,calibration: MergeDarkCalibration) {
+        var requests = [ImageRequest](),mean: MergeImage?,decoders = [MergeRetouchProject.Decoder]()
+        for (index,input) in inputs.enumerated() {
+            try Task.checkCancellation()
+            var recipe: EditRecipe
+            if let saved = input.recipe { recipe = saved } else { recipe = try await pipeline.baseline(input) }
+            if let frozen {
+                guard frozen.sources.count == inputs.count,frozen.sources[index].photoID == input.photo.id,
+                      frozen.sources[index].digest == recipe.sourceDigest else { throw Self.sourceChanged }
+                recipe.decoderVersion = frozen.decoders[index].version
+            }
+            if input.photo.isRAW { recipe.rawDetails.lensCorrection = false }
+            let request = ImageRequest(photo:input.photo,root:input.root,recipe:recipe)
+            let frame = try await pipeline.mergeDecode(request,longEdge:nil,whiteBalance:whiteBalance)
+            try MergeDarkCalibration.accumulate(frame.image,into:&mean,count:index+1)
+            requests.append(request)
+            decoders.append(.init(version:recipe.decoderVersion,lensCorrection:frame.resolvedLensCorrection))
+            await progress(index+1)
+        }
+        guard let mean else { throw MergeDarkCalibration.invalid }
+        let calibration = MergeDarkCalibration(sources:requests.map {
+            .init(photoID:$0.photo.id,digest:$0.recipe!.sourceDigest,recipeRevision:$0.photo.recipeRevision)
+        },decoders:decoders,width:mean.width,height:mean.height)
+        if let frozen {
+            guard frozen.width == mean.width,frozen.height == mean.height,frozen.decoders == decoders else { throw MergeDarkCalibration.invalid }
+            return (requests,mean,frozen)
+        }
+        return (requests,mean,calibration)
+    }
+    private func decode(_ request: ImageRequest,longEdge: Int?,whiteBalance: WhiteBalanceValue,dark: MergeImage?) async throws -> MergeFrame {
+        var frame = try await pipeline.mergeDecode(request,longEdge:dark == nil ? longEdge : nil,whiteBalance:whiteBalance)
+        if let dark {
+            try MergeDarkCalibration.subtract(dark,from:&frame.image)
+            if let longEdge { frame.image = try frame.image.resized(longEdge:longEdge) }
+        }
+        return frame
+    }
+
     static func validateSources(_ photos: [Photo]) throws {
         guard let first = photos.first, Set(photos.map(\.sourceKey)).count == photos.count,
               Set(photos.map(\.identityKey)).count == photos.count,
@@ -184,12 +242,12 @@ actor PhotoMergeEngine {
         let destination = directory.appendingPathComponent(filename)
         guard !FileManager.default.fileExists(atPath:destination.path),try !catalog.protectedPaths().contains(destination.path) else { throw LRCError(L10n.text("merge.destinationExists", defaultValue:"The destination already exists. Choose another filename")) }
         let root = try catalog.mergeDestinationRoot(directory:directory,bookmark:directoryBookmark)
-        try catalog.validateMergeInputs(value.requests)
+        try catalog.validateMergeInputs(value.requests+value.darkRequests)
         let maxSource = value.frames.map { UInt64($0.fullWidth)*UInt64($0.fullHeight) }.max() ?? 0
         let canvas = UInt64(value.plan.size.0)*UInt64(value.plan.size.1)
         let consensusBytes = value.options.kind.isPanorama ? MergePyramid.consensusBytesPerPixel : 0
-        guard maxSource*64+canvas*UInt64(160+consensusBytes) <= ProcessInfo.processInfo.physicalMemory/3 else {
-            throw LRCError(L10n.text("merge.memoryBudget", defaultValue:"The full-size merge exceeds the memory budget. Choose a smaller source size"))
+        guard maxSource*64+canvas*UInt64(160+consensusBytes)+UInt64(value.darkMaster?.pixels.count ?? 0)*96 <= ProcessInfo.processInfo.physicalMemory/3 else {
+            throw Self.memoryBudget
         }
         let encodedProject = try value.retouchProject?.encoded()
         try SafeFileWriter.requireCapacity(in:directory,bytes:Int64(canvas)*16+Int64(encodedProject?.0.count ?? 0)+1_048_576)
@@ -197,7 +255,7 @@ actor PhotoMergeEngine {
         await progress(0.86,L10n.text("merge.writing", defaultValue:"Writing and verifying float master…"))
         let provenance = MergeProvenance(options:options,sources:value.retouchProject?.sources ?? value.requests.map {
             MergeProvenance.Source(photoID:$0.photo.id,digest:$0.recipe!.sourceDigest,recipeRevision:$0.photo.recipeRevision)
-        },retouchProject:encodedProject?.1)
+        },darkCalibration:value.darkCalibration,retouchProject:encodedProject?.1)
         let staging = try SafeFileWriter.stage(in:directory)
         let stagingIdentity = try FileIdentity.read(staging),stagingKey = stagingIdentity.key
         var ownsStaging = true
@@ -205,8 +263,8 @@ actor PhotoMergeEngine {
         try MergeMasterCodec.write(image,to:staging,provenance:provenance,context:context,stagingIdentity:stagingIdentity,retouchProject:encodedProject?.0)
         try checkpoint("staged")
         guard try FileIdentity.read(staging).key == stagingKey else { throw MergeMasterCodec.invalid }
-        for request in value.requests { try pipeline.verifySource(request) }
-        try catalog.validateMergeInputs(value.requests)
+        for request in value.requests+value.darkRequests { try pipeline.verifySource(request) }
+        try catalog.validateMergeInputs(value.requests+value.darkRequests)
         let identity = try FileIdentity.read(staging),digest = try SafeFileWriter.sha256(staging)
         var recipe = EditRecipe(sourceDigest:digest,decoderVersion:EditRecipe.linearCompositeDecoderVersion,
             baselineExposure:0,baselineTemperature:5500,baselineTint:0,temperature:5500,tint:0)
@@ -229,7 +287,7 @@ actor PhotoMergeEngine {
             let readback = try MergeMasterCodec.read(destination,context:context,honorCancellation:false)
             guard readback.provenance == provenance,readback.image.width == image.width,readback.image.height == image.height else { throw MergeMasterCodec.invalid }
             verified = true
-            registered = try catalog.registerMergedPhoto(photo,root:root,inputs:value.requests,stackWithSources:stackWithSources,collectionID:collectionID)
+            registered = try catalog.registerMergedPhoto(photo,root:root,inputs:value.requests,calibrationInputs:value.darkRequests,stackWithSources:stackWithSources,collectionID:collectionID)
         } catch {
             throw MergePublicationError(url: destination, identity: identity, verified: verified, cause: error)
         }
@@ -283,7 +341,7 @@ actor PhotoMergeEngine {
         func decode(_ index: Int) async throws -> MergeImage {
             try Task.checkCancellation()
             await progress(Double(index)/Double(value.requests.count)*0.8,L10n.text("merge.fusing", defaultValue:"Merging full-size originals…"))
-            return try await pipeline.mergeDecode(value.requests[index],longEdge:edge,whiteBalance:value.whiteBalance).image
+            return try await self.decode(value.requests[index],longEdge:edge,whiteBalance:value.whiteBalance,dark:value.darkMaster).image
         }
         switch value.plan {
         case .fusion(let plan):
@@ -339,7 +397,7 @@ actor PhotoMergeEngine {
             return .hdrPanorama(groups,try panorama.restore(hdrFrames,options:options))
         }
     }
-    func reopenMerge(_ photo: Photo,catalog: CatalogStore,progress: Progress) async throws -> (inputs: [ImageRequest],options: PhotoMergeOptions,project: MergeRetouchProject,preview: MergePreview) {
+    func reopenMerge(_ photo: Photo,catalog: CatalogStore,progress: Progress) async throws -> (inputs: [ImageRequest],darkInputs: [ImageRequest],options: PhotoMergeOptions,project: MergeRetouchProject,preview: MergePreview) {
         guard let summary = photo.details?.composite, let reference = summary.retouchProject,
               summary.options.kind.supportsRetouch else { throw MergeRetouchProject.invalid }
         guard let master = try loadInputs(catalog:catalog,ids:[photo.id]).first else { throw Self.sourceChanged }
@@ -351,15 +409,19 @@ actor PhotoMergeEngine {
               provenance.retouchProject == reference,provenance.options == summary.options,
               provenance.sources.count == summary.sourceCount else { throw MergeRetouchProject.invalid }
         let project = try MergeRetouchProject.read(from:url,reference:reference)
-        guard project.sources == provenance.sources else { throw MergeRetouchProject.invalid }
-        let loaded = try loadInputs(catalog:catalog,ids:Set(project.sources.map(\.photoID)))
+        guard project.sources == provenance.sources,project.darkCalibration == provenance.darkCalibration else { throw MergeRetouchProject.invalid }
+        let loaded = try loadInputs(catalog:catalog,ids:Set((project.sources+(project.darkCalibration?.sources ?? [])).map(\.photoID)))
         let byID = Dictionary(uniqueKeysWithValues:loaded.map { ($0.photo.id,$0) })
         let inputs = try project.sources.map { source -> ImageRequest in
             guard let input = byID[source.photoID] else { throw Self.sourceChanged }
             return input
         }
-        let preview = try await prepare(inputs,options:provenance.options,project:project,progress:progress)
-        return (inputs,provenance.options,project,preview)
+        let darkInputs = try (project.darkCalibration?.sources ?? []).map { source -> ImageRequest in
+            guard let input = byID[source.photoID] else { throw Self.sourceChanged }
+            return input
+        }
+        let preview = try await prepare(inputs,options:provenance.options,darkInputs:darkInputs,project:project,progress:progress)
+        return (inputs,darkInputs,provenance.options,project,preview)
     }
 
     func setRetouchSettings(_ id: UUID,settings: MergeRetouchSettings) throws {
@@ -371,7 +433,7 @@ actor PhotoMergeEngine {
         guard let project = value.retouchProject,(0..<project.sourceCount).contains(index) else { throw stale }
         let edge = value.options.sourceLongEdge == 0 ? nil : value.options.sourceLongEdge
         func decode(_ i: Int) async throws -> MergeImage {
-            try await pipeline.mergeDecode(value.requests[i],longEdge:edge,whiteBalance:value.whiteBalance).image
+            try await self.decode(value.requests[i],longEdge:edge,whiteBalance:value.whiteBalance,dark:value.darkMaster).image
         }
         switch value.plan {
         case .fusion(let plan):
@@ -494,7 +556,7 @@ actor PhotoMergeEngine {
             if thumbnails,thumbnail == nil {
                 var small: MergeImage
                 if value.options.kind == .lighten,!value.options.align {
-                    small = try await pipeline.mergeDecode(value.requests[index],longEdge:160,whiteBalance:value.whiteBalance).image
+                    small = try await decode(value.requests[index],longEdge:160,whiteBalance:value.whiteBalance,dark:value.darkMaster).image
                 } else { small = try frame.image.resized(longEdge:160) }
                 for p in small.pixels.indices { small.pixels[p] *= SIMD4(gain.x,gain.y,gain.z,1) }
                 let ci = small.ciImage().applyingFilter("CIExposureAdjust",parameters:[kCIInputEVKey:ev])
@@ -516,8 +578,8 @@ actor PhotoMergeEngine {
         try settings.validate(count:project.sourceCount,kind:value.options.kind)
         value.retouchProject?.settings = settings
         let pixels = UInt64(value.plan.size.0)*UInt64(value.plan.size.1)
-        guard pixels*256 <= ProcessInfo.processInfo.physicalMemory/3 else {
-            throw LRCError(L10n.text("merge.memoryBudget",defaultValue:"The full-size merge exceeds the memory budget. Choose a smaller source size"))
+        guard pixels*256+UInt64(value.darkMaster?.pixels.count ?? 0)*96 <= ProcessInfo.processInfo.physicalMemory/3 else {
+            throw Self.memoryBudget
         }
         let base: MergeImage
         if let cached = retouchBase,cached.excluded == settings.excludedSources { base = cached.image }
@@ -552,6 +614,7 @@ actor PhotoMergeEngine {
         return pair
     }
 
+    static var memoryBudget: LRCError { LRCError(L10n.text("merge.memoryBudget",defaultValue:"The full-size merge exceeds the memory budget. Choose a smaller source size")) }
     static var sourceChanged: LRCError { LRCError(L10n.text("merge.sourceChanged", defaultValue:"A source changed during the merge. Reopen the merge window")) }
     private var stale: LRCError { LRCError(L10n.text("merge.previewStale", defaultValue:"Settings changed. Build a new preview before saving")) }
 }

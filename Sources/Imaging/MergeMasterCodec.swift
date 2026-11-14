@@ -60,7 +60,7 @@ enum MergeMasterCodec {
         guard fsync(descriptor) == 0 else { throw SafeFileWriter.posix(L10n.text("app.flushTemporaryFile", defaultValue:"Flush Temporary File")) }
         if let reference = provenance.retouchProject {
             let project = try MergeRetouchProject.read(from:url,reference:reference)
-            guard project.sources == provenance.sources else { throw invalid }
+            guard project.sources == provenance.sources,project.darkCalibration == provenance.darkCalibration else { throw invalid }
         }
         let back = try read(url,context:context)
         guard back.provenance == provenance,back.image.width == image.width,back.image.height == image.height else { throw invalid }

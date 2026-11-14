@@ -501,6 +501,54 @@ final class PhotoMergeTests: XCTestCase {
         do { _ = try await engine.save(next.id,to:root.bookmark,filename:"stale.tif",catalog:catalog,progress:{ _,_ in }); XCTFail("stale selection") } catch { }
         XCTAssertFalse(FileManager.default.fileExists(atPath:directory.appendingPathComponent("stale.tif").path))
     }
+    func testDarkCalibrationAveragesAndPreservesSignedRGBAndLightCoverage() throws {
+        var mean: MergeImage?
+        try MergeDarkCalibration.accumulate(constant(SIMD4(0.1,0.2,0.3,1)),into:&mean,count:1)
+        try MergeDarkCalibration.accumulate(constant(SIMD4(0.3,0.4,0.5,1)),into:&mean,count:2)
+        var light = constant(SIMD4(0.1,0.8,2,0.4))
+        light.pixels[1] = .zero
+        try MergeDarkCalibration.subtract(XCTUnwrap(mean),from:&light)
+        XCTAssertEqual(light.pixels[0].x,-0.1,accuracy:1e-6)
+        XCTAssertEqual(light.pixels[0].y,0.5,accuracy:1e-6)
+        XCTAssertEqual(light.pixels[0].z,1.6,accuracy:1e-6)
+        XCTAssertEqual(light.pixels[0].w,0.4)
+        XCTAssertEqual(light.pixels[1],.zero)
+        XCTAssertThrowsError(try MergeDarkCalibration.accumulate(constant(SIMD4(0,0,0,0.5)),into:&mean,count:3))
+        XCTAssertThrowsError(try MergeDarkCalibration.subtract(constant(.zero,w:7,h:5),from:&light))
+    }
+    func testDarkCalibratedMasterReopensAndKeepsDarksOutsideSourceStack() async throws {
+        let catalog = try CatalogStore(directory:directory.appendingPathComponent("catalog"))
+        let root = try catalog.addRoot(url:directory,bookmark:AccessLease.bookmark(directory,readOnly:false))
+        let values: [(String,Float)] = [("light-a",0.4),("light-b",0.6),("dark-a",0.1),("dark-b",0.3)]
+        for (name,v) in values {
+            try catalog.index(ReferenceImporter.inspect(url:writeSource(constant(SIMD4(v,v,v,1)),name:name),root:root,rootURL:directory))
+        }
+        let original = try catalog.photos(),engine = PhotoMergeEngine()
+        let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(original.map(\.id)))
+        let lights = inputs.filter { $0.photo.name.hasPrefix("light") },darks = inputs.filter { $0.photo.name.hasPrefix("dark") }
+        let hashes = try inputs.map { try SafeFileWriter.sha256(directory.appendingPathComponent($0.photo.relativePath)) }
+        var options = PhotoMergeOptions.defaults(for:.lighten); options.masterFormat = .dng
+        let preview = try await engine.prepare(lights,options:options,darkInputs:darks,progress:{ _,_ in })
+        _ = try await engine.retouchPreview(preview.id,settings:MergeRetouchSettings(),source:0,ev:0,progress:{ _,_ in })
+        let saved = try await engine.save(preview.id,to:root.bookmark,filename:"calibrated.dng",catalog:catalog,stackWithSources:true,progress:{ _,_ in })
+        let image = try MergeMasterCodec.read(saved.url,context:context)
+        XCTAssertEqual(image.image.pixels[0].x,0.4,accuracy:2e-5)
+        XCTAssertEqual(image.provenance.darkCalibration?.sources.map(\.photoID),darks.map { $0.photo.id })
+        XCTAssertEqual(try catalog.stacks().first?.members,[saved.photo.id]+lights.map { $0.photo.id })
+        let reopened = try await engine.reopenMerge(saved.photo,catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(reopened.darkInputs.map { $0.photo.id },darks.map { $0.photo.id })
+        let next = try await engine.save(reopened.preview.id,to:root.bookmark,filename:"calibrated-copy.dng",catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(try MergeMasterCodec.read(next.url,context:context).image.pixels,image.image.pixels)
+        let stale = try await engine.prepare(lights,options:options,darkInputs:darks,progress:{ _,_ in })
+        try await catalog.database.write { db in try db.execute(sql:"UPDATE photo SET rating=3 WHERE id=?",arguments:[darks[0].photo.id]) }
+        do { _ = try await engine.save(stale.id,to:root.bookmark,filename:"stale-dark.dng",catalog:catalog,progress:{ _,_ in }); XCTFail("Changed dark must reject frozen save") } catch { }
+        XCTAssertFalse(FileManager.default.fileExists(atPath:directory.appendingPathComponent("stale-dark.dng").path))
+        XCTAssertEqual(try inputs.map { try SafeFileWriter.sha256(directory.appendingPathComponent($0.photo.relativePath)) },hashes)
+        var wrong = darks[0].photo; wrong.width += 1
+        XCTAssertThrowsError(try MergeDarkCalibration.validate(lights:lights.map(\.photo),darks:[wrong],kind:.lighten))
+        XCTAssertThrowsError(try MergeDarkCalibration.validate(lights:lights.map(\.photo),darks:[lights[0].photo],kind:.lighten))
+        XCTAssertThrowsError(try MergeDarkCalibration.validate(lights:lights.map(\.photo),darks:darks.map(\.photo),kind:.hdr))
+    }
     func testCancelledAnalysisDoesNotPublishFilesOrImportAnything() async throws {
         let catalog = try CatalogStore(directory:directory.appendingPathComponent("catalog"))
         let root = try catalog.addRoot(url:directory,bookmark:AccessLease.bookmark(directory,readOnly:false))

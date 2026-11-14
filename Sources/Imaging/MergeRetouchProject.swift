@@ -5,11 +5,12 @@ import simd
 /// Current editable merge format. The payload travels inside the master; only
 /// its bounded reference is stored in catalog metadata. No legacy conversion.
 struct MergeRetouchProject: Codable, Equatable {
-    static let algorithm = "phosdeck-merge-retouch-v2"
+    static let algorithm = "phosdeck-merge-retouch-v3"
     static let maximumBytes = 16 * 1024 * 1024
     var version = algorithm
     var kind: PhotoMergeKind
     var sources: [MergeProvenance.Source]
+    var darkCalibration: MergeDarkCalibration?
     var decoders: [Decoder]
     var temperature: Double
     var tint: Double
@@ -57,11 +58,13 @@ struct MergeRetouchProject: Codable, Equatable {
               sources.allSatisfy({ !$0.photoID.isEmpty && $0.digest.count == 64 && $0.digest.allSatisfy(\.isHexDigit) }),
               decoders.allSatisfy({ !$0.version.isEmpty && $0.version.utf8.count <= 256 }),
               temperature.isFinite,(2000...50000).contains(temperature),tint.isFinite,(-150...150).contains(tint) else { throw Self.invalid }
+        try darkCalibration?.validate(lightIDs:Set(sources.map(\.photoID)))
+        guard darkCalibration == nil || kind.supportsDarkFrames else { throw Self.invalid }
         try snapshot.validate(kind:kind,count:n)
         try settings.validate(count:sourceCount,kind:kind)
     }
-    init(plan: PhotoMergeEngine.Plan,requests: [ImageRequest],frames: [MergeFrame],whiteBalance: WhiteBalanceValue,kind: PhotoMergeKind) throws {
-        self.kind = kind
+    init(plan: PhotoMergeEngine.Plan,requests: [ImageRequest],frames: [MergeFrame],whiteBalance: WhiteBalanceValue,kind: PhotoMergeKind,darkCalibration: MergeDarkCalibration? = nil) throws {
+        self.kind = kind; self.darkCalibration = darkCalibration
         sources = requests.map { .init(photoID:$0.photo.id,digest:$0.recipe!.sourceDigest,recipeRevision:$0.photo.recipeRevision) }
         decoders = requests.indices.map { Decoder(version:requests[$0].recipe!.decoderVersion,lensCorrection:frames[$0].resolvedLensCorrection) }
         temperature = whiteBalance.temperature; tint = whiteBalance.tint

@@ -22,6 +22,8 @@ enum PhotoMergeKind: String, Codable, CaseIterable, Identifiable {
         case .screen: L10n.text("merge.kind.screen", defaultValue: "Multiple Exposure · Screen")
         }
     }
+    var supportsDarkFrames: Bool { [.lighten,.average,.median].contains(self) }
+    var selectionLimit: Int { sourceLimit + (supportsDarkFrames ? 128 : 0) }
     var supportsRetouch: Bool { [.focus,.hdr,.panorama,.hdrPanorama,.lighten].contains(self) }
     var sourceLimit: Int { self == .lighten ? 2048 : 128 }
     var isPanorama: Bool { self == .panorama || self == .hdrPanorama }
@@ -241,6 +243,7 @@ struct MergeProvenance: Codable, Equatable {
     var version = 2
     var options: PhotoMergeOptions
     var sources: [Source]
+    var darkCalibration: MergeDarkCalibration?
     var retouchProject: MergeRetouchProject.Reference?
     // Long star sequences keep the complete manifest in the master, not in
     // repeatedly decoded catalog rows. Small existing manifests stay inline.
@@ -249,7 +252,7 @@ struct MergeProvenance: Codable, Equatable {
     // its own version and is rejected when obsolete; pixel decoding does not
     // interpret or migrate it.
     enum CodingKeys: String,CodingKey {
-        case version,options,sources,catalogSourceCount
+        case version,options,sources,catalogSourceCount,darkCalibration
         case retouchProject = "focusProject"
     }
     var sourceCount: Int { catalogSourceCount ?? sources.count }
@@ -284,6 +287,8 @@ struct MergeProvenance: Codable, Equatable {
         let value = try JSONDecoder().decode(Self.self,from:Data(text.dropFirst(prefix.count).utf8))
         try value.options.validate(count:value.sources.count)
         guard value.version == 2,value.catalogSourceCount == nil,value.sources.allSatisfy({ !$0.photoID.isEmpty && $0.digest.count == 64 && $0.digest.allSatisfy(\.isHexDigit) }) else { throw MergeMasterCodec.invalid }
+        try value.darkCalibration?.validate(lightIDs:Set(value.sources.map(\.photoID)))
+        guard value.darkCalibration == nil || value.options.kind.supportsDarkFrames else { throw MergeMasterCodec.invalid }
         try value.retouchProject?.validate()
         guard value.retouchProject == nil || value.options.kind.supportsRetouch else { throw MergeMasterCodec.invalid }
         return value

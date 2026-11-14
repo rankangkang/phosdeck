@@ -46994,6 +46994,108 @@
         }
       }
     },
+    "merge.dark.analyzing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Averaging dark frames…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在平均暗场…"
+          }
+        }
+      }
+    },
+    "merge.dark.invalid": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dark frames must be distinct, opaque originals matching the lights' camera, dimensions, orientation, ISO and exposure time. Use 1–128 darks with star trails or noise-reduction stacks."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暗场须为不重复、不透明的原片，且与亮场的相机、尺寸、方向、感光度和曝光时间一致。星轨和堆栈降噪可使用 1–128 张暗场。"
+          }
+        }
+      }
+    },
+    "merge.dark.count": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld light frames · %lld dark frames"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 张亮场 · %lld 张暗场"
+          }
+        }
+      }
+    },
+    "merge.dark.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select lights and darks together before merging, then mark darks below. Matching darks are averaged and subtracted in linear RGB before alignment. Use the same camera, exposure, ISO and similar temperature. RAW uses decoded pixels with lens correction off."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开合成前一起选中亮场和暗场，然后在下方标记暗场。暗场取平均后在对齐前从线性 RGB 中扣除。拍摄时使用同一相机、曝光时间、感光度和相近温度。RAW 使用解码后的像素，并关闭镜头校正。"
+          }
+        }
+      }
+    },
+    "merge.dark.frame": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dark"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暗场"
+          }
+        }
+      }
+    },
+    "merge.dark.mark": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dark frame: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暗场：%@"
+          }
+        }
+      }
+    },
     "merge.sourceCount": {
       "extractionState": "manual",
       "localizations": {

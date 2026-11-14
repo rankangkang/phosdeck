@@ -38,6 +38,7 @@ enum MCPMergeOptions {
 
 struct MCPMergePlan {
     let sources: MCPOutputSources
+    var darkPhotoIDs = Set<String>()
     let options: PhotoMergeOptions
     let collectionID: String?
     let defaultStem: String
@@ -46,7 +47,11 @@ struct MCPMergePlan {
         (photo.details?.orientation ?? 1) >= 5 ? (photo.height, photo.width) : (photo.width, photo.height)
     }
 
-    static func validate(_ photos: [Photo], options: PhotoMergeOptions) throws {
+    static func validate(_ allPhotos: [Photo], options: PhotoMergeOptions,darkPhotoIDs: Set<String> = []) throws {
+        guard darkPhotoIDs.isSubset(of:Set(allPhotos.map(\.id))) else { throw MCPToolProblem.invalid("Dark photo IDs must be a subset of photo_ids.") }
+        let photos = allPhotos.filter { !darkPhotoIDs.contains($0.id) }
+        do { try MergeDarkCalibration.validate(lights:photos,darks:allPhotos.filter { darkPhotoIDs.contains($0.id) },kind:options.kind) }
+        catch { throw MCPToolProblem.invalid(error.localizedDescription) }
         do { try options.validate(count: photos.count); try PhotoMergeEngine.validateSources(photos) }
         catch { throw MCPToolProblem.invalid(error.localizedDescription) }
         // RAW dimensions are checked by the native decode, including lens geometry.
@@ -82,7 +87,7 @@ extension AppMCPTool {
     var mergeDescription: (String, String)? {
         switch self {
         case .planMerge:
-            ("Plan an ordered merge of distinct originals. Provide each photo's saved source and recipe revisions, merge_kind and optional native settings. The plan retains the regular collection selected when planning, or an explicit collection_id.", "job_id, then plan_id, ordered sources, options and default_filename")
+            ("Plan an ordered merge of distinct originals. Include lights and optional darks in photo_ids, mark the dark subset with dark_photo_ids, and provide every photo's saved source and recipe revisions, merge_kind and optional native settings. The plan retains the regular collection selected when planning, or an explicit collection_id.", "job_id, then plan_id, ordered sources, options and default_filename")
         case .renderMerge:
             ("Analyze originals and build a preview for the frozen merge plan. Poll get_job, then use its preview_id. A new render replaces the previous prepared preview.", "job_id, then preview_id and full canvas size")
         case .getMergePreview:
@@ -101,22 +106,23 @@ extension AppMCPTool {
 extension AppMCPWorkflows {
     func planMerge(_ args: Arguments, catalog: CatalogStore) throws -> MCPToolResult {
         let options = MCPMergeOptions.read(args)
+        let darkIDs = Set(args["dark_photo_ids"]?.arrayValue?.compactMap(\.stringValue) ?? [])
         let collectionID = args["collection_id"]?.stringValue ?? model.regularCollectionID
         return start(.planMerge) { job in
             let worker = Task.detached {
                 let (sources, rows) = try MCPOutputSources.capture(args, catalog: catalog)
                 let photos = rows.map(\.photo)
-                try MCPMergePlan.validate(photos, options: options)
+                try MCPMergePlan.validate(photos, options: options,darkPhotoIDs:darkIDs)
                 if let collectionID, try MCPCollectionState.read(catalog, id: collectionID)?.row.isSmart != false {
                     throw MCPCollectionState.unavailable
                 }
-                let base = (photos[0].name as NSString).deletingPathExtension
-                let plan = MCPMergePlan(sources: sources, options: options, collectionID: collectionID,
+                let base = (photos.first(where:{ !darkIDs.contains($0.id) })!.name as NSString).deletingPathExtension
+                let plan = MCPMergePlan(sources: sources,darkPhotoIDs:darkIDs, options: options, collectionID: collectionID,
                                         defaultStem: base + "-" + options.kind.suffix)
                 let items = photos.enumerated().map { index, photo -> Value in
                     let size = MCPMergePlan.dimensions(photo)
                     var item = MCPDevelopPhoto.revisions(photo)
-                    item.merge(["position": .int(index), "name": .string(photo.displayName), "source_id": .string(photo.sourceKey),
+                    item.merge(["role": .string(darkIDs.contains(photo.id) ? "dark" : "light"), "position": .int(index), "name": .string(photo.displayName), "source_id": .string(photo.sourceKey),
                                 "oriented_width": .int(size.width), "oriented_height": .int(size.height), "is_raw": .bool(photo.isRAW)]) { _, value in value }
                     return .object(item)
                 }
@@ -129,6 +135,7 @@ extension AppMCPWorkflows {
             job.items = items
             job.data["plan_id"] = .string(job.id)
             job.data["options"] = MCPMergeOptions.describe(options)
+            job.data["dark_photo_ids"] = .array(darkIDs.sorted().map(Value.string))
             job.data["collection_id"] = collectionID.map(Value.string) ?? .null
             job.data["default_filename"] = .string(plan.filename(format: options.masterFormat))
             job.finish(.succeeded, "Planned the ordered photo merge.")
@@ -144,7 +151,7 @@ extension AppMCPWorkflows {
             let worker = Task.detached { try plan.sources.resolve(catalog).map(MCPOutputSources.request) }
             let inputs = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
             let engine = self.makeMergeEngine()
-            let preview = try await engine.prepare(inputs, options: plan.options) { fraction, title in
+            let preview = try await engine.prepare(inputs.filter { !plan.darkPhotoIDs.contains($0.photo.id) }, options: plan.options,darkInputs:inputs.filter { plan.darkPhotoIDs.contains($0.photo.id) }) { fraction, title in
                 await self.progress(job, title: title, done: Int(fraction * 100), total: 100)
             }
             try Task.checkCancellation()
@@ -370,9 +377,9 @@ extension AppMCPWorkflows {
                 let restored = try await engine.reopenMerge(rows[0].photo,catalog:catalog) { fraction,title in
                     await self.progress(job,title:title,done:Int(fraction*100),total:100)
                 }
-                let targets = restored.inputs.map { ($0.photo.id,PhotoVersionRevision(source:$0.photo.revision,recipe:$0.photo.recipeRevision)) }
+                let targets = (restored.inputs+restored.darkInputs).map { ($0.photo.id,PhotoVersionRevision(source:$0.photo.revision,recipe:$0.photo.recipeRevision)) }
                 let frozen = try await Task.detached { try MCPOutputSources.capture(targets,catalog:catalog).0 }.value
-                let plan = MCPMergePlan(sources:frozen,options:restored.options,collectionID:collectionID,
+                let plan = MCPMergePlan(sources:frozen,darkPhotoIDs:Set(restored.darkInputs.map { $0.photo.id }),options:restored.options,collectionID:collectionID,
                     defaultStem:(rows[0].photo.name as NSString).deletingPathExtension+"-Refined")
                 let draft = MCPMergeRetouchDraft(restored.project.settings)
                 let image = try await engine.retouchPreview(restored.preview.id,settings:draft.settings,source:source,ev:0,progress:{ _,_ in })
@@ -440,6 +447,7 @@ extension AppMCPWorkflows {
     private func retouchData(_ prepared: MCPPreparedMerge,draft: MCPMergeRetouchDraft,width: Int,height: Int) -> Arguments {
         var result = draft.data
         result.merge(["preview_id":.string(prepared.id.uuidString),"plan_id":.string(prepared.planID),
+            "dark_photo_ids":.array(prepared.plan.darkPhotoIDs.sorted().map(Value.string)),
             "canvas_width":.int(width),"canvas_height":.int(height),"options":MCPMergeOptions.describe(prepared.plan.options),
             "default_filename":.string(prepared.plan.filename(format:prepared.plan.options.masterFormat))]) { _,value in value }
         return result
@@ -460,6 +468,7 @@ extension AppMCPWorkflows {
             let metadata = try await prepared.engine.retouchSources(prepared.id,offset:0,count:1,thumbnails:false)
             var data = draft.data
             data.merge(["preview_id":.string(prepared.id.uuidString),"plan_id":.string(prepared.planID),
+                "dark_photo_ids":.array(prepared.plan.darkPhotoIDs.sorted().map(Value.string)),
                 "canvas_width":.int(metadata.width),"canvas_height":.int(metadata.height),"source_count":.int(metadata.total)]) { _,value in value }
             if view == "state" {
                 guard offset <= draft.settings.strokes.count else { throw MCPToolProblem.invalid("Stroke offset is outside the current draft.") }
