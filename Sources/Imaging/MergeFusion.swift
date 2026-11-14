@@ -216,8 +216,9 @@ final class MergeFusionAccumulator {
     private var weight: [Float]
     private var coverage: [Float]
     private let focusFusion: FocusStackFusion?
+    private let cometFade: Float
     private var medianFrames: [MergeImage] = []
-    init(plan: MergeFusionPlan,width: Int,height: Int) throws {
+    init(plan: MergeFusionPlan,width: Int,height: Int,trails: StarTrailSettings = StarTrailSettings()) throws {
         self.plan = plan; self.width = width; self.height = height
         try PhotoGeometry.checkSize(CGSize(width:width,height:height))
         let bytesPerPixel = plan.options.kind == .median ? 32+plan.frames.count*16 : plan.options.kind == .focus ? 192 : 64
@@ -226,6 +227,7 @@ final class MergeFusionAccumulator {
         }
         sum = MergeImage(width:width,height:height); weight = .init(repeating:0,count:width*height); coverage = weight
         focusFusion = plan.depth.map { FocusStackFusion(width:width,height:height,depth:$0,reference:plan.reference) }
+        cometFade = trails.cometFade
     }
     static func aligned(_ frame: MergeImage,index: Int,plan: MergeFusionPlan,width: Int,height: Int,region: CGRect? = nil) throws -> MergeImage {
         let rect = region ?? CGRect(x:0,y:0,width:width,height:height)
@@ -272,7 +274,9 @@ final class MergeFusionAccumulator {
                 } else {
                     switch kind {
                     case .lighten:
-                        for c in 0..<3 { sum.pixels[p][c] = weight[p] == 0 ? value[c] : max(sum.pixels[p][c],value[c]) }
+                        for c in 0..<3 {
+                            sum.pixels[p][c] = weight[p] == 0 ? value[c] : StarTrailFusion.lighten(sum.pixels[p][c],value[c],fade:cometFade)
+                        }
                     case .darken:
                         for c in 0..<3 { sum.pixels[p][c] = weight[p] == 0 ? value[c] : min(sum.pixels[p][c],value[c]) }
                     case .screen:

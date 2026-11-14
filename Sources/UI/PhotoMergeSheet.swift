@@ -66,7 +66,22 @@ struct PhotoMergeSheet: View {
                 Text(session.directory?.path ?? L10n.text("merge.noDestination", defaultValue:"Choose a folder for the new master"))
                     .font(.caption11).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 Spacer(minLength:0)
+                if session.options.kind == .lighten {
+                    Button(L10n.text("merge.sequence.export",defaultValue:"Export Cumulative PNGs"),action:session.exportSequence)
+                        .buttonStyle(.key).disabled(!session.canExportSequence)
+                        .help(L10n.text("merge.sequence.hint",defaultValue:"Write one sRGB PNG per enabled light frame to the new \(session.sequenceFolderName) folder."))
+                        .accessibilityIdentifier("merge-export-sequence")
+                }
             }.disabled(session.working)
+            if let result = session.sequenceResult {
+                HStack(spacing:8) {
+                    Text(L10n.text("merge.sequence.done",defaultValue:"Exported \(result.frames.count) PNGs to \(result.url.lastPathComponent)"))
+                        .font(.caption11).foregroundStyle(Theme.textSecondary).accessibilityIdentifier("merge-sequence-result")
+                    Button(L10n.text("merge.sequence.reveal",defaultValue:"Show Sequence in Finder")) {
+                        NSWorkspace.shared.activateFileViewerSelecting([result.url])
+                    }.buttonStyle(.key)
+                }
+            }
             HStack {
                 Text(L10n.text("merge.filename", defaultValue:"Filename"))
                 TextField(L10n.text("merge.filename", defaultValue:"Filename"),text:$session.filename).textFieldStyle(.instrument).frame(maxWidth:400).disabled(session.working)

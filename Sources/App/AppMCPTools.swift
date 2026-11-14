@@ -56,6 +56,7 @@ enum AppMCPTool: String, CaseIterable {
     case smartStart = "start_smart_mask", smartEdit = "edit_smart_mask_selection", smartApply = "apply_smart_mask"
     case planMerge = "plan_photo_merge", renderMerge = "render_merge_preview", getMergePreview = "get_merge_preview"
     case saveMerge = "save_photo_merge"
+    case exportStarSequence = "export_star_trail_sequence"
     case editMergeRetouch = "edit_merge_retouch", getMergeRetouch = "get_merge_retouch"
     case listExportPresets = "list_export_presets", editExportPreset = "edit_export_preset"
     case planExport = "plan_export", getExportPreview = "get_export_preview", runExport = "run_export"
@@ -179,7 +180,7 @@ enum AppMCPTool: String, CaseIterable {
             case .part: SmartMaskPart.allCases.map(\.rawValue)
             case .mergeKind: PhotoMergeKind.allCases.map(\.rawValue)
             case .masterFormat: MergeMasterFormat.allCases.map(\.rawValue)
-            case .revealKind: ["catalog", "export", "merge", "import_backup"]
+            case .revealKind: ["catalog", "export", "merge", "star_sequence", "import_backup"]
             case .panel: MCPAppPanel.allCases.map(\.rawValue)
             case .previewKind: ["rendered", "embedded"]
             default: nil
@@ -206,6 +207,7 @@ enum AppMCPTool: String, CaseIterable {
             }
         }
         private func nameLimit(for tool: AppMCPTool) -> Int {
+            if self == .name && tool == .exportStarSequence { return 240 }
             if self == .presetGroup || (self == .name && [.editPreset, .saveSnapshot, .editLocalPreset, .editExportPreset].contains(tool)) { return 100 }
             if self == .name && [.maskGroup, .maskComponent].contains(tool) { return 200 }
             return maxString
@@ -531,6 +533,7 @@ enum AppMCPTool: String, CaseIterable {
         case .editMergeRetouch: [.catalog, .action]
         case .getMergeRetouch: [.catalog, .previewID, .draftID, .draftRevision]
         case .saveMerge: [.catalog, .previewID, .destinationAccess]
+        case .exportStarSequence: [.catalog, .previewID, .destinationAccess, .name]
         case .listExportPresets: []
         case .editExportPreset: [.action]
         case .planExport: [.catalog, .photoIDs, .versionRevisions, .destinationAccess]
@@ -644,6 +647,7 @@ enum AppMCPTool: String, CaseIterable {
         case .planMerge: [.outputOptions, .collection, .darkPhotoIDs]
         case .getMergePreview: [.displayEV, .longEdge]
         case .saveMerge: [.filename, .masterFormat, .stackWithSources, .draftID, .draftRevision]
+        case .exportStarSequence: [.draftID, .draftRevision]
         case .editMergeRetouch: [.previewID, .draftID, .draftRevision, .photo, .sourceRevision, .recipeRevision, .retouchChanges, .sourceIndex]
         case .getMergeRetouch: [.view, .sourceIndex, .point, .offset, .pageSize, .displayEV, .longEdge, .regionPixels, .planOnly]
         case .listExportPresets: [.offset, .pageSize]

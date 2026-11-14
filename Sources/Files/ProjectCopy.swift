@@ -23,13 +23,14 @@ struct ProjectCopy {
         identity = try Self.directoryIdentity(staging)
     }
 
-    func publish() throws {
+    func publish(onPublished: () -> Void = {}) throws {
         let parent = destination.deletingLastPathComponent()
         guard try Self.directoryIdentity(parent).key == parentIdentity.key,
               try Self.directoryIdentity(staging).key == identity.key else { throw Self.changed(staging) }
         try SafeFileWriter.flush(staging)
         try Task.checkCancellation()
         try SafeFileWriter.publish(staging, to: destination)
+        onPublished()
         do {
             guard try Self.directoryIdentity(destination).key == identity.key else { throw Self.changed(destination) }
             try SafeFileWriter.flush(parent)

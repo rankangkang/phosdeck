@@ -5,7 +5,7 @@ import simd
 /// Current editable merge format. The payload travels inside the master; only
 /// its bounded reference is stored in catalog metadata. No legacy conversion.
 struct MergeRetouchProject: Codable, Equatable {
-    static let algorithm = "phosdeck-merge-retouch-v3"
+    static let algorithm = "phosdeck-merge-retouch-v4"
     static let maximumBytes = 16 * 1024 * 1024
     var version = algorithm
     var kind: PhotoMergeKind

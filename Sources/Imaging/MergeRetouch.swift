@@ -84,12 +84,18 @@ struct MergeBrushMask {
 }
 
 struct StarTrailSettings: Codable, Equatable {
+    static let cometRange = 0...128
     var gap = 0
     var threshold = 0.25
     var strength = 0.5
+    var cometHalfLife = 0
+    var cometFade: Float {
+        cometHalfLife == 0 ? 0 : 1 - exp2(-1 / Float(cometHalfLife))
+    }
     func validate() throws {
         guard (0...16).contains(gap),threshold.isFinite,(0.01...1).contains(threshold),
-              strength.isFinite,(0...1).contains(strength) else { throw MergeRetouchProject.invalid }
+              strength.isFinite,(0...1).contains(strength),
+              Self.cometRange.contains(cometHalfLife) else { throw MergeRetouchProject.invalid }
     }
 }
 struct MergeRetouchSettings: Codable, Equatable {

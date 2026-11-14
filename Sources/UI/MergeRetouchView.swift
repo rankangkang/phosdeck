@@ -91,6 +91,13 @@ private struct MergeStarTrailControls: View {
     @Bindable var state: MergeRetouchState
     var body: some View {
         VStack(alignment:.leading,spacing:8) {
+            SubgroupLabel(L10n.text("merge.retouch.comet",defaultValue:"Comet Trails"))
+            AdjustmentRow(label:L10n.text("merge.retouch.cometHalfLife",defaultValue:"Fade Half-Life"),value:Double(state.trailDraft.cometHalfLife),
+                range:0...Double(StarTrailSettings.cometRange.upperBound),step:1,digits:0,
+                change:{ value,_ in state.trailDraft.cometHalfLife = Int(value) },commit:{ state.commitTrails() })
+                .accessibilityIdentifier("merge-comet-half-life")
+            Text(L10n.text("merge.retouch.cometHint",defaultValue:"0 turns fading off. Shorter settings fade earlier highlights faster. The value is the number of frames for an older highlight to lose half its brightness above the current frame."))
+                .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal:false,vertical:true)
             SubgroupLabel(L10n.text("merge.retouch.gaps",defaultValue:"Star Trail Gaps"))
             AdjustmentRow(label:L10n.text("merge.retouch.gapSize",defaultValue:"Maximum Gap"),value:Double(state.trailDraft.gap),range:0...16,step:1,digits:0,unit:"px",
                 change:{ value,_ in state.trailDraft.gap = Int(value) },commit:{ state.commitTrails() })

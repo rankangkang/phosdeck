@@ -61,11 +61,14 @@ enum SafeFileWriter {
     }
 
     static func sha256(_ url: URL) throws -> String {
+        try sha256(url,honorCancellation:true)
+    }
+    static func sha256(_ url: URL,honorCancellation: Bool) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         var hasher = SHA256()
         while let block = try handle.read(upToCount: 1_048_576), !block.isEmpty {
-            try Task.checkCancellation()
+            if honorCancellation { try Task.checkCancellation() }
             hasher.update(data: block)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()

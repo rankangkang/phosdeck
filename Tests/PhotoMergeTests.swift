@@ -966,7 +966,7 @@ final class PhotoMergeTests: XCTestCase {
         let a = MergeRetouchStroke(source:0,points:[MaskPoint(0.5,0.5)],radius:0.25,hardness:1,opacity:1,exclude:true)
         func render(_ strokes: [MergeRetouchStroke]) throws -> MergeImage {
             let masks = try strokes.map { try $0.mask(width:40,height:24) }
-            let accumulator = try MergeConstrainedRegion(base:base,settings:MergeRetouchSettings(strokes:strokes),masks:masks,kind:.panorama)
+            let accumulator = try MergeConstrainedRegion(width:base.width,height:base.height,settings:MergeRetouchSettings(strokes:strokes),masks:masks,kind:.panorama)
             for (index,source) in [red,blue].enumerated() {
                 let rect = accumulator.region
                 let tile = MergeImage(width:Int(rect.width),height:Int(rect.height),pixels:(Int(rect.minY)..<Int(rect.maxY)).flatMap { y in
@@ -1060,6 +1060,99 @@ final class PhotoMergeTests: XCTestCase {
         let copy = try MergeMasterCodec.read(again.url,context:context).image
         for i in copy.pixels.indices { for c in 0..<4 { XCTAssertEqual(copy.pixels[i][c],image.pixels[i][c],accuracy:2e-5) } }
     }
+    func testCometSequencePublishesConsistentCropsAndMatchesSavedMaster() async throws {
+        let width = 24,height = 12, background = SIMD4<Float>(0.2,0.3,0.1,1)
+        var a = constant(background,w:width,h:height), b = a, localOnly = a
+        a.pixels[4*width+5].x = 0.8
+        b.pixels[4*width+9].x = 0.9
+        localOnly.pixels[7*width+15].x = 0.64
+        for y in 0..<height {
+            for x in 0..<2 {
+                a.pixels[y*width+x] = .zero; b.pixels[y*width+x] = .zero
+                localOnly.pixels[y*width+x] = .zero
+            }
+        }
+        let (catalog,root,photos) = try mergeFixture([a,b,localOnly])
+        let engine = PhotoMergeEngine()
+        let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(photos.map(\.id)))
+        var options = PhotoMergeOptions.defaults(for:.lighten)
+        options.autoCrop = true; options.masterFormat = .dng
+        let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
+        _ = try await engine.retouchPreview(preview.id,settings:MergeRetouchSettings(),source:0,ev:0,progress:{ _,_ in })
+        let stroke = MergeRetouchStroke(source:2,points:[MaskPoint(15.5/24,7.5/12)],radius:0.09,hardness:1,opacity:1)
+        let settings = MergeRetouchSettings(strokes:[stroke],excludedSources:[2],trails:StarTrailSettings(cometHalfLife:1))
+        _ = try await engine.retouchPreview(preview.id,settings:settings,source:0,ev:0,progress:{ _,_ in })
+        let sequence = try await engine.exportStarSequence(preview.id,settings:settings,to:root.bookmark,folderName:"frames",
+            catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(sequence.frames.map(\.name),["frame-0001.png","frame-0002.png"])
+        XCTAssertEqual(sequence.frames.map(\.sourceIndex),[0,1])
+        XCTAssertEqual(sequence.width,22); XCTAssertEqual(sequence.height,12)
+        XCTAssertEqual(try catalog.photoCount(),3)
+        let saved = try await engine.save(preview.id,to:root.bookmark,filename:"comet.dng",catalog:catalog,progress:{ _,_ in })
+        let master = try MergeMasterCodec.read(saved.url,context:context).image
+        XCTAssertEqual(master.pixels[4*22+3].x,0.5,accuracy:2e-5)
+        XCTAssertEqual(master.pixels[4*22+7].x,0.9,accuracy:2e-5)
+        XCTAssertEqual(master.pixels[7*22+13].x,0.64,accuracy:2e-5)
+        XCTAssertEqual(master.pixels[2*22+2],background)
+        for (index,frame) in sequence.frames.enumerated() {
+            let file = sequence.url.appendingPathComponent(frame.name)
+            let source = try XCTUnwrap(CGImageSourceCreateWithURL(file as CFURL,nil))
+            let bitmap = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source,0,nil))
+            let expected = index == 0 ? try MergeCrop.crop(a) : master
+            let quantized = try ImagePipeline.materialize8(expected.ciImage(),context:context)
+            func bitmapBytes(_ item: CGImage) throws -> Data {
+                let rgb = try XCTUnwrap(CGContext(data:nil,width:item.width,height:item.height,bitsPerComponent:8,
+                    bytesPerRow:item.width*4,space:ImagePipeline.outputSpace,bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
+                rgb.draw(item,in:CGRect(x:0,y:0,width:item.width,height:item.height))
+                return Data(bytes:try XCTUnwrap(rgb.data),count:item.width*item.height*4)
+            }
+            let actual = try bitmapBytes(bitmap),reference = try bitmapBytes(quantized)
+            if index == 0 {
+                // A foreground locked to a future frame is transparent there
+                // until the chosen source arrives. The earlier sky is intact.
+                let firstStar = (4*22+3)*4
+                let waitingForeground = (7*22+13)*4
+                XCTAssertEqual(actual[firstStar..<firstStar+4],reference[firstStar..<firstStar+4])
+                XCTAssertEqual(actual[waitingForeground..<waitingForeground+4],Data(repeating:0,count:4)[0..<4])
+            } else {
+                XCTAssertEqual(actual,reference,"Last cumulative PNG must match the quantized float master")
+            }
+        }
+        let reopened = try await engine.reopenMerge(saved.photo,catalog:catalog,progress:{ _,_ in })
+        XCTAssertEqual(reopened.project.settings,settings)
+        let before = try SafeFileWriter.sha256(sequence.url.appendingPathComponent("frame-0001.png"))
+        do {
+            _ = try await engine.exportStarSequence(reopened.preview.id,settings:settings,to:root.bookmark,folderName:"frames",catalog:catalog,progress:{ _,_ in })
+            XCTFail("Existing sequence folder must be preserved")
+        } catch { }
+        XCTAssertEqual(try SafeFileWriter.sha256(sequence.url.appendingPathComponent("frame-0001.png")),before)
+    }
+
+    func testCumulativeSequenceCancellationAndPostPublicationErrorRespectCommitPoint() async throws {
+        let (catalog,root,photos) = try mergeFixture([constant(SIMD4(0.2,0.2,0.2,1)),constant(SIMD4(0.4,0.4,0.4,1))])
+        let engine = PhotoMergeEngine { phase in
+            if phase == "sequence-published" { throw LRCError("Injected post-publication failure") }
+        }
+        let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(photos.map(\.id)))
+        let prepared = try await engine.prepare(inputs,options:.defaults(for:.lighten),progress:{ _,_ in })
+        let cancel = Task {
+            try await engine.exportStarSequence(prepared.id,settings:MergeRetouchSettings(),to:root.bookmark,folderName:"cancelled",catalog:catalog) { fraction,_ in
+                if fraction > 0 { withUnsafeCurrentTask { $0?.cancel() } }
+            }
+        }
+        do { _ = try await cancel.value; XCTFail("Cancelled sequence must not publish") } catch is CancellationError {}
+        XCTAssertFalse(FileManager.default.fileExists(atPath:directory.appendingPathComponent("cancelled").path))
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath:directory.path).contains { $0.hasPrefix(".phosdeck-") })
+        do {
+            _ = try await engine.exportStarSequence(prepared.id,settings:MergeRetouchSettings(),to:root.bookmark,folderName:"present",catalog:catalog,progress:{ _,_ in })
+            XCTFail("Expected post-publication failure")
+        } catch let error as MergeSequencePublicationError {
+            XCTAssertEqual(error.result.frames.count,2)
+            try error.result.verify()
+        }
+        XCTAssertEqual(try catalog.photoCount(),2)
+    }
+
     func testStarTrailLongSequenceUsesBoundedAnalysisAndLargeDNGProvenance() async throws {
         let count = 2048
         let images = (0..<count).map { i in constant(SIMD4(Float(i)/4096,0.2,0.3,1),w:8,h:6) }

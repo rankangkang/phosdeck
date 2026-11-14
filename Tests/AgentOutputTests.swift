@@ -110,6 +110,38 @@ final class AgentOutputTests: XCTestCase {
         XCTAssertEqual(noLights["state"],"failed")
     }
 
+    func testCumulativeStarTrailExportUsesCurrentDraftAndRevealsPublishedFolder() async throws {
+        let files = try fixture(),client = files.client,photos = try await imported(files)
+        let planned = succeeded(try await client.finished(.planMerge,files.ordered(photos,adding:["merge_kind":"lighten"])))
+        let rendered = succeeded(try await client.finished(.renderMerge,["plan_id":try XCTUnwrap(planned["plan_id"])]))
+        let preview = try XCTUnwrap(rendered["preview_id"])
+        let begun = succeeded(try await client.finished(.editMergeRetouch,["action":"begin","preview_id":preview]))
+        let draft = try XCTUnwrap(begun["draft_id"])
+        let changed = succeeded(try await client.finished(.editMergeRetouch,["action":"set","preview_id":preview,"draft_id":draft,
+            "draft_revision":try XCTUnwrap(begun["draft_revision"]),"changes":["excluded_sources":[1],"star_trails":["comet_half_life":2]]]))
+        XCTAssertEqual(changed["star_trails"]?.objectValue?["comet_half_life"],2)
+        let destination = try await client.access(.mergeDestination,directory:files.masters)
+        var export: Fields = ["preview_id":preview,"name":"Stars","destination_access_id":destination,"draft_id":draft,"draft_revision":0]
+        let stale = await client.call(.exportStarSequence,export)
+        XCTAssertEqual(stale["tool_error"],"stale_merge_retouch")
+        export["draft_revision"] = changed["draft_revision"]
+        export["request_id"] = "export-star-sequence-test"
+        let ticket = await client.call(.exportStarSequence,export)
+        let result = succeeded(try await client.job(ticket))
+        let replay = await client.call(.exportStarSequence,export)
+        XCTAssertEqual(ticket["job_id"],replay["job_id"])
+        XCTAssertEqual(result["published"],true); XCTAssertEqual(result["verified"],true)
+        XCTAssertEqual(result["frame_count"],2)
+        XCTAssertEqual(result["items"]?.arrayValue?.compactMap { $0.objectValue?["source_index"]?.intValue },[0,2])
+        let folder = files.masters.appendingPathComponent("Stars")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath:folder.path).sorted(),["frame-0001.png","frame-0002.png"])
+        var revealed = [URL]()
+        client.tools.workflows.activateFilesInFinder = { revealed = $0 }
+        _ = succeeded(try await client.finished(.revealFile,["kind":"star_sequence","file_id":try XCTUnwrap(result["file_id"])]))
+        XCTAssertEqual(revealed.map(\.path),[folder.resolvingSymlinksInPath().path])
+        XCTAssertEqual(try files.catalog.photoCount(),3)
+    }
+
     private func fixture(opaque: Bool = false) throws -> Fixture {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("phosdeck-agent-output-" + UUID().uuidString)
         let source = directory.appendingPathComponent("bracket"), masters = directory.appendingPathComponent("masters")

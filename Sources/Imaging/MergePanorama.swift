@@ -230,7 +230,11 @@ enum MergeCrop {
         guard area > 0 else { throw LRCError(L10n.text("merge.emptyCoverage", defaultValue:"The merge has no fully covered area")) }; return best
     }
     static func crop(_ image: MergeImage) throws -> MergeImage {
-        let rect = try rectangle(image),w = Int(rect.width),h = Int(rect.height),x = Int(rect.minX),y = Int(rect.minY)
+        try extract(image,rect:rectangle(image))
+    }
+    static func extract(_ image: MergeImage,rect: CGRect) throws -> MergeImage {
+        let w = Int(rect.width),h = Int(rect.height),x = Int(rect.minX),y = Int(rect.minY)
+        if w == image.width,h == image.height { return image }
         var result = MergeImage(width:w,height:h)
         for row in 0..<h {
             if row.isMultiple(of:64) { try Task.checkCancellation() }

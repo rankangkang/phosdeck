@@ -105,10 +105,11 @@ extension AppMCPWorkflows {
         case "catalog": fields.isEmpty
         case "export": fields == ["record_ids"]
         case "merge": fields == ["file_id"] || fields == ["photo_id"]
+        case "star_sequence": fields == ["file_id"]
         default: fields == ["record_id", "member_id"]
         }
         guard valid else { throw MCPToolProblem.invalid("Supply the IDs for the selected type of file.") }
-        let master = args["file_id"]?.stringValue.flatMap { mergeFiles[$0] }
+        let master = args["file_id"]?.stringValue.flatMap { kind == "star_sequence" ? starSequences[$0] : mergeFiles[$0] }
         if args["file_id"] != nil, master == nil { throw Self.missingOutput }
         return start(.revealFile) { job in
             let worker = Task.detached { try Self.finderTargets(args, kind: kind, master: master, catalog: catalog) }
@@ -166,6 +167,12 @@ extension AppMCPWorkflows {
                 throw Self.missingOutput
             }
             return ([FinderTarget(url: destination, lease: lease)], 1)
+        case "star_sequence":
+            guard let master else { throw Self.missingOutput }
+            let lease = try AccessLease(bookmark:master.bookmark)
+            guard master.url.deletingLastPathComponent().path == lease.url.resolvingSymlinksInPath().standardizedFileURL.path,
+                  try ProjectCopy.directoryIdentity(master.url).key == master.identity.key else { throw Self.missingOutput }
+            return ([FinderTarget(url:master.url,lease:lease)],1)
         default:
             let recordID = args["record_id"]!.stringValue!, memberID = args["member_id"]!.stringValue!
             guard let plan = try CopyImporter.savedPlan(recordID, catalog: catalog),

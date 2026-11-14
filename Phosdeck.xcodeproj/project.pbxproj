@@ -10,6 +10,7 @@
 		AA79000000000000000E2002 /* MergeSourceConstraints.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA79000000000000000E2001 /* MergeSourceConstraints.swift */; };
 		AA79000000000000000E1002 /* MergeRetouchProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA79000000000000000E1001 /* MergeRetouchProject.swift */; };
 		DA01B3908427F1D25E4C0002 /* MergeDarkCalibration.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA01B3908427F1D25E4C0001 /* MergeDarkCalibration.swift */; };
+		DA01B3908427F1D25E4C0012 /* MergeSequenceOutput.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA01B3908427F1D25E4C0011 /* MergeSequenceOutput.swift */; };
 		A790000000000000000D3002 /* MergeRetouchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A790000000000000000D3001 /* MergeRetouchView.swift */; };
 		A790000000000000000D2002 /* MergeRetouchEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A790000000000000000D2001 /* MergeRetouchEditing.swift */; };
 		A790000000000000000D1002 /* MergeRetouch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A790000000000000000D1001 /* MergeRetouch.swift */; };
@@ -291,6 +292,7 @@
 		AA79000000000000000E2001 /* MergeSourceConstraints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeSourceConstraints.swift; sourceTree = "<group>"; };
 		AA79000000000000000E1001 /* MergeRetouchProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeRetouchProject.swift; sourceTree = "<group>"; };
 		DA01B3908427F1D25E4C0001 /* MergeDarkCalibration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeDarkCalibration.swift; sourceTree = "<group>"; };
+		DA01B3908427F1D25E4C0011 /* MergeSequenceOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeSequenceOutput.swift; sourceTree = "<group>"; };
 		A790000000000000000D3001 /* MergeRetouchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeRetouchView.swift; sourceTree = "<group>"; };
 		A790000000000000000D2001 /* MergeRetouchEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeRetouchEditing.swift; sourceTree = "<group>"; };
 		A790000000000000000D1001 /* MergeRetouch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeRetouch.swift; sourceTree = "<group>"; };
@@ -836,6 +838,7 @@
 				AA79000000000000000E2001 /* MergeSourceConstraints.swift */,
 				AA79000000000000000E1001 /* MergeRetouchProject.swift */,
 				DA01B3908427F1D25E4C0001 /* MergeDarkCalibration.swift */,
+				DA01B3908427F1D25E4C0011 /* MergeSequenceOutput.swift */,
 				00CBEB07378E00E9DD291DEF /* FocusStackDepth.swift */,
 				BC1BB5ABA7B92005E3FDE28E /* MergeFusion.swift */,
 				75BFD8D7316B96185ADB2770 /* MergeMasterCodec.swift */,
@@ -1176,6 +1179,7 @@
 				AA79000000000000000E2002 /* MergeSourceConstraints.swift in Sources */,
 				AA79000000000000000E1002 /* MergeRetouchProject.swift in Sources */,
 				DA01B3908427F1D25E4C0002 /* MergeDarkCalibration.swift in Sources */,
+				DA01B3908427F1D25E4C0012 /* MergeSequenceOutput.swift in Sources */,
 				C9EF6B4866E8FC05F0E28A9C /* FocusStackDepth.swift in Sources */,
 				9C6096AD3D2ACE1208F2BF3D /* MergeFusion.swift in Sources */,
 				D3A94D65BD7EF3663299D935 /* MergeMasterCodec.swift in Sources */,

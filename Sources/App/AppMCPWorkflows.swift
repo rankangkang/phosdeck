@@ -92,7 +92,7 @@ extension AppMCPTool {
         case .cancelJob:
             ("Request cancellation of an Agent job in Phosdeck. Poll get_job for its final state and any results already saved.", "job_id, state and cancel_requested")
         case .revealFile:
-            ("Reveal the current catalog or explicit export records, a merge master, or an import backup in Finder. Use record_ids for export, file_id or photo_id for merge, and record_id and member_id for import_backup.", "job_id, then revealed and unavailable counts")
+            ("Reveal the current catalog, export records, a merge master, a star-trail sequence, or an import backup in Finder. Use record_ids for export, file_id or photo_id for merge, file_id for star_sequence, and record_id and member_id for import_backup.", "job_id, then revealed and unavailable counts")
         default: preconditionFailure("Use the core tool description.")
         }
     }
@@ -164,6 +164,7 @@ final class AppMCPWorkflows {
     var mergePlans: [String: MCPMergePlan] = [:]
     var mergePreview: MCPPreparedMerge?
     var mergeFiles: [String: MCPPublishedMerge] = [:]
+    var starSequences: [String: MCPPublishedMerge] = [:]
     var makeMergeEngine: () -> PhotoMergeEngine = { PhotoMergeEngine() }
     var exportPlans: [String: MCPExportPlan] = [:]
     var exportDefaults: UserDefaults = .standard
@@ -204,6 +205,7 @@ final class AppMCPWorkflows {
             adjustmentPlans[job.id] = nil
             mergePlans[job.id] = nil
             mergeFiles[job.id] = nil
+            starSequences[job.id] = nil
             exportPlans[job.id] = nil
         }
     }
@@ -274,6 +276,7 @@ final class AppMCPWorkflows {
         case .planMerge: return try planMerge(arguments, catalog: model.catalog!)
         case .renderMerge: return try renderMerge(arguments, catalog: model.catalog!)
         case .editMergeRetouch: return try editMergeRetouch(arguments,catalog:model.catalog!)
+        case .exportStarSequence: return try exportStarSequence(arguments,catalog:model.catalog!)
         case .editExportPreset: return try editExportPreset(arguments)
         case .planExport: return try planExport(arguments, catalog: model.catalog!)
         case .runExport: return try runExport(arguments, catalog: model.catalog!)
@@ -337,6 +340,7 @@ final class AppMCPWorkflows {
             adjustmentPlans[oldest.id] = nil
             mergePlans[oldest.id] = nil
             mergeFiles[oldest.id] = nil
+            starSequences[oldest.id] = nil
             exportPlans[oldest.id] = nil
         }
         jobs.append(job)

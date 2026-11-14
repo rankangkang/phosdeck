@@ -47096,6 +47096,210 @@
         }
       }
     },
+    "merge.retouch.comet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comet Trails"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "彗星拖尾"
+          }
+        }
+      }
+    },
+    "merge.retouch.cometHalfLife": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fade Half-Life"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "衰减半衰期"
+          }
+        }
+      }
+    },
+    "merge.retouch.cometHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0 turns fading off. Shorter settings fade earlier highlights faster. The value is the number of frames for an older highlight to lose half its brightness above the current frame."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0 关闭。数值越小，较早帧的高光褪得越快。数值表示拖尾高出当前帧的亮度衰减一半所需的帧数。"
+          }
+        }
+      }
+    },
+    "merge.sequence.invalid": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The cumulative PNG sequence failed verification."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "累计 PNG 序列核验失败。"
+          }
+        }
+      }
+    },
+    "merge.sequence.invalidName": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use a new sequence folder name without a path or a protected catalog location."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入新的序列文件夹名，选择图库包之外的位置。"
+          }
+        }
+      }
+    },
+    "merge.sequence.published": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The sequence folder was published at %@. Verification could not finish: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "序列文件夹已发布到 %@，未能完成核验：%@"
+          }
+        }
+      }
+    },
+    "merge.sequence.progress": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Building cumulative frame %lld of %lld…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在生成第 %lld／%lld 张累计帧…"
+          }
+        }
+      }
+    },
+    "merge.sequence.verifying": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifying the PNG sequence…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在核验 PNG 序列…"
+          }
+        }
+      }
+    },
+    "merge.sequence.export": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export Cumulative PNGs"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出累计 PNG"
+          }
+        }
+      }
+    },
+    "merge.sequence.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write one sRGB PNG per enabled light frame to the new %@ folder."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每张启用的亮场生成一张 sRGB PNG，保存到新的 %@ 文件夹。"
+          }
+        }
+      }
+    },
+    "merge.sequence.done": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exported %lld PNGs to %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已将 %lld 张 PNG 导出到 %@"
+          }
+        }
+      }
+    },
+    "merge.sequence.reveal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Sequence in Finder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在访达中显示序列"
+          }
+        }
+      }
+    },
     "merge.sourceCount": {
       "extractionState": "manual",
       "localizations": {

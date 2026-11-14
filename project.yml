@@ -40,6 +40,7 @@ targets:
       # Includes AppMCPAdjustmentBatch.swift for per-photo adjustment plans.
       # Includes AppMCPCullingReport.swift and CullingMetrics.swift for assisted culling.
       # Includes AppMCPPreferences.swift, AppMCPMaintenance.swift, and AppMCPCameraDiagnostics.swift.
+      # Includes Imaging/MergeSequenceOutput.swift for cumulative star-trail PNG sequences.
       # Includes MergePanoramaFinish.swift and MergeDNGCodec.swift for float panorama finishing and linear DNG masters.
       # Includes native multiframe merge registration, MergeCameraRefinement, depth-gated FocusStackFusion, float masters and UI.
       # Includes CatalogArchive.swift, ProjectCopy.swift and CatalogArchiveSheet.swift.

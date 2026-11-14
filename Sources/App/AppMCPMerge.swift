@@ -93,11 +93,13 @@ extension AppMCPTool {
         case .getMergePreview:
             ("Read the current merge preview as an sRGB PNG when image sharing is on. display_ev changes the preview only.", "preview_id, plan_id, canvas dimensions and an image/png block")
         case .editMergeRetouch:
-            ("Begin retouching a prepared preview, or reopen a saved editable master using photo_id and its source/recipe revisions. Then set source strokes, frame exclusions or star-gap settings with preview_id, draft_id and draft_revision. Supports undo, redo, reset and cancel. All coordinates are normalized top-left on the pre-finishing canvas. Poll the job and read back the new revision before saving.", "job_id, then preview_id, draft_id, draft_revision, settings counts and history availability")
+            ("Begin retouching a prepared preview, or reopen a saved editable master using photo_id and its source/recipe revisions. Then set source strokes, frame exclusions, comet fading or star-gap settings with preview_id, draft_id and draft_revision. Supports undo, redo, reset and cancel. All coordinates are normalized top-left on the pre-finishing canvas. Poll the job and read back the new revision before saving.", "job_id, then preview_id, draft_id, draft_revision, settings counts and history availability")
         case .getMergeRetouch:
             ("Inspect a current merge retouch draft. view=state pages through strokes; view=sources pages through source identities and estimated coverage at an optional point. Image views source/result/coverage/constraints require image sharing and source_index. Use region_pixels for an unscaled tile, or long_edge for a scaled canvas. plan_only reports native tile limits without pixels. Overlay images are display-only and use full-resolution source alpha.", "draft identity/revision, canvas coordinates, source or stroke page, and optionally an image/png block")
         case .saveMerge:
             ("Save a prepared merge as a float TIFF or DNG master in a merge_destination authorization. Use a new filename, optionally override master_format, and choose whether to stack with sources (default true).", "job_id, then file_id, publication, verification, catalog photo and optional stack undo")
+        case .exportStarSequence:
+            ("Export one cumulative sRGB PNG per enabled light frame from a prepared star-trail preview. Supply a merge_destination authorization, new folder name, and current draft identity and revision if retouching. The verified sequence publishes as one folder and stays outside the catalog.", "job_id, then folder identity, dimensions, publication and verification state, and ordered PNG entries")
         default: nil
         }
     }
@@ -184,6 +186,52 @@ extension AppMCPWorkflows {
                                  next: "Render the merge plan again and use its new preview_id.")
         }
         return prepared
+    }
+
+    func exportStarSequence(_ args: Arguments,catalog: CatalogStore) throws -> MCPToolResult {
+        let prepared = try expectedMergePreview(args["preview_id"])
+        try MCPMergeRetouchDraft.verify(prepared.retouch,args:args,required:false)
+        guard prepared.plan.options.kind == .lighten,let name = args["name"]?.stringValue,
+              PhotoMergeEngine.validSequenceName(name) else {
+            throw MCPToolProblem.invalid("Use a star-trail preview and a new sequence folder name.")
+        }
+        let grant = try self.grant(args["destination_access_id"],purpose:.mergeDestination)
+        let settings = prepared.retouch?.settings ?? MergeRetouchSettings()
+        return start(.exportStarSequence) { job in
+            job.data["name"] = .string(name)
+            job.data["published"] = false
+            job.data["verified"] = false
+            job.data["preview_id"] = .string(prepared.id.uuidString)
+            let worker = Task.detached {
+                _ = try prepared.master?.resolve(catalog)
+                _ = try prepared.plan.sources.resolve(catalog)
+            }
+            try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+            let bookmark = try AccessLease.bookmark(grant.url,readOnly:false)
+            self.running(job,phase:"exporting_star_sequence")
+            do {
+                let sequence = try await prepared.engine.exportStarSequence(prepared.id,settings:settings,to:bookmark,
+                    folderName:name,catalog:catalog) { fraction,title in
+                        await self.progress(job,title:title,done:Int(fraction*100),total:100)
+                    }
+                self.recordStarSequence(sequence,bookmark:bookmark,verified:true,job:job)
+                job.finish(.succeeded,"Exported and verified the cumulative star-trail PNG sequence.",committed:"committed")
+            } catch let published as MergeSequencePublicationError {
+                self.recordStarSequence(published.result,bookmark:bookmark,verified:false,job:job)
+                job.data["follow_up"] = "Locate the published folder in Finder and verify it before use."
+                self.model.reports = [published.localizedDescription]
+                job.finish(.partial,"The sequence folder was published but needs verification.",committed:"committed",error:"sequence_verification_incomplete")
+            }
+        }
+    }
+
+    private func recordStarSequence(_ sequence: MergeSequenceResult,bookmark: Data,verified: Bool,job: Job) {
+        starSequences[job.id] = MCPPublishedMerge(url:sequence.url,identity:sequence.identity,bookmark:bookmark)
+        job.data.merge(["file_id":.string(job.id),"published":true,"verified":.bool(verified),
+                        "width":.int(sequence.width),"height":.int(sequence.height),"frame_count":.int(sequence.frames.count)]) { _,value in value }
+        job.items = sequence.frames.enumerated().map { offset,frame in
+            ["frame_number":.int(offset+1),"name":.string(frame.name),"source_index":.int(frame.sourceIndex),"sha256":.string(frame.digest)]
+        }
     }
 
     nonisolated private static func mergePreviewData(_ preview: MergePreview, planID: String, ev: Double) -> Arguments {
@@ -278,7 +326,8 @@ struct MCPMergeRetouchDraft {
         "remove_stroke_index":MCPOutputSchema.integer(0...2047),
         "excluded_sources":["type":"array","maxItems":2047,"uniqueItems":true,"items":MCPOutputSchema.integer(0...2047)],
         "star_trails":MCPCanvasFields.patch(["gap":MCPOutputSchema.integer(0...16),
-            "threshold":MCPDevelopParameters.numberSchema(0.01...1),"strength":MCPCanvasFields.unit])
+            "threshold":MCPDevelopParameters.numberSchema(0.01...1),"strength":MCPCanvasFields.unit,
+            "comet_half_life":MCPOutputSchema.integer(StarTrailSettings.cometRange)])
     ])
     static func accepts(_ value: Value) -> Bool {
         guard let patch = value.objectValue,!patch.isEmpty,
@@ -298,10 +347,11 @@ struct MCPMergeRetouchDraft {
                   values.allSatisfy({ $0.intValue.map { (0...2047).contains($0) } == true }) else { return false }
         }
         if let value = patch["star_trails"] {
-            guard let trails = value.objectValue,!trails.isEmpty,Set(trails.keys).isSubset(of:["gap","threshold","strength"]) else { return false }
+            guard let trails = value.objectValue,!trails.isEmpty,Set(trails.keys).isSubset(of:["gap","threshold","strength","comet_half_life"]) else { return false }
             if let value = trails["gap"],value.intValue.map({ (0...16).contains($0) }) != true { return false }
             if let value = trails["threshold"],value.number.map({ (0.01...1).contains($0) }) != true { return false }
             if let value = trails["strength"],value.number.map({ (0...1).contains($0) }) != true { return false }
+            if let value = trails["comet_half_life"],value.intValue.map(StarTrailSettings.cometRange.contains) != true { return false }
         }
         return true
     }
@@ -339,6 +389,7 @@ struct MCPMergeRetouchDraft {
             if let gap = trails["gap"]?.intValue { value.trails.gap = gap }
             if let threshold = trails["threshold"]?.number { value.trails.threshold = threshold }
             if let strength = trails["strength"]?.number { value.trails.strength = strength }
+            if let halfLife = trails["comet_half_life"]?.intValue { value.trails.cometHalfLife = halfLife }
         }
         do { try value.validate(count:count,kind:kind) }
         catch { throw MCPToolProblem.invalid("The changes are not valid for this merge kind, source count or native stroke budget.") }
@@ -347,7 +398,8 @@ struct MCPMergeRetouchDraft {
     var data: [String:Value] {
         ["draft_id":.string(id),"draft_revision":.int(revision),"stroke_count":.int(settings.strokes.count),
          "excluded_sources":.array(settings.excludedSources.sorted().map(Value.int)),
-         "star_trails":["gap":.int(settings.trails.gap),"threshold":.double(settings.trails.threshold),"strength":.double(settings.trails.strength)],
+         "star_trails":["gap":.int(settings.trails.gap),"threshold":.double(settings.trails.threshold),"strength":.double(settings.trails.strength),
+             "comet_half_life":.int(settings.trails.cometHalfLife)],
          "can_undo":.bool(!past.isEmpty),"can_redo":.bool(!future.isEmpty),"changed":.bool(settings != initial),
          "coordinate_space":"merge_canvas_normalized_top_left", "finishing_applied":false]
     }

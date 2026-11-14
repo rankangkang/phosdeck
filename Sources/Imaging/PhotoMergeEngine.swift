@@ -64,7 +64,7 @@ actor PhotoMergeEngine {
     private lazy var context = MergeMasterCodec.context()
     private let checkpoint: @Sendable (String) throws -> Void
     private var prepared: Prepared?
-    private var retouchBase: (excluded: Set<Int>,image: MergeImage)?
+    private var retouchBase: (excluded: Set<Int>,cometHalfLife: Int,image: MergeImage)?
     private var retouchResult: (settings: MergeRetouchSettings, image: MergeImage)?
     private var retouchSource: (index: Int,image: MergeImage)?
     private var retouchMasksCache: (strokes: [MergeRetouchStroke],masks: [MergeBrushMask])?
@@ -228,6 +228,110 @@ actor PhotoMergeEngine {
         (format == .tiff ? ["tif","tiff"] : ["dng"]).contains(URL(fileURLWithPath:filename).pathExtension.lowercased()) && filename.utf8.count <= 240
     }
 
+    static func validSequenceName(_ name: String) -> Bool {
+        !name.hasPrefix(".") && !name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty &&
+            name.utf8.count <= 240 && !name.contains("/") && !name.contains(":") &&
+            !name.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
+    }
+
+    func exportStarSequence(_ id: UUID,settings: MergeRetouchSettings,to bookmark: Data,folderName: String,
+                            catalog: CatalogStore,progress: Progress) async throws -> MergeSequenceResult {
+        guard let value = prepared,value.id == id,value.options.kind == .lighten,case .fusion(let plan) = value.plan else { throw stale }
+        guard Self.validSequenceName(folderName) else { throw MergeSequenceResult.invalidName }
+        try settings.validate(count:value.requests.count,kind:.lighten)
+        let requests = value.requests + value.darkRequests
+        try catalog.validateMergeInputs(requests)
+        let lease = try AccessLease(bookmark:bookmark)
+        defer { withExtendedLifetime(lease) {} }
+        let directory = lease.url.resolvingSymlinksInPath().standardizedFileURL
+        let destination = directory.appendingPathComponent(folderName,isDirectory:true)
+        guard !ProjectCopy.contains(catalog.directory,destination),
+              !(try catalog.protectedPaths()).contains(where:{ ProjectCopy.contains(destination,URL(fileURLWithPath:$0)) }) else {
+            throw MergeSequenceResult.invalidName
+        }
+        let included = value.requests.indices.filter { !settings.excludedSources.contains($0) }
+        guard let lastSource = included.last else { throw MergeSequenceResult.invalid }
+        let pixels = UInt64(plan.width)*UInt64(plan.height)
+        // Accumulator, snapshot, corrected/cropped output, PNG buffers, source
+        // decoding and any resident retouch caches can coexist during writing.
+        guard pixels*320+UInt64(value.darkMaster?.pixels.count ?? 0)*96 <= ProcessInfo.processInfo.physicalMemory/3 else {
+            throw Self.memoryBudget
+        }
+        try SafeFileWriter.requireCapacity(in:directory,bytes:Int64(pixels*5+65_536)*Int64(included.count))
+        let folder = try ProjectCopy(destination:destination)
+        defer { folder.discard() }
+
+        let fusion = try MergeFusionAccumulator(plan:plan,width:plan.width,height:plan.height,trails:settings.trails)
+        let masks = try await retouchMasks(settings,value:value)
+        let local = masks.isEmpty ? nil : try MergeConstrainedRegion(width:plan.width,height:plan.height,settings:settings,masks:masks,kind:.lighten)
+        let edge: Int? = value.options.sourceLongEdge == 0 ? nil : value.options.sourceLongEdge
+        var entries = [MergeSequenceResult.Frame]()
+        func writeFrame(_ image: MergeImage,sourceIndex: Int) throws {
+            let name = String(format:"frame-%04d.png",entries.count+1)
+            let file = folder.staging.appendingPathComponent(name)
+            entries.append(try MergeSequenceResult.write(image,to:file,sourceIndex:sourceIndex,context:context))
+        }
+        func currentFrame() throws -> MergeImage {
+            let merged = try StarTrailFusion.fillGaps(fusion.finish(),settings:settings.trails)
+            return try local?.finish(over:merged) ?? merged
+        }
+        // A fixed crop is derived from final coverage, including explicit brush
+        // restores and holes. Prior frames are cropped once after the pass.
+        for index in value.requests.indices {
+            try Task.checkCancellation()
+            let isLight = !settings.excludedSources.contains(index)
+            guard isLight || (local != nil && StarTrailFusion.participates(index,settings:settings)) else { continue }
+            if isLight {
+                await progress(Double(entries.count)/Double(included.count)*0.8,
+                    L10n.text("merge.sequence.progress",defaultValue:"Building cumulative frame \(entries.count+1) of \(included.count)…"))
+            }
+            let source = try await decode(value.requests[index],longEdge:edge,whiteBalance:value.whiteBalance,dark:value.darkMaster).image
+            if isLight { try fusion.add(source,index:index) }
+            if let local {
+                let sample = try await sourcePixels(index,value:value,region:local.region,decoded:source)
+                try local.add(sample.image,weights:sample.mask,index:index)
+            }
+            if isLight,index != lastSource { try writeFrame(currentFrame(),sourceIndex:index) }
+        }
+        var last = try currentFrame()
+        if value.options.autoCrop {
+            let cropRect = try MergeCrop.rectangle(last)
+            last = try MergeCrop.extract(last,rect:cropRect)
+            if last.width != plan.width || last.height != plan.height {
+                for i in entries.indices {
+                    let file = folder.staging.appendingPathComponent(entries[i].name)
+                    entries[i] = try MergeSequenceResult.crop(entries[i],at:file,to:cropRect)
+                }
+            }
+        }
+        try writeFrame(last,sourceIndex:lastSource)
+        guard entries.count == included.count,entries.map(\.sourceIndex) == included else { throw MergeSequenceResult.invalid }
+        await progress(0.9,L10n.text("merge.sequence.verifying",defaultValue:"Verifying the PNG sequence…"))
+        try verifySequenceInputs(value,catalog:catalog)
+        try checkpoint("sequence-staged")
+        guard prepared?.id == id else { throw stale }
+        try Task.checkCancellation()
+
+        let stagedResult = MergeSequenceResult(url:destination,frames:entries,width:last.width,height:last.height,
+                                               identity:try ProjectCopy.directoryIdentity(folder.staging))
+        var published = false
+        do {
+            try folder.publish { published = true }
+            try checkpoint("sequence-published")
+            try stagedResult.verify()
+        } catch {
+            if published { throw MergeSequencePublicationError(result:stagedResult,cause:error) }
+            throw error
+        }
+        return stagedResult
+    }
+
+    private func verifySequenceInputs(_ value: Prepared,catalog: CatalogStore) throws {
+        let requests = value.requests + value.darkRequests
+        for request in requests { try pipeline.verifySource(request) }
+        try catalog.validateMergeInputs(requests)
+    }
+
     func save(_ id: UUID,to directoryBookmark: Data,filename: String,catalog: CatalogStore,stackWithSources: Bool = false,collectionID: String? = nil,
               masterFormat: MergeMasterFormat? = nil,progress: Progress) async throws -> MergeSaved {
         guard let value = prepared,value.id == id else { throw stale }
@@ -345,7 +449,8 @@ actor PhotoMergeEngine {
         }
         switch value.plan {
         case .fusion(let plan):
-            let fusion = try MergeFusionAccumulator(plan:plan,width:plan.width,height:plan.height)
+            let trails = value.retouchProject?.settings.trails ?? StarTrailSettings()
+            let fusion = try MergeFusionAccumulator(plan:plan,width:plan.width,height:plan.height,trails:trails)
             for index in value.requests.indices where value.options.kind != .lighten || value.retouchProject?.settings.excludedSources.contains(index) != true {
                 try fusion.add(try await decode(index),index:index)
             }
@@ -429,7 +534,7 @@ actor PhotoMergeEngine {
         project.settings = settings; try project.validate()
         value.retouchProject = project; prepared = value
     }
-    private func sourcePixels(_ index: Int,value: Prepared,region: CGRect? = nil) async throws -> (image: MergeImage,mask: MergePlane) {
+    private func sourcePixels(_ index: Int,value: Prepared,region: CGRect? = nil,decoded: MergeImage? = nil) async throws -> (image: MergeImage,mask: MergePlane) {
         guard let project = value.retouchProject,(0..<project.sourceCount).contains(index) else { throw stale }
         let edge = value.options.sourceLongEdge == 0 ? nil : value.options.sourceLongEdge
         func decode(_ i: Int) async throws -> MergeImage {
@@ -437,7 +542,8 @@ actor PhotoMergeEngine {
         }
         switch value.plan {
         case .fusion(let plan):
-            let frame = try await decode(index)
+            let frame: MergeImage
+            if let decoded { frame = decoded } else { frame = try await decode(index) }
             var image = try MergeFusionAccumulator.aligned(frame,index:index,plan:plan,width:plan.width,height:plan.height,region:region)
             let gain: SIMD3<Float> = value.options.kind == .hdr ? SIMD3(repeating:1/plan.exposureRatios[index]) : plan.gains[index]
             for i in image.pixels.indices {
@@ -474,26 +580,27 @@ actor PhotoMergeEngine {
         let initial = value.options.kind == .lighten ? try StarTrailFusion.fillGaps(base,settings:settings.trails) : base
         guard !settings.strokes.isEmpty,let project = value.retouchProject else { return initial }
         let masks = try await retouchMasks(settings,value:value,base:base)
-        let local = try MergeConstrainedRegion(base:initial,settings:settings,masks:masks,kind:value.options.kind)
+        let local = try MergeConstrainedRegion(width:initial.width,height:initial.height,settings:settings,masks:masks,kind:value.options.kind)
         for i in 0..<project.sourceCount {
             try Task.checkCancellation()
-            if settings.excludedSources.contains(i),!settings.strokes.contains(where:{ !$0.restore && !$0.exclude && $0.source == i }) { continue }
+            if !StarTrailFusion.participates(i,settings:settings) { continue }
             let pixels = try await sourcePixels(i,value:value,region:local.region)
             try local.add(pixels.image,weights:pixels.mask,index:i)
         }
         return try local.finish(over:initial)
     }
-    private func retouchMasks(_ settings: MergeRetouchSettings,value: Prepared,base: MergeImage) async throws -> [MergeBrushMask] {
+    private func retouchMasks(_ settings: MergeRetouchSettings,value: Prepared,base: MergeImage? = nil) async throws -> [MergeBrushMask] {
         if let cached = retouchMasksCache,cached.strokes == settings.strokes { return cached.masks }
+        let (width,height) = value.plan.size
         var masks = [MergeBrushMask](),maskBytes = 0
         for stroke in settings.strokes {
-            var mask = try stroke.mask(width:base.width,height:base.height)
+            var mask = try stroke.mask(width:width,height:height)
             if !stroke.restore && !stroke.exclude {
                 let pixels = try await sourcePixels(stroke.source,value:value,region:mask.rect).image
                 for y in 0..<mask.height { for x in 0..<mask.width {
                     let p = y*mask.width+x,s = pixels.pixels[p].w
-                    if value.options.kind == .focus || value.options.kind == .hdr {
-                        let a = base.pixels[(y+mask.y)*base.width+x+mask.x].w
+                    if let base,value.options.kind == .focus || value.options.kind == .hdr {
+                        let a = base.pixels[(y+mask.y)*width+x+mask.x].w
                         mask.values[p] *= a > 0 ? min(1,max(0,s/a)) : 0
                     } else { mask.values[p] *= s > 0 ? 1 : 0 }
                 } }
@@ -582,11 +689,13 @@ actor PhotoMergeEngine {
             throw Self.memoryBudget
         }
         let base: MergeImage
-        if let cached = retouchBase,cached.excluded == settings.excludedSources { base = cached.image }
+        if let cached = retouchBase,cached.excluded == settings.excludedSources,cached.cometHalfLife == settings.trails.cometHalfLife {
+            base = cached.image
+        }
         else {
             base = try await fullResult(value,retouch:false,progress:progress)
             try Task.checkCancellation(); guard prepared?.id == id else { throw stale }
-            retouchBase = (settings.excludedSources,base)
+            retouchBase = (settings.excludedSources,settings.trails.cometHalfLife,base)
         }
         let result: MergeImage
         if let cached = retouchResult,cached.settings == settings { result = cached.image }

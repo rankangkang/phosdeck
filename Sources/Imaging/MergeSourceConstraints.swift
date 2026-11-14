@@ -14,10 +14,10 @@ final class MergeConstrainedRegion {
     private var coverage: [Float]
     private var influence: [Float]
 
-    init(base: MergeImage,settings: MergeRetouchSettings,masks: [MergeBrushMask],kind: PhotoMergeKind) throws {
+    init(width: Int,height: Int,settings: MergeRetouchSettings,masks: [MergeBrushMask],kind: PhotoMergeKind) throws {
         guard !masks.isEmpty,masks.count == settings.strokes.count else { throw MergeRetouchProject.invalid }
         self.settings = settings; self.masks = masks; self.kind = kind
-        region = masks.dropFirst().reduce(masks[0].rect) { $0.union($1.rect) }.intersection(CGRect(x:0,y:0,width:base.width,height:base.height)).integral
+        region = masks.dropFirst().reduce(masks[0].rect) { $0.union($1.rect) }.intersection(CGRect(x:0,y:0,width:width,height:height)).integral
         let w = Int(region.width),h = Int(region.height)
         guard w > 0,h > 0 else { throw MergeRetouchProject.invalid }
         sum = MergeImage(width:w,height:h)
@@ -41,6 +41,7 @@ final class MergeConstrainedRegion {
     func add(_ image: MergeImage,weights: MergePlane,index: Int) throws {
         guard image.width == sum.width,image.height == sum.height,weights.width == sum.width,weights.height == sum.height else { throw MergeRetouchProject.invalid }
         let neutral: Float = settings.excludedSources.contains(index) ? 0 : 1
+        let cometFade = settings.trails.cometFade
         var allowed = [Float](repeating:neutral,count:sum.pixels.count)
         for (stroke,mask) in zip(settings.strokes,masks) {
             if stroke.exclude && stroke.source != index { continue }
@@ -64,7 +65,8 @@ final class MergeConstrainedRegion {
                         // existing per-channel max exactly, while a feathered
                         // exclusion mixes with available alternatives.
                         let old = sum.pixels[p][c]
-                        sum.pixels[p][c] = (old*a*(1-b)+value[c]*b*(1-a)+max(old,value[c])*a*b)/u
+                        let highlight = StarTrailFusion.lighten(old,value[c],fade:cometFade)
+                        sum.pixels[p][c] = (old*a*(1-b)+value[c]*b*(1-a)+highlight*a*b)/u
                     }
                 }
                 total[p] = u
@@ -97,6 +99,20 @@ final class MergeConstrainedRegion {
 }
 
 enum StarTrailFusion {
+    /// Fade only the difference above the current covered sample. An unchanging
+    /// foreground remains at its own value, as do signed pixels with no trail.
+    static func lighten(_ previous: Float,_ current: Float,fade: Float) -> Float {
+        if fade == 0 { return max(previous,current) }
+        guard previous > current else { return current }
+        return Float(Double(previous)*(1-Double(fade))+Double(current)*Double(fade))
+    }
+
+    /// An excluded frame can still supply an explicit local foreground.
+    static func participates(_ index: Int,settings: MergeRetouchSettings) -> Bool {
+        !settings.excludedSources.contains(index) ||
+            settings.strokes.contains { $0.source == index && !$0.restore && !$0.exclude }
+    }
+
     /// Native directional interpolation between nearby bright endpoints. Work
     /// from the captured image only, so filled pixels cannot bridge another gap.
     /// It is optional and bounded to 16 output pixels; no sky/track inference.

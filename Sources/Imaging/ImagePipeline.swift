@@ -1011,7 +1011,7 @@ actor ImagePipeline {
         return result
     }
 
-    private static func materialize8(_ image: CIImage, context: CIContext) throws -> CGImage {
+    static func materialize8(_ image: CIImage, context: CIContext) throws -> CGImage {
         let bounds = image.extent.integral, width = Int(bounds.width), height = Int(bounds.height)
         guard width > 0, height > 0, width <= Int.max / 4 / height else { throw LRCError(L10n.text("app.invalid8BitOutputDimensions", defaultValue: "Invalid 8-bit output dimensions")) }
         var data = Data(count: width * height * 4)

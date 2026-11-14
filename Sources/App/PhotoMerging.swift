@@ -32,6 +32,7 @@ import CoreGraphics
     var directoryBookmark: Data?
     var filename = ""
     var error: String?
+    private(set) var sequenceResult: MergeSequenceResult?
     @ObservationIgnored private let engine = PhotoMergeEngine()
     @ObservationIgnored private var job: Task<Void,Never>?
     @ObservationIgnored private var displayJob: Task<Void,Never>?
@@ -201,6 +202,34 @@ import CoreGraphics
                 if self.token == token { working = false; saving = false; job = nil }
             } catch {
                 if self.token == token { self.error = error.localizedDescription; working = false; saving = false; job = nil }
+            }
+        }
+    }
+    var sequenceFolderName: String { (filename as NSString).deletingPathExtension+"-Frames" }
+    var canExportSequence: Bool {
+        options.kind == .lighten && !working && !retouch.pending && retouch.error == nil &&
+            preview != nil && directoryBookmark != nil && !filename.isEmpty &&
+            PhotoMergeEngine.validFilename(filename,format:options.masterFormat)
+    }
+    func exportSequence() {
+        guard canExportSequence,let preview,let directoryBookmark else { return }
+        displayJob?.cancel(); sourceJob?.cancel(); sourceToken = UUID(); retouch.sourcesPending = false
+        let token = UUID(); self.token = token
+        let settings = retouch.settings, name = sequenceFolderName
+        working = true; saving = true; progress = 0; error = nil; sequenceResult = nil
+        job = Task {
+            do {
+                let result = try await engine.exportStarSequence(preview.id,settings:settings,to:directoryBookmark,folderName:name,catalog:catalog) { [weak self] fraction,phase in
+                    await self?.report(fraction,phase:phase,token:token)
+                }
+                if self.token == token { sequenceResult = result }
+            } catch is CancellationError {
+            } catch {
+                if self.token == token { self.error = error.localizedDescription }
+            }
+            if self.token == token {
+                working = false; saving = false; job = nil
+                if retouch.active { refreshRetouchSources() }
             }
         }
     }
