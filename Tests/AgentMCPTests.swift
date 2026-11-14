@@ -7,12 +7,16 @@ import XCTest
 final class AgentMCPTests: XCTestCase {
     private actor ReceivedResponse {
         var headers: [String: String] = [:]
+        var statusCode = 0
         var body = Data()
 
         func collect(_ response: HTTPResponse) async throws -> Int {
             headers = response.headers
+            statusCode = response.statusCode
             if case .stream(let events, _) = response {
                 for try await event in events { body.append(event) }
+            } else {
+                body = response.bodyData ?? Data()
             }
             return body.count
         }
@@ -887,6 +891,77 @@ final class AgentMCPTests: XCTestCase {
         XCTAssertNil(service.connectionToken)
         XCTAssertTrue(service.jsonClientConfiguration == nil)
         XCTAssertFalse(service.needsShutdown)
+    }
+
+    @MainActor func testLargeMergePlanAndStrokeReachToolValidation() async throws {
+        let ids = (0..<2048).map { String(format: "00000000-0000-4000-8000-%012x", $0) }
+        let (_, model, tools) = try fixture(ids: ids)
+        let sessions = MCPHTTPSessions(name: "phosdeck-test", version: "1", tools: tools)
+        addTeardownBlock { await sessions.stop() }
+        let catalogID = try XCTUnwrap(model.catalogSessionID)
+        var headers = ["Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+                       "MCP-Protocol-Version": "2025-11-25"]
+
+        func post(_ value: Value, padding: Int = 0) async throws -> ReceivedResponse {
+            var body = try JSONEncoder().encode(value)
+            body.append(Data(repeating: 32, count: padding))
+            let response = ReceivedResponse()
+            await sessions.respond(to: HTTPRequest(method: "POST", headers: headers, body: body)) { try await response.collect($0) }
+            return response
+        }
+        func call(_ name: AppMCPTool, id: Int, arguments: [String: Value] = [:], padding: Int = 0) async throws -> ReceivedResponse {
+            try await post(["jsonrpc": "2.0", "id": .int(id), "method": "tools/call",
+                            "params": ["name": .string(name.rawValue), "arguments": .object(arguments)]], padding: padding)
+        }
+        func payload(_ response: ReceivedResponse) async throws -> [String: Value] {
+            let status = await response.statusCode
+            XCTAssertEqual(status, 200)
+            let body = String(decoding: await response.body, as: UTF8.self)
+            let event = body.split(whereSeparator: \.isNewline)
+                .filter { $0.hasPrefix("data:") }
+                .map { $0.dropFirst(5).trimmingCharacters(in: .whitespaces) }
+                .first { !$0.isEmpty }
+            let message = try JSONDecoder().decode(Value.self, from: Data(try XCTUnwrap(event).utf8))
+            return try XCTUnwrap(message.objectValue?["result"]?.objectValue?["structuredContent"]?.objectValue)
+        }
+
+        let initialized = try await post(["jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                          "params": ["protocolVersion": "2025-11-25", "capabilities": [:],
+                                                     "clientInfo": ["name": "test", "version": "1"]]])
+        let initHeaders = await initialized.headers
+        headers["MCP-Session-Id"] = try XCTUnwrap(initHeaders["MCP-Session-Id"])
+        _ = try await post(["jsonrpc": "2.0", "method": "notifications/initialized"])
+        let currentWorkspace = await self.call(tools, .workspace)
+        let request: [String: Value] = ["catalog_session_id": .string(catalogID),
+                                       "request_epoch": try XCTUnwrap(data(currentWorkspace)["request_epoch"])]
+
+        let revision: Value = ["source_revision": 1, "recipe_revision": 0]
+        let planArgs = request.merging([
+            "request_id": "large-plan", "merge_kind": "lighten",
+            "photo_ids": .array(ids.map(Value.string)),
+            "expected_revisions": .object(Dictionary(uniqueKeysWithValues: ids.map { ($0, revision) }))
+        ]) { _, supplied in supplied }
+        let plan = try await payload(call(.planMerge, id: 2, arguments: planArgs))
+        let jobID = try XCTUnwrap(plan["data"]?.objectValue?["job_id"], "\(plan)")
+        let job = try await cullingJob(tools, jobID: jobID, pageSize: 1)
+        XCTAssertEqual(job["state"], "succeeded", "\(job)")
+        XCTAssertEqual(job["total"], 2048)
+
+        let path: [Value] = (0..<4096).map { index in
+            ["x": .double(Double(index) / 4095), "y": .double(0.381927)]
+        }
+        let editArgs = request.merging([
+            "request_id": "large-stroke", "action": "set", "preview_id": "expired-preview",
+            "draft_id": "expired-draft", "draft_revision": 0,
+            "changes": ["append_stroke": ["source_index": 0, "path": .array(path), "radius": .double(0.02),
+                                          "hardness": 1, "opacity": 1, "operation": "keep"]]
+        ]) { _, supplied in supplied }
+        let edited = try await payload(call(.editMergeRetouch, id: 3, arguments: editArgs))
+        XCTAssertEqual(edited["error"]?.objectValue?["code"], "stale_merge_preview", "\(edited)")
+
+        let oversized = try await call(.workspace, id: 4, padding: 64 * 1024)
+        let oversizedStatus = await oversized.statusCode
+        XCTAssertEqual(oversizedStatus, 413)
     }
 
     @MainActor func testClosedNotificationConnectionKeepsProtocolSession() async throws {

@@ -1013,32 +1013,29 @@ final class PhotoMergeTests: XCTestCase {
         for i in copy.pixels.indices { for c in 0..<4 { XCTAssertEqual(copy.pixels[i][c],image.pixels[i][c],accuracy:2e-5) } }
     }
     func testStarTrailLongSequenceUsesBoundedAnalysisAndLargeDNGProvenance() async throws {
-        let images = (0..<129).map { i in constant(SIMD4(Float(i)/200,0.2,0.3,1),w:8,h:6) }
+        let count = 2048
+        let images = (0..<count).map { i in constant(SIMD4(Float(i)/4096,0.2,0.3,1),w:8,h:6) }
         let (catalog,root,photos) = try mergeFixture(images),engine = PhotoMergeEngine()
         let inputs = try await engine.loadInputs(catalog:catalog,ids:Set(photos.map(\.id)))
         var options = PhotoMergeOptions.defaults(for:.lighten)
-        XCTAssertNoThrow(try options.validate(count:2048))
-        XCTAssertThrowsError(try options.validate(count:2049))
+        XCTAssertNoThrow(try options.validate(count:count))
+        XCTAssertThrowsError(try options.validate(count:count+1))
         options.align = true; XCTAssertThrowsError(try options.validate(count:129)); options.align = false
+        options.masterFormat = .dng
         let preview = try await engine.prepare(inputs,options:options,progress:{ _,_ in })
-        let saved = try await engine.save(preview.id,to:root.bookmark,filename:"long-trails.tif",catalog:catalog,progress:{ _,_ in })
+        let saved = try await engine.save(preview.id,to:root.bookmark,filename:"long-trails.dng",catalog:catalog,progress:{ _,_ in })
         let result = try MergeMasterCodec.read(saved.url,context:context)
-        XCTAssertEqual(result.provenance.sources.count,129)
-        XCTAssertEqual(saved.photo.details?.composite?.sourceCount,129)
+        XCTAssertGreaterThan(try result.provenance.description.utf8.count,65536)
+        XCTAssertEqual(result.provenance.sources.count,count)
+        XCTAssertEqual(saved.photo.details?.composite?.sourceCount,count)
         XCTAssertEqual(saved.photo.details?.composite?.sources.count,0)
         XCTAssertLessThan(saved.photo.metadata?.count ?? Int.max,4096,"catalog summary must stay small for long sequences")
         let reopened = try await engine.reopenMerge(saved.photo,catalog:catalog,progress:{ _,_ in })
-        XCTAssertEqual(reopened.inputs.count,129)
-        XCTAssertEqual(result.image.pixels[0].x,0.64,accuracy:2e-5)
+        XCTAssertEqual(reopened.inputs.map(\.photo.id),inputs.map(\.photo.id))
+        XCTAssertEqual(result.image.pixels[0].x,Float(count-1)/4096,accuracy:2e-5)
         let project = try MergeRetouchProject.read(from:saved.url,reference:XCTUnwrap(result.provenance.retouchProject))
         if case .fusion(let f) = project.snapshot { XCTAssertTrue(f.sizes.allSatisfy { $0[0] <= 32 && $0[1] <= 32 }) }
         else { XCTFail("streamed fusion snapshot") }
-        options.masterFormat = .dng
-        let large = MergeProvenance(options:options,sources:(0..<2048).map { .init(photoID:UUID().uuidString,digest:String(repeating:"a",count:64),recipeRevision:$0) })
-        XCTAssertGreaterThan(try large.description.utf8.count,65536)
-        let path = directory.appendingPathComponent("large-provenance.dng")
-        try MergeMasterCodec.write(constant(SIMD4(2,-0.1,0.3,1)),to:path,provenance:large,context:context)
-        XCTAssertEqual(try MergeMasterCodec.read(path,context:context).provenance,large)
     }
     @MainActor func testStarTrailSettingsShareUndoAndKeepOneFrameEnabled() throws {
         let state = MergeRetouchState(); state.undo.groupsByEvent = false

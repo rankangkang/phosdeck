@@ -17,7 +17,7 @@ Start with the current workspace. Use ordered `photo_ids` and `expected_revision
 4. Read the completed job's new revision before subsequent reads or changes. Use `state` to page through saved draft settings and `result` to verify pixels. Undo/redo retains the latest 32 draft changes. `reset` restores automatic settings; `cancel` discards this draft's changes. A stale revision must be reread, never guessed or incremented locally.
 5. Save through `save_photo_merge` with the current draft ID and revision, an authorized merge destination and a new filename. Reopen the new catalog master to verify the embedded project. Cancellation and failed rendering leave the previous revision intact; published-but-not-indexed results follow the existing preserved-master recovery flow.
 
-Image views require **Share Photo Previews**. State, source metadata and `plan_only: true` do not. A native tile is limited to 2048 pixels on its longest edge and 1048576 pixels in area; plan first or request smaller tiles. A new render, catalog change or server restart invalidates the draft. Fixed-camera star trails can plan up to 2048 unaligned frames; other merge modes retain the native 128-frame limit.
+Image views require **Share Photo Previews**. State, source metadata and `plan_only: true` do not. A native tile is limited to 2048 pixels on its longest edge and 1048576 pixels in area; plan first or request smaller tiles. A new render, catalog change or server restart invalidates the draft. Fixed-camera star trails can plan up to 2048 unaligned frames; other merge modes retain the native 128-frame limit. The request body limit for `plan_photo_merge` and `edit_merge_retouch` is 1 MiB.
 
 ## Plan and deliver outputs
 

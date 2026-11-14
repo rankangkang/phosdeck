@@ -8,6 +8,8 @@ import Security
 struct MCPHTTPListener: Sendable {
     static let host = "127.0.0.1"
     static let path = "/mcp"
+    fileprivate static let standardBodyBytes = 64 * 1024
+    fileprivate static let mergeBodyBytes = 1024 * 1024
 
     let port: Int
     let token: String
@@ -84,7 +86,6 @@ private final class MCPHTTPConnections: @unchecked Sendable {
 /// Accept one request per connection so pipelining cannot queue extra bodies behind a tool call.
 private final class MCPHTTPHandler: ChannelInboundHandler {
     typealias InboundIn = HTTPServerRequestPart
-    private static let maximumBodyBytes = 64 * 1024
     private let sessions: MCPHTTPSessions
     private let token: String
     private var head: HTTPRequestHead?
@@ -120,8 +121,8 @@ private final class MCPHTTPHandler: ChannelInboundHandler {
             } else { self.head = head }
         case .body(let bytes):
             guard head != nil else { return }
-            guard bytes.readableBytes <= Self.maximumBodyBytes - body.count else {
-                respond(.error(statusCode: 413, .invalidRequest("Request body exceeds 64 KiB")), on: channel)
+            guard bytes.readableBytes <= MCPHTTPListener.mergeBodyBytes - body.count else {
+                respond(.error(statusCode: 413, .invalidRequest("Request body exceeds 1 MiB")), on: channel)
                 return
             }
             body.append(contentsOf: bytes.readableBytesView)
@@ -168,8 +169,8 @@ private final class MCPHTTPHandler: ChannelInboundHandler {
         for header in ["mcp-session-id", "mcp-protocol-version", "content-type"] where head.headers[header].count > 1 {
             return .error(statusCode: 400, .invalidRequest("Repeated request header"))
         }
-        if let raw = head.headers.first(name: "content-length"), let size = Int(raw), size > Self.maximumBodyBytes {
-            return .error(statusCode: 413, .invalidRequest("Request body exceeds 64 KiB"))
+        if let raw = head.headers.first(name: "content-length"), let size = Int(raw), size > MCPHTTPListener.mergeBodyBytes {
+            return .error(statusCode: 413, .invalidRequest("Request body exceeds 1 MiB"))
         }
         if head.headers.contains(name: "expect") {
             return .error(statusCode: 417, .invalidRequest("Unsupported Expect header"))
@@ -255,6 +256,15 @@ actor MCPHTTPSessions {
                   json["jsonrpc"] == "2.0" else {
                 _ = try? await send(.error(statusCode: 400, .parseError("Expected a JSON-RPC 2.0 message")))
                 return
+            }
+            if data.count > MCPHTTPListener.standardBodyBytes {
+                // Only merge plans and retouch strokes need the larger envelope. The
+                // tool schemas still validate every source, revision and path point.
+                let tool = json["params"]?.objectValue?["name"]?.stringValue.flatMap(AppMCPTool.init(rawValue:))
+                guard json["method"] == "tools/call", tool == .planMerge || tool == .editMergeRetouch else {
+                    _ = try? await send(.error(statusCode: 413, .invalidRequest("Request body exceeds 64 KiB for this MCP method or tool")))
+                    return
+                }
             }
             if let id = json["id"] {
                 let value = id.stringValue ?? id.intValue.map(String.init)

@@ -175,7 +175,7 @@
 
 在聚合请求体和分配会话前校验确切的回环 `Host`、存在时的 `Origin` 及 `Authorization: Bearer`。无效凭据返回 HTTP `401` 和 Bearer 质询，不匹配的 `Host`／`Origin` 返回 `403`。控制请求体、空闲连接、并发和会话数量，关停时关闭监听及活动连接并清除本次凭据。网络解析在主线程之外运行。沙箱使用入站网络权限，签名沿用已有构建约定。服务生命周期由 App 持有，设置窗口负责呈现和控制。[入站网络权限](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.server)
 
-HTTP 响应流随 POST 请求返回。独立 GET 流返回 `405`。每次连接处理一个请求，请求体上限 64 KiB。传输会话空闲 15 分钟或达到消息及响应大小上限时需要重新初始化，业务请求代次在监听运行期间继续有效。图库会话仍有效时，重连后可继续使用有效的分页游标。
+HTTP 响应流随 POST 请求返回。独立 GET 流返回 `405`。每次连接处理一个请求。`plan_photo_merge` 和 `edit_merge_retouch` 的请求体上限为 1 MiB，以容纳长序列的来源修订和长笔画。其余方法与工具的上限为 64 KiB，超过上限返回 HTTP `413`。传输会话空闲 15 分钟或达到消息及响应大小上限时需要重新初始化，业务请求代次在监听运行期间继续有效。图库会话仍有效时，重连后可继续使用有效的分页游标。
 
 “复制 JSON 配置”适用于接受 `mcpServers` 的 Streamable HTTP 客户端。复制的内容包含 `type: "http"`、当前 `url` 和 `Authorization` 请求头。Claude Code 可通过 `--mcp-config` 加载这份 JSON。令牌随服务重启更新，请将配置保存在本机。[Claude Code MCP 配置](https://code.claude.com/docs/en/mcp)
 
