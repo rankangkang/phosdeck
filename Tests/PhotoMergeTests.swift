@@ -682,6 +682,36 @@ final class PhotoMergeTests: XCTestCase {
     func testPublicLeicaRAWMergeDecodeIsLinearSeparateAndRepeatable() async throws {
         try await checkPublicRAW("leica_m8_8bit_uncompressed.DNG")
     }
+    func testPublicSonyRAWMergeDecodeDisablesLocalDetailOnlyForCalibration() async throws {
+        let request = try MoreRAWTests.request("a7iii_12bit_compressed.ARW"),pipeline = ImagePipeline()
+        let url = URL(fileURLWithPath:request.root.path).appendingPathComponent(request.photo.relativePath)
+        let raw = try PhotoFileType.rawFilter(url)
+        let wb = WhiteBalanceValue(temperature:Double(raw.neutralTemperature),tint:Double(raw.neutralTint))
+        let longEdge = 256
+        raw.scaleFactor = Float(Double(longEdge)/max(raw.nativeSize.width,raw.nativeSize.height))
+        raw.isDraftModeEnabled = false; raw.exposure = 0; raw.baselineExposure = 0
+        raw.boostAmount = 0; raw.boostShadowAmount = 0; raw.extendedDynamicRangeAmount = 2
+        raw.isGamutMappingEnabled = false
+        if raw.isLocalToneMapSupported { raw.localToneMapAmount = 0 }
+        raw.neutralTemperature = Float(wb.temperature); raw.neutralTint = Float(wb.tint)
+        if raw.isLuminanceNoiseReductionSupported { raw.luminanceNoiseReductionAmount = 0 }
+        if raw.isColorNoiseReductionSupported { raw.colorNoiseReductionAmount = 0 }
+        if raw.isSharpnessSupported { raw.sharpnessAmount = 0 }
+
+        let ordinary = try await pipeline.mergeDecode(request,longEdge:longEdge,whiteBalance:wb).image
+        let expectedOrdinary = try MergeImage.read(XCTUnwrap(raw.outputImage),context:context)
+        XCTAssertEqual([ordinary.width,ordinary.height],[expectedOrdinary.width,expectedOrdinary.height])
+        XCTAssertTrue(zip(ordinary.pixels,expectedOrdinary.pixels).allSatisfy { simd_distance($0,$1) < 2e-5 })
+
+        if raw.isContrastSupported { raw.contrastAmount = 0 }
+        if raw.isDetailSupported { raw.detailAmount = 0 }
+        if raw.isMoireReductionSupported { raw.moireReductionAmount = 0 }
+        if raw.isDespeckleSupported { raw.despeckleAmount = 0 }
+        let expectedNeutral = try MergeImage.read(XCTUnwrap(raw.outputImage),context:context)
+        let calibrated = try await pipeline.mergeDecode(request,longEdge:longEdge,whiteBalance:wb,forDarkCalibration:true).image
+        XCTAssertEqual([calibrated.width,calibrated.height],[expectedNeutral.width,expectedNeutral.height])
+        XCTAssertTrue(zip(calibrated.pixels,expectedNeutral.pixels).allSatisfy { simd_distance($0,$1) < 2e-5 })
+    }
     private func checkPublicRAW(_ name: String) async throws {
         let source = try MoreRAWTests.request(name),pipeline = ImagePipeline(cacheIntermediates:true)
         let recipe = try await pipeline.baseline(source)

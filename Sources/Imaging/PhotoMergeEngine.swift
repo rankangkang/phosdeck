@@ -177,7 +177,7 @@ actor PhotoMergeEngine {
             }
             if input.photo.isRAW { recipe.rawDetails.lensCorrection = false }
             let request = ImageRequest(photo:input.photo,root:input.root,recipe:recipe)
-            let frame = try await pipeline.mergeDecode(request,longEdge:nil,whiteBalance:whiteBalance)
+            let frame = try await pipeline.mergeDecode(request,longEdge:nil,whiteBalance:whiteBalance,forDarkCalibration:true)
             try MergeDarkCalibration.accumulate(frame.image,into:&mean,count:index+1)
             requests.append(request)
             decoders.append(.init(version:recipe.decoderVersion,lensCorrection:frame.resolvedLensCorrection))
@@ -194,7 +194,7 @@ actor PhotoMergeEngine {
         return (requests,mean,calibration)
     }
     private func decode(_ request: ImageRequest,longEdge: Int?,whiteBalance: WhiteBalanceValue,dark: MergeImage?) async throws -> MergeFrame {
-        var frame = try await pipeline.mergeDecode(request,longEdge:dark == nil ? longEdge : nil,whiteBalance:whiteBalance)
+        var frame = try await pipeline.mergeDecode(request,longEdge:dark == nil ? longEdge : nil,whiteBalance:whiteBalance,forDarkCalibration:dark != nil)
         if let dark {
             try MergeDarkCalibration.subtract(dark,from:&frame.image)
             if let longEdge { frame.image = try frame.image.resized(longEdge:longEdge) }

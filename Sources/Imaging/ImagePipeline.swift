@@ -196,7 +196,7 @@ actor ImagePipeline {
 
     /// Independent full-float lane for merging originals. No geometry, creative edits,
     /// raster response LUT, global RAW look or preview cache enters the master.
-    func mergeDecode(_ request: ImageRequest,longEdge: Int?,whiteBalance: WhiteBalanceValue) throws -> MergeFrame {
+    func mergeDecode(_ request: ImageRequest,longEdge: Int?,whiteBalance: WhiteBalanceValue,forDarkCalibration: Bool = false) throws -> MergeFrame {
         try autoreleasepool {
             let (lease,url) = try source(request)
             defer { withExtendedLifetime(lease) {} }
@@ -223,6 +223,14 @@ actor ImagePipeline {
                 if raw.isLuminanceNoiseReductionSupported { raw.luminanceNoiseReductionAmount = 0 }
                 if raw.isColorNoiseReductionSupported { raw.colorNoiseReductionAmount = 0 }
                 if raw.isSharpnessSupported { raw.sharpnessAmount = 0 }
+                if forDarkCalibration {
+                    // Scene-dependent detail processing can alter the same hot pixel
+                    // differently in a light and a dark before their linear subtraction.
+                    if raw.isContrastSupported { raw.contrastAmount = 0 }
+                    if raw.isDetailSupported { raw.detailAmount = 0 }
+                    if raw.isMoireReductionSupported { raw.moireReductionAmount = 0 }
+                    if raw.isDespeckleSupported { raw.despeckleAmount = 0 }
+                }
                 guard let output = raw.outputImage else { throw LRCError(L10n.text("app.rawDecodingFailed", defaultValue:"RAW decoding failed")) }
                 image = Self.originZero(output)
             } else {
