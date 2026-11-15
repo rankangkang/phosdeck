@@ -177,6 +177,14 @@ actor ReferenceImporter {
     static func inspect(url: URL, root: StorageRoot, rootURL: URL) throws -> Photo {
         let identity = try FileIdentity.read(url)
         let inspected = try PhotoFileType.inspectSource(url),props = inspected.properties
+        if inspected.tiffPageCount != nil {
+            guard CGImageSourceCreateThumbnailAtIndex(inspected.source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: 256, kCGImageSourceShouldCacheImmediately: true
+            ] as CFDictionary) != nil, CGImageSourceGetStatusAtIndex(inspected.source, 0) == .statusComplete else {
+                throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue: "Cannot decode the image or color profile"))
+            }
+        }
         if PhotoFileType.isRAW(url) && inspected.composite == nil { try PhotoFileType.validateRAWDecode(PhotoFileType.rawFilter(url)) }
         if url.pathExtension.lowercased() == "dng",inspected.composite != nil { _ = try MergeDNGCodec.open(url)?.image() }
         guard try FileIdentity.read(url) == identity else { throw LRCError(L10n.text("app.theSourceChangedDuringImportVerification", defaultValue: "The source changed during import verification")) }
@@ -192,7 +200,7 @@ actor ReferenceImporter {
             orientation: props[kCGImagePropertyOrientation as String] as? Int,
             profile: inspected.composite != nil ? "sRGB IEC61966-2.1 Linear" : inspected.pngICC == false ? nil : props[kCGImagePropertyProfileName as String] as? String,
             focal35mm: (exif?[kCGImagePropertyExifFocalLenIn35mmFilm as String] as? NSNumber)?.doubleValue,
-            composite: inspected.composite?.catalogSummary)
+            composite: inspected.composite?.catalogSummary, tiffPageCount: inspected.tiffPageCount)
         var captured = exif?[kCGImagePropertyExifDateTimeOriginal as String] as? String
         if let original = captured {
             var precise = original

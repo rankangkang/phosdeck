@@ -30,6 +30,7 @@ struct FileIdentity: Codable, Equatable, Sendable {
     let size: Int64
     let modifiedSeconds: Int64
     let modifiedNanoseconds: Int64
+    static let unverified = Self(device: 0, inode: 0, size: 0, modifiedSeconds: 0, modifiedNanoseconds: 0)
     static func read(_ url: URL) throws -> Self {
         var info = stat()
         guard lstat(url.path, &info) == 0 else { throw SafeFileWriter.posix(L10n.text("app.readFileIdentity", defaultValue: "Read File Identity")) }

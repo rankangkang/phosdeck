@@ -64,7 +64,7 @@ extension AppMCPTool {
         case .relocateRoot:
             ("Verify original identities at a new directory selected with relocate_root access. Preserve all relative paths and edits.", "job_id and then root_id, unverified_count, items and commit_state")
         case .locateOriginal:
-            ("Relink the explicit saved photo version to a file selected with locate_original access. Verifies the source revision and original identity.", "job_id and then photo_id, source_id, root_id and commit_state")
+            ("Relink the explicit saved photo version to a file selected with locate_original access. Verifies the source revision and original identity. For a Lightroom reference whose original identity was unavailable at import, select its recorded path.", "job_id and then photo_id, source_id, root_id and commit_state")
         case .planImport:
             ("Preview a reference or copy import with import_source access. Copy requires import_destination access and supports date layout, sidecars and a conflict policy (default ask). To refine candidates or map attachments to copy groups, pass base_plan_id and use IDs from its results.", "job_id and then plan_id, candidate, group and attachment items")
         case .startImport:

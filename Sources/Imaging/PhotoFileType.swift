@@ -11,8 +11,12 @@ enum PhotoFileType {
         "nef": "com.nikon.raw-image", "cr3": "com.canon.cr3-raw-image",
         "raf": "com.fuji.raw-image"
     ]
-    static let editableExtensions = Set(rawTypes.keys).union(["jpg", "jpeg", "tif", "tiff", "png"])
+    static let tiffExtensions: Set<String> = ["tif", "tiff"]
+    static let editableExtensions = Set(rawTypes.keys).union(tiffExtensions).union(["jpg", "jpeg", "png"])
     static func isRAW(_ url: URL) -> Bool { rawTypes[url.pathExtension.lowercased()] != nil }
+    static var multipageTIFFPreviewOnly: String {
+        L10n.text("app.multipageTIFFPreviewOnly", defaultValue: "Multi-page TIFF supports first-page preview only.")
+    }
 
     static func imageSource(_ url: URL) throws -> CGImageSource {
         try inspectSource(url).source
@@ -20,7 +24,7 @@ enum PhotoFileType {
 
     /// The actual iCCP chunk distinguishes an embedded profile from ImageIO's
     /// inferred/calibrated profile names (for example an untagged PNG with gAMA).
-    static func inspectSource(_ url: URL) throws -> (source: CGImageSource, pngICC: Bool?, composite: MergeProvenance?, properties: [String:Any]) {
+    static func inspectSource(_ url: URL) throws -> (source: CGImageSource, pngICC: Bool?, composite: MergeProvenance?, properties: [String:Any], tiffPageCount: Int?) {
         try Task.checkCancellation()
         let ext = url.pathExtension.lowercased()
         let expected = rawTypes[ext] ?? ["jpg": UTType.jpeg.identifier, "jpeg": UTType.jpeg.identifier,
@@ -36,13 +40,16 @@ enum PhotoFileType {
                 kCGImagePropertyPixelHeight as String:nativeDNG.height,kCGImagePropertyOrientation as String:1,
                 kCGImagePropertyDepth as String:32,kCGImagePropertyIsFloat as String:true,
                 kCGImagePropertyHasAlpha as String:true,kCGImagePropertyColorModel as String:"RGB",
-                kCGImagePropertyProfileName as String:"sRGB IEC61966-2.1 Linear"])
+                kCGImagePropertyProfileName as String:"sRGB IEC61966-2.1 Linear"],nil)
         }
-        guard CGImageSourceGetCount(source) == 1, CGImageSourceGetStatus(source) == .statusComplete,
+        let count = CGImageSourceGetCount(source), isTIFF = tiffExtensions.contains(ext)
+        let tiffPageCount = isTIFF && count > 1 ? count : nil
+        guard (count == 1 || tiffPageCount != nil), CGImageSourceGetStatus(source) == .statusComplete,
+              tiffPageCount == nil || CGImageSourceGetStatusAtIndex(source, 0) == .statusComplete,
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
               let width = props[kCGImagePropertyPixelWidth as String] as? Int, width > 0,
               let height = props[kCGImagePropertyPixelHeight as String] as? Int, height > 0 else {
-            throw LRCError(L10n.text("app.theFileIsDamagedIncompleteOrIsNotA", defaultValue: "The file is damaged, incomplete, or is not a single-page image"))
+            throw LRCError(L10n.text("app.theFileIsDamagedIncompleteOrHasUnsupportedPages", defaultValue: "The file is damaged, incomplete, or has unsupported pages"))
         }
         // LightCraft codecs check_size bounds source pixels BEFORE decode, even
         // for a thumbnail. Reuse our existing geometry budget at the same boundary.
@@ -50,10 +57,11 @@ enum PhotoFileType {
         if ext == "jpg" || ext == "jpeg" {
             guard reachesJPEGEnd(try Data(contentsOf:url,options:.mappedIfSafe)) else { throw LRCError(L10n.text("app.jpegScanDataIsIncompleteImportDevelopmentStopped", defaultValue: "JPEG scan data is incomplete. Import / development stopped")) }
         }
-        if ["tif", "tiff"].contains(ext), props[kCGImagePropertyColorModel as String] as? String != "RGB" {
-            throw LRCError(L10n.text("app.onlyStandardRGBSinglePageTIFFFilesAreSupported", defaultValue: "Only standard RGB single-page TIFF files are supported"))
+        if isTIFF, props[kCGImagePropertyColorModel as String] as? String != "RGB" {
+            throw LRCError(L10n.text("app.onlyStandardRGBTIFFFilesAreSupported", defaultValue: "Only standard RGB TIFF files are supported"))
         }
         let composite = try MergeProvenance.read(props)
+        guard tiffPageCount == nil || composite == nil else { throw MergeMasterCodec.invalid }
         var pngICC: Bool?
         if ext == "png" {
             pngICC = try PNGValidation.validate(url)
@@ -62,7 +70,7 @@ enum PhotoFileType {
                 throw LRCError(L10n.text("app.pngPixelsCannotBeDecodedCompletely", defaultValue: "PNG pixels cannot be decoded completely"))
             }
         }
-        return (source,pngICC,composite,props)
+        return (source,pngICC,composite,props,tiffPageCount)
     }
 
     /// Port of codecs/src/jpeg.rs::reaches_eoi, LightCraft 4f0b110 (MIT).

@@ -87,8 +87,7 @@ enum LightroomImporter {
                     if copying { continue }
                     // A unique placeholder retains organization without treating the path as a verified original.
                     let id = UUID().uuidString
-                    let placeholder = FileIdentity(device: 0, inode: 0, size: 0, modifiedSeconds: 0, modifiedNanoseconds: 0)
-                    photo = Photo(id: id, rootID: root.record.id, relativePath: version.path, identity: try JSONEncoder().encode(placeholder),
+                    photo = Photo(id: id, rootID: root.record.id, relativePath: version.path, identity: try JSONEncoder().encode(FileIdentity.unverified),
                                   identityKey: "missing:" + id, captureDate: version.captureDate, width: max(0, version.width),
                                   height: max(0, version.height), availability: "missing")
                     fileAvailable = false
@@ -150,7 +149,8 @@ enum LightroomImporter {
             if photo.caption.isEmpty, !version.caption.isEmpty { warnings.append(version.path + " · " + L10n.text("lightroom.captionRetained", defaultValue: "Caption retained in the source catalog")) }
             if version.master != 0, let master = masters[version.master] { photo.captureDate = master.captureDate }
 
-            if fileAvailable, !version.settings.isEmpty || !version.orientation.isEmpty {
+            if let label = photo.tiffPreviewLabel { warnings.append(version.path + " · " + label) }
+            if fileAvailable, photo.supportsEditing, !version.settings.isEmpty || !version.orientation.isEmpty {
                 do {
                     var properties = version.settings.isEmpty ? [:] : try LightroomSettings.properties(version.settings)
                     let orientation = version.orientation

@@ -422,18 +422,21 @@ actor ImagePipeline {
         if url.pathExtension.lowercased() == "dng",let file = try MergeDNGCodec.open(url) { return try file.image().ciImage() }
         var options: [CIImageOption: Any] = [.applyOrientationProperty: true]
         let inspected = try PhotoFileType.inspectSource(url), source = inspected.source
-        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else { throw LRCError(L10n.text("app.cannotDecodeImageMetadata", defaultValue: "Cannot decode image metadata")) }
+        let properties = inspected.properties
         // Preserve the embedded profile; untagged RGB is explicitly interpreted as sRGB.
         if inspected.pngICC == false || (inspected.pngICC == nil && properties[kCGImagePropertyProfileName as String] == nil) {
             options[.colorSpace] = Self.outputSpace
         }
         let decoded: CIImage
-        if materializeSource {
+        if materializeSource || inspected.tiffPageCount != nil {
             // Full-size JPEG -> RGBAf readback can take Core Image's direct file
             // conversion path, which overruns a decoder buffer on macOS 27 with
             // real 2048px macro JPEGs. ImageIO's decoded bitmap avoids that path;
-            // allow float sources and keep their profile, alpha and orientation.
+            // it also makes page zero explicit for multi-page TIFF previews.
             guard let bitmap = CGImageSourceCreateImageAtIndex(source,0,[kCGImageSourceShouldAllowFloat:true,kCGImageSourceShouldCacheImmediately:true] as CFDictionary) else {
+                throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue:"Cannot decode the image or color profile"))
+            }
+            if inspected.tiffPageCount != nil, CGImageSourceGetStatusAtIndex(source, 0) != .statusComplete {
                 throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue:"Cannot decode the image or color profile"))
             }
             let orientation = (properties[kCGImagePropertyOrientation as String] as? NSNumber)?.int32Value ?? 1
@@ -1234,6 +1237,7 @@ actor ImagePipeline {
 
     func export(_ request: ImageRequest, staging: URL, options: ExportOptions, metadata: ExportMetadata = ExportMetadata()) throws -> (Int, Int) {
         return try autoreleasepool {
+            guard request.photo.details?.tiffPageCount == nil else { throw LRCError(PhotoFileType.multipageTIFFPreviewOnly) }
             try options.validate()
             try metadata.validate(policy: options.metadataPolicy)
             let (lease, url) = try source(request)

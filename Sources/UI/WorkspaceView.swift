@@ -1252,7 +1252,7 @@ struct WorkspaceView: View {
                             }
                         }
                     } else {
-                        Text(L10n.text("app.adjustmentsBecomeAvailableAfterDecodingAndCreatingTheEdit", defaultValue: "Adjustments become available after decoding and creating the edit baseline."))
+                        Text(photo.tiffPreviewLabel ?? L10n.text("app.adjustmentsBecomeAvailableAfterDecodingAndCreatingTheEdit", defaultValue: "Adjustments become available after decoding and creating the edit baseline."))
                             .foregroundStyle(Theme.textSecondary).padding(Metrics.padding)
                         Spacer()
                     }
@@ -1262,7 +1262,8 @@ struct WorkspaceView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(photo.displayName).fontWeight(.semibold)
-                            Text((photo.isRAW ? "RAW" : URL(fileURLWithPath:photo.relativePath).pathExtension.uppercased()) + " · " + photo.versionName).font(.caption11).foregroundStyle(Theme.textSecondary)
+                            Text((photo.tiffPreviewLabel ?? (photo.isRAW ? "RAW" : URL(fileURLWithPath: photo.relativePath).pathExtension.uppercased())) + " · " + photo.versionName)
+                                .font(.caption11).foregroundStyle(Theme.textSecondary)
                             SubgroupLabel(L10n.text("app.versionsAndPairing", defaultValue: "Versions and Pairing"))
                             HStack(spacing: Metrics.gap) {
                                 Menu("RAW/JPEG") { PairMenu(model:model) }.accessibilityLabel(L10n.text("app.rawJPEGPairing", defaultValue: "RAW/JPEG Pairing")).keySurface(height: 24)

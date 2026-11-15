@@ -44,7 +44,15 @@ struct Photo: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatab
         guard PhotoFileType.isRAW(url) else { return false }
         return url.pathExtension.lowercased() != "dng" || details?.composite == nil
     }
-    var supportsEditing: Bool { PhotoFileType.editableExtensions.contains(URL(fileURLWithPath: relativePath).pathExtension.lowercased()) }
+    var tiffPreviewLabel: String? {
+        guard let count = details?.tiffPageCount else { return nil }
+        return L10n.text("app.multipageTIFFPageOneOfCount", defaultValue: "Multi-page TIFF · Page 1 of \(count)")
+    }
+    var supportsEditing: Bool {
+        let ext = URL(fileURLWithPath: relativePath).pathExtension.lowercased()
+        return PhotoFileType.editableExtensions.contains(ext) &&
+            (!PhotoFileType.tiffExtensions.contains(ext) || details?.tiffPageCount == nil)
+    }
 }
 struct PhotoCollection: Codable, FetchableRecord, PersistableRecord, Identifiable, Hashable {
     static let databaseTableName = "collection"
@@ -69,6 +77,8 @@ struct PhotoMetadata: Codable, Equatable {
     var profile: String?
     var focal35mm: Double? = nil
     var composite: MergeProvenance? = nil
+    /// Present for a multi-page TIFF whose first page is available to preview.
+    var tiffPageCount: Int? = nil
     var exposureText: String? {
         guard let value = exposureTime, value > 0 else { return nil }
         return value < 1 ? L10n.text("app.1S", defaultValue: "1/\(Int((1 / value).rounded())) s") : String(format: L10n.text("app.1fS", defaultValue: "%.1f s"), value)

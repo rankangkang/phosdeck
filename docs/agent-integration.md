@@ -212,6 +212,8 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 | `set_photo_rating` | `catalog_session_id`、`photo_id`、`expected_rating`、`rating`（两种评级均为 0 至 5 的整数）、`request_epoch`、`request_id` | `photo_id`、`previous_rating`、`rating`、`changed`、`commit_state`、`operation_id`。复用 `AppModel.updateOrganization` 的保存和回读。MCP 明确指定目标，事务校验期望评级，并关闭自动前进 |
 | `undo_operation` | `catalog_session_id`、`operation_id`、`request_epoch`、`request_id` | 被撤销的 `operation_id`、已核对的恢复结果及 `commit_state`。复用 `AppModel.undo`，栈顶身份或当前值冲突返回 `undo_conflict` |
 
+多页 TIFF 的照片条目和预览包含 `tiff_page_count`。预览始终显示第 1 页，渲染结果的 `tiff_preview_page` 为 `1`、`editable_canvas` 为 `false`。
+
 第二步沿 `CatalogQueryTests`、`StackTests` 和 `WorkflowTests` 验证分页查询跨页、折叠堆叠两种计数、切库后的旧游标和已保存预览版本。用合成图库的一张明确照片验证评级并回读，重复相同请求只产生一次提交，手动改动触发版本冲突，用户在原生菜单可撤销 MCP 评级，MCP 只能撤销匹配的栈顶动作。验证结果同时核对当前照片、数据库、界面及真实客户端返回。
 
 ### 图库和导入接口

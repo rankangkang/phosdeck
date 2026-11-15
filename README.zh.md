@@ -105,7 +105,7 @@ xcodebuild -downloadComponent MetalToolchain
 
 | 项目 | 当前状态 |
 |---|---|
-| 输入 | JPEG、RGB 单页 TIFF、支持范围内的静态 PNG；ARW／NEF／CR3／RAF／部分 DNG 的实际可用性取决于机型、压缩方式与 macOS 解码能力。 |
+| 输入 | JPEG、RGB TIFF（多页文件仅预览首页）、支持范围内的静态 PNG。ARW／NEF／CR3／RAF／部分 DNG 的实际可用性取决于机型、压缩方式与 macOS 解码能力。 |
 | 暂未开放 | HEIC、Apple DNG／ProRAW。 |
 | 输出 | JPEG、PNG8、TIFF16；当前固定为 sRGB，广色域与软打样尚未实现。 |
 | 智能蒙版 | 整个人物选择使用系统 Vision，无需额外权重；对象与部位识别需要另行准备的研究模型。手动蒙版和已保存选区可在缺少模型时使用。人脸权重的分发授权尚待核实，详见[模型说明](docs/smart-mask-models.md)。 |

@@ -6,7 +6,7 @@ Use the registered tool schemas. Supply the current `catalog_session_id` where a
 
 - Call `request_file_access` with the purpose for the next operation. Tell the user which file or folder to choose in Phosdeck. Follow `user_action` if a second panel asks for the containing folder. Use the returned `access_id` only for its stated purpose and catalog session.
 - For a known recent catalog, use the ID from `list_recent_catalogs`. Otherwise request `open_catalog` access, then call `open_catalog`. For a new catalog, request `create_catalog` access and pass a name to `create_catalog`. Wait for the user to handle any legacy extension choice in Phosdeck, then refresh the workspace.
-- Use `list_library_sources` for root, folder and collection IDs. Relocate a root with `relocate_root` access and check the unverified items. For an individual original, pass `locate_original` access, the exact photo version ID and its saved source revision to `locate_photo_original`.
+- Use `list_library_sources` for root, folder and collection IDs. Relocate a root with `relocate_root` access and check the unverified items. For an individual original, pass `locate_original` access, the exact photo version ID and its saved source revision to `locate_photo_original`. For a Lightroom reference whose original identity was unavailable at import, choose the file at the recorded path.
 
 ## Import and folder review
 

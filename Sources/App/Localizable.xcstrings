@@ -24396,6 +24396,40 @@
         }
       }
     },
+    "app.multipageTIFFPageOneOfCount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Multi-page TIFF · Page 1 of %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "多页 TIFF · 第 1 页，共 %lld 页"
+          }
+        }
+      }
+    },
+    "app.multipageTIFFPreviewOnly": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Multi-page TIFF supports first-page preview only."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "多页 TIFF 仅支持第一页预览。"
+          }
+        }
+      }
+    },
     "app.multipleFacesFoundSelectOneOrDrawAFace": {
       "extractionState": "manual",
       "comment": "Sources/App/SmartMaskEditing.swift: 252",
@@ -26644,20 +26678,19 @@
         }
       }
     },
-    "app.onlyStandardRGBSinglePageTIFFFilesAreSupported": {
+    "app.onlyStandardRGBTIFFFilesAreSupported": {
       "extractionState": "manual",
-      "comment": "Sources/Imaging/PhotoFileType.swift: 44",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Only standard RGB single-page TIFF files are supported"
+            "value": "Only standard RGB TIFF files are supported"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "仅支持常规 RGB 单页 TIFF"
+            "value": "仅支持常规 RGB TIFF"
           }
         }
       }
@@ -39581,20 +39614,19 @@
         }
       }
     },
-    "app.theFileIsDamagedIncompleteOrIsNotA": {
+    "app.theFileIsDamagedIncompleteOrHasUnsupportedPages": {
       "extractionState": "manual",
-      "comment": "Sources/Imaging/PhotoFileType.swift: 35",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The file is damaged, incomplete, or is not a single-page image"
+            "value": "The file is damaged, incomplete, or has unsupported pages"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "文件损坏、不完整或不是单页图像"
+            "value": "文件损坏、不完整或含有不支持的页面"
           }
         }
       }

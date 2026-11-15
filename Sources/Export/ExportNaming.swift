@@ -59,6 +59,7 @@ enum ExportNamingPlanner {
             if stem != raw { warnings.append(L10n.text("app.invalidCharactersReplacedWithLeadingTrailingSpacesAndDots", defaultValue: "Invalid characters replaced with _; leading / trailing spaces and dots removed; Unicode normalized")) }
             let filename = stem + "." + options.format.fileExtension
             var errors = [String]()
+            if photo.details?.tiffPageCount != nil { errors.append(PhotoFileType.multipageTIFFPreviewOnly) }
             if stem.isEmpty { errors.append(L10n.text("app.theNameCannotBeEmpty", defaultValue: "The name cannot be empty")) }
             if filename.utf8.count > 240 { errors.append(L10n.text("app.theFilenameExceeds240UTF8BytesIncludingThe", defaultValue: "The filename exceeds 240 UTF-8 bytes including the extension. Shorten the prefix / suffix or omit the original name")) }
             // Windows reserved names are refused even when exporting on macOS.

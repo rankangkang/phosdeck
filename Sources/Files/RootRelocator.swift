@@ -10,7 +10,13 @@ struct SourceRelocation {
     let relativePath: String
     let identity: FileIdentity
     let attachments: [String: String]
+    var inspectedReference: Photo? = nil
     var url: URL { URL(fileURLWithPath: root.path).appendingPathComponent(relativePath) }
+    var verifiesUnidentifiedReference: Bool {
+        source.availability != "available" && source.digest == nil && source.identityKey == "missing:" + source.id &&
+            (try? JSONDecoder().decode(FileIdentity.self, from: source.identity)) == .unverified &&
+            source.rootID == root.id && source.relativePath == relativePath
+    }
 }
 
 actor RootRelocator {
@@ -20,8 +26,8 @@ actor RootRelocator {
         let message: String
     }
     // Workflow reference: lightcraft 4f0b110 cmd/missing.rs and tests_import.rs.
-    // Native policy is stricter: the same content/identity is required, versions
-    // share one source, and existing frozen exports are never rewritten.
+    // Verify an existing identity, or inspect an unverified Lightroom reference
+    // at its recorded path. Versions share one source and frozen exports stay put.
     func prepare(_ source: CatalogSource, file: URL, directory: URL? = nil, catalog: CatalogStore) throws -> SourceRelocation {
         try Task.checkCancellation()
         let fileAccess = AccessLease(url: file)
@@ -47,8 +53,13 @@ actor RootRelocator {
         }
         let prefix = root.path == "/" ? "/" : root.path + "/"
         let attachments = try catalog.database.read { try Self.attachments($0, sourceID: source.id) }
-        let proposal = SourceRelocation(source: source, root: root, relativePath: String(url.path.dropFirst(prefix.count)),
+        var proposal = SourceRelocation(source: source, root: root, relativePath: String(url.path.dropFirst(prefix.count)),
                                         identity: identity, attachments: attachments)
+        if proposal.verifiesUnidentifiedReference {
+            let lease = try AccessLease(bookmark: root.bookmark)
+            defer { withExtendedLifetime(lease) {} }
+            proposal.inspectedReference = try ReferenceImporter.inspect(url: url, root: root, rootURL: lease.url)
+        }
         try verify(proposal)
         try catalog.database.read { try Self.checkCatalog($0, proposal) }
         return proposal
@@ -70,8 +81,16 @@ actor RootRelocator {
         let identity = oldIdentity == proposal.identity ? proposal.source.identity : try JSONEncoder().encode(proposal.identity)
         // The existing trigger projects this mapping to every version, including
         // retained/deleted versions. All per-version organization and edits stay put.
-        try db.execute(sql: "UPDATE photoSource SET rootID=?,relativePath=?,identity=?,identityKey=?,availability='available' WHERE id=?",
-                       arguments: [proposal.root.id, proposal.relativePath, identity, proposal.identity.key, proposal.source.id])
+        if let inspected = proposal.inspectedReference {
+            try db.execute(sql: """
+                UPDATE photoSource SET identity=?,identityKey=?,revision=revision+1,availability='available',
+                    width=?,height=?,camera=?,metadata=?,captureDate=coalesce(captureDate,?) WHERE id=?
+                """, arguments: [identity, proposal.identity.key, inspected.width, inspected.height, inspected.camera,
+                                  inspected.metadata, inspected.captureDate, proposal.source.id])
+        } else {
+            try db.execute(sql: "UPDATE photoSource SET rootID=?,relativePath=?,identity=?,identityKey=?,availability='available' WHERE id=?",
+                           arguments: [proposal.root.id, proposal.relativePath, identity, proposal.identity.key, proposal.source.id])
+        }
     }
 
     func verify(_ proposal: SourceRelocation) throws {
@@ -86,6 +105,11 @@ actor RootRelocator {
               try FileIdentity.read(proposal.url) == proposal.identity else { throw LRCError(L10n.text("app.theCandidateFileOrAuthorizedLocationChangedLocateIt", defaultValue: "The candidate file or authorized location changed. Locate it again")) }
         if let digest = proposal.source.digest {
             guard try SafeFileWriter.sha256(proposal.url) == digest else { throw LRCError(L10n.text("app.candidateContentsDifferFromTheOriginalLocationAndOrganization", defaultValue: "Candidate contents differ from the original. Location and organization preserved")) }
+        } else if let inspected = proposal.inspectedReference {
+            guard proposal.verifiesUnidentifiedReference,
+                  try JSONDecoder().decode(FileIdentity.self, from: inspected.identity) == proposal.identity else {
+                throw LRCError(L10n.text("app.theCandidateChangedDuringVerificationOriginalLocationPreserved", defaultValue: "The candidate changed during verification. Original location preserved"))
+            }
         } else {
             guard try JSONDecoder().decode(FileIdentity.self, from: proposal.source.identity) == proposal.identity else {
                 throw LRCError(L10n.text("app.noOriginalDigestIsAvailableToVerifyThisCandidate", defaultValue: "No original digest is available to verify this candidate. Location and organization preserved"))

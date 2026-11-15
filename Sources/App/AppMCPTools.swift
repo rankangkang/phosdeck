@@ -712,7 +712,7 @@ enum AppMCPTool: String, CaseIterable {
             output = "items with number, photo_id, name, version_name, source_revision, recipe_revision, marks, source_status and stack. query_mode, source_id, page_offset, matched_count, visible_count and next_cursor. With contact_sheet, items also describe cell_pixels, image_pixels and thumbnail_status for the numbered PNG. Pass a candidate's ID and revisions to get_photo_preview with resolution=native for a 1:1 region."
         case .preview:
             description = "Render an explicit photo version as an sRGB PNG when image sharing is on. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. The default scaled resolution accepts a normalized top-left region. Use resolution=native with region or an integer top-left region_pixels for an unscaled tile of the edited frame. Omit long_edge in native mode. Use plan_only=true to check the tile dimensions and limits without receiving pixels; omit the region to inspect the full frame. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
-            output = "Photo revisions, canvas dimensions, region, actual width and height. Native requests also report region_pixels, fits and limits, and suggest a smaller region when needed. Rendered previews include preview_id, coordinate_space, editable_canvas, histogram, and a PNG content block."
+            output = "Photo revisions, canvas dimensions, region, actual width and height. Native requests also report region_pixels, fits and limits, and suggest a smaller region when needed. Rendered previews include preview_id, coordinate_space, editable_canvas, histogram, and a PNG content block. Multi-page TIFF previews report tiff_page_count and tiff_preview_page (1)."
         case .editPhotoDraft:
             description = "Begin an in-memory photo draft for exposure, color, preset strength, local masks and spot repairs with explicit photo_id, source_revision and recipe_revision. Poll get_job for draft_id and draft_revision. Pass them to draft-aware editing and preview tools. Commit with the current draft_id and draft_revision to create one saved edit and undo action, or cancel with the same fields to discard the draft. There is one active draft per catalog session."
             output = "job_id for begin and commit; draft identity, current revision and photo revisions on begin; saved revisions and operation_id on commit; discarded on cancel."
@@ -1286,6 +1286,7 @@ final class AppMCPTools {
                 "camera": photo.camera.map { .string(String($0.prefix(256))) } ?? .null,
                 "lens": metadata?.lens.map { .string(String($0.prefix(256))) } ?? .null,
                 "iso": metadata?.iso.map(Value.int) ?? .null,
+                "tiff_page_count": metadata?.tiffPageCount.map(Value.int) ?? .null,
                 "capture_date": LibraryMetadataFilter.day(photo.captureDate).map(Value.string) ?? .null]
     }
 
@@ -1350,6 +1351,10 @@ final class AppMCPTools {
             }
             let request = ImageRequest(photo: photo, root: root, recipe: recipe)
             var data = MCPDevelopPhoto.revisions(photo)
+            if let count = photo.details?.tiffPageCount {
+                data["tiff_page_count"] = .int(count)
+                data["tiff_preview_page"] = .int(1)
+            }
             data.merge(selection.description) { _, value in value }
             if let draft { data.merge(draft.data) { _, value in value } }
             if planOnly {

@@ -1,4 +1,7 @@
 import XCTest
+import CoreImage
+import ImageIO
+import UniformTypeIdentifiers
 import GRDB
 @testable import Phosdeck
 
@@ -105,6 +108,111 @@ final class LightroomImportTests: XCTestCase {
         let root = try XCTUnwrap(reopened.roots().first)
         let rendered = try await pipeline.render(ImageRequest(photo: photo, root: root, recipe: recipe), longEdge: 100)
         XCTAssertEqual(rendered.image.width, 10)
+    }
+
+    func testMultipageTIFFPreviewsFirstPageAndVerifiesUnidentifiedReferenceInPlace() async throws {
+        let fixture = ImportTests(); try fixture.setUpWithError(); defer { try? fixture.tearDownWithError() }
+        let file = try source(fixture)
+        let database = try DatabaseQueue(path: file.path)
+        try await database.write { db in
+            try db.execute(sql: "UPDATE AgLibraryFile SET idx_filename = 'Layered.tiff' WHERE id_local = 1")
+        }
+        try database.close()
+        let preview = try LightroomCatalog.preview(file)
+        let pipeline = ImagePipeline()
+        let missingImport = try await LightroomImporter.run(preview, locations: [1: fixture.source],
+            destination: fixture.target.appendingPathComponent("Unverified"), copying: false, pipeline: pipeline)
+        let catalog = try CatalogStore(fileURL: missingImport.catalog)
+        let missing = try XCTUnwrap(try catalog.photos().first { $0.name == "Layered.tiff" && !$0.isVirtualCopy })
+        let root = try XCTUnwrap(try catalog.roots().first)
+        let album = try XCTUnwrap(try catalog.collections().first)
+        let members = try catalog.collectionContents(album.id).members
+        let source = try XCTUnwrap(try catalog.source(missing.sourceKey))
+        XCTAssertEqual(missing.availability, "missing")
+
+        let url = URL(fileURLWithPath: root.path).appendingPathComponent(missing.relativePath)
+        let context = CIContext()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, UTType.tiff.identifier as CFString, 2, nil))
+        let red = CIImage(color: CIColor(red: 1, green: 0, blue: 0)).cropped(to: CGRect(x: 0, y: 0, width: 40, height: 24))
+        let green = CIImage(color: CIColor(red: 0, green: 1, blue: 0)).cropped(to: CGRect(x: 0, y: 0, width: 16, height: 20))
+        for page in [red, green] {
+            let image = try XCTUnwrap(context.createCGImage(page, from: page.extent, format: .RGBA8, colorSpace: ImagePipeline.outputSpace))
+            CGImageDestinationAddImage(destination, image, nil)
+        }
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let digest = try SafeFileWriter.sha256(url)
+
+        let sibling = url.deletingLastPathComponent().appendingPathComponent("Other.tiff")
+        try FileManager.default.copyItem(at: url, to: sibling)
+        let relocator = RootRelocator()
+        do {
+            _ = try await relocator.prepare(source, file: sibling, catalog: catalog)
+            XCTFail("The unidentified reference accepted a different path")
+        } catch {
+            XCTAssertEqual(try catalog.source(source.id), source)
+        }
+        let proposal = try await relocator.prepare(source, file: url, catalog: catalog)
+        try await relocator.commit(proposal, catalog: catalog)
+        let restored = try XCTUnwrap(try catalog.photos().first { $0.id == missing.id })
+        let versions = try catalog.photos().filter { $0.sourceKey == source.id }
+        XCTAssertEqual(versions.count, 2)
+        for version in versions {
+            XCTAssertEqual(version.relativePath, missing.relativePath)
+            XCTAssertEqual(version.availability, "available")
+            XCTAssertEqual(version.revision, missing.revision + 1)
+            XCTAssertEqual(version.details?.tiffPageCount, 2)
+            XCTAssertEqual(version.width, 40)
+            XCTAssertEqual(version.height, 24)
+            XCTAssertFalse(version.supportsEditing)
+            XCTAssertNil(version.recipe)
+        }
+        XCTAssertEqual(restored.rating, missing.rating)
+        XCTAssertEqual(restored.captureDate, missing.captureDate)
+        XCTAssertEqual(try catalog.collectionContents(album.id).members, members)
+
+        let freshImport = try await LightroomImporter.run(preview, locations: [1: fixture.source],
+            destination: fixture.target.appendingPathComponent("Referenced TIFF"), copying: false, pipeline: pipeline)
+        let freshCatalog = try CatalogStore(fileURL: freshImport.catalog)
+        let fresh = try XCTUnwrap(try freshCatalog.photos().first { $0.name == "Layered.tiff" && !$0.isVirtualCopy })
+        XCTAssertEqual(fresh.availability, "available")
+        XCTAssertEqual(fresh.details, restored.details)
+        XCTAssertNil(fresh.recipe)
+        let label = try XCTUnwrap(fresh.tiffPreviewLabel)
+        XCTAssertTrue(freshImport.warnings.contains { $0.contains("Layered.tiff") && $0.hasSuffix(label) })
+
+        func pixel(_ image: CGImage) -> [UInt8] {
+            var bytes = [UInt8](repeating: 0, count: 4)
+            context.render(CIImage(cgImage: image), toBitmap: &bytes, rowBytes: bytes.count,
+                bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: ImagePipeline.outputSpace)
+            return bytes
+        }
+        let request = ImageRequest(photo: restored, root: root, recipe: nil)
+        let rendered = try await pipeline.render(request, longEdge: nil)
+        XCTAssertEqual(rendered.fullSize, CGSize(width: 40, height: 24))
+        XCTAssertEqual(pixel(rendered.image), [255, 0, 0, 255])
+        let thumbnail = try await ThumbnailService().image(photo: restored, root: root, edge: 20)
+        XCTAssertEqual(thumbnail.width, 20)
+        XCTAssertEqual(thumbnail.height, 12)
+        XCTAssertEqual(pixel(thumbnail), [255, 0, 0, 255])
+
+        let output = fixture.target.appendingPathComponent("Output.tif")
+        let options = ExportOptions(format: .tiff)
+        let names = try ExportNamingPlanner.preview(photos: [restored], options: options)
+        XCTAssertEqual(names.first?.errors, [PhotoFileType.multipageTIFFPreviewOnly])
+        do {
+            _ = try await pipeline.export(request, staging: output, options: options)
+            XCTFail("Export silently flattened a multi-page TIFF")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, PhotoFileType.multipageTIFFPreviewOnly)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+        }
+        XCTAssertEqual(try SafeFileWriter.sha256(url), digest)
+        let original = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
+        XCTAssertEqual(CGImageSourceGetCount(original), 2)
+        let secondPage = try XCTUnwrap(CGImageSourceCreateImageAtIndex(original, 1, nil))
+        XCTAssertEqual(secondPage.width, 16)
+        XCTAssertEqual(secondPage.height, 20)
+        XCTAssertEqual(pixel(secondPage), [0, 255, 0, 255])
     }
 
     func testStraightenedCropKeepsSourceScaleWithRotatedMirroredOrientation() async throws {
