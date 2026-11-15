@@ -948,7 +948,8 @@ actor ImagePipeline {
         image = originZero(image.oriented(orientations[recipe.quarterTurns]))
         let size = image.extent.size
         if recipe.straightenDegrees != 0 {
-            image = image.transformed(by: CropPreviewGeometry.transform(size: size, degrees: recipe.straightenDegrees))
+            image = image.transformed(by: CropPreviewGeometry.transform(size: size, degrees: recipe.straightenDegrees,
+                                                                         autoZoom: recipe.straightenAutoZoom))
                 .cropped(to: CGRect(origin: .zero, size: size))
         }
         let sx = size.width / geometry.canvas.width, sy = size.height / geometry.canvas.height

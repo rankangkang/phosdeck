@@ -110,6 +110,7 @@ enum DevelopGroup: String, CaseIterable, Identifiable, Hashable {
             value.quarterTurns = neutral.quarterTurns
             value.crop = neutral.crop
             value.straightenDegrees = neutral.straightenDegrees
+            value.straightenAtSourceScale = neutral.straightenAtSourceScale
             value.cropAspectRatio = neutral.cropAspectRatio
             value.flipHorizontal = neutral.flipHorizontal
             value.flipVertical = neutral.flipVertical

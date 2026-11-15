@@ -156,9 +156,20 @@ enum LightroomImporter {
                     let orientation = version.orientation
                     let requiresRecipe = !properties.isEmpty || !orientation.isEmpty && orientation != "AB"
                     if requiresRecipe {
-                        let baseline = try await pipeline.baseline(ImageRequest(photo: photo, root: root.record, recipe: nil))
+                        let request = ImageRequest(photo: photo, root: root.record, recipe: nil)
+                        let baseline = try await pipeline.baseline(request)
                         var recipe = baseline
-                        let geometry = LightroomSettings.applyGeometry(&properties, orientation: orientation, photo: photo, recipe: &recipe)
+                        if photo.isRAW, let correction = LightroomSettings.cameraLensCorrection(in: properties),
+                           let defaults = try? await pipeline.rawDefaults(request), defaults.lensCorrection != nil {
+                            recipe.rawDetails.lensCorrection = correction
+                            properties.removeValue(forKey: "LensProfileEnable")
+                        }
+                        let angle = LightroomSettings.cropAngle(in: properties)
+                        let sourceSize = angle != 0 && (-45...45).contains(angle) ?
+                            try? await pipeline.geometrySourceSize(ImageRequest(photo: photo, root: root.record, recipe: recipe)) : nil
+                        try Task.checkCancellation()
+                        let geometry = LightroomSettings.applyGeometry(&properties, orientation: orientation, photo: photo,
+                                                                       sourceSize: sourceSize, recipe: &recipe)
                         if !properties.isEmpty {
                             let draft = try XMPPresetReader.convert(properties, filename: "Lightroom")
                             recipe = try draft.settings.resolved(on: recipe, options: draft.settings.options)

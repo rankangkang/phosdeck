@@ -81,7 +81,10 @@ struct DevelopPanel: View {
             }
             if !local && model.cropMode {
                 if isVisible(.crop) { PanelSection(L10n.text("app.cropStraightenAndFlip", defaultValue: "Crop, Straighten, and Flip"), group: .crop, isExpanded: $cropOpen, reset: {
-                    change { $0.crop = Crop(); $0.quarterTurns = 0; $0.straightenDegrees = 0; $0.cropAspectRatio = nil; $0.flipHorizontal = false; $0.flipVertical = false }
+                    change {
+                        $0.crop = Crop(); $0.quarterTurns = 0; $0.straightenDegrees = 0; $0.straightenAtSourceScale = nil
+                        $0.cropAspectRatio = nil; $0.flipHorizontal = false; $0.flipVertical = false
+                    }
                 }, modified: isModified(.crop), previewing: previewingGroup == .crop, preview: previewHandler(.crop), previewPulse: previewPulseHandler(.crop)) { crop.sectionContent() } }
                 if isVisible(.perspective) { PanelSection(L10n.text("geometry.title", defaultValue: "Perspective"), group: .perspective, isExpanded: $perspectiveOpen, reset: { change { $0.perspective = PerspectiveSettings() } }, modified: isModified(.perspective), previewing: previewingGroup == .perspective, preview: previewHandler(.perspective), previewPulse: previewPulseHandler(.perspective)) {
                     perspective.sectionContent()

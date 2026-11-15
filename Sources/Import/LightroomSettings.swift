@@ -88,9 +88,27 @@ enum LightroomSettings {
         return properties
     }
 
+    static func cropAngle(in properties: [String: [String]]) -> Double {
+        properties["CropAngle"].map { $0.first.flatMap(Double.init) ?? .nan } ?? 0
+    }
+
+    static func cameraLensCorrection(in properties: [String: [String]]) -> Bool? {
+        guard properties["LensProfileName"] == ["Camera Settings"],
+              properties["LensProfileSetup"] == ["LensDefaults"] else { return nil }
+        let scales = ["LensProfileDistortionScale", "LensProfileChromaticAberrationScale", "LensProfileVignettingScale"]
+        guard scales.allSatisfy({ key in
+            properties[key].map { $0.count == 1 && Double($0[0]) == 100 } ?? true
+        }) else { return nil }
+        switch properties["LensProfileEnable"]?.first {
+        case "1", "true": return true
+        case "0", "false": return false
+        default: return nil
+        }
+    }
+
     /// Map Lightroom's stored-image orientation to a transform after native EXIF decoding.
     static func applyGeometry(_ properties: inout [String: [String]], orientation: String, photo: Photo,
-                              recipe: inout EditRecipe) -> [String] {
+                              sourceSize: CGSize?, recipe: inout EditRecipe) -> [String] {
         let orientations = ["AB", "BA", "CD", "DC", "AD", "BC", "CB", "DA"]
         let source = min(8, max(1, photo.details?.orientation ?? 1)) - 1
         let target = orientations.firstIndex(of: orientation) ?? source
@@ -120,17 +138,40 @@ enum LightroomSettings {
         }
         var notes = orientation.isEmpty || orientations.contains(orientation) ? [] : ["Orientation \(orientation)"]
         let edges = ["CropLeft", "CropTop", "CropRight", "CropBottom"]
-        let angle = properties["CropAngle"].map { $0.first.flatMap(Double.init) ?? .nan } ?? 0
+        let angle = cropAngle(in: properties)
         guard edges.contains(where: { properties[$0] != nil }) || angle != 0 else { return notes }
         let values = zip(edges, [0.0, 0.0, 1.0, 1.0]).map { key, fallback in
             properties[key].map { $0.first.flatMap(Double.init) ?? .nan } ?? fallback
         }
-        if angle == 0, values.allSatisfy({ (0...1).contains($0) }), values[0] < values[2], values[1] < values[3] {
-            let a = oriented(CGPoint(x: values[0], y: values[1]), target)
-            let b = oriented(CGPoint(x: values[2], y: values[3]), target)
-            recipe.crop = recipe.cropFromDisplay(Crop(x: min(a.x, b.x), y: 1 - max(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y)))
-            for key in edges + ["CropAngle", "HasCrop"] { properties.removeValue(forKey: key) }
-        } else { notes.append("CropAngle / Crop") }
+        guard (-45...45).contains(angle), values.allSatisfy({ (0...1).contains($0) }),
+              values[0] < values[2], values[1] < values[3] else { return notes + ["CropAngle / Crop"] }
+        var a = CGPoint(x: values[0], y: values[1]), b = CGPoint(x: values[2], y: values[3])
+        if angle != 0 {
+            guard notes.isEmpty, let size = sourceSize, (try? PhotoGeometry.checkSize(size)) != nil else {
+                return notes + ["CropAngle / Crop"]
+            }
+            let stored = source >= 4 ? CGSize(width: size.height, height: size.width) : size
+            let rotation = CropPreviewGeometry.transform(size: stored, degrees: angle, autoZoom: false)
+            // The stored edges are opposing corners in the unrotated image.
+            // Rotate in pixels before applying the saved orientation.
+            func rotated(_ point: CGPoint) -> CGPoint {
+                let p = CGPoint(x: point.x * stored.width, y: (1 - point.y) * stored.height).applying(rotation)
+                return CGPoint(x: p.x / stored.width, y: 1 - p.y / stored.height)
+            }
+            a = rotated(a); b = rotated(b)
+        }
+        a = oriented(a, target); b = oriented(b, target)
+        let left = min(a.x, b.x), right = max(a.x, b.x), top = min(a.y, b.y), bottom = max(a.y, b.y)
+        guard left >= 0, top >= 0, right <= 1, bottom <= 1, right > left, bottom > top else {
+            return notes + ["CropAngle / Crop"]
+        }
+        recipe.crop = recipe.cropFromDisplay(Crop(x: left, y: 1 - bottom, width: right - left, height: bottom - top))
+        if angle != 0 {
+            // EXIF reflections reverse angle handedness. The relative flip is applied after cropping.
+            recipe.straightenDegrees = [1, 3, 4, 6].contains(source) ? -angle : angle
+            recipe.straightenAtSourceScale = true
+        }
+        for key in edges + ["CropAngle", "HasCrop"] { properties.removeValue(forKey: key) }
         return notes
     }
 

@@ -13,6 +13,7 @@ struct MetalPhotoView: NSViewRepresentable {
     var zoomScale = 1.0
     var fill = false
     var cropAngle: Double?
+    var cropAutoZoom = true
     var onClick: ((CGPoint) -> Void)?
     var onPan: ((CGPoint) -> Void)?
     var accessibilityName = L10n.text("app.photoCanvas", defaultValue: "Photo Canvas")
@@ -51,7 +52,7 @@ struct MetalPhotoView: NSViewRepresentable {
         let targetChanged = view.targetedToolID != targetedToolID
         let cursorChanged = targetChanged || (view.source == nil) != (image == nil) || view.actualPixels != actualPixels || view.fill != fill || view.cropAngle != cropAngle ||
             (view.onZoneSample == nil) != (onZoneSample == nil) || (view.maskEditing == nil) != (maskEditing == nil) || (view.spotEditing == nil) != (spotEditing == nil)
-        let changed = maskChanged || spotChanged || view.source !== image || view.actualPixels != actualPixels || view.photoID != photoID || view.nativeSize != nativeSize || view.backdrop != backdrop || view.displayCenter != viewport.center || view.zoomScale != zoomScale || view.fill != fill || view.cropAngle != cropAngle
+        let changed = maskChanged || spotChanged || view.source !== image || view.actualPixels != actualPixels || view.photoID != photoID || view.nativeSize != nativeSize || view.backdrop != backdrop || view.displayCenter != viewport.center || view.zoomScale != zoomScale || view.fill != fill || view.cropAngle != cropAngle || view.cropAutoZoom != cropAutoZoom
             || view.clipShadows != nextShadows || view.clipHighlights != nextHighlights || view.readoutEnabled != nextReadoutEnabled || view.splitSource !== splitBefore
         view.clipShadows = nextShadows; view.clipHighlights = nextHighlights; view.splitSource = splitBefore
         let zoomChanged = view.actualPixels != actualPixels || view.zoomScale != zoomScale || view.fill != fill
@@ -66,7 +67,8 @@ struct MetalPhotoView: NSViewRepresentable {
         ])
         view.photoID = photoID; view.nativeSize = nativeSize; view.backdrop = backdrop
         view.actualPixels = actualPixels
-        view.zoomScale = zoomScale; view.fill = fill; view.cropAngle = cropAngle; view.onClick = onClick
+        view.zoomScale = zoomScale; view.fill = fill; view.cropAngle = cropAngle; view.cropAutoZoom = cropAutoZoom
+        view.onClick = onClick
         view.onPan = onPan; view.setAccessibilityLabel(accessibilityName)
         view.onPixelReadout = onPixelReadout
         view.readoutEnabled = nextReadoutEnabled
@@ -260,6 +262,7 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
     var zoomScale = 1.0
     var fill = false
     var cropAngle: Double? { didSet { if oldValue != cropAngle { renderer?.invalidate() } } }
+    var cropAutoZoom = true { didSet { if oldValue != cropAutoZoom { renderer?.invalidate() } } }
     var onClick: ((CGPoint) -> Void)?
     var onPan: ((CGPoint) -> Void)?
     var targetedToolID: String?
@@ -426,7 +429,7 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
             let translated: CIImage
             if let angle = cropAngle {
                 clearSpotOverlay()
-                let turned = input.transformed(by: CropPreviewGeometry.transform(size: input.extent.size, degrees: angle))
+                let turned = input.transformed(by: CropPreviewGeometry.transform(size: input.extent.size, degrees: angle, autoZoom: cropAutoZoom))
                 let extent = turned.extent
                 let scale = min(drawableSize.width / extent.width, drawableSize.height / extent.height)
                 translated = turned.transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY))

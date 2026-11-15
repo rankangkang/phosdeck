@@ -10,8 +10,9 @@ struct PerspectiveGuideFrame {
     init(sourceSize: CGSize, imageSize: CGSize, canvas: CGSize, recipe: EditRecipe) throws {
         self.sourceSize = sourceSize; self.imageSize = imageSize
         geometry = try PhotoGeometry(size: sourceSize, recipe: recipe.cropRenderRecipe)
-        frame = CropPreviewGeometry.outputFrame(size: imageSize, canvas: canvas, degrees: recipe.cropPreviewAngle)
-        rotation = CropPreviewGeometry.transform(size: imageSize, degrees: recipe.cropPreviewAngle)
+        frame = CropPreviewGeometry.outputFrame(size: imageSize, canvas: canvas, degrees: recipe.cropPreviewAngle,
+                                                autoZoom: recipe.straightenAutoZoom)
+        rotation = CropPreviewGeometry.transform(size: imageSize, degrees: recipe.cropPreviewAngle, autoZoom: recipe.straightenAutoZoom)
     }
     func view(_ point: MaskPoint) -> CGPoint? {
         guard let p = geometry.transform.point(CGPoint(x: point.x*sourceSize.width, y: point.y*sourceSize.height)) else { return nil }

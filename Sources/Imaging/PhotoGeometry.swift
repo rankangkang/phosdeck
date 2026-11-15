@@ -122,7 +122,7 @@ extension CGPoint {
 }
 
 /// EXIF is already applied by the decoder. Then: quarter turn → existing
-/// straighten (including its existing zoom) → perspective/aspect in the fixed
+/// straighten (including automatic zoom when enabled) → perspective/aspect in the fixed
 /// turned canvas → inward constrained/integral crop → reflections.
 struct PhotoGeometry {
     let canvas: CGSize
@@ -183,7 +183,7 @@ struct PhotoGeometry {
         } else { cropRect = requested }
         try Self.checkSize(cropRect.size)
         transform = PhotoTransform(turn)
-            .concatenating(CropPreviewGeometry.transform(size: canvas, degrees: r.straightenDegrees))
+            .concatenating(CropPreviewGeometry.transform(size: canvas, degrees: r.straightenDegrees, autoZoom: r.straightenAutoZoom))
             .concatenating(perspective)
             .concatenating(CGAffineTransform(translationX: -cropRect.minX, y: -cropRect.minY))
             .concatenating(MaskGeometry.flipTransform(size: cropRect.size, horizontal: r.flipHorizontal, vertical: r.flipVertical))

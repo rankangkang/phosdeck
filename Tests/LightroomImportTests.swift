@@ -107,6 +107,63 @@ final class LightroomImportTests: XCTestCase {
         XCTAssertEqual(rendered.image.width, 10)
     }
 
+    func testStraightenedCropKeepsSourceScaleWithRotatedMirroredOrientation() async throws {
+        let fixture = ImportTests(); try fixture.setUpWithError(); defer { try? fixture.tearDownWithError() }
+        let file = try source(fixture)
+        let database = try DatabaseQueue(path: file.path)
+        // These corners describe the 20 × 10 source rectangle whose rotated
+        // edges are x = 4.3…14.7 and y = 2.3…7.4 in top-left pixels.
+        let settings = """
+        s = { Exposure2012 = 0.25, CropAngle = 22.5, CropLeft = 0.2883565966035704,
+              CropTop = 0.032422969773851396, CropRight = 0.6711896782563416,
+              CropBottom = 0.9015923010143011 }
+        """
+        try await database.write { db in
+            try db.execute(sql: "UPDATE Adobe_images SET orientation = 'AD' WHERE id_local = 1")
+            try db.execute(sql: "UPDATE Adobe_imageDevelopSettings SET text = ? WHERE image = 1", arguments: [settings])
+        }
+        try database.close()
+        let sourceCatalog = try LightroomCatalog.preview(file)
+        let pipeline = ImagePipeline()
+        let imported = try await LightroomImporter.run(sourceCatalog, locations: [1: fixture.source],
+            destination: fixture.target.appendingPathComponent("Straightened"), copying: false, pipeline: pipeline)
+        let catalog = try CatalogStore(fileURL: imported.catalog)
+        let photo = try XCTUnwrap(try catalog.photos().first { $0.name == "A.jpg" && !$0.isVirtualCopy })
+        let root = try XCTUnwrap(try catalog.roots().first)
+        let recipe = try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(photo.recipe))
+        XCTAssertEqual(recipe.exposure, 0.25)
+        XCTAssertEqual(recipe.straightenDegrees, 22.5)
+        XCTAssertEqual(recipe.quarterTurns, 1)
+        XCTAssertTrue(recipe.flipHorizontal)
+        XCTAssertFalse(recipe.straightenAutoZoom)
+        XCTAssertTrue(recipe.alignedBaseline().hasSameGeometry(as: recipe))
+        XCTAssertTrue(recipe.baseline().straightenAutoZoom)
+        XCTAssertFalse(imported.warnings.contains { $0.contains("CropAngle / Crop") })
+
+        let geometry = try PhotoGeometry(size: CGSize(width: 20, height: 10), recipe: recipe)
+        XCTAssertEqual(geometry.cropRect, CGRect(x: 2, y: 5, width: 6, height: 11))
+        let corner = try XCTUnwrap(geometry.transform.point(CGPoint(x: 5.767131932071408, y: 9.675770302261486)))
+        XCTAssertEqual(corner.x, 0.3, accuracy: 1e-8)
+        XCTAssertEqual(corner.y, 10.7, accuracy: 1e-8)
+        let image = try await pipeline.render(ImageRequest(photo: photo, root: root, recipe: recipe), longEdge: nil)
+        XCTAssertEqual(image.image.width, 6)
+        XCTAssertEqual(image.image.height, 11)
+    }
+
+    func testCameraLensSwitchAppliesOnlyToUnscaledCameraSettings() {
+        let standard = ["LensProfileName": ["Camera Settings"], "LensProfileSetup": ["LensDefaults"],
+                        "LensProfileDistortionScale": ["100"], "LensProfileEnable": ["0"]]
+        XCTAssertEqual(LightroomSettings.cameraLensCorrection(in: standard), false)
+        var edits = standard
+        edits["LensProfileEnable"] = ["1"]
+        XCTAssertEqual(LightroomSettings.cameraLensCorrection(in: edits), true)
+        edits["LensProfileDistortionScale"] = ["75"]
+        XCTAssertNil(LightroomSettings.cameraLensCorrection(in: edits))
+        edits = standard
+        edits["LensProfileName"] = ["Custom correction"]
+        XCTAssertNil(LightroomSettings.cameraLensCorrection(in: edits))
+    }
+
     func testCatalogChangesAndInvalidSettingsAreRejectedWithoutWritingSource() async throws {
         let fixture = ImportTests(); try fixture.setUpWithError(); defer { try? fixture.tearDownWithError() }
         let file = try source(fixture)

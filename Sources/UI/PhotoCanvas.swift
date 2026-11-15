@@ -63,6 +63,7 @@ struct PhotoCanvas: View {
                     MetalPhotoView(viewport: model.viewport, image: displayImage, actualPixels: model.fullResolution && !model.cropMode, photoID: model.photoSwitchDisplay?.photoID ?? model.activeID, nativeSize: model.photoSwitchDisplay?.nativeSize ?? model.renderedNativeSize, backdrop: mat.gray,
                                    zoomScale: model.zoomScale, fill: model.fillView && !model.cropMode,
                                    cropAngle: model.cropMode ? model.recipe?.cropPreviewAngle : nil,
+                                   cropAutoZoom: !model.cropMode || (model.recipe?.straightenAutoZoom ?? true),
                                    onClick: { model.toggleCanvasZoom(at: $0) },
                                    targetedToolID: model.targetedAdjustment?.identifier,
                                    onTargetBegin: { model.beginTargetedAdjustment(at: $0) },
@@ -107,7 +108,8 @@ struct PhotoCanvas: View {
                 }
                 if model.cropMode, model.canvasCoordinatesCurrent, let image = displayImage, let recipe = model.recipe {
                     let frame = CropPreviewGeometry.outputFrame(size: CGSize(width: image.width, height: image.height),
-                                                               canvas: geometry.size, degrees: recipe.cropPreviewAngle)
+                                                               canvas: geometry.size, degrees: recipe.cropPreviewAngle,
+                                                               autoZoom: recipe.straightenAutoZoom)
                     let size = frame.size
                     let crop = draft ?? recipe.cropInDisplay
                     Canvas { context, canvas in

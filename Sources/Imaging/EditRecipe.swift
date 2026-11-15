@@ -78,7 +78,8 @@ struct EditRecipe: Codable, Equatable {
     var crop = Crop()
     func hasSameGeometry(as other: Self?) -> Bool {
         guard let other else { return false }
-        return quarterTurns == other.quarterTurns && straightenDegrees == other.straightenDegrees && crop == other.crop &&
+        return quarterTurns == other.quarterTurns && straightenDegrees == other.straightenDegrees &&
+            straightenAutoZoom == other.straightenAutoZoom && crop == other.crop &&
             flipHorizontal == other.flipHorizontal && flipVertical == other.flipVertical && perspective == other.perspective &&
             rawDetails.lensCorrection == other.rawDetails.lensCorrection
     }
@@ -131,6 +132,9 @@ struct EditRecipe: Codable, Equatable {
     var defringe: ManualDefringe?
     var rawDetails = RAWDetailSettings()
     var straightenDegrees = 0.0
+    /// Imported straightening can carry its own crop in the rotated source pixels.
+    var straightenAtSourceScale: Bool?
+    var straightenAutoZoom: Bool { straightenAtSourceScale != true }
     /// Pixel aspect ratio, independent of portrait/landscape source dimensions.
     var cropAspectRatio: Double?
 
@@ -139,7 +143,7 @@ struct EditRecipe: Codable, Equatable {
         case schemaVersion, pipelineVersion, sourceDigest, decoderVersion, systemVersion, appBuild
         case baselineExposure, baselineTemperature, baselineTint, exposure, temperature, tint
         case asShotWhiteBalance, contrast, saturation, quarterTurns, crop, develop, straightenDegrees, cropAspectRatio
-        case flipHorizontal, flipVertical, perspective, sharpening, noiseReduction, defringe
+        case flipHorizontal, flipVertical, perspective, sharpening, noiseReduction, defringe, straightenAtSourceScale
     }
 
     func validate() throws {
@@ -201,6 +205,7 @@ struct EditRecipe: Codable, Equatable {
         r.localAdjustments = []; r.repairs = []; r.maskVersion = 1
         r.rawDetails = RAWDetailSettings()
         r.contrast = 1; r.saturation = 1; r.quarterTurns = 0; r.crop = Crop(); r.straightenDegrees = 0; r.cropAspectRatio = nil; r.develop = DevelopAdjustments()
+        r.straightenAtSourceScale = nil
         r.flipHorizontal = false; r.flipVertical = false
         r.perspective = PerspectiveSettings()
         r.vignette = CreativeVignette()
@@ -218,6 +223,7 @@ struct EditRecipe: Codable, Equatable {
     func aligned(to current: Self) -> Self {
         var r = self
         r.quarterTurns = current.quarterTurns; r.crop = current.crop; r.straightenDegrees = current.straightenDegrees; r.cropAspectRatio = current.cropAspectRatio
+        r.straightenAtSourceScale = current.straightenAtSourceScale
         r.flipHorizontal = current.flipHorizontal; r.flipVertical = current.flipVertical
         r.perspective = current.perspective
         r.rawDetails.lensCorrection = current.rawDetails.lensCorrection
@@ -262,6 +268,7 @@ extension EditRecipe {
             develop = try c.decode(DevelopAdjustments.self, forKey: .develop)
             straightenDegrees = try c.decode(Double.self, forKey: .straightenDegrees)
         }
+        straightenAtSourceScale = try c.decodeIfPresent(Bool.self, forKey: .straightenAtSourceScale)
         if schemaVersion >= 3 {
             localAdjustments = try c.decode([LocalAdjustment].self, forKey: .localAdjustments)
             maskVersion = try c.decode(Int.self, forKey: .maskVersion)
@@ -325,6 +332,7 @@ extension EditRecipe {
         }
         if options.geometry {
             value.quarterTurns = source.quarterTurns; value.straightenDegrees = source.straightenDegrees
+            value.straightenAtSourceScale = source.straightenAtSourceScale
             value.flipHorizontal = source.flipHorizontal; value.flipVertical = source.flipVertical
             value.perspective = source.perspective
             value.crop = source.crop; value.cropAspectRatio = nil // Relative crop can have a different pixel aspect on the target.
@@ -399,7 +407,10 @@ extension EditRecipe {
         if exposure != previous.exposure { parts.append(String(format: L10n.text("app.exposure2f", defaultValue: "Exposure %+.2f"), exposure)) }
         if temperature != previous.temperature || tint != previous.tint || asShotWhiteBalance != previous.asShotWhiteBalance { parts.append(L10n.text("app.whiteBalance", defaultValue: "White Balance")) }
         if contrast != previous.contrast || saturation != previous.saturation || develop != previous.develop { parts.append(L10n.text("app.toneAndColor", defaultValue: "Tone and Color")) }
-        if crop != previous.crop || quarterTurns != previous.quarterTurns || straightenDegrees != previous.straightenDegrees || cropAspectRatio != previous.cropAspectRatio { parts.append(L10n.text("app.cropAndStraighten", defaultValue: "Crop and Straighten")) }
+        if crop != previous.crop || quarterTurns != previous.quarterTurns || straightenDegrees != previous.straightenDegrees ||
+            straightenAutoZoom != previous.straightenAutoZoom || cropAspectRatio != previous.cropAspectRatio {
+            parts.append(L10n.text("app.cropAndStraighten", defaultValue: "Crop and Straighten"))
+        }
         if flipHorizontal != previous.flipHorizontal { parts.append(L10n.text("app.flipHorizontal", defaultValue: "Flip Horizontal")) }
         if flipVertical != previous.flipVertical { parts.append(L10n.text("app.flipVertical", defaultValue: "Flip Vertical")) }
         if perspective != previous.perspective { parts.append(L10n.text("app.manualPerspective", defaultValue: "Manual Perspective")) }
@@ -420,6 +431,7 @@ extension EditRecipe {
         value.tint = RecipeMix.lerp(tint, toward.tint, t, -150...150)
         value.asShotWhiteBalance = false
         value.straightenDegrees = RecipeMix.lerp(straightenDegrees, toward.straightenDegrees, t, -45...45)
+        value.straightenAtSourceScale = RecipeMix.pick(straightenAtSourceScale, toward.straightenAtSourceScale, t)
         value.quarterTurns = RecipeMix.pick(quarterTurns, toward.quarterTurns, t)
         value.flipHorizontal = RecipeMix.pick(flipHorizontal, toward.flipHorizontal, t)
         value.flipVertical = RecipeMix.pick(flipVertical, toward.flipVertical, t)

@@ -88,18 +88,18 @@ enum CropPreviewGeometry {
         let a = degrees * .pi / 180, c = abs(cos(a)), s = abs(sin(a))
         return max(c + s * size.height / max(1, size.width), c + s * size.width / max(1, size.height))
     }
-    static func transform(size: CGSize, degrees: Double) -> CGAffineTransform {
-        let z = zoom(size: size, degrees: degrees)
+    static func transform(size: CGSize, degrees: Double, autoZoom: Bool = true) -> CGAffineTransform {
+        let z = autoZoom ? zoom(size: size, degrees: degrees) : 1
         return CGAffineTransform(translationX: -size.width / 2, y: -size.height / 2)
             .concatenating(CGAffineTransform(rotationAngle: degrees * .pi / 180))
             .concatenating(CGAffineTransform(scaleX: z, y: z))
             .concatenating(CGAffineTransform(translationX: size.width / 2, y: size.height / 2))
     }
-    static func bounds(size: CGSize, degrees: Double) -> CGRect {
-        CGRect(origin: .zero, size: size).applying(transform(size: size, degrees: degrees))
+    static func bounds(size: CGSize, degrees: Double, autoZoom: Bool = true) -> CGRect {
+        CGRect(origin: .zero, size: size).applying(transform(size: size, degrees: degrees, autoZoom: autoZoom))
     }
-    static func outputFrame(size: CGSize, canvas: CGSize, degrees: Double) -> CGRect {
-        let extent = bounds(size: size, degrees: degrees)
+    static func outputFrame(size: CGSize, canvas: CGSize, degrees: Double, autoZoom: Bool = true) -> CGRect {
+        let extent = bounds(size: size, degrees: degrees, autoZoom: autoZoom)
         let scale = min(canvas.width / max(1, extent.width), canvas.height / max(1, extent.height))
         let w = size.width * scale, h = size.height * scale
         return CGRect(x: (canvas.width - w) / 2, y: (canvas.height - h) / 2, width: w, height: h)
