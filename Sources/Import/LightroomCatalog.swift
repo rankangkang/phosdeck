@@ -43,7 +43,9 @@ struct LightroomCatalog: Sendable {
         var config = Configuration()
         config.readonly = true
         config.prepareDatabase { db in try db.execute(sql: "PRAGMA trusted_schema = OFF") }
-        let database = try DatabaseQueue(path: source.path, configuration: config)
+        // A closed catalog can still be in WAL mode. Read it without creating
+        // SQLite sidecars alongside the original.
+        let database = try DatabaseQueue(path: source.absoluteString + "?immutable=1", configuration: config)
         defer { try? database.close() }
         let preview = try database.read { db in
             let schema = try Set(String.fetchAll(db, sql: "SELECT name FROM sqlite_schema WHERE type='table' AND sql NOT LIKE 'CREATE VIRTUAL TABLE%'"))

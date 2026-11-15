@@ -3,7 +3,7 @@ import GRDB
 @testable import Phosdeck
 
 final class LightroomImportTests: XCTestCase {
-    private func source(_ fixture: ImportTests) throws -> URL {
+    private func source(_ fixture: ImportTests, wal: Bool = false) throws -> URL {
         let fm = FileManager.default
         let directory = fixture.source.appendingPathComponent("2026/拍摄")
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -11,12 +11,15 @@ final class LightroomImportTests: XCTestCase {
         try fixture.image(directory.appendingPathComponent("B.jpg"), color: .blue)
         try Data("sidecar".utf8).write(to: directory.appendingPathComponent("A.xmp"))
         let file = fixture.directory.appendingPathComponent("Source.lrcat")
-        let database = try DatabaseQueue(path: file.path)
+        var configuration = Configuration()
+        if wal { configuration.journalMode = .wal }
+        let database = try DatabaseQueue(path: file.path, configuration: configuration)
         let sql = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/lightroom-catalog.sql")
         try database.write { db in
             try db.execute(sql: String(contentsOf: sql, encoding: .utf8))
             try db.execute(sql: "INSERT INTO AgLibraryRootFolder VALUES (1,?,?,'Photos')", arguments: [fixture.source.path, "source"])
         }
+        if wal { try database.writeWithoutTransaction { _ = try $0.checkpoint(.truncate) } }
         try database.close()
         try Data("AI settings".utf8).write(to: URL(fileURLWithPath: file.path + "-data"))
         let settings = fixture.directory.appendingPathComponent("Lightroom Settings")
@@ -28,6 +31,26 @@ final class LightroomImportTests: XCTestCase {
         """
         try Data(preset.utf8).write(to: settings.appendingPathComponent("Preset.xmp"))
         return file.resolvingSymlinksInPath()
+    }
+
+    func testReadsClosedWALCatalogInReadOnlyDirectory() throws {
+        let fixture = ImportTests(); try fixture.setUpWithError(); defer { try? fixture.tearDownWithError() }
+        let fm = FileManager.default
+        let sourceFile = try source(fixture, wal: true)
+        let parent = fixture.directory.appendingPathComponent("Closed")
+        try fm.createDirectory(at: parent, withIntermediateDirectories: false)
+        let file = parent.appendingPathComponent("Catalog #%.lrcat")
+        try fm.copyItem(at: sourceFile, to: file)
+        let digest = try SafeFileWriter.sha256(file)
+        let sidecars = ["-wal", "-shm"].map { file.path + $0 }
+        try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: parent.path)
+        defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: parent.path) }
+
+        let preview = try LightroomCatalog.preview(file)
+
+        XCTAssertEqual(preview.versions.count, 5)
+        XCTAssertEqual(try SafeFileWriter.sha256(file), digest)
+        XCTAssertTrue(sidecars.allSatisfy { !fm.fileExists(atPath: $0) })
     }
 
     func testReferenceAndCopyKeepVersionsCollectionsEditsAndSourceData() async throws {
