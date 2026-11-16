@@ -15617,20 +15617,20 @@
         }
       }
     },
-    "app.exitCompareEscE": {
+    "app.finishComparisonEsc": {
       "extractionState": "manual",
       "comment": "Sources/UI/PhotoComparison.swift: 294",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Exit Compare (Esc / E)"
+            "value": "Finish Compare (Esc)"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "退出比较（Esc / E）"
+            "value": "完成比较（Esc）"
           }
         }
       }
@@ -22746,13 +22746,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Loading photo… Previous photo shown"
+            "value": "Showing the previous photo. Marking resumes when the new photo loads."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在载入照片… 暂时显示上一张"
+            "value": "暂时显示上一张。新照片载入后可标记。"
           }
         }
       }

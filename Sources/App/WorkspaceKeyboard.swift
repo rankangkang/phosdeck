@@ -66,7 +66,7 @@ final class WorkspaceKeyboard {
             if key == "n" { model.selectWorkspace(.survey); return nil }
         }
         if let comparison = model.comparison {
-            if event.keyCode == 53 { model.endComparison(); return nil }
+            if event.keyCode == 53 { model.finishComparison(); return nil }
             if key == "z" { comparison.toggleZoom(in: comparison.candidate); return nil }
             if modifiers.isEmpty, event.keyCode == 126 { model.promoteComparisonCandidate(); return nil }
             if modifiers.isEmpty, event.keyCode == 125 { model.swapComparison(); return nil }

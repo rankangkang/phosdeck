@@ -200,21 +200,21 @@ struct WorkspaceCommands: Commands {
                         get: { model.selectedRating == rating },
                         set: { if $0 { model.organize(rating: rating) } }))
                 }
-            }.disabled(!photoSelected)
+            }.disabled(!photoSelected || !model.canMarkPhotos)
             Menu(L10n.text("app.flag", defaultValue: "Flag")) {
                 flag(L10n.text("app.pickP", defaultValue: "Pick (P)"), value: 1); flag(L10n.text("app.rejectX", defaultValue: "Reject (X)"), value: -1); flag(L10n.text("app.unflaggedU", defaultValue: "Unflagged (U)"), value: 0)
                 Divider()
                 Button(L10n.text("app.togglePick", defaultValue: "Toggle Pick (`)")) { model.toggleFlag() }
-            }.disabled(!photoSelected)
+            }.disabled(!photoSelected || !model.canMarkPhotos)
             Menu(L10n.text("app.colorLabel", defaultValue: "Color Label")) {
                 ForEach(PhotoColorLabel.allCases) { label in
                     Toggle(label.titleWithShortcut, isOn: Binding(
                         get: { model.selectedColorLabel == label.rawValue },
                         set: { _ in model.toggleColorLabel(label.rawValue) }))
                 }
-            }.disabled(!photoSelected)
+            }.disabled(!photoSelected || !model.canMarkPhotos)
             Toggle(L10n.text("app.autoAdvance", defaultValue: "Auto Advance"), isOn: $model.autoAdvance).disabled(!workspace)
-            Button(L10n.text("app.toggleQuickCollectionB", defaultValue: "Toggle Quick Collection (B)"), action: model.toggleQuickCollection).disabled(!workspace || model.quickCollectIDs.isEmpty)
+            Button(L10n.text("app.toggleQuickCollectionB", defaultValue: "Toggle Quick Collection (B)"), action: model.toggleQuickCollection).disabled(!workspace || !model.canMarkPhotos || model.quickCollectIDs.isEmpty)
             Divider()
             Button(L10n.text("app.locateCurrentOriginal", defaultValue: "Locate Current Original…"), action: model.locateOriginal).disabled(!model.canLocateOriginal)
             Button(L10n.text("app.createVirtualCopy", defaultValue: "Create Virtual Copy"), action: model.createVirtualCopies).disabled(!photoSelected)

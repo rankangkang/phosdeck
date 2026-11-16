@@ -631,10 +631,10 @@ struct WorkspaceView: View {
 
     @ViewBuilder private func centerContent(showMasks: Bool) -> some View {
         let mode = model.workspaceMode
-        if (mode == .grid || mode == .single), !model.filtered.isEmpty {
+        if !model.filtered.isEmpty {
             let showingGrid = mode == .grid
             ZStack {
-                // Keep the native clip view alive when opening a photo from the grid.
+                // Keep the native clip view alive while inspecting photos in another view.
                 PhotoDisplayFrame {
                     PhotoGrid(model: model, mat: mat, isShowing: showingGrid, ordering: showingGrid ? model.collectionOrdering : nil)
                 }.opacity(showingGrid ? 1 : 0).allowsHitTesting(showingGrid).accessibilityHidden(!showingGrid)
@@ -1053,7 +1053,7 @@ struct WorkspaceView: View {
                 .accessibilityLabel(L10n.text("app.rating", defaultValue: "Rating")).accessibilityValue(model.selectedRating.map { $0 == 0 ? L10n.text("app.unrated", defaultValue: "Unrated") : L10n.text("app.stars_1722", defaultValue: "\($0) Stars") } ?? L10n.text("app.mixedState", defaultValue: "Mixed State"))
             ColorLabelPicker(model: model)
             quickCollectionControls
-        }.disabled(model.selection.isEmpty || !model.workspaceAvailable)
+        }.disabled(model.selection.isEmpty || !model.canMarkPhotos)
     }
     private var quickCollectionControls: some View {
         HStack(spacing: -1) {

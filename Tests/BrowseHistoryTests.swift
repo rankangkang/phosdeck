@@ -200,7 +200,7 @@ final class BrowseHistoryTests: XCTestCase {
         }
     }
 
-    @MainActor func testReturningFromLoupeRestoresTheGridOrigin() async throws {
+    @MainActor func testReturningFromPhotoViewsRestoresTheGridOrigin() async throws {
         let f = try fixture(firstCount: 120, secondCount: 0)
         defer { try? FileManager.default.removeItem(at: f.directory) }
         let model = try makeModel(for: f.catalog)
@@ -218,7 +218,7 @@ final class BrowseHistoryTests: XCTestCase {
         let host = NSHostingView(rootView: WorkspaceView(model: model))
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1024, height: 720),
                               styleMask: [.titled], backing: .buffered, defer: false)
-        window.contentView = host
+        window.title = "Synthetic — Phosdeck"; window.contentView = host
         defer { window.contentView = nil }
         host.layoutSubtreeIfNeeded()
         let initial = try XCTUnwrap(grid(in: host))
@@ -230,25 +230,60 @@ final class BrowseHistoryTests: XCTestCase {
         try await wait { !collection.indexPathsForVisibleItems().isEmpty }
         let paths = collection.indexPathsForVisibleItems().sorted()
         let photo = model.photos[paths[paths.count / 2].item]
-        model.choose([photo.id], active: photo.id)
+        let selected = Set([photo.id, model.photos[paths.last!.item].id])
+        model.choose(selected, active: photo.id)
         try await wait { model.scrollActiveIDs[model.browseScrollKey(film: false)] == photo.id }
         let expected = initial.contentView.bounds.origin
         XCTAssertGreaterThan(expected.y, 0)
         let key = model.browseScrollKey(film: false)
         XCTAssertEqual(model.scrollPositions[key], expected)
-        for _ in 0..<3 {
+        for mode in [WorkspaceMode.single, .develop, .compare, .compare] {
             window.makeFirstResponder(collection)
-            model.selectWorkspace(.single)
+            model.selectWorkspace(mode)
             try await wait { initial.isHidden }
             XCTAssertFalse(window.firstResponder === collection)
             XCTAssertEqual(model.scrollPositions[key], expected)
-            model.selectWorkspace(.grid)
+            if mode == .compare {
+                let esc = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 53))
+                XCTAssertNil(WorkspaceKeyboard.handle(esc, model: model))
+            } else {
+                model.selectModule(.library)
+                if mode == .single { model.selectWorkspace(.grid) }
+            }
+            XCTAssertEqual(model.workspaceMode, .grid)
             try await wait { !initial.isHidden }
             host.layoutSubtreeIfNeeded()
             XCTAssertTrue(grid(in: host) === initial)
             XCTAssertEqual(initial.contentView.bounds.origin.y, expected.y, accuracy: 1)
             XCTAssertEqual(model.activeID, photo.id)
+            XCTAssertEqual(model.selection, selected)
         }
+    }
+
+    @MainActor func testFinishingCompareRestoresTheOriginalPageAndSelection() throws {
+        let f = try fixture(firstCount: 405, secondCount: 0)
+        defer { try? FileManager.default.removeItem(at: f.directory) }
+        try f.catalog.setOrganization(ids: ["a220"], rating: 3)
+        let model = try makeModel(for: f.catalog)
+        let selected: Set<String> = ["a007", "a220", "a390"]
+        model.changePage(1)
+        model.choose(selected, active: "a220")
+        model.selectWorkspace(.compare)
+        XCTAssertEqual(model.pageOffset, 0)
+        model.selectWorkspace(.grid)
+        XCTAssertEqual(model.pageOffset, 200)
+        XCTAssertEqual(model.activeID, "a220")
+        XCTAssertEqual(model.selection, selected)
+
+        model.selectWorkspace(.single)
+        model.selectWorkspace(.compare)
+        model.ratingThreshold = 5; model.filterChanged()
+        model.finishComparison()
+        XCTAssertEqual(model.workspaceMode, .single)
+        XCTAssertEqual(model.ratingThreshold, 5)
+        XCTAssertEqual(model.activeID, "a007")
+        XCTAssertEqual(model.selection, ["a007", "a390"])
     }
 
     @MainActor func testImportBorrowedReturnKeepsAutomaticSourceHistory() throws {

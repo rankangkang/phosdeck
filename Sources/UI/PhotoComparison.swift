@@ -309,11 +309,12 @@ struct ComparisonToolbarControls: View {
                     .accessibilityIdentifier("stack-comparison-next")
                     .disabled(stack.current >= stack.total || !model.workspaceAvailable)
             }
-            Button(L10n.text("app.done", defaultValue: "Done"), action: model.endComparison)
+            Button(L10n.text("app.done", defaultValue: "Done"), action: model.finishComparison)
                 .buttonStyle(.key(height: 22))
-                .help(stack == nil ? L10n.text("app.exitCompareEscE", defaultValue: "Exit Compare (Esc / E)")
+                .help(stack == nil ? L10n.text("app.finishComparisonEsc", defaultValue: "Finish Compare (Esc)")
                       : L10n.text("app.finishStackComparison", defaultValue: "Return to the last compared stack in the library (Esc)"))
                 .accessibilityIdentifier("comparison-done")
+                .disabled(!model.workspaceAvailable)
         }.fixedSize()
     }
 }

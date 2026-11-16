@@ -245,7 +245,7 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 指标来自最长边 320 像素的原片缩略图。清晰度 `sharpness` 为 0–100，适合在同一组内比较。高光与阴影剪切分别给出 0–1 的比例，依据缩略图显示值。报告只返回数值和身份字段。可用候选的 `photo_ids` 调用 `list_photos(contact_sheet=true)` 取有序拼图，再取候选的 1:1 局部，两种取图都沿用照片预览共享。看完后可用 `edit_photo_stack` 建堆叠或用 `set_photo_marks` 打标。结果中的不可读取项含 `error_code`。
 
-`list_selected_photos` 按版本 ID 分页，包含跨页或折叠的已选版本。`select_photos` 可替换、增加、移除或清空选择，也可选中全部命中或一个堆叠的匹配成员。打开指定版本使用 `open_version`，浏览位置和前后页用 `navigate_library`。
+`list_selected_photos` 按版本 ID 分页，包含跨页或折叠的已选版本。`select_photos` 可替换、增加、移除或清空选择，也可选中全部命中或一个堆叠的匹配成员。打开指定版本使用 `open_version`，浏览位置和前后页用 `navigate_library`。`previous_page` 和 `next_page` 保留选择与活动版本，`previous_photo` 和 `next_photo` 切换当前照片。
 
 工作区、比较和调查工具返回实际活动照片、参考／候选版本和可见调查页。缩放和平移以对应视口为准，平移返回归一化的当前中心与等待新渲染几何的请求位置。剪切开关只影响界面显示。通过 `get_photo_preview` 查看已保存的显影结果，沿用独立图像共享开关。
 

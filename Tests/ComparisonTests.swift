@@ -424,10 +424,13 @@ final class ComparisonTests: XCTestCase {
         let editorScroll = try XCTUnwrap(exposure.enclosingScrollView)
         try await waitUntil { abs(editorScroll.contentView.bounds.minY - 160) < 1 }
         let originalFrame = exposure.convert(exposure.bounds, to: host)
-        func collection(_ root: NSView) -> KeyboardCollectionView? {
-            (root as? KeyboardCollectionView) ?? root.subviews.compactMap(collection).first
+        func filmstrip(_ root: NSView) -> KeyboardCollectionView? {
+            if let scroll = root as? NSScrollView, scroll.hasHorizontalScroller {
+                return scroll.documentView as? KeyboardCollectionView
+            }
+            return root.subviews.lazy.compactMap(filmstrip).first
         }
-        let film = try XCTUnwrap(collection(host))
+        let film = try XCTUnwrap(filmstrip(host))
         let selectionBridge = try XCTUnwrap(film.delegate as? PhotoGrid.Coordinator)
         let oldPath = IndexPath(item: try XCTUnwrap(model.filtered.firstIndex { $0.id == "000" }), section: 0)
         let newPath = IndexPath(item: try XCTUnwrap(model.filtered.firstIndex { $0.id == "001" }), section: 0)
@@ -445,6 +448,22 @@ final class ComparisonTests: XCTestCase {
         XCTAssertEqual(model.photoSwitchDisplay?.photoID, "000")
         XCTAssertTrue(model.photoSwitchDisplay?.image === original)
         XCTAssertEqual(model.editorRecipe, originalRecipe)
+        window.makeFirstResponder(nil)
+        func press(_ key: String) throws {
+            let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: 0))
+            XCTAssertNil(WorkspaceKeyboard.handle(event, model: model))
+        }
+        XCTAssertFalse(model.canMarkPhotos)
+        for key in ["x", "5", "6", "]", "b"] { try press(key) }
+        for id in ["000", "001"] {
+            let photo = try XCTUnwrap(catalog.photo(id))
+            XCTAssertEqual(photo.flag, 0)
+            XCTAssertEqual(photo.rating, 0)
+            XCTAssertEqual(photo.colorLabel, 0)
+        }
+        XCTAssertNil(model.targetCollectionID)
+        XCTAssertEqual(model.activeID, "001")
         try await waitUntil { gate.waiting["001"]?.count == 2 }
         host.layoutSubtreeIfNeeded()
         XCTAssertEqual(sliders(host).map(ObjectIdentifier.init), originalSliders.map(ObjectIdentifier.init), "Loading must retain the mounted native controls")
@@ -484,6 +503,9 @@ final class ComparisonTests: XCTestCase {
         XCTAssertEqual(model.image?.width, 40)
         XCTAssertEqual(model.activeID, "002"); XCTAssertEqual(model.editorRecipe, model.recipe)
         XCTAssertTrue(model.canShowBeforeAfter)
+        XCTAssertTrue(model.canMarkPhotos)
+        try press("x")
+        XCTAssertEqual(try catalog.photo("002")?.flag, -1)
         let thirdRecipe = try XCTUnwrap(model.recipe)
         try await catalog.database.write { db in
             try db.execute(sql: "UPDATE photo SET recipe = ? WHERE id = ?", arguments: [Data("invalid recipe".utf8), "001"])
@@ -944,7 +966,8 @@ final class ComparisonTests: XCTestCase {
         XCTAssertEqual(reference.zoom, 2); XCTAssertFalse(model.fullResolution)
         model.selectZoom(1)
         XCTAssertEqual(reference.zoom, 2, "Active and reference zoom are independent")
-        model.changePage(1); XCTAssertEqual(model.activeID, "200"); model.move(1)
+        model.changePage(1); XCTAssertEqual(model.activeID, "001")
+        model.move(1); XCTAssertEqual(model.activeID, "200"); model.move(1)
         XCTAssertEqual(model.activeID, "201"); XCTAssertEqual(reference.photo?.id, "000")
         model.search = "no match"; model.filterChanged()
         XCTAssertNil(model.activeID); XCTAssertNotNil(model.developReference)

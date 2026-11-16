@@ -83,7 +83,7 @@ struct PhotoCanvas: View {
                         .allowsHitTesting(model.photoSwitchDisplay == nil)
                     TargetedCanvasStatus(model: model, mat: mat)
                     if model.photoSwitchDisplay != nil {
-                        Text(L10n.text("app.loadingPreviousPhotoShown", defaultValue: "Loading photo… Previous photo shown"))
+                        Text(L10n.text("app.loadingPreviousPhotoShown", defaultValue: "Showing the previous photo. Marking resumes when the new photo loads."))
                             .font(.caption11).foregroundStyle(Color(nsColor: mat.textSecondary))
                             .padding(8).background(mat.color)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
