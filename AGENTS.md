@@ -13,7 +13,7 @@
 ## 工作边界
 
 - 主线开发位于 `Sources/`、`Tests/`、`Phosdeck.xcodeproj/`；改动保留已有功能与交互，新增 Swift 文件需在 `Phosdeck.xcodeproj/project.pbxproj`（及 `project.yml`）登记。
-- 不打开、读取或写入真实照片目录（`.phoscat`、`.omlcat`、`.omlrcat`）和私人原片。测试使用合成数据、`Samples/public-cc0/`，或已授权只读的 `Samples/PublicRAW/`；输出放临时目录或忽略的结果目录。样片不提交，不能把整个 `Samples/` 视为已授权素材。
+- 不打开、读取或写入真实照片目录（`.phoscat`、`.omlcat`、`.omlrcat`）和私人原片。测试使用合成数据、`Samples/public-cc0/`，或已授权只读的 `Samples/PublicRAW/`；自动测试输出放临时目录或忽略的结果目录，用户体验数据按下文使用常驻目录。样片不提交，不能把整个 `Samples/` 视为已授权素材。
 - 开发阶段不考虑向后兼容。不要为旧配方、旧任务、旧目录或旧 schema 做迁移、升级或兼容层；结构变了就只服务当前版本，打不开的旧文件直接拒绝。当前正在使用的数据、备份和原片仍须保护，不能以“不兼容”为由清空或覆盖。
 - 图库后缀统一为 `.phoscat`；用户明确要求继续打开 `.omlcat`／`.omlrcat`，并允许在打开时确认更换后缀。这仅限同目录无覆盖改名，不能改数据库内容，也不构成旧 schema 迁移的授权。
 - 沿用 `docs/STATUS.md` 记录的分支安排；不自行合并或删除分支，不强推、不改写已推送历史。
@@ -75,8 +75,9 @@ Not tested: reduced motion, small windows.
 
 ## 原生 App 构建与体验
 
+- 交给用户体验的合成图库、样片和需要保留的体验结果统一放在本机 `~/Phosdeck Review/`。普通图库体验复用其中的 `Review.phoscat` 和 `Photos/`，已有体验数据持续保留。构建、自动测试和测量原始数据仍使用 `build/` 或测试临时目录。
 - 普通开发与流程审查固定复用同一份体验 App，不再按轮次复制新 App、建立新 bundle ID 或新建测试目录。先正常退出该 App，再用标准 Xcode Debug 增量构建；构建成功后覆盖更新固定 App、保持原身份并重新签名，随后打开同一路径。
-- 固定体验 App：`build/unrated-stars-review/Phosdeck Preview.app`；固定 bundle ID：`dev.cmkk.oh-my-lrc.unratedstars20261021`。继续使用各机现有合成图库和偏好。若某台机器仍是旧文件名 `oh my lrc Star Review.app`，先正常退出并核对目标无冲突，再同目录无覆盖更名，设置体验包名称并使用原开发身份重新签名；不替换图库和偏好。
+- 固定体验 App：`build/unrated-stars-review/Phosdeck Preview.app`；固定 bundle ID：`dev.cmkk.oh-my-lrc.unratedstars20261021`。在已准备常驻体验图库的机器上打开 `Review.phoscat`，保留原有图库和偏好。若某台机器仍是旧文件名 `oh my lrc Star Review.app`，先正常退出并核对目标无冲突，再同目录无覆盖更名，设置体验包名称并使用原开发身份重新签名；不替换图库和偏好。
 - 正常构建入口：`xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -configuration Debug -derivedDataPath build -destination 'platform=macOS' build`。产物为 `build/Build/Products/Debug/Phosdeck.app`；只覆盖固定体验 App 的程序包，不覆盖其目录、原片和偏好。覆盖后仅将体验包的 `CFBundleName` 和 `CFBundleDisplayName` 设为 `Phosdeck Preview`，恢复固定 bundle ID 后重新签名；正式产物仍叫 `Phosdeck`。保持现有沙箱／hardened runtime 与源 entitlements，核对当前有效开发签名。
 - 不通过全局 `PRODUCT_NAME`／`CONFIGURATION_BUILD_DIR` 重定向所有依赖目标（会破坏 GRDB 资源包名称）。不要为普通体验切换工程的 bundle ID。测试继续使用合成／已授权样本，不自动打开正常产物身份可能恢复的私人最近目录。
 - 本机有开发证书且已选择稳定签名时，通过已忽略的 `Config/LocalSigning.xcconfig` 固定证书和团队。测试宿主、XCTest 包、Debug／预览及 LiteRT 等嵌套动态库使用同一身份；暂存或去除调试映射后由内向外重签，保留各自 entitlements 与 hardened runtime，不用 `--sign -` 覆盖稳定身份。其他机器仍可沿用默认免证书构建及其权限限制。
