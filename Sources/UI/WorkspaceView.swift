@@ -1626,7 +1626,7 @@ private struct PhotoRemovalSheet: View {
             if let originals = request.originals {
                 Text(L10n.text("photoRemoval.trashTitle", defaultValue: "Move originals to Trash?")).font(.headline)
                 Text(L10n.text("photoRemoval.counts", defaultValue: "Original files: \(originals.count) · Selected versions: \(request.ids.count)"))
-                Text(L10n.text("photoRemoval.trashDetails", defaultValue: "This removes the selected versions from this catalog. Sidecars stay in place. To recover, manually move the files from the Trash back to the paths below in Finder, then undo the catalog removal before closing Phosdeck or switching catalogs. Reimporting will not restore removed versions."))
+                Text(L10n.text("photoRemoval.trashDetails", defaultValue: "This removes the selected versions from this catalog. Sidecars stay in place. To recover, move the originals back to the paths below in Finder, then undo the removal or restore the versions in Review Folder Changes."))
                     .fixedSize(horizontal: false, vertical: true)
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
@@ -1638,7 +1638,7 @@ private struct PhotoRemovalSheet: View {
                 }.frame(height: min(200, CGFloat(originals.count) * 24 + 28))
             } else {
                 Text(L10n.text("photoRemoval.removeTitle", defaultValue: "Remove the selected photos from the catalog?")).font(.headline)
-                Text(L10n.text("photoRemoval.removeDetails", defaultValue: "Selected versions: \(request.ids.count). Original files stay in place. Undo is available until you close Phosdeck or switch catalogs. Reimporting will not restore removed versions."))
+                Text(L10n.text("photoRemoval.removeDetails", defaultValue: "Selected versions: \(request.ids.count). Original files stay in place. To recover, undo the removal or restore the versions in Review Folder Changes."))
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let error { Text(error).foregroundStyle(Theme.warning).fixedSize(horizontal: false, vertical: true) }

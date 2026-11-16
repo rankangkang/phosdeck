@@ -188,6 +188,58 @@ final class FolderReviewTests: XCTestCase {
         let after = try await preview(); XCTAssertTrue(after.entries.isEmpty)
     }
 
+    func testRestoreSelectedRemovedVersionsAfterReopeningCatalog() async throws {
+        let photo = try image("portrait.jpg", digest: true)
+        let original = fixture.source.appendingPathComponent(photo.relativePath)
+        let held = fixture.target.appendingPathComponent(photo.relativePath)
+        var recipe = EditRecipe(sourceDigest: try XCTUnwrap(photo.digest), decoderVersion: EditRecipe.rasterDecoderVersion,
+            baselineExposure: 0, baselineTemperature: 5500, baselineTint: 0, temperature: 5500, tint: 0)
+        recipe.exposure = 0.7
+        try fixture.catalog.saveRecipe(id: photo.id, recipe: recipe)
+        try fixture.catalog.setOrganization(ids: [photo.id], rating: 4)
+        try fixture.catalog.collection(name: "Selected", id: "selected")
+        try fixture.catalog.membership(ids: [photo.id], collection: "selected", add: true)
+        let copies = [try fixture.catalog.createVirtualCopies(ids: [photo.id])[0],
+                      try fixture.catalog.createVirtualCopies(ids: [photo.id])[0]]
+        let saved = try XCTUnwrap(fixture.catalog.photo(photo.id))
+        let historyCount = try fixture.catalog.editHistory(photoID: photo.id).count
+        _ = try fixture.catalog.setVersionDeletion([photo.id: true, copies[0].id: true, copies[1].id: true])
+        try FileManager.default.moveItem(at: original, to: held)
+        let missing = try await preview()
+        XCTAssertEqual(missing.entries.map(\.kind), [.missing])
+        _ = try await service.apply(missing, selected: [photo.sourceKey], locations: [:], catalog: fixture.catalog)
+
+        let path = fixture.catalog.fileURL
+        fixture.catalog = nil
+        fixture.catalog = try CatalogStore(fileURL: path)
+        try FileManager.default.moveItem(at: held, to: original)
+        let found = try await preview()
+        let candidates = found.entries.filter { $0.kind == .restorable }
+        XCTAssertEqual(Set(candidates.compactMap { $0.removedVersion?.id }), [photo.id, copies[0].id, copies[1].id])
+        XCTAssertEqual(try fixture.catalog.photoCount(), 0)
+        let selected = Set(candidates.filter { $0.removedVersion?.id != copies[1].id }.map(\.id))
+        // A different file at the same path must never restore these versions.
+        try FileManager.default.moveItem(at: original, to: held)
+        try fixture.image(original, color: .blue)
+        await fail { _ = try await service.apply(found, selected: selected, locations: [:], catalog: fixture.catalog) }
+        XCTAssertEqual(try fixture.catalog.photoCount(), 0)
+        let replaced = try await preview()
+        XCTAssertFalse(replaced.entries.contains { $0.kind == .restorable })
+        try FileManager.default.removeItem(at: original)
+        try FileManager.default.moveItem(at: held, to: original)
+
+        let result = try await service.apply(found, selected: selected, locations: [:], catalog: fixture.catalog)
+        XCTAssertEqual(result.restoredVersionIDs, [photo.id, copies[0].id])
+        XCTAssertTrue(result.importedPhotoIDs.isEmpty)
+        XCTAssertEqual(result.appliedCount, 2)
+        XCTAssertEqual(try fixture.catalog.photo(photo.id), saved)
+        XCTAssertEqual(try fixture.catalog.photo(copies[0].id), copies[0])
+        XCTAssertNil(try fixture.catalog.photo(copies[1].id))
+        XCTAssertTrue(try fixture.catalog.members("selected").contains(photo.id))
+        XCTAssertEqual(try fixture.catalog.editHistory(photoID: photo.id).count, historyCount)
+        XCTAssertEqual(try SafeFileWriter.sha256(original), photo.digest)
+    }
+
     func testFolderBoundariesRecursionAndExcludedExportsAttachmentsAndHardLinks() async throws {
         let tracked = try image("keep.jpg")
         _ = try image("sub/new.jpg", index: false); _ = try image("sub/nested/deep.jpg", index: false)

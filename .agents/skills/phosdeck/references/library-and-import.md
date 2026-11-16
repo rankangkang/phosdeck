@@ -14,6 +14,7 @@ Use the registered tool schemas. Supply the current `catalog_session_id` where a
 - Start with the selected reference candidate IDs or copy group IDs. Use `select_all` only when the user wants all eligible items. At a filename conflict, use `resolve_import_conflict` with the current `job_id`, `conflict_id`, one of the allowed policies and an explicit `apply_to_remaining` value. Apply overwrite or a batch-wide policy only when it matches the user's intent. The user can also choose in Phosdeck.
 - Check the terminal state and item outcomes. A copy file's publication and its `photo_id` report separate stages. A cancelled job can have published files or saved photos. Use `show_recent_import` to open, cull or leave the imported batch.
 - For folder changes, use `plan_folder_review`, inspect the differences, then pass the explicitly selected difference IDs to `apply_folder_review`. For ambiguous moves map the difference to a listed location ID. On `stale_plan`, refresh the review and check the new differences before applying. `scan_library_folder` indexes directly when the user asks for a rescan.
+- To recover a removed version, put its original back at the recorded path first. Select only the `restorable` differences the user wants, using their `photo_id` and `version_name` to identify them. Applying a recovery makes the existing version visible again with its saved edits.
 
 ## Cancellation and recovery
 

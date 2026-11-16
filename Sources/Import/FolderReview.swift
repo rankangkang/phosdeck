@@ -10,7 +10,7 @@ struct FolderReviewScope: Identifiable {
 }
 
 enum FolderDifferenceKind: Int, CaseIterable {
-    case added, missing, changed, moved, issue
+    case added, missing, changed, moved, issue, restorable
     var title: String {
         switch self {
         case .added: L10n.text("folderReview.added", defaultValue: "New")
@@ -18,6 +18,7 @@ enum FolderDifferenceKind: Int, CaseIterable {
         case .changed: L10n.text("folderReview.changed", defaultValue: "Changed")
         case .moved: L10n.text("folderReview.moved", defaultValue: "Possible Moves")
         case .issue: L10n.text("folderReview.issues", defaultValue: "Needs Review")
+        case .restorable: L10n.text("folderReview.restorable", defaultValue: "Removed Versions")
         }
     }
 }
@@ -28,6 +29,13 @@ struct FolderReviewFile {
     var digest: String?
 }
 
+struct RemovedPhotoVersion: FetchableRecord, Decodable {
+    let id: String
+    let sourceID: String
+    let copyName: String?
+    var name: String { copyName ?? L10n.text("app.originalVersion", defaultValue: "Original Version") }
+}
+
 struct FolderDifference: Identifiable {
     let id: String
     var kind: FolderDifferenceKind
@@ -35,6 +43,7 @@ struct FolderDifference: Identifiable {
     var file: FolderReviewFile?
     var candidates: [FolderReviewFile] = []
     var restoresAvailability = false
+    var removedVersion: RemovedPhotoVersion?
     var problem: String?
     var unreadPath = ""
     var path: String { source?.relativePath ?? file?.relativePath ?? unreadPath }
@@ -47,6 +56,7 @@ struct FolderDifference: Identifiable {
             : L10n.text("folderReview.markChanged", defaultValue: "Mark Changed")
         case .moved: L10n.text("folderReview.relink", defaultValue: "Relink Original")
         case .issue: L10n.text("folderReview.issues", defaultValue: "Needs Review")
+        case .restorable: L10n.text("folderReview.restoreVersion", defaultValue: "Restore Version")
         }
     }
     func selectedFile(locations: [String: String]) -> FolderReviewFile? {
@@ -65,11 +75,14 @@ struct FolderReviewPreview {
 
 struct FolderReviewResult {
     var importedPhotoIDs: Set<String> = []
+    var restoredVersionIDs: Set<String> = []
     var relinked = 0
     var marked = 0
-    var appliedCount: Int { importedPhotoIDs.count + relinked + marked }
+    var appliedCount: Int { importedPhotoIDs.count + restoredVersionIDs.count + relinked + marked }
     var summary: String {
-        L10n.text("folderReview.result", defaultValue: "Folder changes applied · Added \(importedPhotoIDs.count) · Verified locations \(relinked) · Marked unavailable \(marked)")
+        let changes = L10n.text("folderReview.result", defaultValue: "Folder changes applied · Added \(importedPhotoIDs.count) · Verified locations \(relinked) · Marked unavailable \(marked)")
+        guard !restoredVersionIDs.isEmpty else { return changes }
+        return changes + " · " + L10n.text("folderReview.restoredCount", defaultValue: "Restored versions \(restoredVersionIDs.count)")
     }
 }
 
@@ -89,7 +102,13 @@ actor FolderReviewService {
                  progress: @escaping @Sendable (Int) async -> Void = { _ in }) async throws -> FolderReviewPreview {
         let lease = try Self.access(scope, catalog: catalog)
         defer { withExtendedLifetime(lease) {} }
-        let allSources = try catalog.sources()
+        let (allSources, removedVersions) = try await catalog.database.read { db in
+            let sources = try CatalogSource.fetchAll(db)
+            let removed = try RemovedPhotoVersion.fetchAll(db, sql: """
+                SELECT id, sourceID, copyName FROM photo WHERE rootID=? AND deleted=1 ORDER BY copyName, id
+                """, arguments: [scope.root.id])
+            return (sources, Dictionary(grouping: removed, by: \.sourceID))
+        }
         let sources = allSources.filter {
             $0.rootID == scope.root.id && Self.inScope($0.relativePath, scope: scope, recursive: includeSubfolders)
         }
@@ -110,10 +129,20 @@ actor FolderReviewService {
                     continue
                 }
                 let old = try JSONDecoder().decode(FileIdentity.self, from: source.identity)
-                if current == old && source.availability == "available" { continue }
+                let available = current == old && source.availability == "available"
+                let removed = removedVersions[source.id] ?? []
+                if available && removed.isEmpty { continue }
                 var file = FolderReviewFile(relativePath: source.relativePath, identity: current)
                 if source.digest != nil { file.digest = try Self.digest(file, root: scope.root) }
-                let same = current == old || source.digest.map { $0 == file.digest } == true
+                let same = source.digest.map { $0 == file.digest } ?? (current == old)
+                if same && !removed.isEmpty {
+                    try SourceAvailability.check(root: lease.url, file: lease.url.appendingPathComponent(file.relativePath))
+                    for version in removed {
+                        entries.append(FolderDifference(id: "restore:" + version.id, kind: .restorable, source: source, file: file,
+                                                        restoresAvailability: !available, removedVersion: version))
+                    }
+                }
+                if available && same { continue }
                 entries.append(FolderDifference(id: source.id, kind: .changed, source: source, file: file, restoresAvailability: same))
             } catch is CancellationError { throw CancellationError() }
             catch { entries.append(FolderDifference(id: source.id, kind: .issue, source: source, problem: error.localizedDescription)) }
@@ -163,22 +192,29 @@ actor FolderReviewService {
         }
         try Task.checkCancellation()
         return FolderReviewPreview(scope: scope, includeSubfolders: includeSubfolders,
-            entries: entries.sorted { $0.kind.rawValue == $1.kind.rawValue ? $0.path.localizedStandardCompare($1.path) == .orderedAscending : $0.kind.rawValue < $1.kind.rawValue },
+            entries: entries.sorted {
+                if $0.kind != $1.kind { return $0.kind.rawValue < $1.kind.rawValue }
+                if $0.path != $1.path { return $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+                return ($0.removedVersion?.copyName ?? "", $0.id) < ($1.removedVersion?.copyName ?? "", $1.id)
+            },
             checkedCount: checked)
     }
 
     nonisolated static func selectionIssue(_ preview: FolderReviewPreview, selected: Set<String>, locations: [String: String]) -> String? {
         let entries = preview.entries.filter { selected.contains($0.id) }
         guard entries.count == selected.count, !entries.contains(where: { $0.kind == .issue }) else { return stale.localizedDescription }
-        var identities: Set<String> = []
+        var identityOwners: [String: String] = [:]
         for entry in entries {
             if entry.kind == .moved && entry.selectedFile(locations: locations) == nil {
                 return L10n.text("folderReview.chooseLocation", defaultValue: "Choose a candidate location for every selected possible move.")
             }
-            if let file = entry.selectedFile(locations: locations), entry.kind == .added || entry.kind == .moved || entry.restoresAvailability {
-                guard identities.insert(file.identity.key).inserted else {
+            if let file = entry.selectedFile(locations: locations),
+               entry.kind == .added || entry.kind == .moved || entry.kind == .restorable || entry.restoresAvailability {
+                let owner = entry.source?.id ?? entry.id
+                guard identityOwners[file.identity.key, default: owner] == owner else {
                     return L10n.text("folderReview.duplicateCandidate", defaultValue: "The same file was selected for more than one original. Choose one mapping before applying.")
                 }
+                identityOwners[file.identity.key] = owner
             }
         }
         return nil
@@ -193,6 +229,7 @@ actor FolderReviewService {
         let entries = preview.entries.filter { selected.contains($0.id) }
         let relocator = RootRelocator()
         var proposals = [SourceRelocation](), imports = [Photo]()
+        var verifiedSources = Set<String>()
         for entry in entries {
             try Task.checkCancellation()
             if entry.kind == .missing { continue }
@@ -201,7 +238,15 @@ actor FolderReviewService {
             if entry.kind == .moved || entry.restoresAvailability {
                 guard let source = entry.source else { throw Self.stale }
                 if entry.kind == .moved, try Self.identity(at: source.relativePath, root: root) != nil { throw Self.stale }
-                proposals.append(try await relocator.prepare(source, file: URL(fileURLWithPath: root.path).appendingPathComponent(file.relativePath), catalog: catalog))
+                if verifiedSources.insert(source.id).inserted {
+                    proposals.append(try await relocator.prepare(source, file: URL(fileURLWithPath: root.path).appendingPathComponent(file.relativePath), catalog: catalog))
+                }
+            } else if entry.kind == .restorable {
+                guard let source = entry.source else { throw Self.stale }
+                if verifiedSources.insert(source.id).inserted {
+                    try SourceAvailability.check(root: lease.url, file: lease.url.appendingPathComponent(file.relativePath))
+                    if let digest = file.digest, try Self.digest(file, root: root) != digest { throw Self.stale }
+                }
             } else if entry.kind == .added {
                 let photo = try ReferenceImporter.inspect(url: URL(fileURLWithPath: root.path).appendingPathComponent(file.relativePath), root: root, rootURL: URL(fileURLWithPath: root.path))
                 guard photo.identityKey == file.identity.key,
@@ -225,12 +270,22 @@ actor FolderReviewService {
                     guard let source = entry.source, try Self.identity(at: source.relativePath, root: root) == nil else { throw Self.stale }
                 }
                 if let file = entry.selectedFile(locations: locations) {
-                    guard try Self.identity(at: file.relativePath, root: root) == file.identity,
-                          !excluded.contains(ExportNamingPlanner.collisionKey(URL(fileURLWithPath: root.path).appendingPathComponent(file.relativePath).path)) else { throw Self.stale }
+                    guard try Self.identity(at: file.relativePath, root: root) == file.identity else { throw Self.stale }
+                    let path = URL(fileURLWithPath: root.path).appendingPathComponent(file.relativePath).path
+                    guard entry.kind == .restorable || !excluded.contains(ExportNamingPlanner.collisionKey(path)) else { throw Self.stale }
                 }
             }
             var result = FolderReviewResult()
-            for proposal in verifiedProposals { try RootRelocator.publish(proposal, in: db); result.relinked += 1 }
+            for proposal in verifiedProposals { try RootRelocator.publish(proposal, in: db) }
+            result.relinked = entries.filter { $0.kind == .moved || ($0.kind == .changed && $0.restoresAvailability) }.count
+            for entry in entries {
+                guard let version = entry.removedVersion else { continue }
+                try Task.checkCancellation()
+                try db.execute(sql: "UPDATE photo SET deleted=0 WHERE id=? AND sourceID=? AND copyName IS ? AND deleted=1",
+                               arguments: [version.id, version.sourceID, version.copyName])
+                guard db.changesCount == 1 else { throw Self.stale }
+                result.restoredVersionIDs.insert(version.id)
+            }
             for entry in entries where entry.kind == .missing || (entry.kind == .changed && !entry.restoresAvailability) {
                 try Task.checkCancellation()
                 try db.execute(sql: "UPDATE photoSource SET availability=? WHERE id=?", arguments: [entry.kind == .missing ? "missing" : "changed", entry.id])

@@ -53,7 +53,9 @@ struct FolderReviewSheet: View {
                 selection: $filter, expand: true, wrappingColumns: 3).disabled(working)
             HStack {
                 Button(L10n.text("folderReview.selectShown", defaultValue: "Select Shown Changes")) {
-                    selected.formUnion(entries.filter { $0.kind != .issue }.map(\.id))
+                    selected.formUnion(entries.filter {
+                        $0.kind != .issue && ($0.kind != .restorable || filter == FolderDifferenceKind.restorable.rawValue + 1)
+                    }.map(\.id))
                 }.buttonStyle(.key)
                 Button(L10n.text("app.clearSelection", defaultValue: "Clear Selection")) { selected = [] }.buttonStyle(.key)
                 Spacer()
@@ -100,7 +102,8 @@ struct FolderReviewSheet: View {
         L10n.text("folderReview.countLabel", defaultValue: "\(title) (\(count))")
     }
     private func differenceRow(_ entry: FolderDifference) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let label = entry.removedVersion.map { entry.path + " · " + $0.name } ?? entry.path
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 12) {
                 if entry.kind != .issue {
                     Button(entry.actionTitle) {
@@ -108,10 +111,10 @@ struct FolderReviewSheet: View {
                     }
                     .buttonStyle(.key(selected: selected.contains(entry.id), lampInside: true))
                     .frame(width: 140)
-                    .accessibilityLabel(L10n.text("folderReview.actionForPath", defaultValue: "\(entry.actionTitle) · \(entry.path)"))
+                    .accessibilityLabel(L10n.text("folderReview.actionForPath", defaultValue: "\(entry.actionTitle) · \(label)"))
                     .accessibilityValue(selected.contains(entry.id) ? L10n.text("app.selected", defaultValue: "Selected") : L10n.text("folderReview.notSelected", defaultValue: "Not Selected"))
                 }
-                Text(entry.path).font(.body).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                Text(label).font(.body).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text(entry.kind.title).font(.caption11).foregroundStyle(Theme.textSecondary)
             }

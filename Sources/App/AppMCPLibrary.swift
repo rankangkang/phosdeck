@@ -20,11 +20,17 @@ struct MCPFolderPlan {
             case .changed: kind = "changed"
             case .moved: kind = "moved"
             case .issue: kind = "issue"
+            case .restorable: kind = "restorable"
             }
-            return ["difference_id": .string(id), "kind": .string(kind), "name": .string(difference.path),
-                    "can_apply": .bool(difference.kind != .issue), "restores_availability": .bool(difference.restoresAvailability),
-                    "source_id": difference.source.map { .string($0.id) } ?? .null,
-                    "location_count": .int(locations.count)]
+            var result: [String: Value] = ["difference_id": .string(id), "kind": .string(kind), "name": .string(difference.path),
+                                           "can_apply": .bool(difference.kind != .issue), "restores_availability": .bool(difference.restoresAvailability),
+                                           "source_id": difference.source.map { .string($0.id) } ?? .null,
+                                           "location_count": .int(locations.count)]
+            if let version = difference.removedVersion {
+                result["photo_id"] = .string(version.id)
+                result["version_name"] = .string(version.name)
+            }
+            return .object(result)
         }
         var locationItems: [Value] {
             locations.sorted { $0.value.relativePath < $1.value.relativePath }.map {
@@ -198,9 +204,11 @@ extension AppMCPWorkflows {
                 job.data["applied_count"] = .int(result.appliedCount)
                 job.data["relinked"] = .int(result.relinked)
                 job.data["marked"] = .int(result.marked)
+                job.data["restored"] = .int(result.restoredVersionIDs.count)
                 job.data["workspace_refreshed"] = .bool(refreshed)
                 job.items = entries.map { ["difference_id": .string($0.id), "state": "applied"] }
                 job.items += result.importedPhotoIDs.sorted().map { ["photo_id": .string($0), "state": "indexed"] }
+                job.items += result.restoredVersionIDs.sorted().map { ["photo_id": .string($0), "state": "restored"] }
                 job.finish(.succeeded, "Applied the selected folder changes.", committed: "committed")
             }
         default:

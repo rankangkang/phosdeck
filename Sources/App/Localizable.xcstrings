@@ -211,13 +211,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Selected versions: %lld. Original files stay in place. Undo is available until you close Phosdeck or switch catalogs. Reimporting will not restore removed versions."
+            "value": "Selected versions: %lld. Original files stay in place. To recover, undo the removal or restore the versions in Review Folder Changes."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "选中的照片版本：%lld。原片文件保留在原位。关闭 Phosdeck 或切换图库前可以撤销；重新导入不会恢复已移除的版本。"
+            "value": "选中的照片版本：%lld。原片保留在原位。可以撤销移除，也可以在「查看文件夹差异」中恢复相应版本。"
           }
         }
       }
@@ -347,13 +347,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This removes the selected versions from this catalog. Sidecars stay in place. To recover, manually move the files from the Trash back to the paths below in Finder, then undo the catalog removal before closing Phosdeck or switching catalogs. Reimporting will not restore removed versions."
+            "value": "This removes the selected versions from this catalog. Sidecars stay in place. To recover, move the originals back to the paths below in Finder, then undo the removal or restore the versions in Review Folder Changes."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这将从当前图库移除所选版本，保留附属文件。如需恢复，请在 Finder 中将原片从废纸篓手动移回下列路径，然后在关闭 Phosdeck 或切换图库前撤销图库移除。重新导入不会恢复已移除的版本。"
+            "value": "这将从当前图库移除所选版本，保留附属文件。如需恢复，请在 Finder 中将原片移回下列路径，然后撤销移除或在「查看文件夹差异」中恢复相应版本。"
           }
         }
       }
@@ -46971,6 +46971,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "标记变更"
+          }
+        }
+      }
+    },
+    "folderReview.restorable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Removed Versions"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已移除版本"
+          }
+        }
+      }
+    },
+    "folderReview.restoreVersion": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore Version"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "恢复版本"
+          }
+        }
+      }
+    },
+    "folderReview.restoredCount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restored versions %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "恢复版本 %lld 项"
           }
         }
       }
