@@ -15,6 +15,15 @@ enum LightroomImporter {
         let record: StorageRoot
         let relative: String?
     }
+    private struct History {
+        struct Step {
+            let title: String
+            let date: Double?
+            let recipe: EditRecipe
+        }
+        var steps: [Step] = []
+        var selected = 0
+    }
 
     static func run(_ preview: LightroomCatalog, locations: [Int64: URL], destination: URL, copying: Bool,
                     pipeline: ImagePipeline, progress: (Int, Int) async -> Void = { _, _ in }) async throws -> Result {
@@ -36,6 +45,9 @@ enum LightroomImporter {
         let sourceArchive = project.staging.appendingPathComponent("Lightroom", isDirectory: true)
         try FileManager.default.createDirectory(at: sourceArchive, withIntermediateDirectories: false)
         try preserveSource(preview, in: sourceArchive)
+        let sourceCatalog = try LightroomCatalog.openReadOnly(sourceArchive.appendingPathComponent(preview.file.lastPathComponent))
+        defer { try? sourceCatalog.close() }
+        let hasHistory = try await sourceCatalog.read { try LightroomCatalog.hasHistory(in: $0) }
         var roots: [Int64: Root] = [:]
         var labels = Set<String>()
         for id in inputs.keys.sorted() {
@@ -55,7 +67,7 @@ enum LightroomImporter {
         }
 
         var warnings = preview.warnings
-        var versions: [(photo: Photo, keywords: [String], original: Int64, master: Int64)] = []
+        var versions: [(photo: Photo, keywords: [String], original: Int64, master: Int64, history: History)] = []
         var masters: [Int64: Photo] = [:]
         var originalIDs = Set<String>()
         var stagedPaths = Set<String>()
@@ -150,38 +162,19 @@ enum LightroomImporter {
             if version.master != 0, let master = masters[version.master] { photo.captureDate = master.captureDate }
 
             if let label = photo.tiffPreviewLabel { warnings.append(version.path + " · " + label) }
-            if fileAvailable, photo.supportsEditing, !version.settings.isEmpty || !version.orientation.isEmpty {
+            var history = History()
+            if fileAvailable, photo.supportsEditing {
                 do {
-                    var properties = version.settings.isEmpty ? [:] : try LightroomSettings.properties(version.settings)
-                    let orientation = version.orientation
-                    let requiresRecipe = !properties.isEmpty || !orientation.isEmpty && orientation != "AB"
-                    if requiresRecipe {
-                        let request = ImageRequest(photo: photo, root: root.record, recipe: nil)
-                        let baseline = try await pipeline.baseline(request)
-                        var recipe = baseline
-                        if photo.isRAW, let correction = LightroomSettings.cameraLensCorrection(in: properties),
-                           let defaults = try? await pipeline.rawDefaults(request), defaults.lensCorrection != nil {
-                            recipe.rawDetails.lensCorrection = correction
-                            properties.removeValue(forKey: "LensProfileEnable")
-                        }
-                        let angle = LightroomSettings.cropAngle(in: properties)
-                        let sourceSize = angle != 0 && (-45...45).contains(angle) ?
-                            try? await pipeline.geometrySourceSize(ImageRequest(photo: photo, root: root.record, recipe: recipe)) : nil
-                        try Task.checkCancellation()
-                        let geometry = LightroomSettings.applyGeometry(&properties, orientation: orientation, photo: photo,
-                                                                       sourceSize: sourceSize, recipe: &recipe)
-                        if !properties.isEmpty {
-                            let draft = try XMPPresetReader.convert(properties, filename: "Lightroom")
-                            recipe = try draft.settings.resolved(on: recipe, options: draft.settings.options)
-                            warnings.append(contentsOf: draft.settings.warnings.map { version.path + " · " + $0 })
-                        }
-                        warnings.append(contentsOf: geometry.map { version.path + " · " + $0 })
-                        if recipe != baseline {
-                            photo.recipe = try JSONEncoder().encode(recipe)
-                            photo.recipeRevision = 1
-                            photo.digest = recipe.sourceDigest
-                            converted += 1
-                        }
+                    let steps = try await hasHistory ? sourceCatalog.read { try LightroomCatalog.history(in: $0, image: version.id) } : []
+                    let convertedHistory = try await convertHistory(version, steps: steps, photo: photo, root: root.record,
+                                                                    pipeline: pipeline, warnings: &warnings)
+                    if let baseline = convertedHistory.steps.first {
+                        let recipe = convertedHistory.steps[convertedHistory.selected].recipe
+                        photo.recipe = try JSONEncoder().encode(recipe)
+                        photo.recipeRevision = 1
+                        photo.digest = recipe.sourceDigest
+                        history = convertedHistory
+                        if recipe != baseline.recipe { converted += 1 }
                     }
                 } catch is CancellationError { throw CancellationError() }
                 catch { warnings.append(version.path + " · " + error.localizedDescription) }
@@ -191,7 +184,7 @@ enum LightroomImporter {
             for keyword in version.keywords where (try? KeywordSummary.name(keyword)) == nil {
                 warnings.append(version.path + " · " + keyword)
             }
-            versions.append((photo, version.keywords, version.id, version.master))
+            versions.append((photo, version.keywords, version.id, version.master, history))
         }
         await progress(sorted.count, sorted.count)
         try Task.checkCancellation()
@@ -209,9 +202,15 @@ enum LightroomImporter {
                 photo.digest = digestBySource[photo.sourceKey]
                 if let master = mastersByID[entry.master] { photo.captureDate = master.captureDate }
                 try photo.insert(db)
-                if let recipe = photo.recipe {
+                for (index, step) in entry.history.steps.enumerated() {
+                    try Task.checkCancellation()
+                    let recipe = try (index == entry.history.selected ? photo.recipe : nil) ?? JSONEncoder().encode(step.recipe)
                     try db.execute(sql: "INSERT INTO editHistory(photoID,title,createdAt,recipe) VALUES (?,?,?,?)",
-                                   arguments: [photo.id, L10n.text("lightroom.historyTitle", defaultValue: "Imported from Lightroom Classic"), importTime, recipe])
+                                   arguments: [photo.id, step.title, step.date ?? importTime, recipe])
+                    if index == entry.history.selected, index != entry.history.steps.count - 1 {
+                        let selected = try JSONEncoder().encode(EditHistoryEntry.Selection(selectedHistoryID: db.lastInsertedRowID, recipe: step.recipe))
+                        try db.execute(sql: "UPDATE photo SET recipe=? WHERE id=?", arguments: [selected, photo.id])
+                    }
                 }
                 for keyword in entry.keywords {
                     guard let name = try? KeywordSummary.name(keyword) else { continue }
@@ -259,6 +258,76 @@ enum LightroomImporter {
         do { try CatalogStore.verifyBackup(published, identity: identity) }
         catch { throw LRCError(L10n.text("project.publishedNeedsVerification", defaultValue: "The project was published but needs verification:") + "\n" + published.path + "\n" + error.localizedDescription) }
         return Result(catalog: published, imported: idByVersion.count, converted: converted, warnings: warnings)
+    }
+
+    private static func convertHistory(_ version: LightroomCatalog.Version, steps: [LightroomCatalog.HistoryStep],
+                                       photo: Photo, root: StorageRoot, pipeline: ImagePipeline, warnings: inout [String]) async throws -> History {
+        guard !steps.isEmpty || version.settings?.isEmpty == false || !version.orientation.isEmpty && version.orientation != "AB" else { return History() }
+        let request = ImageRequest(photo: photo, root: root, recipe: nil)
+        let baseline = try await pipeline.baseline(request)
+        let defaults = photo.isRAW ? try? await pipeline.rawDefaults(request) : nil
+        var notes = Set<String>()
+        var sizes: [Bool?: CGSize] = [:]
+        func convert(_ text: String, orientation: String) async throws -> EditRecipe {
+            var properties = text.isEmpty ? [:] : try LightroomSettings.properties(text)
+            let storedOrientation = properties.removeValue(forKey: "Orientation")?.first ?? ""
+            var recipe = baseline
+            if defaults?.lensCorrection != nil, let correction = LightroomSettings.cameraLensCorrection(in: properties) {
+                recipe.rawDetails.lensCorrection = correction
+                properties.removeValue(forKey: "LensProfileEnable")
+            }
+            let angle = LightroomSettings.cropAngle(in: properties)
+            let lens = recipe.rawDetails.lensCorrection
+            if angle != 0, (-45...45).contains(angle), sizes[lens] == nil {
+                sizes[lens] = try? await pipeline.geometrySourceSize(ImageRequest(photo: photo, root: root, recipe: recipe))
+            }
+            try Task.checkCancellation()
+            notes.formUnion(LightroomSettings.applyGeometry(&properties, orientation: orientation.isEmpty ? storedOrientation : orientation,
+                                                            photo: photo, sourceSize: sizes[lens], recipe: &recipe))
+            if !properties.isEmpty {
+                let settings = try XMPPresetReader.convert(properties, filename: "Lightroom").settings
+                recipe = try settings.resolved(on: recipe, options: settings.options)
+                // Imported detail values replace the corresponding RAW decoder defaults.
+                if settings.values["Sharpness"] != nil, defaults?.sharpness != nil { recipe.rawDetails.sharpness = 0 }
+                if settings.values["LuminanceSmoothing"] != nil, defaults?.luminanceNoiseReduction != nil { recipe.rawDetails.luminanceNoiseReduction = 0 }
+                if settings.values["ColorNoiseReduction"] != nil, defaults?.colorNoiseReduction != nil { recipe.rawDetails.colorNoiseReduction = 0 }
+                notes.formUnion(settings.warnings)
+            }
+            try recipe.validate(for: photo)
+            return recipe
+        }
+        var latest: EditRecipe?
+        do {
+            if let settings = version.settings { latest = try await convert(settings, orientation: version.orientation) }
+            else if steps.isEmpty { latest = try await convert("", orientation: version.orientation) }
+        } catch is CancellationError { throw CancellationError() }
+        catch { notes.insert(error.localizedDescription) }
+        var history = History(steps: [
+            .init(title: L10n.text("lightroom.originalHistory", defaultValue: "Original Photo"), date: steps.first?.date, recipe: baseline)
+        ])
+        var selected: Int?
+        for step in steps {
+            try Task.checkCancellation()
+            do {
+                let recipe: EditRecipe
+                if step.id == version.currentHistoryID, let latest { recipe = latest }
+                else if let settings = step.settings, !settings.isEmpty { recipe = try await convert(settings, orientation: "") }
+                else { throw LRCError(L10n.text("lightroom.invalidSettings", defaultValue: "Unsupported Lightroom develop settings format.")) }
+                if step.id == version.currentHistoryID { selected = history.steps.count }
+                history.steps.append(.init(title: step.title, date: step.date, recipe: recipe))
+            } catch is CancellationError { throw CancellationError() }
+            catch { notes.insert(step.title + " · " + error.localizedDescription) }
+        }
+        if let selected { history.selected = selected }
+        else {
+            if let latest, latest != history.steps.last?.recipe {
+                history.steps.append(.init(title: L10n.text("lightroom.historyTitle", defaultValue: "Imported from Lightroom Classic"),
+                                           date: nil, recipe: latest))
+            }
+            history.selected = history.steps.count - 1
+        }
+        warnings.append(contentsOf: notes.sorted().map { version.path + " · " + $0 })
+        return history.steps.count == 1 ? History() : history
     }
 
     private static func color(_ label: String) -> Int {

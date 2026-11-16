@@ -36,6 +36,9 @@ struct Photo: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatab
     var availability: String = "available"
     var recipe: Data?
     var recipeRevision: Int = 0
+    var selectedHistoryID: Int64? {
+        recipe.flatMap { try? JSONDecoder().decode(EditHistoryEntry.Selection.self, from: $0).selectedHistoryID }
+    }
     var metadata: Data?
     var details: PhotoMetadata? { metadata.flatMap { try? JSONDecoder().decode(PhotoMetadata.self, from: $0) } }
     var name: String { URL(fileURLWithPath: relativePath).lastPathComponent }
@@ -91,6 +94,20 @@ struct EditHistoryEntry: Codable, FetchableRecord, Identifiable {
     var title: String
     var createdAt: Double
     var recipe: Data
+
+    // Record the selected step in the saved recipe payload so equal recipes can have distinct steps.
+    struct Selection: Codable {
+        let selectedHistoryID: Int64
+        var recipe: EditRecipe? = nil
+
+        enum CodingKeys: String, CodingKey { case selectedHistoryID }
+
+        func encode(to encoder: Encoder) throws {
+            try recipe?.encode(to: encoder)
+            var fields = encoder.container(keyedBy: CodingKeys.self)
+            try fields.encode(selectedHistoryID, forKey: .selectedHistoryID)
+        }
+    }
 }
 struct EditSnapshot: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatable {
     static let databaseTableName = "editSnapshot"

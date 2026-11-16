@@ -332,6 +332,32 @@ final class CatalogStore: @unchecked Sendable {
         return photo
     }
 
+    func selectHistoryStep(_ id: Int64, expecting expected: Photo) throws -> Photo? {
+        try database.write { db in
+            guard var photo = try Photo.fetchOne(db, key: expected.id), !photo.deleted, photo.availability == "available",
+                  photo.identity == expected.identity, photo.revision == expected.revision,
+                  photo.recipeRevision == expected.recipeRevision else { throw RecipeBatchConflict(photoID: expected.id) }
+            guard let entry = try EditHistoryEntry.fetchOne(db, sql: "SELECT * FROM editHistory WHERE id=? AND photoID=?", arguments: [id, photo.id]) else {
+                throw OrganizationError.photoUnavailable
+            }
+            let value = try JSONDecoder().decode(EditRecipe.self, from: entry.recipe)
+            try value.validate(for: photo)
+            guard photo.digest == value.sourceDigest else {
+                throw LRCError(L10n.text("app.sourceIdentityMismatch", defaultValue: "Source identity mismatch"))
+            }
+            if let selected = photo.selectedHistoryID {
+                if selected == id { return nil }
+            } else if photo.recipe == entry.recipe,
+                      try Int64.fetchOne(db, sql: "SELECT max(id) FROM editHistory WHERE photoID=?", arguments: [photo.id]) == id {
+                return nil
+            }
+            photo.recipe = try JSONEncoder().encode(EditHistoryEntry.Selection(selectedHistoryID: id, recipe: value))
+            photo.recipeRevision += 1
+            try db.execute(sql: "UPDATE photo SET recipe=?,recipeRevision=? WHERE id=?", arguments: [photo.recipe, photo.recipeRevision, photo.id])
+            return photo
+        }
+    }
+
     /// Prepare image baselines outside the transaction; publish the successful subset together.
     @discardableResult
     func saveRecipes(_ changes: [(photo: Photo, recipe: EditRecipe)], title: String, expecting: [Photo] = [],
@@ -360,22 +386,25 @@ final class CatalogStore: @unchecked Sendable {
         }
     }
     /// Keep nil recipes for previously untouched photos. Restore the whole undo step atomically.
-    func restoreRecipes(_ states: [Photo], title: String) throws -> [Photo] {
+    func restoreRecipes(_ states: [Photo], title: String?) throws -> [Photo] {
         try database.write { db in
             var inverse = [Photo]()
             for state in states {
-                guard let current = try Photo.fetchOne(db, key: state.id), current.availability == "available",
+                guard let current = try Photo.fetchOne(db, key: state.id), !current.deleted, current.availability == "available",
                       current.identity == state.identity else { throw LRCError(L10n.text("app.aPhotoSourceChangedTheseBatchAdjustmentsCannotBe", defaultValue: "A photo source changed. These batch adjustments cannot be restored")) }
                 let old = try state.recipe.map { try JSONDecoder().decode(EditRecipe.self, from: $0) }
-                try old?.validate()
+                try old?.validate(for: current)
                 if let old, let digest = current.digest, old.sourceDigest != digest { throw LRCError(L10n.text("app.photoSourceMismatchAdjustmentsCannotBeRestored", defaultValue: "Photo source mismatch. Adjustments cannot be restored")) }
                 inverse.append(current)
-                let history = try state.recipe ?? current.recipe.map {
-                    try JSONEncoder().encode(JSONDecoder().decode(EditRecipe.self, from: $0).baseline())
+                var stored = state.recipe
+                if title != nil, state.selectedHistoryID != nil, let old {
+                    stored = try JSONEncoder().encode(old)
                 }
                 try db.execute(sql: "UPDATE photo SET recipe=?,digest=?,recipeRevision=recipeRevision+1 WHERE id=?",
-                               arguments: [state.recipe, state.digest, state.id])
-                if let history {
+                               arguments: [stored, state.digest, state.id])
+                if let title, let history = try stored ?? current.recipe.map({
+                    try JSONEncoder().encode(JSONDecoder().decode(EditRecipe.self, from: $0).baseline())
+                }) {
                     try db.execute(sql: "INSERT INTO editHistory (photoID,title,createdAt,recipe) VALUES (?,?,?,?)",
                                    arguments: [state.id, title, Date().timeIntervalSince1970, history])
                 }
@@ -939,16 +968,18 @@ extension CatalogStore {
             for id in ids.sorted() {
                 guard let original = try Photo.fetchOne(db,key:id), !original.deleted else { throw LRCError(L10n.text("app.theSelectedVersionNoLongerExistsNoCopyWas", defaultValue: "The selected version no longer exists. No copy was created")) }
                 if let expected = expecting[id], !expected.matches(original) { throw OrganizationError.versionConflict }
-                if let data = original.recipe { try JSONDecoder().decode(EditRecipe.self,from:data).validate(for:original) }
+                let current = try original.recipe.map { try JSONDecoder().decode(EditRecipe.self, from: $0) }
+                try current?.validate(for: original)
                 let names = Set(try String.fetchAll(db,sql:"SELECT copyName FROM photo WHERE sourceID=? AND copyName IS NOT NULL",arguments:[original.sourceKey]))
                 var number = 1
                 while names.contains(L10n.text("app.copy_458", defaultValue: "Copy \(number)")) { number += 1 }
                 var copy = original
                 if let recipeOverride {
                     try recipeOverride.validate(for: original)
-                    let current = try original.recipe.map { try JSONDecoder().decode(EditRecipe.self, from: $0) }
                     guard recipeOverride.sourceDigest == (original.digest ?? current?.sourceDigest) else { throw LRCError(L10n.text("app.thePhotoSourceChangedNoCopyWasCreated", defaultValue: "The photo source changed. No copy was created")) }
                     copy.recipe = try JSONEncoder().encode(recipeOverride)
+                } else if original.selectedHistoryID != nil, let current {
+                    copy.recipe = try JSONEncoder().encode(current)
                 }
                 copy.id = UUID().uuidString; copy.sourceID = original.sourceKey; copy.copyName = L10n.text("app.copy_458", defaultValue: "Copy \(number)")
                 copy.recipeRevision = 0; copy.deleted = false

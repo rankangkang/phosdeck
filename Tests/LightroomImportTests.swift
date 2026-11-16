@@ -85,7 +85,20 @@ final class LightroomImportTests: XCTestCase {
         XCTAssertEqual(recipe.crop.y, 0.3, accuracy: 1e-12)
         let mono = try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(copy.recipe))
         XCTAssertTrue(mono.develop.blackAndWhite); XCTAssertEqual(mono.exposure, -0.5); XCTAssertEqual(mono.quarterTurns, 1)
-        XCTAssertEqual(try referenced.editHistory(photoID: original.id).count, 1)
+        let history = try referenced.editHistory(photoID: original.id)
+        XCTAssertEqual(history.dropLast().map(\.title), ["Latest exposure", "Cropped exposure", "First exposure"])
+        XCTAssertEqual(history.count, 4)
+        XCTAssertEqual(original.selectedHistoryID, history[1].id)
+        XCTAssertEqual(history[2].createdAt, Date(timeIntervalSinceReferenceDate: 1000).timeIntervalSince1970)
+        let states = try history.map { try JSONDecoder().decode(EditRecipe.self, from: $0.recipe) }
+        XCTAssertEqual(states.map(\.exposure), [1.5, 0.75, 0.2, 0])
+        XCTAssertEqual(states[2].crop, Crop())
+        XCTAssertEqual(states[2].straightenDegrees, 0)
+        XCTAssertTrue(reference.warnings.contains { $0.contains("Unreadable step") })
+        let copyHistory = try referenced.editHistory(photoID: copy.id)
+        XCTAssertEqual(copyHistory.count, 3)
+        XCTAssertEqual(copyHistory[1].title, "Copy exposure")
+        XCTAssertEqual(try JSONDecoder().decode(EditRecipe.self, from: copyHistory[1].recipe).quarterTurns, 0)
         let album = try XCTUnwrap(referenced.collections().first)
         let missing = try XCTUnwrap(photos.first { $0.name == "Missing.jpg" })
         XCTAssertEqual(missing.availability, "missing")
@@ -108,6 +121,40 @@ final class LightroomImportTests: XCTestCase {
         let root = try XCTUnwrap(reopened.roots().first)
         let rendered = try await pipeline.render(ImageRequest(photo: photo, root: root, recipe: recipe), longEdge: 100)
         XCTAssertEqual(rendered.image.width, 10)
+    }
+
+    func testImportedDetailDoesNotStackOnTheRAWDecoderDefaults() async throws {
+        let sample = try MoreRAWTests.sample("a7iii_12bit_compressed.ARW")
+        let fixture = ImportTests(); try fixture.setUpWithError(); defer { try? fixture.tearDownWithError() }
+        let file = try source(fixture)
+        let image = fixture.source.appendingPathComponent("2026/拍摄/Camera.ARW")
+        try FileManager.default.copyItem(at: sample, to: image)
+        let database = try DatabaseQueue(path: file.path)
+        try await database.write { db in
+            try db.execute(sql: "UPDATE AgLibraryFile SET idx_filename='Camera.ARW' WHERE id_local=4")
+            try db.execute(sql: """
+                INSERT INTO Adobe_imageDevelopSettings VALUES
+                  (5, 's = { ColorNoiseReduction = 25, LuminanceSmoothing = 0, Sharpness = 40 }', NULL)
+                """)
+        }
+        try database.close()
+        let pipeline = ImagePipeline()
+        let result = try await LightroomImporter.run(LightroomCatalog.preview(file), locations: [1: fixture.source],
+            destination: fixture.target.appendingPathComponent("Detail"), copying: false, pipeline: pipeline)
+        let catalog = try CatalogStore(fileURL: result.catalog)
+        let photo = try XCTUnwrap(try catalog.photos().first { $0.name == "Camera.ARW" })
+        let root = try XCTUnwrap(try catalog.roots().first)
+        let recipe = try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(photo.recipe))
+        let defaults = try await pipeline.rawDefaults(.init(photo: photo, root: root, recipe: recipe))
+        XCTAssertEqual(recipe.sharpening.amount, 40)
+        XCTAssertEqual(recipe.noiseReduction.color, 25)
+        XCTAssertEqual(recipe.rawDetails.sharpness, defaults.sharpness.map { _ in 0 })
+        XCTAssertEqual(recipe.rawDetails.luminanceNoiseReduction, defaults.luminanceNoiseReduction.map { _ in 0 })
+        XCTAssertEqual(recipe.rawDetails.colorNoiseReduction, defaults.colorNoiseReduction.map { _ in 0 })
+        let original = try XCTUnwrap(catalog.editHistory(photoID: photo.id).last)
+        XCTAssertTrue(try JSONDecoder().decode(EditRecipe.self, from: original.recipe).rawDetails.isDefault)
+        let rendered = try await pipeline.render(.init(photo: photo, root: root, recipe: recipe), longEdge: 320)
+        XCTAssertEqual(max(rendered.image.width, rendered.image.height), 320)
     }
 
     func testMultipageTIFFPreviewsFirstPageAndVerifiesUnidentifiedReferenceInPlace() async throws {

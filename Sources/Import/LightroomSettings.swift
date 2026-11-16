@@ -138,6 +138,11 @@ enum LightroomSettings {
         }
         var notes = orientation.isEmpty || orientations.contains(orientation) ? [] : ["Orientation \(orientation)"]
         let edges = ["CropLeft", "CropTop", "CropRight", "CropBottom"]
+        let cropKeys = edges + ["CropAngle", "HasCrop"]
+        if ["false", "0"].contains(properties["HasCrop"]?.first?.lowercased() ?? "") {
+            for key in cropKeys { properties.removeValue(forKey: key) }
+            return notes
+        }
         let angle = cropAngle(in: properties)
         guard edges.contains(where: { properties[$0] != nil }) || angle != 0 else { return notes }
         let values = zip(edges, [0.0, 0.0, 1.0, 1.0]).map { key, fallback in
@@ -171,7 +176,7 @@ enum LightroomSettings {
             recipe.straightenDegrees = [1, 3, 4, 6].contains(source) ? -angle : angle
             recipe.straightenAtSourceScale = true
         }
-        for key in edges + ["CropAngle", "HasCrop"] { properties.removeValue(forKey: key) }
+        for key in cropKeys { properties.removeValue(forKey: key) }
         return notes
     }
 
@@ -179,25 +184,27 @@ enum LightroomSettings {
         guard !xmp.isEmpty, xmp.count <= XMPPresetReader.maximumBytes else { return nil }
         let xml: Data
         if let text = String(data: xmp, encoding: .utf8), text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<") { xml = xmp }
-        else {
-            guard xmp.count > 4 else { return nil }
-            let length = xmp.prefix(4).reduce(0) { ($0 << 8) | Int($1) }
-            guard length > 0, length <= XMPPresetReader.maximumBytes else { return nil }
-            var output = Data(count: length)
-            var written = uLongf(length)
-            let status = output.withUnsafeMutableBytes { dst in
-                xmp.withUnsafeBytes { src in
-                    uncompress(dst.bindMemory(to: UInt8.self).baseAddress, &written,
-                               src.bindMemory(to: UInt8.self).baseAddress?.advanced(by: 4), uLong(xmp.count - 4))
-                }
-            }
-            guard status == Z_OK, written == length else { return nil }
-            xml = output
-        }
+        else if let output = unzip(xmp) { xml = output }
+        else { return nil }
         guard let text = String(data: xml, encoding: .utf8), text.range(of: "<!DOCTYPE", options: .caseInsensitive) == nil,
               text.range(of: "<!ENTITY", options: .caseInsensitive) == nil,
               let metadata = CGImageMetadataCreateFromXMPData(xml as CFData) else { return nil }
         return CGImageMetadataCopyStringValueWithPath(metadata, nil, "dc:description" as CFString) as String?
+    }
+
+    static func unzip(_ packet: Data) -> Data? {
+        guard packet.count > 4, packet.count <= XMPPresetReader.maximumBytes else { return nil }
+        let length = packet.prefix(4).reduce(0) { ($0 << 8) | Int($1) }
+        guard length > 0, length <= XMPPresetReader.maximumBytes else { return nil }
+        var output = Data(count: length)
+        var written = uLongf(length)
+        let status = output.withUnsafeMutableBytes { dst in
+            packet.withUnsafeBytes { src in
+                uncompress(dst.bindMemory(to: UInt8.self).baseAddress, &written,
+                           src.bindMemory(to: UInt8.self).baseAddress?.advanced(by: 4), uLong(packet.count - 4))
+            }
+        }
+        return status == Z_OK && written == length ? output : nil
     }
 
     private static var invalid: LRCError {

@@ -55,7 +55,7 @@ struct LightroomImportSheet: View {
                         }
                     }.buttonStyle(.key)
                 }.font(.caption11)
-                Text(L10n.text("lightroom.scope", defaultValue: "Creates a new Phosdeck catalog with editable supported adjustments. The source catalog and its available settings files are saved alongside it."))
+                Text(L10n.text("lightroom.scope", defaultValue: "Imports supported adjustments and history into a new catalog and keeps a copy of the source catalog and settings. Phosdeck rendering may differ from Lightroom."))
                     .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             } else if error == nil {
                 HStack {

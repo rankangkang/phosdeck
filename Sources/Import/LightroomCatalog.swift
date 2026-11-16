@@ -22,13 +22,20 @@ struct LightroomCatalog: Sendable {
         let orientation: String
         let width: Int
         let height: Int
-        let settings: String
+        let settings: String?
+        let currentHistoryID: Int64?
         let caption: String
         let keywords: [String]
     }
     struct Album: Sendable {
         let name: String
         let members: [Int64]
+    }
+    struct HistoryStep {
+        let id: Int64
+        let title: String
+        let date: Double?
+        let settings: String?
     }
     let file: URL
     let identity: FileIdentity
@@ -40,12 +47,7 @@ struct LightroomCatalog: Sendable {
 
     static func preview(_ source: URL) throws -> Self {
         let identity = try requireClosed(source)
-        var config = Configuration()
-        config.readonly = true
-        config.prepareDatabase { db in try db.execute(sql: "PRAGMA trusted_schema = OFF") }
-        // A closed catalog can still be in WAL mode. Read it without creating
-        // SQLite sidecars alongside the original.
-        let database = try DatabaseQueue(path: source.absoluteString + "?immutable=1", configuration: config)
+        let database = try openReadOnly(source)
         defer { try? database.close() }
         let preview = try database.read { db in
             let schema = try Set(String.fetchAll(db, sql: "SELECT name FROM sqlite_schema WHERE type='table' AND sql NOT LIKE 'CREATE VIRTUAL TABLE%'"))
@@ -74,9 +76,10 @@ struct LightroomCatalog: Sendable {
             guard rootIDs.count == roots.count else { throw unsupported }
             let folders = try keyed(Row.fetchAll(db, sql: "SELECT * FROM AgLibraryFolder"))
             let files = try keyed(Row.fetchAll(db, sql: "SELECT * FROM AgLibraryFile"))
-            let develops = try Dictionary(optional("Adobe_imageDevelopSettings").compactMap { row -> (Int64, String)? in
-                guard let image: Int64 = value(row, "image"), let settings: String = value(row, "text") else { return nil }
-                return (image, settings)
+            typealias DevelopState = (text: String?, historyID: Int64?)
+            let develops = try Dictionary(optional("Adobe_imageDevelopSettings").compactMap { row -> (Int64, DevelopState)? in
+                guard let image: Int64 = value(row, "image") else { return nil }
+                return (image, (settingsText(row), value(row, "historySettingsID")))
             }, uniquingKeysWith: { first, _ in first })
             let xmp = try Dictionary(optional("Adobe_AdditionalMetadata").compactMap { row -> (Int64, String)? in
                 let packet = value(row, "xmp", as: Data.self) ?? value(row, "xmp", as: String.self).map { Data($0.utf8) } ?? Data()
@@ -117,10 +120,16 @@ struct LightroomCatalog: Sendable {
                     warnings.append("\(id) · " + L10n.text("lightroom.incompletePath", defaultValue: "Incomplete source path"))
                     continue
                 }
+                let develop = develops[id]
+                let settings = develop?.text
+                if develop != nil, settings == nil {
+                    warnings.append(relative + " · " + L10n.text("lightroom.invalidSettings", defaultValue: "Unsupported Lightroom develop settings format."))
+                }
                 versions.append(Version(id: id, master: value(row, "masterImage") ?? 0, root: root, path: relative,
                     name: value(row, "copyName") ?? "", rating: value(row, "rating") ?? 0, flag: value(row, "pick") ?? 0,
                     label: value(row, "colorLabels") ?? "", captureDate: value(row, "captureTime") ?? exif[id], orientation: value(row, "orientation") ?? "",
-                    width: value(row, "fileWidth") ?? 0, height: value(row, "fileHeight") ?? 0, settings: develops[id] ?? "",
+                    width: value(row, "fileWidth") ?? 0, height: value(row, "fileHeight") ?? 0, settings: settings,
+                    currentHistoryID: develop?.historyID,
                     caption: xmp[id] ?? iptc[id] ?? "", keywords: keywords[id] ?? []))
             }
             var members: [Int64: [(String, Int64)]] = [:]
@@ -144,8 +153,8 @@ struct LightroomCatalog: Sendable {
                 let sorted = (members[id] ?? []).sorted { $0.0 == $1.0 ? $0.1 < $1.1 : $0.0 < $1.0 }
                 albums.append(Album(name: name, members: sorted.map(\.1)))
             }
-            if schema.contains("Adobe_libraryImageDevelopHistoryStep") || schema.contains("Adobe_libraryImageDevelopSnapshot") {
-                warnings.append(L10n.text("lightroom.sourceHistory", defaultValue: "Lightroom history and snapshots remain in the source catalog copy."))
+            if schema.contains(historyTable), try !hasHistory(in: db) {
+                warnings.append(L10n.text("lightroom.unsupportedHistory", defaultValue: "Unsupported Lightroom history layout. The steps remain in the source catalog copy."))
             }
             let usedRoots = Set(versions.lazy.filter { $0.master == 0 }.map(\.root))
             return Self(file: source, identity: identity, roots: roots.filter { usedRoots.contains($0.id) }, versions: versions, albums: albums, warnings: warnings)
@@ -156,6 +165,52 @@ struct LightroomCatalog: Sendable {
 
     func requireUnchanged() throws {
         guard try Self.requireClosed(file) == identity else { throw ProjectCopy.changed(file) }
+    }
+
+    static func openReadOnly(_ source: URL) throws -> DatabaseQueue {
+        var config = Configuration()
+        config.readonly = true
+        config.prepareDatabase { db in try db.execute(sql: "PRAGMA trusted_schema = OFF") }
+        // A closed catalog can still be in WAL mode. Read it without creating SQLite sidecars.
+        return try DatabaseQueue(path: source.absoluteString + "?immutable=1", configuration: config)
+    }
+
+    private static let historyTable = "Adobe_libraryImageDevelopHistoryStep"
+
+    static func hasHistory(in db: Database) throws -> Bool {
+        guard try Bool.fetchOne(db, sql: """
+            SELECT 1 FROM sqlite_schema WHERE type='table' AND name=? AND sql NOT LIKE 'CREATE VIRTUAL TABLE%'
+            """, arguments: [historyTable]) == true else { return false }
+        let columns = try Set(db.columns(in: historyTable).map { $0.name.lowercased() })
+        return Set(["image", "id_local", "name", "datecreated", "text"]).isSubset(of: columns)
+    }
+
+    static func history(in db: Database, image: Int64) throws -> [HistoryStep] {
+        let rows = try Row.fetchCursor(db, sql: """
+            SELECT id_local, name, dateCreated, text FROM \(historyTable) WHERE image=? ORDER BY dateCreated, id_local
+            """, arguments: [image])
+        var steps: [HistoryStep] = []
+        while let row = try rows.next() {
+            try Task.checkCancellation()
+            let id: Int64 = try row.decode(forColumn: "id_local")
+            let date: Double? = value(row, "dateCreated")
+            let timestamp = date.flatMap { $0.isFinite ? Date(timeIntervalSinceReferenceDate: $0).timeIntervalSince1970 : nil }
+            let name = (value(row, "name", as: String.self) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = name.isEmpty ? L10n.text("lightroom.historyStep", defaultValue: "Lightroom History Step") : String(name.prefix(200))
+            steps.append(HistoryStep(id: id, title: title, date: timestamp, settings: settingsText(row)))
+        }
+        return steps
+    }
+
+    private static func settingsText(_ row: Row) -> String? {
+        guard let stored: DatabaseValue = value(row, "text") else { return nil }
+        switch stored.storage {
+        case .string(let text): return text
+        case .blob(let bytes):
+            if let expanded = LightroomSettings.unzip(bytes) { return String(data: expanded, encoding: .utf8) }
+            return String(data: bytes, encoding: .utf8)
+        default: return nil
+        }
     }
 
     private static func requireClosed(_ file: URL) throws -> FileIdentity {

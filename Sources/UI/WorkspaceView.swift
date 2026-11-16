@@ -503,10 +503,11 @@ struct WorkspaceView: View {
                             }
                             ForEach(model.editHistory) { entry in
                                 let date = Date(timeIntervalSince1970: entry.createdAt)
-                                Button { model.applySavedEdit(data: entry.recipe, photoID: entry.photoID, title: L10n.text("app.restoreHistory", defaultValue: "Restore history: ") + entry.title) } label: {
+                                Button { model.selectHistoryStep(entry) } label: {
                                     ListRowLabel(title: entry.title, detail: date.formatted(date: .omitted, time: .shortened),
-                                                 selected: entry.id == model.editHistory.first?.id && !model.dirty)
+                                                 selected: entry.id == (model.selectedHistoryID ?? model.editHistory.first?.id) && !model.dirty)
                                 }.buttonStyle(.plain).editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto).help(entry.title + " · " + date.formatted() + L10n.text("app.hoverToPreviewClickToRestoreOrRightClick", defaultValue: "; hover to preview, click to restore, or right-click to compare or create a copy"))
+                                    .accessibilityIdentifier("history-entry-\(entry.id)")
                                     .onHover { hovering in
                                         if hovering { model.previewSavedEdit(data: entry.recipe, photoID: entry.photoID, key: "history:\(entry.id)", title: entry.title) }
                                         else { model.clearSavedEditPreview(key: "history:\(entry.id)") }

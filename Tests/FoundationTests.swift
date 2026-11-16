@@ -147,6 +147,57 @@ extension FoundationTests {
         let photos = try XCTUnwrap(json["photos"] as? [[String: Any]])
         XCTAssertEqual((photos.first { $0["id"] as? String == "a" }?["editHistory"] as? [Any])?.count, 4)
     }
+
+    @MainActor func testHistoryStepSelectionPersistsAndNeverAddsAHistoryRow() throws {
+        let location = folder.appendingPathComponent("history-selection")
+        let catalog = try CatalogStore(directory: location)
+        var recipe = try editFixture(catalog)
+        try catalog.saveRecipe(id: "a", recipe: recipe, title: "Original")
+        recipe.exposure = 1
+        try catalog.saveRecipe(id: "a", recipe: recipe, title: "Bright")
+        recipe.exposure = 0
+        try catalog.saveRecipe(id: "a", recipe: recipe, title: "Back to original")
+        let steps = try catalog.editHistory(photoID: "a")
+        XCTAssertEqual(steps.count, 3)
+        let model = AppModel(previewRenderer: { _, _, _ in throw LRCError("synthetic renderer") })
+        model.catalog = catalog
+        model.activeID = "a"
+        try model.reload()
+        model.recipe = recipe
+        model.canEdit = true
+        model.undo.groupsByEvent = false
+
+        model.undo.beginUndoGrouping()
+        model.selectHistoryStep(steps[2])
+        model.undo.endUndoGrouping()
+        XCTAssertEqual(model.selectedHistoryID, steps[2].id)
+        XCTAssertEqual(try catalog.photo("a")?.selectedHistoryID, steps[2].id)
+        XCTAssertEqual(model.recipe?.exposure, 0)
+        XCTAssertEqual(try catalog.editHistory(photoID: "a").map(\.id), steps.map(\.id))
+
+        model.undo.undo()
+        XCTAssertNil(model.selectedHistoryID)
+        model.undo.redo()
+        XCTAssertEqual(model.selectedHistoryID, steps[2].id)
+        let copy = try XCTUnwrap(catalog.createVirtualCopies(ids: ["a"]).first)
+        XCTAssertNil(copy.selectedHistoryID)
+
+        model.undo.beginUndoGrouping()
+        model.selectHistoryStep(steps[1])
+        model.undo.endUndoGrouping()
+        XCTAssertEqual(model.recipe?.exposure, 1)
+        XCTAssertEqual(model.selectedHistoryID, steps[1].id)
+        let saved = try XCTUnwrap(catalog.photo("a"))
+        XCTAssertNil(try catalog.selectHistoryStep(steps[1].id, expecting: saved))
+        XCTAssertThrowsError(try catalog.selectHistoryStep(steps[1].id, expecting: copy))
+        XCTAssertEqual(try catalog.editHistory(photoID: "a").map(\.id), steps.map(\.id))
+
+        let backup = folder.appendingPathComponent("history-position.sqlite")
+        try catalog.backup(to: backup)
+        let recovered = try CatalogStore.restore(from: backup, to: folder.appendingPathComponent("history-position"))
+        XCTAssertEqual(try recovered.photo("a")?.selectedHistoryID, steps[1].id)
+        XCTAssertEqual(try recovered.editHistory(photoID: "a").map(\.id), steps.map(\.id))
+    }
     func testSnapshotDeletionRestoresExactRowAndRejectsStaleOrConflictingState() throws {
         let catalog = try CatalogStore(directory: folder.appendingPathComponent("snapshot-delete"))
         let recipe = try editFixture(catalog)

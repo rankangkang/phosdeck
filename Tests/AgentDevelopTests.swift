@@ -896,6 +896,29 @@ final class AgentDevelopTests: XCTestCase {
         XCTAssertEqual(try catalog.snapshots(photoID: "a").first?.title, "Reference")
     }
 
+    @MainActor func testApplyingHistorySelectsTheExactStepAndCanBeUndone() async throws {
+        let (catalog, _) = try await catalog(ids: ["a"])
+        let client = try await Client(catalog)
+        var recipe = try client.recipe("a")
+        let original = try XCTUnwrap(catalog.editHistory(photoID: "a").first)
+        recipe.exposure = 1
+        try catalog.saveRecipe(id: "a", recipe: recipe)
+        recipe.exposure = 0
+        try catalog.saveRecipe(id: "a", recipe: recipe)
+        let steps = try catalog.editHistory(photoID: "a").map(\.id)
+
+        let args = try client.edits("a", ["history_id": .int(Int(original.id))])
+        let selected = try await client.job(await client.call(.applyEditRecord, args))
+        XCTAssertEqual(selected["commit_state"], "committed")
+        XCTAssertEqual(try catalog.photo("a")?.selectedHistoryID, original.id)
+        XCTAssertEqual(try catalog.editHistory(photoID: "a").map(\.id), steps)
+        let operation = try XCTUnwrap(selected["operation_id"]?.stringValue)
+
+        _ = try client.data(await client.call(.undo, ["operation_id": .string(operation)]))
+        XCTAssertNil(try catalog.photo("a")?.selectedHistoryID)
+        XCTAssertEqual(try catalog.editHistory(photoID: "a").map(\.id), steps)
+    }
+
     @MainActor func testRAWDetailUsesDecoderCapabilitiesAndClearsToDefault() async throws {
         let sample = try MoreRAWTests.sample("leica_m8_8bit_uncompressed.DNG")
         let (catalog, folder) = try await catalog(ids: [])

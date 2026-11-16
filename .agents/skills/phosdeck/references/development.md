@@ -24,7 +24,7 @@ For preset strength, use `transfer_adjustments(action=preset)` in step 2. Pass t
 
 - In Develop or Single view, `set_before_after` changes the active canvas to `off`, `original`, `side_by_side` or `split`. Pass a history or snapshot ID to pin a saved reference. `get_workspace` shows the layout, both sides and preview readiness.
 - For PNGs, `get_photo_preview` with `preview_variant=before` aligns the original or a specified record to the saved geometry. Use the default saved preview as the after image. `preview_variant=original` shows the uncropped baseline. In saved mode, a record ID previews that record's own geometry, a preset ID and revision previews its settings, and `group` temporarily hides that group in the rendered preview. These calls respect the image sharing switch.
-- `preview_adjustment` shows a record in the navigator or a preset or hidden group on the active Develop canvas. Use `action=clear` to dismiss the temporary preview. Use `apply_edit_record` only when the user wants to restore a record as a new saved edit.
+- `preview_adjustment` shows a record in the navigator or a preset or hidden group on the active Develop canvas. Use `action=clear` to dismiss the temporary preview. Use `apply_edit_record` to switch to a history step or apply a snapshot. History navigation preserves the existing steps.
 - `save_edit_snapshot` creates a named snapshot of the saved recipe. For renaming or deleting use the `snapshot_id` and `snapshot_revision` from `list_edit_records(record_type=snapshots)`. The deletion registers an undo action. Creation and rename follow the native snapshot save behavior.
 
 ## Presets and transfer

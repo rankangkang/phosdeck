@@ -56,7 +56,7 @@
 | `transfer_adjustments` | 复制、粘贴、同步、沿用上一张、应用预设，显式传源、目标和 `RecipePasteOptions` 组。预设强度可在单张草稿里反复试用 | `copyAdjustments`／`applyAdjustments`、`AdjustmentPreview`。只改所选参数组，批量结果逐项回读 |
 | `list_adjustment_presets`、`edit_adjustment_preset` | 搜索、筛选收藏／分组、保存／更新／改名／删除、收藏与分组。返回预设及是否可撤销 | `PresetBrowser`、`PresetManagement`、`savePreset`。按原生能力报告撤销 |
 | `plan_xmp_preset_import`、`import_xmp_presets` | 从授权 XMP 读取支持字段、预检诊断、选择记录后批量导入。返回导入及跳过项 | `XMPPresetReader`、`XMPPresetImportSheet`、`importXMPPresets`。保留支持的 XMP 子集 |
-| `list_edit_records`、`preview_adjustment`、`apply_edit_record` | 分页历史和快照，预览历史／快照／预设／参数组或恢复已保存记录。返回预览或新的保存版本 | `editHistory`／`loadMoreHistory`、`previewSavedEdit`／`previewPreset`／`beginDevelopGroupPreview`／`applySavedEdit`。预览只改工作区 |
+| `list_edit_records`、`preview_adjustment`、`apply_edit_record` | 分页历史和快照，预览历史／快照／预设／参数组或切换到已保存状态。返回预览或保存后的修订号 | `editHistory`／`loadMoreHistory`、`previewSavedEdit`／`previewPreset`／`beginDevelopGroupPreview`／`selectHistoryStep`／`applySavedEdit`。预览只改工作区 |
 | `save_edit_snapshot`、`delete_edit_snapshot`、`redo_operation` | 建立／改名／移除快照，或对已由 MCP 撤销的动作重做。返回快照及实际撤销语义 | `saveSnapshot`／`deleteSnapshot`、`AppModel.undo`。重做只匹配明确的操作 ID 与栈顶 |
 
 对应回归包括 `CatalogQueryTests`、`BrowseHistoryTests`、`ComparisonTests`、`KeywordTests`、`CollectionOrderingTests`、`SmartCollectionTests`、`VirtualCopyTests`、`StackTests`、`RawJpegPairTests`、`DevelopV2Tests`、`AutomaticAdjustmentTests`、`PresetManagementTests`、`AdjustmentPreviewTests` 和 `XMPPresetImportTests`。测试按实际工具分支选择，补 UI 与 Agent 交替写入、版本冲突和同批重发。
@@ -277,7 +277,7 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 `list_adjustment_presets` 按名称、分组和收藏查找预设，预设变更和应用使用返回的 ID 与修订标识。`transfer_adjustments` 支持 App 内复制粘贴、同步、沿用上一张和按强度应用预设。选择明确的参数组。预设未指定组时沿用它保存的选择。XMP 通过 `request_file_access(purpose=xmp_presets)` 由用户选择文件，经 `plan_xmp_preset_import` 查看转换诊断后导入选定候选，沿用原生稀疏参数和重复检查。
 
-`list_edit_records` 分页返回历史与快照。`apply_edit_record` 将历史或快照恢复为一条新编辑记录。创建及改名快照沿用原生保存行为，改名和删除核对 `snapshot_revision`。删除快照、修改已有预设及导入 XMP 可用返回的操作 ID 撤销。
+`list_edit_records` 分页返回历史与快照。`apply_edit_record` 通过 `history_id` 切到选定步骤并保留原有历史，通过 `snapshot_id` 应用快照并记录这次调整。提供显影草稿时，工具将选定状态应用到草稿。创建及改名快照沿用原生保存行为，改名和删除核对 `snapshot_revision`。删除快照、修改已有预设及导入 XMP 可用返回的操作 ID 撤销。
 
 #### 逐张调整并批量提交
 

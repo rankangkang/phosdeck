@@ -120,6 +120,23 @@
         }
       }
     },
+    "lightroom.historyStep": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lightroom History Step"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lightroom 历史步骤"
+          }
+        }
+      }
+    },
     "lightroom.historyTitle": {
       "extractionState": "manual",
       "localizations": {
@@ -313,13 +330,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Creates a new Phosdeck catalog with editable supported adjustments. The source catalog and its available settings files are saved alongside it."
+            "value": "Imports supported adjustments and history into a new catalog and keeps a copy of the source catalog and settings. Phosdeck rendering may differ from Lightroom."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "创建新的 Phosdeck 图库，支持转换的调整可继续编辑。源目录及可用的设置文件会随项目保存。"
+            "value": "将可转换的调整和历史导入新图库，随项目保存源目录和设置副本。Phosdeck 的显影效果可能与 Lightroom 有差异。"
           }
         }
       }
@@ -341,19 +358,19 @@
         }
       }
     },
-    "lightroom.sourceHistory": {
+    "lightroom.originalHistory": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lightroom history and snapshots remain in the source catalog copy."
+            "value": "Original Photo"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lightroom 历史和快照保存在源目录副本中。"
+            "value": "原片"
           }
         }
       }
@@ -456,6 +473,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "未定位文件夹的照片记录会随 Lightroom 目录副本保存。"
+          }
+        }
+      }
+    },
+    "lightroom.unsupportedHistory": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unsupported Lightroom history layout. The steps remain in the source catalog copy."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无法读取这版 Lightroom 历史，原记录保存在源目录副本中。"
           }
         }
       }

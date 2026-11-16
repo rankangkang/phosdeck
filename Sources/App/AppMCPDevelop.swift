@@ -47,7 +47,7 @@ extension AppMCPTool {
         case .importXMP:
             return ("Import eligible candidate_ids from an XMP plan_id, or pass select_all=true. Preserves existing presets and skips duplicates.", "imported and skipped items, operation_id and commit_state")
         case .applyEditRecord:
-            return ("Restore one history_id or snapshot_id from the same photo as a new saved edit. Supply the photo's current source and recipe revisions.", recipeJob)
+            return ("Select a saved history_id or apply a snapshot_id from the same photo. History navigation preserves the list of steps. Supply the photo's current source and recipe revisions.", recipeJob)
         case .saveSnapshot:
             return ("Create a named snapshot of an explicit saved photo, or rename an existing snapshot using snapshot_id and snapshot_revision from list_edit_records.", "snapshot, operation_id and commit_state")
         case .deleteSnapshot:
@@ -231,7 +231,7 @@ extension AppMCPTools {
         case match(TotalExposureMatch)
         case canvas(CanvasRecipeEdit)
 
-        func result(on photo: Photo, root: StorageRoot, pipeline: ImagePipeline, draft: MCPPhotoDraft?,
+        func result(on photo: Photo, root: StorageRoot, pipeline: ImagePipeline, draft: MCPPhotoDraft?, selectingHistory: Bool,
                     presetTrial: MCPPhotoDraft.PresetTrial?) async throws -> (EditRecipe?, [String], [String: Value]) {
             let original: EditRecipe
             let defaults: RAWDetailSettings?
@@ -276,7 +276,7 @@ extension AppMCPTools {
                 if value.localAdjustments.contains(where: { $0.settings != nil }) { value.maskVersion = max(value.maskVersion, 2) }
                 if value.localAdjustments.contains(where: { $0.components.contains(where: { $0.raster != nil }) }) { value.maskVersion = 3 }
             }
-            if value == original { return (nil, notes, details) }
+            if value == original && !selectingHistory { return (nil, notes, details) }
             try await MCPDevelopPhoto.validate(value, previous: original, photo: photo, root: root, defaults: defaults, pipeline: pipeline)
             return (value, notes, details)
         }
@@ -288,7 +288,8 @@ extension AppMCPTools {
         static func == (lhs: Self, rhs: Self) -> Bool {
             let a = lhs.photo, b = rhs.photo
             guard a.id == b.id, a.revision == b.revision, a.identity == b.identity,
-                  a.availability == b.availability, a.digest == b.digest else { return false }
+                  a.availability == b.availability, a.digest == b.digest,
+                  a.selectedHistoryID == b.selectedHistoryID else { return false }
             if a.recipe == b.recipe { return true }
             // A native single-photo undo can re-encode the same recipe with different JSON key order.
             guard let first = a.recipe, let second = b.recipe,
@@ -394,7 +395,8 @@ extension AppMCPTools {
             edit = .parameters(tool, args)
             title = L10n.text("app.adjustPhoto", defaultValue: "Adjust Photo")
         }
-        return startRecipeEdit(tool, model: model, catalog: catalog, targets: [photo], title: title, draft: draft) { edit }
+        let historyID = tool == .applyEditRecord && draft == nil ? args["history_id"]?.intValue.map(Int64.init) : nil
+        return startRecipeEdit(tool, model: model, catalog: catalog, targets: [photo], title: title, draft: draft, historyID: historyID) { edit }
     }
 
     private func writeRecipeBatch(_ tool: AppMCPTool, args: [String: Value], model: AppModel, catalog: CatalogStore) throws -> MCPToolResult {
@@ -492,7 +494,7 @@ extension AppMCPTools {
     }
 
     private func startRecipeEdit(_ tool: AppMCPTool, model: AppModel, catalog: CatalogStore, targets: [Photo], source: Photo? = nil,
-                                 title: String, draft: MCPPhotoDraft? = nil, presetTrial: MCPPhotoDraft.PresetTrial? = nil,
+                                 title: String, draft: MCPPhotoDraft? = nil, historyID: Int64? = nil, presetTrial: MCPPhotoDraft.PresetTrial? = nil,
                                  beforeSave: @escaping () throws -> Void = {},
                                  afterSave: @escaping () -> Void = {}, prepare: @escaping () async throws -> RecipeEdit) -> MCPToolResult {
         let roots = Dictionary(uniqueKeysWithValues: model.roots.map { ($0.id, $0) })
@@ -512,7 +514,7 @@ extension AppMCPTools {
                 do {
                     guard photo.availability == "available", let root = roots[photo.rootID] else { throw MCPToolProblem.fileAccess }
                     let worker = Task.detached {
-                        try await edit.result(on: photo, root: root, pipeline: pipeline, draft: draft, presetTrial: presetTrial)
+                        try await edit.result(on: photo, root: root, pipeline: pipeline, draft: draft, selectingHistory: historyID != nil, presetTrial: presetTrial)
                     }
                     let (value, notes, details) = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                     if let value { changes.append((photo, value)) }
@@ -552,7 +554,11 @@ extension AppMCPTools {
             try beforeSave()
             let after: [Photo]
             do {
-                after = try model.publishRecipeBatch(changes, title: title, catalog: catalog, expecting: targets + [source].compactMap { $0 }, closedUndo: true)
+                if let historyID, let change = changes.first {
+                    after = try model.publishHistoryStep(historyID, photo: change.photo, catalog: catalog, closedUndo: true).map { [$0] } ?? []
+                } else {
+                    after = try model.publishRecipeBatch(changes, title: title, catalog: catalog, expecting: targets + [source].compactMap { $0 }, closedUndo: true)
+                }
             } catch let conflict as RecipeBatchConflict { throw MCPToolProblem.stalePhoto.forPhoto(conflict.photoID) }
             afterSave()
 

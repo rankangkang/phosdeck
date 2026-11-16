@@ -481,6 +481,7 @@ final class AppModel {
     var localParameterPresets: [LocalParameterPreset] = []
     var applyingAdjustments = false
     var editHistory: [EditHistoryEntry] = []
+    private(set) var selectedHistoryID: Int64?
     var editSnapshots: [EditSnapshot] = []
     var copiedRecipe: EditRecipe?
     var copiedPhotoName = ""
@@ -2298,6 +2299,7 @@ final class AppModel {
         try refreshDevelopReference()
     }
     private func reloadEditHistory(keepingLoaded: Bool = false) throws {
+        selectedHistoryID = activePhoto?.selectedHistoryID
         guard let catalog, let id = activeID else { editHistory = []; hasMoreHistory = false; return }
         if keepingLoaded, let first = editHistory.first, first.photoID == id {
             let added = try catalog.editHistory(photoID: id, limit: historyLimit + 1, afterID: first.id)
@@ -2355,6 +2357,27 @@ final class AppModel {
             guard value.sourceDigest == recipe?.sourceDigest else { throw LRCError(L10n.text("app.thePhotoSourceChangedThisAdjustmentCannotBeRestored", defaultValue: "The photo source changed. This adjustment cannot be restored")) }
             changeRecipe({ $0 = value }, title: title)
         }
+    }
+    func selectHistoryStep(_ entry: EditHistoryEntry) {
+        guard workspaceAvailable, canEdit, entry.photoID == activeID, commitRecipe(),
+              let catalog, let photo = activePhoto else { return }
+        perform {
+            let value = try validatedSavedEdit(data: entry.recipe, photoID: entry.photoID)
+            if let rawDefaults { try value.rawDetails.checkSupport(rawDefaults) }
+            if let size = orientedSourceSize { _ = try PhotoGeometry(size: size, recipe: value) }
+            clearSavedEditPreview()
+            if try publishHistoryStep(entry.id, photo: photo, catalog: catalog) != nil {
+                try refreshAfterBatch(ids: [photo.id])
+                if spotMode { prepareSpotRank() }
+            }
+        }
+    }
+    func publishHistoryStep(_ id: Int64, photo: Photo, catalog: CatalogStore, closedUndo: Bool = false) throws -> Photo? {
+        guard self.catalog === catalog else { throw OrganizationError.photoUnavailable }
+        guard let saved = try catalog.selectHistoryStep(id, expecting: photo) else { return nil }
+        let title = L10n.text("app.history", defaultValue: "History")
+        registerCatalogUndo(title, closed: closedUndo) { $0.restoreRecipeBatch([photo], title: title, recordsHistory: false) }
+        return saved
     }
     private func validatedSavedEdit(data: Data, photoID: String) throws -> EditRecipe {
         guard let photo = active, photo.id == photoID, let current = recipe else { throw LRCError(L10n.text("app.selectTheCorrespondingPhotoFirst", defaultValue: "Select the corresponding photo first")) }
@@ -2763,12 +2786,12 @@ final class AppModel {
             requestPreview(prepareInteractive: true)
         }
     }
-    private func restoreRecipeBatch(_ states: [Photo], title: String) {
+    private func restoreRecipeBatch(_ states: [Photo], title: String, recordsHistory: Bool = true) {
         guard !applyingAdjustments, let catalog else { return }
         perform {
             let action = undo.isRedoing ? L10n.text("app.redo", defaultValue: "Redo \(title)") : L10n.text("app.undo", defaultValue: "Undo \(title)")
-            let inverse = try catalog.restoreRecipes(states, title: action)
-            undo.registerUndo(withTarget: self) { $0.restoreRecipeBatch(inverse, title: title) }
+            let inverse = try catalog.restoreRecipes(states, title: recordsHistory ? action : nil)
+            undo.registerUndo(withTarget: self) { $0.restoreRecipeBatch(inverse, title: title, recordsHistory: recordsHistory) }
             undo.setActionName(title)
             try refreshAfterBatch(ids: Set(states.map(\.id)))
             status = action
