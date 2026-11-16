@@ -14,6 +14,9 @@ final class PreviewDiskCache {
         let digest = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
         return directory.appendingPathComponent(digest + ".jpg")
     }
+    func contains(key: String) -> Bool {
+        FileManager.default.fileExists(atPath: url(for: key).path)
+    }
     func read(key: String) throws -> Data? {
         let file = url(for: key)
         guard FileManager.default.fileExists(atPath: file.path) else { return nil }

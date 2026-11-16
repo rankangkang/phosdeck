@@ -70,12 +70,16 @@ struct PhotoGrid: NSViewRepresentable {
                 guard let coordinator, let scroll, !coordinator.applyingChanges, coordinator.isShowing,
                       coordinator.film || coordinator.model.workspaceMode == .grid else { return }
                 guard !coordinator.positionKey.isEmpty else { return }
-                coordinator.model.scrollPositions[coordinator.positionKey] = scroll.contentView.bounds.origin
+                let origin = scroll.contentView.bounds.origin
+                let previous = coordinator.model.scrollPositions[coordinator.positionKey] ?? .zero
+                coordinator.model.scrollPositions[coordinator.positionKey] = origin
+                if origin.y != previous.y { coordinator.scheduleThumbnailWarmup(forward: origin.y > previous.y) }
             }
         }
         return scroll
     }
     static func dismantleNSView(_ scroll: NSScrollView, coordinator: Coordinator) {
+        coordinator.cancelThumbnailWarmup()
         if let observer = coordinator.scrollObserver {
             NotificationCenter.default.removeObserver(observer)
             coordinator.scrollObserver = nil
@@ -90,6 +94,7 @@ struct PhotoGrid: NSViewRepresentable {
         if c.isShowing != isShowing {
             c.isShowing = isShowing
             if !isShowing {
+                c.cancelThumbnailWarmup()
                 if let focus = scroll.window?.firstResponder as? NSView, focus.isDescendant(of: scroll) {
                     scroll.window?.makeFirstResponder(nil)
                 }
@@ -140,13 +145,14 @@ struct PhotoGrid: NSViewRepresentable {
                 }
             }
         }
-        // Organization/metadata edits must not tear down every visible image.
-        for case let item as PhotoItem in c.collection?.visibleItems() ?? [] {
-            if let path = c.collection?.indexPath(for: item) { c.configure(item, at: path.item) }
-        }
+        var resized = false
         if let layout = c.collection?.collectionViewLayout as? NSCollectionViewFlowLayout {
             let size = film ? c.filmItemSize(viewportHeight: scroll.contentSize.height) : c.gridItemSize(viewportWidth: scroll.contentSize.width)
-            if layout.itemSize != size { layout.itemSize = size; layout.invalidateLayout() }
+            if layout.itemSize != size {
+                layout.itemSize = size
+                layout.invalidateLayout()
+                resized = true
+            }
         }
         let indexes = Set(photos.enumerated().filter { model.selection.contains($0.element.id) }.map { IndexPath(item: $0.offset, section: 0) })
         if c.collection?.selectionIndexPaths != indexes { c.collection?.selectionIndexPaths = indexes }
@@ -164,6 +170,20 @@ struct PhotoGrid: NSViewRepresentable {
             c.collection?.scrollToItems(at: [IndexPath(item: index, section: 0)], scrollPosition: film ? .nearestHorizontalEdge : .nearestVerticalEdge)
         }
         model.scrollActiveIDs[positionKey] = model.activeID
+        // Organization/metadata edits must not tear down every visible image.
+        if let collection = c.collection {
+            for case let item as PhotoItem in collection.visibleItems() {
+                guard let path = collection.indexPath(for: item) else { continue }
+                c.configure(item, at: path.item, requestThumbnail: item.view.frame.intersects(collection.visibleRect))
+            }
+        }
+        if !film {
+            if !model.workspaceAvailable {
+                c.cancelThumbnailWarmup()
+            } else if changedPage || returning || resized || !difference.isEmpty || oldOrigin != scroll.contentView.bounds.origin {
+                c.scheduleThumbnailWarmup(forward: changedPage || scroll.contentView.bounds.minY >= oldOrigin.y)
+            }
+        }
     }
     @MainActor final class Coordinator: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegateFlowLayout {
         let model: AppModel
@@ -177,6 +197,7 @@ struct PhotoGrid: NSViewRepresentable {
         var positionKey = ""
         var lastActive: String?
         var scrollObserver: NSObjectProtocol?
+        private var thumbnailWarmup: Task<Void, Never>?
         private var selectionUpdateScheduled = false
         private var pendingActiveID: String?
         private var pendingSelectionModifiers: NSEvent.ModifierFlags = []
@@ -207,25 +228,48 @@ struct PhotoGrid: NSViewRepresentable {
             return (index == 0 || model.stackBadges[photos[index - 1].id]?.stackID != stack,
                     index == photos.count - 1 || model.stackBadges[photos[index + 1].id]?.stackID != stack)
         }
-        func configure(_ item: PhotoItem, at index: Int) {
+        func configure(_ item: PhotoItem, at index: Int, requestThumbnail: Bool) {
             guard isShowing, photos.indices.contains(index) else { return }
             let photo = photos[index]
             let edges = stackEdges(at: index)
             item.configure(photo: photo, root: model.roots.first { $0.id == photo.rootID }, service: model.thumbnails,
                            film: film, active: model.activeID == photo.id, mat: mat, badge: model.stackBadges[photo.id],
                            paired: model.pairedSourceIDs.contains(photo.sourceKey), position: model.pageOffset + index + 1,
-                           stackStart: edges.first, stackEnd: edges.last, toggleStack: { [weak model] in model?.toggleStack(photo.id) })
+                           stackStart: edges.first, stackEnd: edges.last, requestThumbnail: requestThumbnail,
+                           toggleStack: { [weak model] in model?.toggleStack(photo.id) })
         }
         func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
             let item = collectionView.makeItem(withIdentifier: NSUserInterfaceItemIdentifier("photo"), for: indexPath) as! PhotoItem
-            configure(item, at: indexPath.item)
+            // AppKit can create items before they enter the viewport.
+            configure(item, at: indexPath.item, requestThumbnail: false)
             return item
         }
         func collectionView(_ collectionView: NSCollectionView, willDisplay item: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
-            if let item = item as? PhotoItem, item.needsThumbnail { configure(item, at: indexPath.item) }
+            guard isShowing, let item = item as? PhotoItem, photos.indices.contains(indexPath.item) else { return }
+            let photo = photos[indexPath.item]
+            item.loadThumbnail(photo: photo, root: model.roots.first { $0.id == photo.rootID }, service: model.thumbnails)
         }
         func collectionView(_ collectionView: NSCollectionView, didEndDisplaying item: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
             (item as? PhotoItem)?.cancelThumbnail()
+        }
+        func scheduleThumbnailWarmup(forward: Bool) {
+            guard !film else { return }
+            cancelThumbnailWarmup()
+            thumbnailWarmup = Task(priority: .utility) { [weak self] in
+                // Wait for scrolling to settle before speculating on adjacent rows.
+                try? await Task.sleep(for: .milliseconds(450))
+                guard !Task.isCancelled, let self, isShowing, model.workspaceMode == .grid, model.workspaceAvailable,
+                      let collection, collection.window != nil, !collection.isHiddenOrHasHiddenAncestor else { return }
+                let visible = collection.indexPathsForVisibleItems().map(\.item).filter { self.photos.indices.contains($0) }
+                guard let first = visible.min(), let last = visible.max() else { return }
+                let limit = min(visible.count, ThumbnailService.prewarmLimit)
+                let next = forward ? Array(photos.dropFirst(last + 1).prefix(limit)) : Array(photos.prefix(first).reversed().prefix(limit))
+                await model.thumbnails.prewarm(next, roots: model.roots)
+            }
+        }
+        func cancelThumbnailWarmup() {
+            thumbnailWarmup?.cancel()
+            thumbnailWarmup = nil
         }
         fileprivate static let orderingPasteboardType = NSPasteboard.PasteboardType("dev.cmkk.phosdeck.collection-order")
         private func movingIDs(for indexPath: IndexPath) -> [String] {
@@ -553,7 +597,7 @@ final class PhotoItem: NSCollectionViewItem {
         for button in [stackLeading, stackTrailing] { button.mat = mat; button.needsDisplay = true }
     }
     @objc private func toggleStack() { stackToggle?() }
-    func configure(photo: Photo, root: StorageRoot?, service: ThumbnailService, film: Bool, active: Bool = false, mat: PhotoMat = .dark, badge: StackBadge? = nil, paired: Bool = false, position: Int? = nil, stackStart: Bool = true, stackEnd: Bool = true, toggleStack: (() -> Void)? = nil) {
+    func configure(photo: Photo, root: StorageRoot?, service: ThumbnailService, film: Bool, active: Bool = false, mat: PhotoMat = .dark, badge: StackBadge? = nil, paired: Bool = false, position: Int? = nil, stackStart: Bool = true, stackEnd: Bool = true, requestThumbnail: Bool = true, toggleStack: (() -> Void)? = nil) {
         _ = view
         if imageKey == nil { (view as? PhotoCellView)?.refreshHover() }
         isActivePhoto = active; self.mat = mat
@@ -597,24 +641,26 @@ final class PhotoItem: NSCollectionViewItem {
         caption.toolTip = tooltip; details.toolTip = tooltip
         view.setAccessibilityLabel(L10n.text("app.stars_1725", defaultValue: "\(photo.displayName), \(raw ? "RAW" : ext), \(paired ? L10n.text("app.rawJPEGPaired", defaultValue: "RAW/JPEG Paired") : L10n.text("app.unpaired", defaultValue: "Unpaired")), \(badge?.description ?? L10n.text("app.unstacked", defaultValue: "Unstacked")), \(photo.rating) stars, \(label.title)\(active ? L10n.text("app.activePhoto", defaultValue: ", active photo") : "")\(photo.flag == -1 ? L10n.text("app.rejected", defaultValue: ", rejected") : photo.flag == 1 ? L10n.text("app.picked", defaultValue: ", picked") : "")"))
         style()
-        let key = ThumbnailService.key(photo: photo, edge: 320)
+        if requestThumbnail { loadThumbnail(photo: photo, root: root, service: service) }
+    }
+    func loadThumbnail(photo: Photo, root: StorageRoot?, service: ThumbnailService) {
+        let key = ThumbnailService.key(photo: photo, edge: ThumbnailService.gridEdge)
         guard imageKey != key || (picture.image == nil && work == nil) else { return }
         work?.cancel(); token = UUID(); let current = token
-        let source = ThumbnailService.sourceKey(photo: photo, edge: 320)
+        let source = ThumbnailService.sourceKey(photo: photo, edge: ThumbnailService.gridEdge)
         if sourceKey != source { picture.image = nil }
         sourceKey = source
         imageKey = key; view.toolTip = nil
         guard let root else { work = nil; return }
         work = Task { @MainActor in
             do {
-                let image = try await service.image(photo: photo, root: root)
+                let image = try await service.image(photo: photo, root: root, priority: .visible)
                 guard current == token, !Task.isCancelled else { return }
                 picture.image = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
             } catch { if current == token { view.toolTip = error.localizedDescription } }
             if current == token { work = nil }
         }
     }
-    var needsThumbnail: Bool { imageKey == nil || (picture.image == nil && work == nil) }
     func cancelThumbnail() {
         guard let work else { return }
         work.cancel(); self.work = nil; token = UUID(); imageKey = nil

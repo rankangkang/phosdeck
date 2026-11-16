@@ -549,11 +549,15 @@ final class AppModel {
     let pipeline: ImagePipeline
     private let renderPreview: (ImageRequest, Bool, Int?) async throws -> RenderedImage
     let thumbnails: ThumbnailService
+    @ObservationIgnored private var importThumbnailWarmup: Task<Void, Never>?
     let importer = ReferenceImporter()
     @ObservationIgnored private(set) var catalogSessionID: String?
     @ObservationIgnored private(set) var browseGeneration = UUID()
     var catalog: CatalogStore? {
-        didSet { catalogSessionID = catalog.map { _ in UUID().uuidString } }
+        didSet {
+            importThumbnailWarmup?.cancel()
+            catalogSessionID = catalog.map { _ in UUID().uuidString }
+        }
     }
     var catalogName: String { catalog?.fileURL.deletingPathExtension().lastPathComponent ?? L10n.text("app.noCatalogOpen", defaultValue: "No catalog open") }
     /// Menu-bar commands stay reachable while a sheet is up, so they must not stack a second sheet.
@@ -1689,6 +1693,25 @@ final class AppModel {
         lastImport = ImportBatch(snapshotID: snapshotID, photoIDs: imported, cancelled: cancelled)
         if let stored { importPreferences?.set(stored, forKey: workspaceKey("lastImport")) }
         showImportCompletion = true
+        if cancelled { importThumbnailWarmup?.cancel() }
+        else { warmImportedThumbnails(in: "import:" + snapshotID) }
+    }
+    private func warmImportedThumbnails(in scope: String) {
+        guard let catalog else { return }
+        importThumbnailWarmup?.cancel()
+        let query = PhotoQuery(scope: scope, sort: photoSort, descending: sortDescending)
+        let (predicate, arguments) = query.predicate
+        let sql = "SELECT photo.* FROM \(query.relation) WHERE \(predicate) AND photo.availability='available' ORDER BY \(query.order) LIMIT ?"
+        let roots = roots, thumbnails = thumbnails
+        let cacheSetup = cacheConfigurationTask
+        importThumbnailWarmup = Task(priority: .utility) { [weak self] in
+            await cacheSetup?.value
+            guard !Task.isCancelled, self?.catalog === catalog else { return }
+            guard let batch = try? await catalog.database.read({ db in
+                try Photo.fetchAll(db, sql: sql, arguments: arguments + [ThumbnailService.prewarmLimit])
+            }), !Task.isCancelled, self?.catalog === catalog else { return }
+            await thumbnails.prewarm(batch, roots: roots)
+        }
     }
     func showLastImport(startCulling: Bool = false) {
         guard workspaceAvailable, let batch = lastImport, !batch.photoIDs.isEmpty, commitRecipe() else { return }
@@ -3186,6 +3209,7 @@ final class AppModel {
     @discardableResult func clearThumbnailCache() async throws -> Int64 {
         guard catalog != nil else { throw LRCError(L10n.text("app.openACatalogFirst", defaultValue: "Open a catalog first")) }
         guard !cacheMaintenance, !busy, !applyingAdjustments else { throw LRCError(L10n.text("app.waitForTheCurrentTaskToFinishBeforeClearing", defaultValue: "Wait for the current task to finish before clearing the cache")) }
+        importThumbnailWarmup?.cancel()
         cacheMaintenance = true
         defer { cacheMaintenance = false }
         let removed = try await thumbnails.clear()
@@ -3400,6 +3424,7 @@ final class AppModel {
             do {
                 let next = try CatalogStore(fileURL: result.catalog, access: lease)
                 try activateCreatedCatalog(next, directory: lease.url, bookmark: AccessLease.bookmark(lease.url, readOnly: false))
+                warmImportedThumbnails(in: "all")
             } catch { self.error = result.catalog.path + "\n" + error.localizedDescription }
             let summary = L10n.text("lightroom.summary", defaultValue: "Imported \(result.imported) versions · \(result.converted) with converted edits")
             status = summary

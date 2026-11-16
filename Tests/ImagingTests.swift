@@ -1373,6 +1373,57 @@ final class ImagingTests: XCTestCase {
         }
     }
 
+    private actor ThumbnailWarmupProbe {
+        var rendered: Set<String> = []
+        func record(_ id: String) { rendered.insert(id) }
+    }
+
+    @MainActor func testIdlePhotoGridWarmsTheNextVisibleRange() async throws {
+        let file = try fixture()
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(file as CFURL, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let probe = ThumbnailWarmupProbe()
+        let service = ThumbnailService { request, _ in
+            await probe.record(request.photo.id)
+            return image
+        }
+        try await service.configure(catalogID: UUID().uuidString, gigabytes: 1)
+        let model = AppModel(thumbnails: service)
+        let root = StorageRoot(id: "synthetic", path: directory.path, bookmark: Data(), label: "Synthetic")
+        model.roots = [root]
+        model.photos = (0..<100).map { index in
+            Photo(id: "warm-\(index)", rootID: root.id, relativePath: "\(index).ARW", identity: Data(),
+                  identityKey: "warm-\(index)", width: 80, height: 40)
+        }
+        let host = NSHostingView(rootView: PhotoGrid(model: model))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 480, height: 250),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        window.orderFront(nil)
+        defer { window.orderOut(nil); window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        func scroll(in view: NSView) -> NSScrollView? {
+            (view as? NSScrollView) ?? view.subviews.lazy.compactMap { scroll(in: $0) }.first
+        }
+        let collection = try XCTUnwrap(scroll(in: host)?.documentView as? NSCollectionView)
+        try await waitUntil {
+            let visible = collection.visibleItems()
+            return !visible.isEmpty && visible.allSatisfy { ($0 as? PhotoItem)?.displayedImage != nil }
+        }
+        let last = try XCTUnwrap(collection.indexPathsForVisibleItems().map(\.item).max())
+        let adjacentID = model.photos[last + 1].id
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var rendered = await probe.rendered
+        while !rendered.contains(adjacentID) && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(15))
+            rendered = await probe.rendered
+        }
+        XCTAssertTrue(rendered.contains(adjacentID))
+        XCTAssertFalse(rendered.contains(model.photos[99].id))
+        window.contentView = nil
+        try await service.clear()
+    }
+
     @MainActor func testFilmstripMouseWheelScrollsHorizontallyWithinBounds() async throws {
         let model = AppModel()
         model.photos = (0..<40).map { Photo(id: "wheel-\($0)", rootID: "test", relativePath: "\($0).jpg", identity: Data(), identityKey: "wheel-\($0)", width: 100, height: 80) }

@@ -515,6 +515,75 @@ final class WorkflowTests: XCTestCase {
         XCTAssertEqual(completed, 1)
     }
 
+    func testVisibleThumbnailPreemptsSpeculativeRenderWithoutOverlappingSerialDecodes() async throws {
+        let gate = ThumbnailRenderGate(), image = try bitmap()
+        let service = ThumbnailService { _, _ in try await gate.render(image) }
+        let root = StorageRoot(id: "r", path: "/unavailable", bookmark: Data(), label: "synthetic")
+        let adjacent = Photo(id: "adjacent", rootID: root.id, relativePath: "adjacent.ARW", identity: Data(), identityKey: "a", width: 80, height: 40)
+        let onscreen = Photo(id: "actual", rootID: root.id, relativePath: "actual.ARW", identity: Data(), identityKey: "b", width: 80, height: 40)
+        let speculative = Task { try await service.image(photo: adjacent, root: root, priority: .prefetch) }
+        await gate.waitForFirstRequest()
+        let visible = Task { try await service.image(photo: onscreen, root: root, priority: .visible) }
+        let fallback = Task {
+            try await Task.sleep(for: .seconds(2))
+            await gate.release()
+        }
+        defer { fallback.cancel() }
+        do { _ = try await speculative.value; XCTFail("Offscreen warmup should release the request before the decoder returns") }
+        catch is CancellationError {}
+        let attemptsWhileBlocked = await gate.attempts
+        XCTAssertEqual(attemptsWhileBlocked, 1)
+        await gate.release()
+        let result = try await visible.value
+        let completed = await gate.completed
+        XCTAssertEqual(result.width, 80)
+        XCTAssertEqual(completed, 1)
+    }
+
+    @MainActor func testCompletedImportWarmsTheImportedPhotoWhileBrowsingAnotherSource() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let catalog = try CatalogStore(directory: folder)
+        let previous = try catalog.addRoot(url: folder.appendingPathComponent("previous"), bookmark: Data())
+        let source = try catalog.addRoot(url: folder.appendingPathComponent("new"), bookmark: Data())
+        let imported = Photo(id: "new", rootID: source.id, relativePath: "new.ARW", identity: Data(), identityKey: "new", width: 80, height: 40)
+        try await catalog.database.write { db in
+            try imported.insert(db)
+            try Photo(id: "previous", rootID: previous.id, relativePath: "other.ARW", identity: Data(), identityKey: "old", width: 80, height: 40).insert(db)
+        }
+        let image = try bitmap()
+        let thumbnails = ThumbnailService { request, _ in
+            guard request.photo.id == imported.id else { throw LRCError("Unexpected warmup photo") }
+            return image
+        }
+        let cacheID = UUID().uuidString
+        try await thumbnails.configure(catalogID: cacheID, gigabytes: 1)
+        let model = AppModel(thumbnails: thumbnails)
+        model.catalog = catalog
+        model.scope = previous.id
+        try model.reload()
+        XCTAssertEqual(model.photos.map(\.id), ["previous"])
+        try model.completeImport(ids: [imported.id], cancelled: false)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(4))
+        var bytes = try await thumbnails.usage()
+        while bytes == 0 && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(15))
+            bytes = try await thumbnails.usage()
+        }
+        XCTAssertGreaterThan(bytes, 0)
+        let reopened = ThumbnailService { _, _ in throw LRCError("The warmed thumbnail must be on disk") }
+        try await reopened.configure(catalogID: cacheID, gigabytes: 1)
+        do {
+            let cached = try await reopened.image(photo: imported, root: source)
+            XCTAssertEqual(cached.width, image.width)
+        } catch {
+            try await reopened.clear()
+            throw error
+        }
+        try await reopened.clear()
+        XCTAssertEqual(model.photos.map(\.id), ["previous"])
+    }
+
     @MainActor func testEditedThumbnailsCoalescePersistAndKeepVisibleImage() async throws {
         let counter = RenderCounter()
         let original = try bitmap(), edited = try bitmap(.blue, width: 40, height: 40)
