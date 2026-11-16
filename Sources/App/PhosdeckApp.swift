@@ -14,11 +14,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if waitingForTermination { return .terminateLater }
         let merge = model.mergeSession
         let transfer = model.catalogTransfer
-        if merge?.working == true || model.mcp.needsShutdown || transfer != nil {
+        let removal = model.movingPhotosToTrash ? model.task : nil
+        if merge?.working == true || model.mcp.needsShutdown || transfer != nil || removal != nil {
             waitingForTermination = true
             Task { @MainActor in
                 transfer?.cancel()
                 await transfer?.value
+                removal?.cancel()
+                await removal?.value
                 if let merge, merge.working {
                     await merge.cancelAndWait()
                     if merge.error != nil {
@@ -216,6 +219,8 @@ struct WorkspaceCommands: Commands {
             Toggle(L10n.text("app.autoAdvance", defaultValue: "Auto Advance"), isOn: $model.autoAdvance).disabled(!workspace)
             Button(L10n.text("app.toggleQuickCollectionB", defaultValue: "Toggle Quick Collection (B)"), action: model.toggleQuickCollection).disabled(!workspace || !model.canMarkPhotos || model.quickCollectIDs.isEmpty)
             Divider()
+            Button(L10n.text("app.showInFinder", defaultValue: "Show in Finder"), action: model.revealOriginal)
+                .disabled(!workspace || !model.canLocateOriginal || model.active?.availability != "available")
             Button(L10n.text("app.locateCurrentOriginal", defaultValue: "Locate Current Original…"), action: model.locateOriginal).disabled(!model.canLocateOriginal)
             Button(L10n.text("app.createVirtualCopy", defaultValue: "Create Virtual Copy"), action: model.createVirtualCopies).disabled(!photoSelected)
             Menu(L10n.text("app.stacking", defaultValue: "Stacking")) { StackMenu(model: model) }.disabled(!workspace || model.catalog == nil)
@@ -240,6 +245,15 @@ struct WorkspaceCommands: Commands {
                 Divider()
                 Button(L10n.text("app.finishCurrentToolEsc", defaultValue: "Finish Current Tool (Esc)")) { model.selectDevelopTool(.adjust) }.disabled(model.developTool == .adjust)
             }.disabled(!workspace || !model.editMode)
+            Divider()
+            if let collection = model.regularCollectionID {
+                Button(L10n.text("photoRemoval.removeFromCollection", defaultValue: "Remove from This Collection")) { model.membership(collection, add: false) }
+                    .disabled(!workspace || !model.canRemovePhotos)
+            }
+            Button(L10n.text("photoRemoval.removeFromCatalog", defaultValue: "Remove from Catalog…")) { model.requestPhotoRemoval() }
+                .disabled(!workspace || !model.canRemovePhotos)
+            Button(L10n.text("photoRemoval.trash", defaultValue: "Move Originals to Trash…")) { model.requestPhotoRemoval(trash: true) }
+                .disabled(!workspace || !model.canTrashPhotos)
         }
         CommandGroup(before: .toolbar) {
             Button(L10n.text("app.goBack", defaultValue: "Go Back")) { model.navigateBrowse(-1) }

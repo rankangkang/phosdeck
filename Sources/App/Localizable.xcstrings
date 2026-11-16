@@ -1,6 +1,414 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "photoRemoval.addToCollection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add to Collection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加到集合"
+          }
+        }
+      }
+    },
+    "photoRemoval.authorize": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authorize Moving Originals to Trash"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "授权将原片移到废纸篓"
+          }
+        }
+      }
+    },
+    "photoRemoval.authorizePath": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select this folder to authorize the move: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择此文件夹以授权移动：%@"
+          }
+        }
+      }
+    },
+    "photoRemoval.catalogSaveFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files moved to Trash: %lld. Their catalog entries could not be removed: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已将 %lld 个文件移到废纸篓，但未能从图库移除对应版本：%@"
+          }
+        }
+      }
+    },
+    "photoRemoval.catalogUpdated": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Catalog entries updated"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图库记录已更新"
+          }
+        }
+      }
+    },
+    "photoRemoval.counts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Original files: %lld · Selected versions: %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原片文件：%lld · 选中的照片版本：%lld"
+          }
+        }
+      }
+    },
+    "photoRemoval.deleteShortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove Selected Photos in Library"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在图库中移除所选照片"
+          }
+        }
+      }
+    },
+    "photoRemoval.fileChanged": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The original or its path changed. Verify its location and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原片或路径已变化。请确认原片位置后重试。"
+          }
+        }
+      }
+    },
+    "photoRemoval.move": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Trash"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移到废纸篓"
+          }
+        }
+      }
+    },
+    "photoRemoval.moving": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifying and moving originals to Trash…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在核对原片并移到废纸篓…"
+          }
+        }
+      }
+    },
+    "photoRemoval.originalsUnchanged": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Original files unchanged"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原片文件未改动"
+          }
+        }
+      }
+    },
+    "photoRemoval.preparing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing to move originals to Trash…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备移到废纸篓的原片…"
+          }
+        }
+      }
+    },
+    "photoRemoval.removeDetails": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected versions: %lld. Original files stay in place. You can undo this in Phosdeck."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选中的照片版本：%lld。原片文件保留在原位。可以在 Phosdeck 中撤销。"
+          }
+        }
+      }
+    },
+    "photoRemoval.removeFromCatalog": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove from Catalog…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从图库移除…"
+          }
+        }
+      }
+    },
+    "photoRemoval.removeFromCollection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove from This Collection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从此集合移除"
+          }
+        }
+      }
+    },
+    "photoRemoval.removeTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove the selected photos from the catalog?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从图库移除所选照片？"
+          }
+        }
+      }
+    },
+    "photoRemoval.selectAllResults": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select All Matching Photos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全选匹配的照片"
+          }
+        }
+      }
+    },
+    "photoRemoval.sharedOriginal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select the original version and all its virtual copies before moving this file to Trash: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选中原版及其全部虚拟副本后，再将此文件移到废纸篓：%@"
+          }
+        }
+      }
+    },
+    "photoRemoval.summary": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moved to Trash: %lld · Not moved: %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已移到废纸篓：%lld · 未移动：%lld"
+          }
+        }
+      }
+    },
+    "photoRemoval.trash": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move Originals to Trash…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将原片移到废纸篓…"
+          }
+        }
+      }
+    },
+    "photoRemoval.trashDetails": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This removes the selected versions from this catalog. Sidecars stay in place. To recover, restore the files in Finder and undo the catalog removal in Phosdeck."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这将从当前图库移除所选版本，保留附属文件。如需恢复，请在 Finder 中放回原片，并在 Phosdeck 中撤销图库移除。"
+          }
+        }
+      }
+    },
+    "photoRemoval.trashTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move originals to Trash?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将原片移到废纸篓？"
+          }
+        }
+      }
+    },
+    "photoRemoval.unverifiedOriginal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify the original's location before moving it to Trash: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先确认原片位置，再移到废纸篓：%@"
+          }
+        }
+      }
+    },
+    "photoRemoval.wrongFolder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select the original folder shown in the dialog. No files were moved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择对话框中指定的原片文件夹。没有移动任何文件。"
+          }
+        }
+      }
+    },
     "lightroom.captionRetained": {
       "extractionState": "manual",
       "localizations": {

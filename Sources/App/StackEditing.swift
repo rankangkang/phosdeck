@@ -55,10 +55,6 @@ extension AppModel {
             showNotice(L10n.text("app.selectAllMatchingStackVersionsIncludingCollapsedMembersSubsequent", defaultValue: "Select all \(ids.count) matching stack versions, including collapsed members. Subsequent actions affect these \(ids.count) versions"))
         }
     }
-    func selectAllResults() {
-        guard let catalog else { return }
-        perform { choose(Set(try catalog.allResultIDs(query)),active:activeID ?? photos.first?.id); showNotice(L10n.text("app.selectedAllQueryVersionsIncludingCollapsedMembersAndEvery", defaultValue: "Selected all \(selection.count) query versions, including collapsed members and every page")) }
-    }
     func restoreStackSelection(_ ids: Set<String>, active: String?) {
         perform {
             guard let catalog else { return }

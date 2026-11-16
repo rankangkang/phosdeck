@@ -20,6 +20,12 @@ struct PhotoGrid: NSViewRepresentable {
         layout.sectionInset = NSEdgeInsets(top: inset, left: inset, bottom: inset, right: inset)
         layout.scrollDirection = film ? .horizontal : .vertical
         let collection = KeyboardCollectionView()
+        collection.selectQuery = { [weak model] in
+            guard let model, model.canSelectAllResults else { return false }
+            model.selectAllResults()
+            return true
+        }
+        collection.photoMenu = { [weak coordinator = context.coordinator] in coordinator?.photoMenu(at: $0) }
         collection.command = { [weak model] event in
             guard let model, model.workspaceAvailable else { return false }
             if WorkspaceKeyboard.stack(event,model:model) { return true }
@@ -329,6 +335,20 @@ struct PhotoGrid: NSViewRepresentable {
         }
         func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionChanged(collectionView, active: indexPaths.sorted().last) }
         func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionChanged(collectionView, active: nil) }
+        func photoMenu(at path: IndexPath) -> NSMenu? {
+            guard isShowing, model.canSelectAllResults, let catalog = model.catalog,
+                  photos.indices.contains(path.item), model.photos.indices.contains(path.item),
+                  model.photos[path.item].id == photos[path.item].id else { return nil }
+            let photo = photos[path.item]
+            let ids = model.selection.contains(photo.id) ? model.selection : [photo.id]
+            model.choose(ids, active: photo.id)
+            guard model.activeID == photo.id, model.selection == ids else { return nil }
+            let selection = model.selectionGeneration, browse = model.browseGeneration
+            return makePhotoMenu(model: model, photo: photo) { [weak model] in
+                guard let model else { return false }
+                return model.canRemovePhotos && model.catalog === catalog && model.selectionGeneration == selection && model.browseGeneration == browse
+            }
+        }
         private func selectionChanged(_ collection: NSCollectionView, active: IndexPath?) {
             guard !applyingChanges else { return }
             if let active, photos.indices.contains(active.item) { pendingActiveID = photos[active.item].id }
@@ -380,13 +400,26 @@ final class FilmstripScrollView: NSScrollView {
 
 final class KeyboardCollectionView: NSCollectionView {
     var command: ((NSEvent) -> Bool)?
+    var selectQuery: (() -> Bool)?
+    var photoMenu: ((IndexPath) -> NSMenu?)?
     var openPhoto: (() -> Void)?
     var activateSelected: ((IndexPath) -> Bool)?
+    override func selectAll(_ sender: Any?) {
+        if selectQuery?() != true { super.selectAll(sender) }
+    }
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let path = indexPathForItem(at: convert(event.locationInWindow, from: nil)) else { return nil }
+        return photoMenu?(path)
+    }
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.intersection([.command, .control, .option]).isEmpty, command?(event) == true { return }
         super.keyDown(with: event)
     }
     override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control), let menu = menu(for: event) {
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+            return
+        }
         if event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
            let path = indexPathForItem(at: convert(event.locationInWindow, from: nil)), activateSelected?(path) == true {
             window?.makeFirstResponder(self)
@@ -396,6 +429,80 @@ final class KeyboardCollectionView: NSCollectionView {
         super.mouseDown(with: event)
         if event.clickCount == 2 { openPhoto?() }
     }
+}
+
+@MainActor
+private func makePhotoMenu(model: AppModel, photo: Photo, isCurrent: @escaping () -> Bool) -> NSMenu {
+    let menu = NSMenu()
+    menu.autoenablesItems = false
+    func action(_ title: String, in menu: NSMenu, enabled: Bool = true, checked: Bool = false, _ run: @escaping () -> Void) {
+        let item = PhotoMenuItem(title: title) { if isCurrent() { run() } }
+        item.isEnabled = enabled
+        item.state = checked ? .on : .off
+        menu.addItem(item)
+    }
+    func group(_ title: String, enabled: Bool = true, content: (NSMenu) -> Void) {
+        let submenu = NSMenu(title: title)
+        submenu.autoenablesItems = false
+        content(submenu)
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        item.isEnabled = enabled
+        menu.addItem(item)
+    }
+    action(L10n.text("app.exportSelectedPhotos", defaultValue: "Export Selected Photos…"), in: menu, enabled: model.canExportPhotos) { model.requestExport() }
+    if photo.availability == "available" {
+        action(L10n.text("app.showInFinder", defaultValue: "Show in Finder"), in: menu, model.revealOriginal)
+    } else {
+        action(L10n.text("app.locateCurrentOriginal", defaultValue: "Locate Current Original…"), in: menu, model.locateOriginal)
+    }
+    menu.addItem(.separator())
+    group(L10n.text("app.rating", defaultValue: "Rating"), enabled: model.canMarkPhotos) { submenu in
+        for rating in 0...5 {
+            let title = rating == 0 ? L10n.text("app.clearRating", defaultValue: "Clear Rating") : L10n.text("app.stars_1722", defaultValue: "\(rating) Stars")
+            action(title, in: submenu, checked: model.selectedRating == rating) { model.organize(rating: rating, advance: false) }
+        }
+    }
+    group(L10n.text("app.flag", defaultValue: "Flag"), enabled: model.canMarkPhotos) { submenu in
+        for (title, flag) in [(L10n.text("app.pick", defaultValue: "Pick"), 1), (L10n.text("app.reject", defaultValue: "Reject"), -1), (L10n.text("app.unflagged", defaultValue: "Unflagged"), 0)] {
+            action(title, in: submenu, checked: model.selectedFlag == flag) { model.organize(flag: flag, advance: false) }
+        }
+    }
+    group(L10n.text("app.colorLabel", defaultValue: "Color Label"), enabled: model.canMarkPhotos) { submenu in
+        for label in PhotoColorLabel.allCases {
+            action(label.title, in: submenu, checked: model.selectedColorLabel == label.rawValue) { model.toggleColorLabel(label.rawValue, advance: false) }
+        }
+    }
+    let collections = model.collections.filter { !$0.isSmart }
+    if !collections.isEmpty {
+        group(L10n.text("photoRemoval.addToCollection", defaultValue: "Add to Collection")) { submenu in
+            for collection in collections { action(collection.name, in: submenu) { model.membership(collection.id, add: true) } }
+        }
+    }
+    menu.addItem(.separator())
+    action(L10n.text("app.createVirtualCopiesOfSelection", defaultValue: "Create Virtual Copies of Selection"), in: menu, model.createVirtualCopies)
+    group(L10n.text("app.transferAdjustments", defaultValue: "Transfer Adjustments")) { submenu in
+        action(L10n.text("app.copyCurrentPhotoAdjustments", defaultValue: "Copy Current Photo Adjustments"), in: submenu, enabled: model.canEdit, model.copyAdjustments)
+        action(L10n.text("app.pasteAdjustments_280", defaultValue: "Paste Adjustments…"), in: submenu, enabled: model.copiedRecipe != nil) { model.requestAdjustments(.paste) }
+    }
+    menu.addItem(.separator())
+    if let collection = model.regularCollectionID {
+        action(L10n.text("photoRemoval.removeFromCollection", defaultValue: "Remove from This Collection"), in: menu) { model.membership(collection, add: false) }
+    }
+    action(L10n.text("photoRemoval.removeFromCatalog", defaultValue: "Remove from Catalog…"), in: menu) { model.requestPhotoRemoval() }
+    action(L10n.text("photoRemoval.trash", defaultValue: "Move Originals to Trash…"), in: menu, enabled: model.canTrashPhotos) { model.requestPhotoRemoval(trash: true) }
+    return menu
+}
+
+private final class PhotoMenuItem: NSMenuItem {
+    private let run: () -> Void
+    init(title: String, run: @escaping () -> Void) {
+        self.run = run
+        super.init(title: title, action: #selector(invoke), keyEquivalent: "")
+        target = self
+    }
+    required init(coder: NSCoder) { fatalError("Photo menus are created in code") }
+    @objc private func invoke() { run() }
 }
 
 private final class PhotoCellView: NSView {

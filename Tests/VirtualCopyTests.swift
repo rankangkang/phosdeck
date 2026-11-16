@@ -4,6 +4,78 @@ import GRDB
 @testable import Phosdeck
 
 final class VirtualCopyTests: XCTestCase {
+    func testTrashUsesVerifiedFilesAndProtectsUnselectedVersions() throws {
+        let f = ImportTests(); try f.setUpWithError(); defer { try? f.tearDownWithError() }
+        let root = try f.catalog.addRoot(url: f.source, bookmark: Data())
+        let folder = URL(fileURLWithPath: root.path, isDirectory: true)
+        let first = folder.appendingPathComponent("a.jpg"), second = folder.appendingPathComponent("b.jpg")
+        for url in [first, second] {
+            try f.image(url)
+            try f.catalog.index(ReferenceImporter.inspect(url: url, root: root, rootURL: folder))
+        }
+        let photos = try f.catalog.photos()
+        let original = try XCTUnwrap(photos.first(where: { $0.name == first.lastPathComponent }))
+        let other = try XCTUnwrap(photos.first(where: { $0.name == second.lastPathComponent }))
+        let copy = try XCTUnwrap(f.catalog.createVirtualCopies(ids: [original.id]).first)
+        XCTAssertThrowsError(try PhotoTrashItem.plan(ids: [original.id, other.id], catalog: f.catalog))
+        XCTAssertThrowsError(try PhotoTrashItem.plan(ids: [copy.id], catalog: f.catalog))
+        let plan = try PhotoTrashItem.plan(ids: [original.id, copy.id, other.id], catalog: f.catalog)
+        XCTAssertEqual(plan.map(\.versionIDs), [[original.id, copy.id], [other.id]])
+
+        // A replaced path blocks the entire batch, even when the target inode is unchanged.
+        let movedAside = folder.appendingPathComponent("kept.jpg")
+        try FileManager.default.moveItem(at: second, to: movedAside)
+        try FileManager.default.createSymbolicLink(at: second, withDestinationURL: movedAside)
+        var attempts = [URL]()
+        XCTAssertThrowsError(try PhotoTrashItem.moveToTrash(plan) { attempts.append($0) })
+        XCTAssertTrue(attempts.isEmpty)
+        try FileManager.default.removeItem(at: second)
+        try FileManager.default.moveItem(at: movedAside, to: second)
+
+        let sidecar = folder.appendingPathComponent("a.xmp")
+        try Data("synthetic sidecar".utf8).write(to: sidecar)
+        let pretendTrash = f.target.appendingPathComponent("trashed-a.jpg")
+        let result = try PhotoTrashItem.moveToTrash(plan) { url in
+            attempts.append(url)
+            if url == second { throw LRCError("Trash unavailable for this file") }
+            try FileManager.default.moveItem(at: url, to: pretendTrash)
+        }
+        XCTAssertEqual(attempts, [first, second])
+        XCTAssertEqual(result.versions, [original.id, copy.id])
+        XCTAssertEqual(result.moved, 1)
+        XCTAssertEqual(result.failures.count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: pretendTrash.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sidecar.path))
+    }
+
+    func testSystemTrashMovesAndReturnsSyntheticOriginal() throws {
+        let f = ImportTests(); try f.setUpWithError(); defer { try? f.tearDownWithError() }
+        let root = try f.catalog.addRoot(url: f.source, bookmark: Data())
+        let folder = URL(fileURLWithPath: root.path, isDirectory: true)
+        let original = folder.appendingPathComponent("Phosdeck-\(UUID().uuidString).jpg")
+        try f.image(original)
+        let digest = try SafeFileWriter.sha256(original)
+        let photo = try ReferenceImporter.inspect(url: original, root: root, rootURL: folder)
+        try f.catalog.index(photo)
+        let plan = try PhotoTrashItem.plan(ids: [photo.id], catalog: f.catalog)
+        var destination: NSURL?
+        defer {
+            if let destination = destination as URL?, !FileManager.default.fileExists(atPath: original.path) {
+                try? FileManager.default.moveItem(at: destination, to: original)
+            }
+        }
+        let result = try PhotoTrashItem.moveToTrash(plan) {
+            try FileManager.default.trashItem(at: $0, resultingItemURL: &destination)
+        }
+        XCTAssertEqual(result.versions, [photo.id], "\(result.failures)")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: original.path))
+        let trashed = try XCTUnwrap(destination as URL?)
+        XCTAssertEqual(try SafeFileWriter.sha256(trashed), digest)
+        try FileManager.default.moveItem(at: trashed, to: original)
+        XCTAssertEqual(try SafeFileWriter.sha256(original), digest)
+    }
+
     func testSourceIdentityIndependentHistoryMetadataAndDeletion() async throws {
         let f = ImportTests(); try f.setUpWithError(); defer { try? f.tearDownWithError() }
         let root = try f.catalog.addRoot(url:f.source,bookmark:AccessLease.bookmark(f.source,readOnly:true))

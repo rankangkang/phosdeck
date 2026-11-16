@@ -153,6 +153,7 @@
 		3CF78037540AF1EC1F8C87AD /* KeywordEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19C08479EBC473398707FF1 /* KeywordEditor.swift */; };
 		3E1F949560E8FA063A86FCCD /* CopyImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A5B21C5345EE6589A963C50 /* CopyImportSheet.swift */; };
 		4506E94AC0006E4939CD0A52 /* PhotoGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CAF3E4A2FE2850AABA51A1 /* PhotoGrid.swift */; };
+		6C9157BDA89F41B8AC2F9D01 /* PhotoRemoval.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C9157BDA89F41B8AC2F9D02 /* PhotoRemoval.swift */; };
 		473E1F7A288537F9DDE47C7C /* SafeFileWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F7E0280B39E067F8333CF12 /* SafeFileWriter.swift */; };
 		4C3097511FE91BEF2F0D298A /* Masking.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCF21A75CCEEC04B8D2BBE53 /* Masking.swift */; };
 		B8F4D02C5E3049B1C7D2FA16 /* SpotRepair.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7E3C91B4D2F48A0B6C1E905 /* SpotRepair.swift */; };
@@ -499,6 +500,7 @@
 		C76698ABB9B371F9B04A3643 /* FoundationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationTests.swift; sourceTree = "<group>"; };
 		D21100000000000000000003 /* CatalogFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogFileTests.swift; sourceTree = "<group>"; };
 		C9D7E74E491B5B6820B2A5BF /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		6C9157BDA89F41B8AC2F9D02 /* PhotoRemoval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoRemoval.swift; sourceTree = "<group>"; };
 		CF9F8EDCFB825B272378D300 /* AuthorizedRAWTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorizedRAWTests.swift; sourceTree = "<group>"; };
 		D60A24C4208C52F3CAB9048E /* WorkflowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowTests.swift; sourceTree = "<group>"; };
 		DCF21A75CCEEC04B8D2BBE53 /* Masking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Masking.swift; sourceTree = "<group>"; };
@@ -775,6 +777,7 @@
 				D42700020000000000000006 /* TargetedEditing.swift */,
 				5EA2AA836B41430697BFC16E /* PointColorEditing.swift */,
 				C9D7E74E491B5B6820B2A5BF /* AppModel.swift */,
+				6C9157BDA89F41B8AC2F9D02 /* PhotoRemoval.swift */,
 				AA7900000000000000000041 /* AppMCPService.swift */,
 				AA7900000000000000000042 /* AppMCPTools.swift */,
 				AA7900000000000000000046 /* AppMCPWorkflows.swift */,
@@ -1216,6 +1219,7 @@
 				83C9C2CBABFA4C4AFB6AB636 /* XMPPresetReader.swift in Sources */,
 				436255011F4E1BCB772DD16B /* XMPPresetImportSheet.swift in Sources */,
 				FB23F056B5AEF44EEF30E376 /* AppModel.swift in Sources */,
+				6C9157BDA89F41B8AC2F9D01 /* PhotoRemoval.swift in Sources */,
 				AA7900000000000000000031 /* AppMCPService.swift in Sources */,
 				AA7900000000000000000032 /* AppMCPTools.swift in Sources */,
 				AA7900000000000000000036 /* AppMCPWorkflows.swift in Sources */,

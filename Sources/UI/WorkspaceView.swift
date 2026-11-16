@@ -202,6 +202,7 @@ struct WorkspaceView: View {
             Button(L10n.text("app.ok", defaultValue: "OK")) { model.error = nil }
         } message: { Text(model.error ?? "") }
         .sheet(isPresented:$model.showPairing) { PairingSheet(model:model) }
+        .sheet(item: $model.photoRemoval) { PhotoRemovalSheet(model: model, request: $0) }
         .sheet(isPresented:$model.showAutoStacks) { AutoStackSheet(model:model) }
         .sheet(item:$model.mergeSession) { PhotoMergeSheet(session:$0,completed:model.completePhotoMerge) }
         .sheet(item:$smartDraft) { SmartCollectionSheet(model:model,collection:$0) }
@@ -311,7 +312,8 @@ struct WorkspaceView: View {
             Button(L10n.text("app.renameCurrentCopy", defaultValue: "Rename Current Copy…")) {
                 if let photo = model.active { versionID = photo.id; versionName = photo.versionName; versionRename = true }
             }.disabled(model.active?.isVirtualCopy != true)
-            Button(L10n.text("app.removeSelectedVersionsKeepOriginals", defaultValue: "Remove Selected Versions (Keep Originals)"),action:model.deleteSelectedVersions).disabled(model.selection.isEmpty)
+            Button(L10n.text("photoRemoval.removeFromCatalog", defaultValue: "Remove from Catalog…")) { model.requestPhotoRemoval() }
+                .disabled(!model.canRemovePhotos)
             Divider()
             Button(L10n.text("app.copyCurrentPhotoAdjustments", defaultValue: "Copy Current Photo Adjustments"), action: model.copyAdjustments).disabled(!model.canEdit)
             Button(L10n.text("app.pasteAdjustments_280", defaultValue: "Paste Adjustments…")) { model.requestAdjustments(.paste) }.disabled(model.copiedRecipe == nil || model.selection.isEmpty)
@@ -370,7 +372,7 @@ struct WorkspaceView: View {
         }
         .padding(.top, Metrics.topBarKeyLine - Self.topKey / 2)
         .padding(.horizontal, 12).frame(height: Metrics.topBar, alignment: .top)
-        .background { InstrumentPlate().gesture(WindowDragGesture()) }
+        .background { InstrumentPlate().allowsHitTesting(false).background(TitleBarInput()) }
         .background(FullScreenReader(fullScreen: $fullScreen))
     }
     private static let topKey: CGFloat = 24
@@ -877,7 +879,8 @@ struct WorkspaceView: View {
                 Button(L10n.text("app.renameCurrentCopy", defaultValue: "Rename Current Copy…")) {
                     if let photo = model.active { versionID = photo.id; versionName = photo.versionName; versionRename = true }
                 }.disabled(model.active?.isVirtualCopy != true)
-                Button(L10n.text("app.removeSelectedVersionsKeepOriginals", defaultValue: "Remove Selected Versions (Keep Originals)"),action:model.deleteSelectedVersions).disabled(model.selection.isEmpty)
+                Button(L10n.text("photoRemoval.removeFromCatalog", defaultValue: "Remove from Catalog…")) { model.requestPhotoRemoval() }
+                    .disabled(!model.canRemovePhotos)
                 Divider()
                 Toggle(L10n.text("app.holdResultsUntilManualRefresh", defaultValue: "Hold Results Until Manual Refresh"), isOn: $model.holdFilterResults)
                 Button(L10n.text("app.refreshAllResultsManually", defaultValue: "Refresh All Results Manually")) { model.refreshResults() }
@@ -1416,6 +1419,7 @@ struct WorkspaceView: View {
                     Divider()
                 }
                 Button(L10n.text("app.selectAllQueryVersionsIncludingCollapsedMembersAndAll", defaultValue: "Select All Query Versions, Including Collapsed Members and All Pages"),action:model.selectAllResults)
+                    .disabled(!model.canSelectAllResults)
                 Button(L10n.text("app.selectCurrentVisiblePage", defaultValue: "Select Current Visible Page")) { model.choose(Set(model.photos.map(\.id)), active: model.activeID ?? model.photos.first?.id) }
                 Button(L10n.text("app.clearSelection", defaultValue: "Clear Selection")) { model.choose([], active: model.activeID) }
             } label: { Text(sourceName).lineLimit(1).truncationMode(.middle) }
@@ -1578,7 +1582,80 @@ enum WorkspaceDimensions {
     }
 }
 
-/// The seam itself is the resize handle; a wider invisible strip keeps it easy to grab.
+private struct PhotoRemovalSheet: View {
+    let model: AppModel
+    let request: PhotoRemovalRequest
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let originals = request.originals {
+                Text(L10n.text("photoRemoval.trashTitle", defaultValue: "Move originals to Trash?")).font(.headline)
+                Text(L10n.text("photoRemoval.counts", defaultValue: "Original files: \(originals.count) · Selected versions: \(request.ids.count)"))
+                Text(L10n.text("photoRemoval.trashDetails", defaultValue: "This removes the selected versions from this catalog. Sidecars stay in place. To recover, restore the files in Finder and undo the catalog removal in Phosdeck."))
+                    .fixedSize(horizontal: false, vertical: true)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(originals) { item in
+                            Text(item.url.path).textSelection(.enabled).font(.caption11)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }.frame(height: min(200, CGFloat(originals.count) * 24 + 28))
+            } else {
+                Text(L10n.text("photoRemoval.removeTitle", defaultValue: "Remove the selected photos from the catalog?")).font(.headline)
+                Text(L10n.text("photoRemoval.removeDetails", defaultValue: "Selected versions: \(request.ids.count). Original files stay in place. You can undo this in Phosdeck."))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let error { Text(error).foregroundStyle(Theme.warning).fixedSize(horizontal: false, vertical: true) }
+            HStack {
+                Button(L10n.text("app.cancel", defaultValue: "Cancel")) { model.photoRemoval = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button(request.originals == nil ? L10n.text("app.remove", defaultValue: "Remove") : L10n.text("photoRemoval.move", defaultValue: "Move to Trash"), role: .destructive) {
+                    error = nil
+                    do { try model.confirmPhotoRemoval(request) }
+                    catch { self.error = error.localizedDescription }
+                }
+            }.buttonStyle(.key)
+        }.padding(20).frame(width: 550).instrumentForm()
+    }
+}
+
+private struct TitleBarInput: NSViewRepresentable {
+    func makeNSView(context: Context) -> Region { Region() }
+    func updateNSView(_ view: Region, context: Context) {}
+
+    final class Region: NSView {
+        private var beforeFill: (original: NSRect, filled: NSRect)?
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override func mouseDown(with event: NSEvent) {
+            guard let window, !window.styleMask.contains(.fullScreen) else { return }
+            if event.clickCount < 2 {
+                window.performDrag(with: event)
+                return
+            }
+            guard event.clickCount == 2 else { return }
+            switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+            case "None": break
+            case "Minimize": window.performMiniaturize(nil)
+            case "Fill":
+                guard let screen = window.screen else { return }
+                let visible = screen.visibleFrame
+                let animate = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                if let previous = beforeFill, window.frame == previous.filled {
+                    beforeFill = nil
+                    window.setFrame(window.constrainFrameRect(previous.original, to: screen), display: true, animate: animate)
+                } else if window.frame != visible {
+                    let original = window.frame
+                    window.setFrame(visible, display: true, animate: animate)
+                    beforeFill = (original, window.frame)
+                }
+            default: window.performZoom(nil)
+            }
+        }
+    }
+}
+
 /// Follows the hosting window's full-screen state; the system window buttons are hidden while it is full screen.
 /// Flips at the start of each transition so the top bar never overlaps the returning buttons.
 struct FullScreenReader: NSViewRepresentable {

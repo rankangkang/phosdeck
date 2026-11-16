@@ -46,6 +46,7 @@ targets:
       # Includes native multiframe merge registration, MergeCameraRefinement, depth-gated FocusStackFusion, float masters and UI.
       # Includes CatalogArchive.swift, ProjectCopy.swift and CatalogArchiveSheet.swift.
       # Includes LightroomCatalog.swift, LightroomImporter.swift, LightroomSettings.swift and LightroomImportSheet.swift.
+      # Includes App/PhotoRemoval.swift for confirmed catalog and disk removal.
       - path: Sources
         excludes: [Imaging/raster-exposure-colour-v4.bin]
       - path: design/logo/wordmark-approved-ivory.svg

@@ -59,6 +59,97 @@ final class BrowseHistoryTests: XCTestCase {
         return (original, first, second)
     }
 
+    @MainActor func testSelectAllAndPhotoMenuUseTheWholeFilteredFolderAcrossPages() throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.directory) }
+        let hidden = f.firstIDs[1], excluded = f.firstIDs[2], sibling = f.firstIDs[3]
+        try f.catalog.database.write { db in
+            try db.execute(sql: "UPDATE photo SET relativePath='A/nested/final.jpg' WHERE id=?", arguments: [f.firstIDs.last!])
+            try db.execute(sql: "UPDATE photo SET relativePath='AB/sibling.jpg' WHERE id=?", arguments: [sibling])
+            try db.execute(sql: "UPDATE photo SET rating=1 WHERE id=?", arguments: [excluded])
+        }
+        let stack = try XCTUnwrap(f.catalog.editStacks(.group(top: f.firstIDs[0], members: [f.firstIDs[0], hidden])).current.first)
+        _ = try f.catalog.editStacks(.collapse([stack.id], true))
+        let model = try makeModel(for: f.catalog)
+        model.scope = "folder:\(f.first.id):A"; model.ratingThreshold = 3
+        model.photoSort = .filename; model.pageOffset = 200
+        try model.reloadPhotos()
+        let active = try XCTUnwrap(model.photos.first?.id)
+        model.choose([active], active: active)
+        let expected = Set(f.firstIDs).subtracting([excluded, sibling])
+
+        let host = NSHostingView(rootView: PhotoGrid(model: model))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.title = "Synthetic — Phosdeck"; window.contentView = host
+        defer { window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        func collection(in view: NSView) -> KeyboardCollectionView? {
+            (view as? KeyboardCollectionView) ?? view.subviews.lazy.compactMap { collection(in: $0) }.first
+        }
+        let grid = try XCTUnwrap(collection(in: host))
+        XCTAssertTrue(window.makeFirstResponder(grid))
+        let cmdA = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, characters: "a", charactersIgnoringModifiers: "a", isARepeat: false, keyCode: 0))
+        XCTAssertNil(WorkspaceKeyboard.handle(cmdA, model: model))
+        XCTAssertEqual(model.selection, expected)
+        XCTAssertEqual(model.activeID, active)
+        XCTAssertEqual(model.pageOffset, 200)
+        XCTAssertEqual(model.photos.count, 200)
+
+        // The native Edit menu's Select All action reaches the same scope.
+        model.choose([active], active: active)
+        grid.selectAll(nil)
+        XCTAssertEqual(model.selection, expected)
+        let path = IndexPath(item: 1, section: 0), clicked = model.photos[path.item].id
+        let frame = try XCTUnwrap(grid.layoutAttributesForItem(at: path)?.frame)
+        let point = grid.convert(NSPoint(x: frame.midX, y: frame.midY), to: nil)
+        let rightClick = try XCTUnwrap(NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        let menu = try XCTUnwrap(grid.menu(for: rightClick))
+        XCTAssertEqual(model.selection, expected, "Right-clicking an already selected photo retains off-page and collapsed selections.")
+        XCTAssertEqual(model.activeID, clicked)
+        let export = try XCTUnwrap(menu.items.first)
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(export.action), to: export.target, from: export))
+        XCTAssertTrue(model.showExport)
+        model.showExport = false
+
+        model.choose([active], active: active)
+        let otherMenu = try XCTUnwrap(grid.menu(for: rightClick))
+        XCTAssertEqual(model.selection, [clicked])
+        let removal = try XCTUnwrap(otherMenu.item(withTitle: L10n.text("photoRemoval.removeFromCatalog", defaultValue: "Remove from Catalog…")))
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(removal.action), to: removal.target, from: removal))
+        let request = try XCTUnwrap(model.photoRemoval)
+        XCTAssertEqual(request.ids, [clicked])
+        try model.confirmPhotoRemoval(request)
+        XCTAssertNil(try f.catalog.photo(clicked))
+        model.undo.undo()
+        XCTAssertNotNil(try f.catalog.photo(clicked))
+
+        let editor = NSTextView(frame: .zero)
+        window.contentView = editor
+        XCTAssertTrue(window.makeFirstResponder(editor))
+        let selection = model.selection
+        XCTAssertNotNil(WorkspaceKeyboard.handle(cmdA, model: model))
+        XCTAssertEqual(model.selection, selection)
+    }
+
+    @MainActor func testLibraryDeleteInRegularCollectionOnlyRemovesMembership() throws {
+        let f = try fixture(firstCount: 3)
+        defer { try? FileManager.default.removeItem(at: f.directory) }
+        try f.catalog.collection(name: "Shortlist", id: "shortlist")
+        try f.catalog.membership(ids: f.firstIDs, collection: "shortlist", add: true)
+        let model = try makeModel(for: f.catalog)
+        model.setScope("collection:shortlist")
+        model.selectAllResults()
+        model.deleteLibrarySelection()
+        XCTAssertNil(model.photoRemoval)
+        XCTAssertTrue(try f.catalog.members("shortlist").isEmpty)
+        XCTAssertEqual(try f.catalog.photoCount(), f.firstIDs.count + f.secondIDs.count)
+        model.undo.undo()
+        XCTAssertEqual(try f.catalog.members("shortlist"), Set(f.firstIDs))
+    }
+
     @MainActor func testSourceHistoryRestoresFiltersPageSelectionAndHeldSnapshotAfterAnotherSourceRefresh() throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.directory) }

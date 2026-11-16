@@ -513,6 +513,8 @@ final class AppModel {
     @ObservationIgnored weak var settingsWindow: NSWindow?
     var showTaskResults = false
     var showExport = false
+    var photoRemoval: PhotoRemovalRequest?
+    @ObservationIgnored var movingPhotosToTrash = false
     var requestedExportPreset: ExportPreset?
     var showOutputRecovery = false
     private(set) var lastExportResult: ExportBatchResult?
@@ -561,13 +563,14 @@ final class AppModel {
     }
     var catalogName: String { catalog?.fileURL.deletingPathExtension().lastPathComponent ?? L10n.text("app.noCatalogOpen", defaultValue: "No catalog open") }
     /// Menu-bar commands stay reachable while a sheet is up, so they must not stack a second sheet.
-    var presentingSheet: Bool { showCameraDiagnostics || showTaskResults || showImport || folderReview != nil || mergeSession != nil || showXMPPresetImport || showExport || showNewCatalog || showCatalogArchive || lightroomImportSource != nil || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil }
+    var presentingSheet: Bool { showCameraDiagnostics || showTaskResults || showImport || folderReview != nil || mergeSession != nil || showXMPPresetImport || showExport || showNewCatalog || showCatalogArchive || lightroomImportSource != nil || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil || photoRemoval != nil }
     var canSwitchCatalog: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var workspaceAvailable: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var canMarkPhotos: Bool { workspaceAvailable && (workspaceMode == .grid || photoSwitchDisplay == nil) }
     var canLocateOriginal: Bool { catalog != nil && active != nil && workspaceAvailable && comparison == nil && survey == nil }
     var canImportPhotos: Bool { catalog != nil && workspaceAvailable }
     var canExportPhotos: Bool { canImportPhotos && !selection.isEmpty }
+    var canSelectAllResults: Bool { workspaceAvailable && catalog != nil && comparison == nil && survey == nil }
     var workspaceModule: WorkspaceModule { editMode ? .develop : .library }
     var workspaceMode: WorkspaceMode { survey != nil ? .survey : comparison != nil ? .compare : editMode ? .develop : singleView ? .single : .grid }
     var developTool: DevelopTool { cropMode ? .crop : maskMode ? .mask : spotMode ? .spot : .adjust }
@@ -1209,6 +1212,16 @@ final class AppModel {
             let candidates = photos.filter { $0.id != comparison?.reference.photo?.id }
             let id = (delta < 0 ? candidates.last : candidates.first)?.id
             choose(id.map { [$0] } ?? [], active: id)
+        }
+    }
+    func selectAllResults() {
+        guard canSelectAllResults, let catalog else { return }
+        perform {
+            let results = try catalog.allResultIDs(query)
+            let ids = Set(results)
+            let current = activeID.flatMap { ids.contains($0) ? $0 : nil }
+            choose(ids, active: current ?? photos.first(where: { ids.contains($0.id) })?.id ?? results.first)
+            showNotice(L10n.text("app.selectedAllQueryVersionsIncludingCollapsedMembersAndEvery", defaultValue: "Selected all \(selection.count) query versions, including collapsed members and every page"))
         }
     }
     @discardableResult func perform(_ operation: () throws -> Void) -> Bool {
@@ -3242,6 +3255,15 @@ final class AppModel {
             }
         } catch { self.error = error.localizedDescription }
     }
+    func revealOriginal() {
+        guard canLocateOriginal, let photo = active, let root = roots.first(where: { $0.id == photo.rootID }) else { return }
+        perform {
+            let lease = try AccessLease(bookmark: root.bookmark)
+            let url = try ProjectCopy.child(photo.relativePath, of: lease.url)
+            try SourceAvailability.check(root: lease.url, file: url)
+            withExtendedLifetime(lease) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+        }
+    }
     static func originalFilePanel(name: String? = nil, directory: URL? = nil) -> NSOpenPanel {
         let panel = NSOpenPanel()
         panel.prompt = L10n.text("app.locateOriginal_146", defaultValue: "Locate Original")
@@ -3831,10 +3853,6 @@ extension AppModel {
         }
         return (made, previousStacks, refreshed)
     }
-    func deleteSelectedVersions() {
-        guard !busy, !applyingAdjustments, commitRecipe(), !selection.isEmpty else { return }
-        perform { _ = try removePhotoVersions(selection) }
-    }
     func removePhotoVersions(_ ids: Set<String>, expecting: [String: PhotoVersionRevision] = [:], closedUndo: Bool = false) throws
         -> (previousStacks: [PhotoStack], refreshed: Bool) {
         let title = L10n.text("app.removeEditVersion", defaultValue: "Remove Edit Version")
@@ -3860,7 +3878,7 @@ extension AppModel {
         let refreshed = perform {
             if comparison != nil { endComparison() }
             try reload(); reconcileVisibleSelection()
-            status = L10n.text("app.editVersionsUpdatedOriginalsAndSharedEditAssetsPreserved", defaultValue: "Edit versions updated · Originals and shared edit assets preserved")
+            status = L10n.text("photoRemoval.catalogUpdated", defaultValue: "Catalog entries updated")
         }
         return (oldStacks, refreshed)
     }

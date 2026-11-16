@@ -41,6 +41,10 @@ final class WorkspaceKeyboard {
             return nil
         }
         if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "l" { model.toggleFilters(); return nil }
+        if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "a", model.canSelectAllResults {
+            if !event.isARepeat { model.selectAllResults() }
+            return nil
+        }
         // Lightroom's direct 100% inspection command. Keep this before the
         // ordinary command guard so text fields and culling never see it.
         if (model.editMode || model.singleView), model.comparison == nil, model.survey == nil,
@@ -53,6 +57,10 @@ final class WorkspaceKeyboard {
         }
         if stack(event,model:model) { return nil }
         let key = event.charactersIgnoringModifiers?.lowercased()
+        if !model.editMode, model.canRemovePhotos, modifiers.isEmpty, [51, 117].contains(event.keyCode) {
+            if !event.isARepeat { model.deleteLibrarySelection() }
+            return nil
+        }
         if key == "b", modifiers.isEmpty {
             if !event.isARepeat { model.toggleQuickCollection() }
             return nil
