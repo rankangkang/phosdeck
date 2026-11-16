@@ -158,8 +158,8 @@ struct DevelopPanel: View {
             Text(L10n.text("app.adjustments", defaultValue: "Adjustments"))
                 .font(.section).foregroundStyle(Theme.textSecondary).fixedSize()
             Seam().frame(maxWidth: .infinity)
-            EditorSwitchStatus(locked: model.editorUsesPreviousPhoto, loading: model.loadingPhoto, detail: model.imageStatus,
-                               retry: model.retryPhotoLoad)
+            EditorLoadFailure(visible: model.editorUsesPreviousPhoto && !model.loadingPhoto, detail: model.imageStatus,
+                              retry: model.retryPhotoLoad)
                 .environment(\.isEnabled, model.workspaceAvailable)
             Menu {
                 Toggle(L10n.text("app.expandOneAdjustmentPanelAtATime", defaultValue: "Expand One Adjustment Panel at a Time"), isOn: $solo)
@@ -678,49 +678,34 @@ struct DevelopPanel: View {
     }
 }
 
-/// A fixed status slot: no layout changes or whole-panel animation while browsing.
-struct EditorSwitchStatus: View {
-    let locked: Bool
-    let loading: Bool
+/// Keep the retry slot in place so it never moves the neighboring controls.
+private struct EditorLoadFailure: View {
+    let visible: Bool
     let detail: String
-    var retry: () -> Void = {}
-    @State private var waiting = false
-    private var switching: String { L10n.text("app.switchingPhoto", defaultValue: "Switching") }
-    private var failed: String { L10n.text("app.photoLoadFailed", defaultValue: "Load failed") }
+    let retry: () -> Void
     private var explanation: String {
         L10n.text("app.retainedPhotoSettingsHint", defaultValue: "Showing the previous photo’s settings. Editing resumes when the selected photo is ready.") + "\n" + detail
     }
     var body: some View {
         HStack(spacing: 4) {
             ZStack {
-                Lamp(on: waiting).opacity(locked && !loading ? 0 : 1)
-                if locked && !loading {
+                if visible {
                     Button(action: retry) { Image(systemName: "arrow.clockwise").font(.system(size: 10)) }
                         .buttonStyle(.plain)
                         .accessibilityLabel(L10n.text("app.retryPhotoLoad", defaultValue: "Retry loading photo"))
                         .help(L10n.text("app.retryPhotoLoad", defaultValue: "Retry loading photo"))
                 }
             }.frame(width: 18, height: 20)
-            ZStack(alignment: .trailing) {
-                Text(switching).hidden()
-                Text(failed).hidden()
-                Text(loading ? switching : failed).opacity(locked ? 1 : 0)
-            }.font(.caption11).fixedSize()
+            Text(L10n.text("app.photoLoadFailed", defaultValue: "Load failed"))
+                .font(.caption11).fixedSize().opacity(visible ? 1 : 0)
         }
         .foregroundStyle(Theme.textSecondary)
-        .help(locked ? explanation : "")
+        .help(visible ? explanation : "")
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(locked ? explanation : "")
-        .accessibilityHidden(!locked)
+        .accessibilityLabel(visible ? explanation : "")
+        .accessibilityHidden(!visible)
         .accessibilityIdentifier("editor-switch-status")
         .transaction { $0.animation = nil }
-        .task(id: locked && loading) {
-            waiting = false
-            guard locked && loading else { return }
-            do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
-            guard !Task.isCancelled else { return }
-            waiting = true
-        }
     }
 }
 

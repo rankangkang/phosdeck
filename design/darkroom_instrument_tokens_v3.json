@@ -304,7 +304,7 @@
       "editingLockedImmediately": true,
       "preserveControlAppearance": true,
       "intrinsicallyUnavailableControlsStayDimmed": true,
-      "waitingLampDelayMs": 200,
+      "loadingIndicatorDelayMs": 200,
       "statusReservesSpace": true,
       "continuousWaitKeepsIndicator": true,
       "wholePanelTransition": "none",

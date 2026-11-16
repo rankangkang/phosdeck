@@ -974,8 +974,11 @@ struct WorkspaceView: View {
                 .font(.caption11).foregroundStyle(Theme.textSecondary)
             }
         }
+        .opacity(model.loadingPhoto ? 0 : 1)
+        .allowsHitTesting(!model.loadingPhoto)
         .help(L10n.text("app.preview_2116", defaultValue: "Preview: \(text) · \(model.imageStatus)"))
         .accessibilityElement(children: .ignore).accessibilityLabel(L10n.text("app.preview_2115", defaultValue: "Preview")).accessibilityValue(text)
+        .accessibilityHidden(model.loadingPhoto)
     }
     private var beforeAfterMenu: some View {
         let title = switch model.beforeAfter { case .off: L10n.text("app.off", defaultValue: "Off"); case .sideBySide: L10n.text("app.sideBySide", defaultValue: "Side by Side"); case .split: L10n.text("app.splitView", defaultValue: "Split View") }
@@ -1471,7 +1474,11 @@ struct WorkspaceView: View {
             HStack(spacing: 10) {
                 Text(model.status).lineLimit(1).truncationMode(.tail).help(model.status)
                 if model.singleView || model.editMode {
-                    Text(model.imageStatus).lineLimit(1).truncationMode(.tail).help(model.imageStatus)
+                    if model.loadingPhoto {
+                        PhotoLoadingIndicator()
+                    } else {
+                        Text(model.imageStatus).lineLimit(1).truncationMode(.tail).help(model.imageStatus)
+                    }
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
             RimToggle(edge: .bottom, isOpen: film, label: L10n.text("app.filmstrip", defaultValue: "Filmstrip"), shortcut: "⌥⌘3") { film.toggle() }
@@ -1560,6 +1567,33 @@ struct PhotoViewingInfo: View {
                 .padding(.horizontal, Metrics.padding).frame(height: Metrics.topBar).background(mat.color)
                 .accessibilityElement(children: .combine).accessibilityIdentifier("develop-photo-title")
             }
+        }
+    }
+}
+
+struct PhotoLoadingIndicator: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var visible = false
+
+    var body: some View {
+        ZStack {
+            if visible {
+                if reduceMotion {
+                    Image(systemName: "circle.dotted").font(.caption11).foregroundStyle(Theme.textSecondary)
+                } else {
+                    ProgressView().progressViewStyle(.circular).controlSize(.mini)
+                }
+            }
+        }
+        .frame(width: 16, height: 16)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.text("app.loadingPhoto", defaultValue: "Loading photo…"))
+        .accessibilityIdentifier("photo-loading-indicator")
+        .allowsHitTesting(false)
+        .task {
+            do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+            guard !Task.isCancelled else { return }
+            visible = true
         }
     }
 }

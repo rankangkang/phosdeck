@@ -1202,9 +1202,12 @@ final class ImagingTests: XCTestCase {
         }
     }
 
-    @MainActor func testPhotoSwitchStatusDelaysWaitingAndKeepsItsSlot() async throws {
-        func status(locked: Bool, loading: Bool = true, detail: String = "first") -> some View {
-            EditorSwitchStatus(locked: locked, loading: loading, detail: detail)
+    @MainActor func testPhotoLoadingIndicatorDelaysAndKeepsItsSlot() async throws {
+        func status(loading: Bool, detail: String = "first") -> some View {
+            ZStack {
+                if loading { PhotoLoadingIndicator() }
+            }.frame(width: 16, height: 16)
+                .help(detail)
                 .padding(8).background(InstrumentPlate()).preferredColorScheme(.dark)
         }
         func pixels(_ view: NSView) throws -> Data {
@@ -1212,29 +1215,35 @@ final class ImagingTests: XCTestCase {
             view.cacheDisplay(in: view.bounds, to: bitmap)
             return try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
         }
-        let host = NSHostingView(rootView: status(locked: false))
+        let host = NSHostingView(rootView: status(loading: false))
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 140, height: 40), styleMask: [.borderless], backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: .darkAqua); window.contentView = host; window.orderFront(nil)
         defer { window.orderOut(nil); window.contentView = nil }
         host.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(50))
         let originalSize = host.fittingSize, original = try pixels(host)
-        host.rootView = status(locked: true)
+        host.rootView = status(loading: true)
         host.layoutSubtreeIfNeeded()
         let shortWait = try pixels(host)
+        XCTAssertEqual(shortWait, original, "Brief waits should leave the indicator slot empty")
         XCTAssertEqual(host.fittingSize, originalSize)
         try await Task.sleep(for: .milliseconds(300))
         let longWait = try pixels(host)
-        XCTAssertTrue(shortWait != longWait, "Only a sustained wait should illuminate the indicator")
-        host.rootView = status(locked: true, detail: "next photo")
+        XCTAssertNotEqual(shortWait, longWait, "A sustained wait should show the indicator")
+        host.rootView = status(loading: true, detail: "next photo")
         host.layoutSubtreeIfNeeded()
-        XCTAssertTrue(try pixels(host) == longWait, "Another selection in the same wait must not reset the lamp")
-        host.rootView = status(locked: false)
+        XCTAssertNotEqual(try pixels(host), original, "Another selection in the same wait must keep the indicator visible")
+        host.rootView = status(loading: false)
         try await Task.sleep(for: .milliseconds(250))
-        XCTAssertTrue(try pixels(host) == original, "Finishing a switch must cancel delayed indicator work")
-        host.rootView = status(locked: true, loading: false)
+        XCTAssertEqual(try pixels(host), original, "Finishing a switch must clear the indicator")
+        host.rootView = status(loading: true)
         host.layoutSubtreeIfNeeded()
-        XCTAssertEqual(host.fittingSize, originalSize, "Failure and retry share the same reserved status slot")
+        XCTAssertEqual(try pixels(host), original, "The next wait must start with an empty slot")
+        host.rootView = status(loading: false)
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(try pixels(host), original, "Finishing before the delay must cancel indicator work")
+        XCTAssertEqual(host.fittingSize, originalSize)
     }
 
     @MainActor func testLockedFaderStopsAndReturnsWithoutEditing() async throws {

@@ -82,7 +82,7 @@ struct PhotoCanvas: View {
                                    splitBefore: beforeAfter == .split ? model.beforeImage : nil)
                         .allowsHitTesting(model.photoSwitchDisplay == nil)
                     TargetedCanvasStatus(model: model, mat: mat)
-                    if displayImage == nil {
+                    if displayImage == nil, !model.loadingPhoto {
                         VStack(spacing: 12) {
                             Text(model.imageStatus).foregroundStyle(Color(nsColor: mat.textSecondary))
                             if model.imageStatus.hasPrefix(L10n.text("app.originalMissingRatingsAndAdjustmentsPreserved", defaultValue: "Original missing; ratings and adjustments preserved")) || model.imageStatus.hasPrefix(L10n.text("app.theRootFolderIsMissingLocateItAgain", defaultValue: "The root folder is missing. Locate it again")) {

@@ -2721,23 +2721,6 @@
         }
       }
     },
-    "app.switchingPhoto": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Switching"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "切换中"
-          }
-        }
-      }
-    },
     "app.temporarilyInspectClipping": {
       "extractionState": "manual",
       "localizations": {
