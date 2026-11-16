@@ -7,7 +7,7 @@
 - 主线 `master`，仅维护原生 macOS（SwiftUI + Metal + GRDB）。
 - 目录 schema 13（`CatalogStore.schemaVersion`），旧版本目录直接拒绝。
 - 开发机有两台（M4 Pro／macOS 26.6.2，M4／macOS 27.0.1），固定体验基线不能混用。macOS 27 这台的体验 App 已更名为 Phosdeck Preview，保留原 bundle ID 和 `UnratedReview.phoscat`；合成图库含拍摄参数、文件夹差异与去边测试图，未恢复原图库与研究模型；已准备清单中的 Sony A7 III ARW 和 Leica M8 DNG 两份 CC0 样片。M4 Pro 固定体验 App 已同目录更名为 Phosdeck Preview，保留原身份、合成图库与偏好。
-- M4 Pro 的常驻体验图库位于 `~/Phosdeck Review/Review.phoscat`，固定 Phosdeck Preview 已重开核对。其 `Photos/JPG/` 和 `Photos/RAW/` 各有 5,000 份同源样片，分别为合成 JPG 和公开 Sony A7 III ARW。
+- M4 Pro 的常驻体验目录为 `~/Phosdeck Review/`。日常浏览和选片用 `Public Review.phoscat`，包含 `Public Photos/` 中 191 张 Wikimedia Commons JPG 和 9 张 raw.pixls.us RAW，来源与授权见同目录的 `Public Photos Credits.txt`。合成大图库压测复用 `Review.phoscat` 和 `Photos/` 中的 10,000 份样片。
 - 仓库 Debug 默认免证书临时签名；macOS 27 这台已按用户要求通过忽略的 `Config/LocalSigning.xcconfig` 固定开发证书与团队，测试宿主及内部库、内置盘暂存副本均统一签名并保留沙箱与 hardened runtime。M4 Pro 也已通过本机忽略配置固定现有体验 App 的开发证书。固定体验 App 继续保持原身份与开发签名。
 
 ## 待用户验收
