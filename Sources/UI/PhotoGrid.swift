@@ -6,6 +6,7 @@ struct PhotoGrid: NSViewRepresentable {
     var film = false
     var filmHeight: Double = 84
     var mat = PhotoMat.dark
+    var isShowing = true
     /// Set only for a regular collection in manual-order mode. Grid and
     /// filmstrip share this bridge so the catalog remains the single order
     /// authority across both presentations.
@@ -66,14 +67,37 @@ struct PhotoGrid: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.scrollObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak coordinator, weak scroll] _ in
             MainActor.assumeIsolated {
-                guard let coordinator, let scroll, !coordinator.applyingChanges else { return }
+                guard let coordinator, let scroll, !coordinator.applyingChanges, coordinator.isShowing,
+                      coordinator.film || coordinator.model.workspaceMode == .grid else { return }
+                guard !coordinator.positionKey.isEmpty else { return }
                 coordinator.model.scrollPositions[coordinator.positionKey] = scroll.contentView.bounds.origin
             }
         }
         return scroll
     }
+    static func dismantleNSView(_ scroll: NSScrollView, coordinator: Coordinator) {
+        if let observer = coordinator.scrollObserver {
+            NotificationCenter.default.removeObserver(observer)
+            coordinator.scrollObserver = nil
+        }
+        for case let item as PhotoItem in coordinator.collection?.visibleItems() ?? [] { item.cancelThumbnail() }
+    }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let c = context.coordinator
+        c.applyingChanges = true
+        defer { c.applyingChanges = false }
+        let returning = !c.isShowing && isShowing
+        if c.isShowing != isShowing {
+            c.isShowing = isShowing
+            if !isShowing {
+                if let focus = scroll.window?.firstResponder as? NSView, focus.isDescendant(of: scroll) {
+                    scroll.window?.makeFirstResponder(nil)
+                }
+                for case let item as PhotoItem in c.collection?.visibleItems() ?? [] { item.cancelThumbnail() }
+            }
+            scroll.isHidden = !isShowing
+        }
+        guard isShowing else { return }
         c.filmHeight = filmHeight
         c.ordering = ordering
         let matChanged = c.mat != mat
@@ -83,8 +107,6 @@ struct PhotoGrid: NSViewRepresentable {
             scroll.scrollerKnobStyle = mat.gray < 0.5 ? .light : .dark
         }
         let photos = model.filtered
-        c.applyingChanges = true
-        defer { c.applyingChanges = false }
         // Scroll state belongs to the effective query, not only the most
         // visible filters. Include metadata, sort direction, manual order and
         // the semantic query so different result layouts keep their position.
@@ -118,18 +140,9 @@ struct PhotoGrid: NSViewRepresentable {
                 }
             }
         }
-        do {
-            // Organization/metadata edits must not tear down every visible image.
-            for item in c.collection?.visibleItems() ?? [] {
-                guard let path = c.collection?.indexPath(for: item), photos.indices.contains(path.item),
-                      let item = item as? PhotoItem else { continue }
-                let photo = photos[path.item]
-                let edges = c.stackEdges(at: path.item)
-                item.configure(photo: photo, root: model.roots.first { $0.id == photo.rootID }, service: model.thumbnails,
-                               film: film, active: model.activeID == photo.id, mat: mat, badge: model.stackBadges[photo.id],
-                               paired: model.pairedSourceIDs.contains(photo.sourceKey), position: model.pageOffset + path.item + 1,
-                               stackStart: edges.first, stackEnd: edges.last, toggleStack: { [weak model] in model?.toggleStack(photo.id) })
-            }
+        // Organization/metadata edits must not tear down every visible image.
+        for case let item as PhotoItem in c.collection?.visibleItems() ?? [] {
+            if let path = c.collection?.indexPath(for: item) { c.configure(item, at: path.item) }
         }
         if let layout = c.collection?.collectionViewLayout as? NSCollectionViewFlowLayout {
             let size = film ? c.filmItemSize(viewportHeight: scroll.contentSize.height) : c.gridItemSize(viewportWidth: scroll.contentSize.width)
@@ -137,14 +150,15 @@ struct PhotoGrid: NSViewRepresentable {
         }
         let indexes = Set(photos.enumerated().filter { model.selection.contains($0.element.id) }.map { IndexPath(item: $0.offset, section: 0) })
         if c.collection?.selectionIndexPaths != indexes { c.collection?.selectionIndexPaths = indexes }
-        if changedPage || !difference.isEmpty {
-            scroll.contentView.scroll(to: changedPage ? (model.scrollPositions[positionKey] ?? .zero) : oldOrigin)
+        if changedPage || returning || !difference.isEmpty {
+            let origin = changedPage || returning ? (model.scrollPositions[positionKey] ?? .zero) : oldOrigin
+            scroll.contentView.scroll(to: origin)
             scroll.reflectScrolledClipView(scroll.contentView)
         }
-        let restoringPosition = changedPage && model.scrollPositions[positionKey] != nil
+        let restoringPosition = (changedPage || returning) && model.scrollPositions[positionKey] != nil
             && model.scrollActiveIDs[positionKey] == model.activeID
         if restoringPosition { c.lastActive = model.activeID }
-        if c.lastActive != model.activeID || (changedPage && !restoringPosition),
+        if c.lastActive != model.activeID || ((changedPage || returning) && !restoringPosition),
            let index = photos.firstIndex(where: { $0.id == model.activeID }) {
             c.lastActive = model.activeID
             c.collection?.scrollToItems(at: [IndexPath(item: index, section: 0)], scrollPosition: film ? .nearestHorizontalEdge : .nearestVerticalEdge)
@@ -158,6 +172,7 @@ struct PhotoGrid: NSViewRepresentable {
         var filmHeight: Double = 84
         var mat = PhotoMat.dark
         var photos: [Photo] = []
+        var isShowing = true
         var applyingChanges = false
         var positionKey = ""
         var lastActive: String?
@@ -192,15 +207,25 @@ struct PhotoGrid: NSViewRepresentable {
             return (index == 0 || model.stackBadges[photos[index - 1].id]?.stackID != stack,
                     index == photos.count - 1 || model.stackBadges[photos[index + 1].id]?.stackID != stack)
         }
-        func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
-            let item = collectionView.makeItem(withIdentifier: NSUserInterfaceItemIdentifier("photo"), for: indexPath) as! PhotoItem
-            let photo = photos[indexPath.item]
-            let edges = stackEdges(at: indexPath.item)
+        func configure(_ item: PhotoItem, at index: Int) {
+            guard isShowing, photos.indices.contains(index) else { return }
+            let photo = photos[index]
+            let edges = stackEdges(at: index)
             item.configure(photo: photo, root: model.roots.first { $0.id == photo.rootID }, service: model.thumbnails,
                            film: film, active: model.activeID == photo.id, mat: mat, badge: model.stackBadges[photo.id],
-                           paired: model.pairedSourceIDs.contains(photo.sourceKey), position: model.pageOffset + indexPath.item + 1,
+                           paired: model.pairedSourceIDs.contains(photo.sourceKey), position: model.pageOffset + index + 1,
                            stackStart: edges.first, stackEnd: edges.last, toggleStack: { [weak model] in model?.toggleStack(photo.id) })
+        }
+        func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+            let item = collectionView.makeItem(withIdentifier: NSUserInterfaceItemIdentifier("photo"), for: indexPath) as! PhotoItem
+            configure(item, at: indexPath.item)
             return item
+        }
+        func collectionView(_ collectionView: NSCollectionView, willDisplay item: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
+            if let item = item as? PhotoItem, item.needsThumbnail { configure(item, at: indexPath.item) }
+        }
+        func collectionView(_ collectionView: NSCollectionView, didEndDisplaying item: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
+            (item as? PhotoItem)?.cancelThumbnail()
         }
         fileprivate static let orderingPasteboardType = NSPasteboard.PasteboardType("dev.cmkk.phosdeck.collection-order")
         private func movingIDs(for indexPath: IndexPath) -> [String] {
@@ -589,8 +614,13 @@ final class PhotoItem: NSCollectionViewItem {
             if current == token { work = nil }
         }
     }
+    var needsThumbnail: Bool { imageKey == nil || (picture.image == nil && work == nil) }
+    func cancelThumbnail() {
+        guard let work else { return }
+        work.cancel(); self.work = nil; token = UUID(); imageKey = nil
+    }
     override func prepareForReuse() {
-        work?.cancel(); work = nil; token = UUID(); imageKey = nil; sourceKey = nil; picture.image = nil; stackToggle = nil
+        cancelThumbnail(); imageKey = nil; sourceKey = nil; picture.image = nil; stackToggle = nil
         (view as? PhotoCellView)?.isHovered = false
         super.prepareForReuse()
     }

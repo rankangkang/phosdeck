@@ -629,13 +629,28 @@ struct WorkspaceView: View {
     // MARK: Center
 
     @ViewBuilder private func centerContent(showMasks: Bool) -> some View {
+        let mode = model.workspaceMode
+        if (mode == .grid || mode == .single), !model.filtered.isEmpty {
+            let showingGrid = mode == .grid
+            ZStack {
+                // Keep the native clip view alive when opening a photo from the grid.
+                PhotoDisplayFrame {
+                    PhotoGrid(model: model, mat: mat, isShowing: showingGrid, ordering: showingGrid ? model.collectionOrdering : nil)
+                }.opacity(showingGrid ? 1 : 0).allowsHitTesting(showingGrid).accessibilityHidden(!showingGrid)
+                if !showingGrid { centerDetail(showMasks: showMasks) }
+            }
+        } else {
+            centerDetail(showMasks: showMasks)
+        }
+    }
+    @ViewBuilder private func centerDetail(showMasks: Bool) -> some View {
         if let survey = model.survey {
             PhotoSurveyView(model: model, survey: survey)
         } else if let comparison = model.comparison {
             PhotoComparisonView(model: model, comparison: comparison)
         } else if model.filtered.isEmpty && model.developReference == nil {
             emptyLibraryState
-        } else if model.singleView || model.editMode {
+        } else {
             HStack(spacing: 0) {
                 if let reference = model.developReference, model.editMode {
                     DevelopReferenceView(model: model, reference: reference)
@@ -673,8 +688,6 @@ struct WorkspaceView: View {
                     }
                 }
             }
-        } else {
-            PhotoDisplayFrame { PhotoGrid(model: model, mat: mat, ordering: model.collectionOrdering) }
         }
     }
     private var emptyLibraryState: some View {

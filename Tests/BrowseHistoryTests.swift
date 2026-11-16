@@ -200,6 +200,57 @@ final class BrowseHistoryTests: XCTestCase {
         }
     }
 
+    @MainActor func testReturningFromLoupeRestoresTheGridOrigin() async throws {
+        let f = try fixture(firstCount: 120, secondCount: 0)
+        defer { try? FileManager.default.removeItem(at: f.directory) }
+        let model = try makeModel(for: f.catalog)
+        model.thumbnailSize = 100
+        func grid(in view: NSView) -> NSScrollView? {
+            if let scroll = view as? NSScrollView, scroll.hasVerticalScroller,
+               scroll.documentView is KeyboardCollectionView { return scroll }
+            return view.subviews.lazy.compactMap { grid(in: $0) }.first
+        }
+        func wait(_ condition: () -> Bool) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+            XCTAssertTrue(condition())
+        }
+        let host = NSHostingView(rootView: WorkspaceView(model: model))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1024, height: 720),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        let initial = try XCTUnwrap(grid(in: host))
+        let collection = try XCTUnwrap(initial.documentView as? KeyboardCollectionView)
+        try await wait { collection.frame.height > 1000 }
+        let origin = CGPoint(x: 0, y: 675)
+        initial.contentView.scroll(to: origin)
+        initial.reflectScrolledClipView(initial.contentView)
+        try await wait { !collection.indexPathsForVisibleItems().isEmpty }
+        let paths = collection.indexPathsForVisibleItems().sorted()
+        let photo = model.photos[paths[paths.count / 2].item]
+        model.choose([photo.id], active: photo.id)
+        try await wait { model.scrollActiveIDs[model.browseScrollKey(film: false)] == photo.id }
+        let expected = initial.contentView.bounds.origin
+        XCTAssertGreaterThan(expected.y, 0)
+        let key = model.browseScrollKey(film: false)
+        XCTAssertEqual(model.scrollPositions[key], expected)
+        for _ in 0..<3 {
+            window.makeFirstResponder(collection)
+            model.selectWorkspace(.single)
+            try await wait { initial.isHidden }
+            XCTAssertFalse(window.firstResponder === collection)
+            XCTAssertEqual(model.scrollPositions[key], expected)
+            model.selectWorkspace(.grid)
+            try await wait { !initial.isHidden }
+            host.layoutSubtreeIfNeeded()
+            XCTAssertTrue(grid(in: host) === initial)
+            XCTAssertEqual(initial.contentView.bounds.origin.y, expected.y, accuracy: 1)
+            XCTAssertEqual(model.activeID, photo.id)
+        }
+    }
+
     @MainActor func testImportBorrowedReturnKeepsAutomaticSourceHistory() throws {
         let f = try fixture(firstCount: 2, secondCount: 2)
         defer { try? FileManager.default.removeItem(at: f.directory) }

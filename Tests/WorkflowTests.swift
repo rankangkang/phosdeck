@@ -465,6 +465,56 @@ final class WorkflowTests: XCTestCase {
         var count = 0
         func increment() { count += 1 }
     }
+
+    private actor ThumbnailRenderGate {
+        var attempts = 0
+        var completed = 0
+        private var blocked: CheckedContinuation<Void, Never>?
+        private var started: CheckedContinuation<Void, Never>?
+
+        func render(_ image: CGImage) async throws -> CGImage {
+            attempts += 1
+            if attempts == 1 {
+                await withCheckedContinuation { continuation in
+                    blocked = continuation
+                    started?.resume()
+                    started = nil
+                }
+            }
+            try Task.checkCancellation()
+            completed += 1
+            return image
+        }
+        func waitForFirstRequest() async {
+            if blocked == nil { await withCheckedContinuation { started = $0 } }
+        }
+        func release() {
+            blocked?.resume()
+            blocked = nil
+        }
+    }
+
+    func testObsoleteThumbnailCancelsItsRenderAndCanBeRequestedAgain() async throws {
+        let gate = ThumbnailRenderGate(), image = try bitmap()
+        let service = ThumbnailService { _, _ in try await gate.render(image) }
+        let root = StorageRoot(id: "r", path: "/unavailable", bookmark: Data(), label: "synthetic")
+        let photo = Photo(id: "a", rootID: "r", relativePath: "a.ARW", identity: Data(), identityKey: "a", width: 80, height: 40)
+        let obsolete = Task { try await service.image(photo: photo, root: root) }
+        await gate.waitForFirstRequest()
+        obsolete.cancel()
+        let unblock = Task {
+            try await Task.sleep(for: .milliseconds(250))
+            await gate.release()
+        }
+        do { _ = try await obsolete.value; XCTFail("An offscreen request should cancel without waiting for the decoder") }
+        catch is CancellationError {}
+        let shown = try await service.image(photo: photo, root: root)
+        try await unblock.value
+        let completed = await gate.completed
+        XCTAssertEqual(shown.width, 80)
+        XCTAssertEqual(completed, 1)
+    }
+
     @MainActor func testEditedThumbnailsCoalescePersistAndKeepVisibleImage() async throws {
         let counter = RenderCounter()
         let original = try bitmap(), edited = try bitmap(.blue, width: 40, height: 40)

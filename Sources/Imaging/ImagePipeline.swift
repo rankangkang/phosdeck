@@ -151,6 +151,7 @@ actor ImagePipeline {
 
     func baseline(_ request: ImageRequest) throws -> EditRecipe {
         return try autoreleasepool {
+            try Task.checkCancellation()
             let (lease, url) = try source(request)
             defer { withExtendedLifetime(lease) {} }
             guard request.photo.supportsEditing else { throw LRCError(L10n.text("app.editingThisFormatIsNotYetSupported", defaultValue: "Editing this format is not yet supported")) }
@@ -1083,6 +1084,7 @@ actor ImagePipeline {
     func render(_ request: ImageRequest, longEdge: Int?, pixelFormat: CIFormat = .RGBA8, reuseDecoded: Bool = false,
                 jpegMatte: JPEGMatte? = nil, nativePixelRegion: (@Sendable (CGSize) throws -> CGRect)? = nil) throws -> RenderedImage {
         return try autoreleasepool {
+            try Task.checkCancellation()
             var completed = false
             defer {
                 // An interrupted or unverified decode must never seed a later
@@ -1296,8 +1298,12 @@ actor ThumbnailService {
     static let quotaOptions = [1, 5, 10]
     private let cache = NSCache<NSString, CGImage>()
     private var disk: PreviewDiskCache?
-    private var generation = UUID()
-    private var pending: [String: Task<CGImage, Error>] = [:]
+    private struct Load {
+        let token: UUID
+        let worker: Task<Void, Never>
+        var waiters: [UUID: CheckedContinuation<CGImage, Error>]
+    }
+    private var pending: [String: Load] = [:]
     private let render: @Sendable (ImageRequest, Int) async throws -> CGImage
     init(renderer: (@Sendable (ImageRequest, Int) async throws -> CGImage)? = nil) {
         let pipeline = ImagePipeline()
@@ -1310,8 +1316,8 @@ actor ThumbnailService {
     func configure(catalogID: String, gigabytes: Int) throws {
         guard Self.quotaOptions.contains(gigabytes), UUID(uuidString: catalogID) != nil else { throw LRCError(L10n.text("app.invalidCacheSettings", defaultValue: "Invalid cache settings")) }
         let base = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        generation = UUID(); cache.removeAllObjects()
-        pending.values.forEach { $0.cancel() }; pending.removeAll()
+        cancelPending()
+        cache.removeAllObjects()
         disk = try PreviewDiskCache(directory: base.appendingPathComponent("OhMyLRC/\(catalogID)/Thumbnail-v3"), limit: Int64(gigabytes) * 1024 * 1024 * 1024)
         try disk?.trim()
     }
@@ -1324,53 +1330,77 @@ actor ThumbnailService {
     }
     func image(photo: Photo, root: StorageRoot, edge: Int = 320) async throws -> CGImage {
         try Task.checkCancellation()
-        let key = Self.key(photo: photo, edge: edge) as NSString
-        if let image = cache.object(forKey: key) { return image }
-        if let data = try? disk?.read(key: key as String), let source = CGImageSourceCreateWithData(data as CFData, nil), let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
-            cache.setObject(image, forKey: key, cost: image.bytesPerRow * image.height)
+        let key = Self.key(photo: photo, edge: edge)
+        if let image = cache.object(forKey: key as NSString) { return image }
+        if let data = try? disk?.read(key: key), let source = CGImageSourceCreateWithData(data as CFData, nil), let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+            cache.setObject(image, forKey: key as NSString, cost: image.bytesPerRow * image.height)
             return image
         }
         if photo.recipe != nil || photo.isRAW || URL(fileURLWithPath: photo.relativePath).pathExtension.lowercased() == "png" {
-            let recipe = try photo.recipe.map { try JSONDecoder().decode(EditRecipe.self, from: $0) }
-            try recipe?.validate(for: photo)
-            if let work = pending[key as String] {
-                let token = generation
-                let result = try await work.value
-                try Task.checkCancellation()
-                guard token == generation else { throw CancellationError() }
-                return result
-            }
-            let prefix = Self.sourceKey(photo: photo, edge: edge) + ":"
-            for previous in Array(pending.keys) where previous.hasPrefix(prefix) {
-                pending.removeValue(forKey: previous)?.cancel()
-            }
-            let render = render, token = generation
-            // ponytail: one serialized quality lane; reuse delivered previews first,
-            // add scaled RAW thumbnail rendering only if cold-cache profiling warrants it.
-            let work = Task.detached(priority: .utility) { try await render(ImageRequest(photo: photo, root: root, recipe: recipe), edge) }
-            pending[key as String] = work
-            defer { if token == generation { pending[key as String] = nil } }
-            let result = try await work.value
-            try Task.checkCancellation()
-            guard token == generation else { throw CancellationError() }
-            return try store(result, key: key)
+            return try await renderedThumbnail(photo: photo, root: root, edge: edge, key: key)
         }
         let lease = try AccessLease(bookmark: root.bookmark)
         defer { withExtendedLifetime(lease) {} }
         let url = lease.url.appendingPathComponent(photo.relativePath)
         guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: photo.identity) else { throw LRCError(L10n.text("app.sourceChanged", defaultValue: "Source changed")) }
-        let token = generation
         if photo.details?.composite != nil,url.pathExtension.lowercased() == "dng",let file = try MergeDNGCodec.open(url) {
             let pixels = try file.image().resized(longEdge:edge),context = MergeMasterCodec.context()
             guard let image = context.createCGImage(pixels.ciImage(),from:CGRect(x:0,y:0,width:pixels.width,height:pixels.height),format:.RGBA8,colorSpace:ImagePipeline.outputSpace),
-                  token == generation,try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self,from:photo.identity) else { throw MergeMasterCodec.invalid }
-            return try store(image,key:key)
+                  try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self,from:photo.identity) else { throw MergeMasterCodec.invalid }
+            return try store(image,key:key as NSString)
         }
         let source = try PhotoFileType.imageSource(url)
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageIfAbsent: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: edge] as CFDictionary) else { throw LRCError(L10n.text("app.noThumbnailAvailable", defaultValue: "No thumbnail available")) }
         try Task.checkCancellation()
-        guard token == generation, try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: photo.identity) else { throw CancellationError() }
-        return try store(image, key: key)
+        guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: photo.identity) else { throw CancellationError() }
+        return try store(image, key: key as NSString)
+    }
+
+    private func renderedThumbnail(photo: Photo, root: StorageRoot, edge: Int, key: String) async throws -> CGImage {
+        let waiter = UUID()
+        let image: CGImage = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
+                if pending[key] != nil {
+                    pending[key]?.waiters[waiter] = continuation
+                    return
+                }
+                let token = UUID(), render = render
+                let worker = Task.detached(priority: .utility) { [weak self] in
+                    let result: Result<CGImage, Error>
+                    do {
+                        try Task.checkCancellation()
+                        let recipe = try photo.recipe.map { try JSONDecoder().decode(EditRecipe.self, from: $0) }
+                        try recipe?.validate(for: photo)
+                        let image = try await render(ImageRequest(photo: photo, root: root, recipe: recipe), edge)
+                        result = .success(image)
+                    } catch { result = .failure(error) }
+                    await self?.finishLoad(key: key, token: token, result: result)
+                }
+                pending[key] = Load(token: token, worker: worker, waiters: [waiter: continuation])
+            }
+        } onCancel: {
+            Task { await self.cancelLoad(key: key, waiter: waiter) }
+        }
+        try Task.checkCancellation()
+        return image
+    }
+    private func cancelLoad(key: String, waiter: UUID) {
+        guard let continuation = pending[key]?.waiters.removeValue(forKey: waiter) else { return }
+        if pending[key]?.waiters.isEmpty == true { pending.removeValue(forKey: key)?.worker.cancel() }
+        continuation.resume(throwing: CancellationError())
+    }
+    private func finishLoad(key: String, token: UUID, result: Result<CGImage, Error>) {
+        guard pending[key]?.token == token, let load = pending.removeValue(forKey: key) else { return }
+        let delivered = result.flatMap { image in Result { try store(image, key: key as NSString) } }
+        for continuation in load.waiters.values { continuation.resume(with: delivered) }
+    }
+    private func cancelPending() {
+        for load in pending.values {
+            load.worker.cancel()
+            for continuation in load.waiters.values { continuation.resume(throwing: CancellationError()) }
+        }
+        pending.removeAll()
     }
     /// Only committed, uncropped-canvas quality previews are supplied by the model.
     func storePreview(_ image: CGImage, photo: Photo, edge: Int = 320) throws {
@@ -1402,7 +1432,7 @@ actor ThumbnailService {
     }
     @discardableResult func clear() throws -> Int64 {
         try Task.checkCancellation()
-        generation = UUID(); pending.values.forEach { $0.cancel() }; pending.removeAll()
+        cancelPending()
         cache.removeAllObjects()
         return try disk?.clear() ?? 0
     }
