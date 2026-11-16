@@ -22740,23 +22740,6 @@
         }
       }
     },
-    "app.loadingPreviousPhotoShown": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Showing the previous photo. Marking resumes when the new photo loads."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "暂时显示上一张。新照片载入后可标记。"
-          }
-        }
-      }
-    },
     "app.localAdjustmentPresetSavedInTheCurrentCatalog": {
       "extractionState": "manual",
       "comment": "Sources/App/MaskEditing.swift: 196",
