@@ -435,63 +435,113 @@ final class KeyboardCollectionView: NSCollectionView {
 private func makePhotoMenu(model: AppModel, photo: Photo, isCurrent: @escaping () -> Bool) -> NSMenu {
     let menu = NSMenu()
     menu.autoenablesItems = false
-    func action(_ title: String, in menu: NSMenu, enabled: Bool = true, checked: Bool = false, _ run: @escaping () -> Void) {
+    func symbol(_ name: String) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil)
+    }
+    func add(_ item: NSMenuItem, image: NSImage?, to menu: NSMenu) {
+        item.image = image
+        // Use macOS 27's public visibility preference from both supported SDKs.
+        if item.responds(to: NSSelectorFromString("setPreferredImageVisibility:")) {
+            item.setValue(1, forKey: "preferredImageVisibility") // NSMenuItemImageVisibilityVisible
+        }
+        menu.addItem(item)
+    }
+    func action(_ title: String, image: NSImage?, in menu: NSMenu, enabled: Bool = true, checked: Bool = false, _ run: @escaping () -> Void) {
         let item = PhotoMenuItem(title: title) { if isCurrent() { run() } }
         item.isEnabled = enabled
         item.state = checked ? .on : .off
-        menu.addItem(item)
+        add(item, image: image, to: menu)
     }
-    func group(_ title: String, enabled: Bool = true, content: (NSMenu) -> Void) {
+    func group(_ title: String, icon: String, enabled: Bool = true, content: (NSMenu) -> Void) {
         let submenu = NSMenu(title: title)
         submenu.autoenablesItems = false
         content(submenu)
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.submenu = submenu
         item.isEnabled = enabled
-        menu.addItem(item)
+        add(item, image: symbol(icon), to: menu)
     }
-    action(L10n.text("app.exportSelectedPhotos", defaultValue: "Export Selected Photos…"), in: menu, enabled: model.canExportPhotos) { model.requestExport() }
+    action(L10n.text("app.exportSelectedPhotos", defaultValue: "Export Selected Photos…"),
+           image: symbol("square.and.arrow.up"), in: menu, enabled: model.canExportPhotos) {
+        model.requestExport()
+    }
     if photo.availability == "available" {
-        action(L10n.text("app.showInFinder", defaultValue: "Show in Finder"), in: menu, model.revealOriginal)
+        action(L10n.text("app.showInFinder", defaultValue: "Show in Finder"),
+               image: symbol("folder"), in: menu, model.revealOriginal)
     } else {
-        action(L10n.text("app.locateCurrentOriginal", defaultValue: "Locate Current Original…"), in: menu, model.locateOriginal)
+        action(L10n.text("app.locateCurrentOriginal", defaultValue: "Locate Current Original…"),
+               image: symbol("magnifyingglass"), in: menu, model.locateOriginal)
     }
     menu.addItem(.separator())
-    group(L10n.text("app.rating", defaultValue: "Rating"), enabled: model.canMarkPhotos) { submenu in
+    group(L10n.text("app.rating", defaultValue: "Rating"), icon: "star", enabled: model.canMarkPhotos) { submenu in
+        let star = symbol("star.fill")?.withSymbolConfiguration(.init(pointSize: 10, weight: .regular))
         for rating in 0...5 {
             let title = rating == 0 ? L10n.text("app.clearRating", defaultValue: "Clear Rating") : L10n.text("app.stars_1722", defaultValue: "\(rating) Stars")
-            action(title, in: submenu, checked: model.selectedRating == rating) { model.organize(rating: rating, advance: false) }
+            let image = rating == 0 ? symbol("star.slash") : star.map { ratingMenuStars($0, count: rating) }
+            action(title, image: image, in: submenu, checked: model.selectedRating == rating) {
+                model.organize(rating: rating, advance: false)
+            }
         }
     }
-    group(L10n.text("app.flag", defaultValue: "Flag"), enabled: model.canMarkPhotos) { submenu in
-        for (title, flag) in [(L10n.text("app.pick", defaultValue: "Pick"), 1), (L10n.text("app.reject", defaultValue: "Reject"), -1), (L10n.text("app.unflagged", defaultValue: "Unflagged"), 0)] {
-            action(title, in: submenu, checked: model.selectedFlag == flag) { model.organize(flag: flag, advance: false) }
+    group(L10n.text("app.flag", defaultValue: "Flag"), icon: "flag", enabled: model.canMarkPhotos) { submenu in
+        for flag in [PhotoFlag.picked, .rejected, .unflagged] {
+            action(flag.title, image: symbol(flag.icon), in: submenu, checked: model.selectedFlag == flag.rawValue) {
+                model.organize(flag: flag.rawValue, advance: false)
+            }
         }
     }
-    group(L10n.text("app.colorLabel", defaultValue: "Color Label"), enabled: model.canMarkPhotos) { submenu in
+    group(L10n.text("app.colorLabel", defaultValue: "Color Label"), icon: "tag", enabled: model.canMarkPhotos) { submenu in
         for label in PhotoColorLabel.allCases {
-            action(label.title, in: submenu, checked: model.selectedColorLabel == label.rawValue) { model.toggleColorLabel(label.rawValue, advance: false) }
+            let image = label == .none ? symbol("nosign")
+                : symbol("circle.fill")?.withSymbolConfiguration(.init(paletteColors: [label.nsColor]))
+            action(label.title, image: image, in: submenu, checked: model.selectedColorLabel == label.rawValue) {
+                model.toggleColorLabel(label.rawValue, advance: false)
+            }
         }
     }
     let collections = model.collections.filter { !$0.isSmart }
     if !collections.isEmpty {
-        group(L10n.text("photoRemoval.addToCollection", defaultValue: "Add to Collection")) { submenu in
-            for collection in collections { action(collection.name, in: submenu) { model.membership(collection.id, add: true) } }
+        group(L10n.text("photoRemoval.addToCollection", defaultValue: "Add to Collection"), icon: "folder.badge.plus") { submenu in
+            for collection in collections {
+                action(collection.name, image: symbol("rectangle.stack"), in: submenu) { model.membership(collection.id, add: true) }
+            }
         }
     }
     menu.addItem(.separator())
-    action(L10n.text("app.createVirtualCopiesOfSelection", defaultValue: "Create Virtual Copies of Selection"), in: menu, model.createVirtualCopies)
-    group(L10n.text("app.transferAdjustments", defaultValue: "Transfer Adjustments")) { submenu in
-        action(L10n.text("app.copyCurrentPhotoAdjustments", defaultValue: "Copy Current Photo Adjustments"), in: submenu, enabled: model.canEdit, model.copyAdjustments)
-        action(L10n.text("app.pasteAdjustments_280", defaultValue: "Paste Adjustments…"), in: submenu, enabled: model.copiedRecipe != nil) { model.requestAdjustments(.paste) }
+    action(L10n.text("app.createVirtualCopiesOfSelection", defaultValue: "Create Virtual Copies of Selection"),
+           image: symbol("plus.square.on.square"), in: menu, model.createVirtualCopies)
+    group(L10n.text("app.transferAdjustments", defaultValue: "Transfer Adjustments"), icon: "arrow.left.arrow.right") { submenu in
+        action(L10n.text("app.copyCurrentPhotoAdjustments", defaultValue: "Copy Current Photo Adjustments"),
+               image: symbol("doc.on.doc"), in: submenu, enabled: model.canEdit, model.copyAdjustments)
+        action(L10n.text("app.pasteAdjustments_280", defaultValue: "Paste Adjustments…"),
+               image: symbol("doc.on.clipboard"), in: submenu, enabled: model.copiedRecipe != nil) {
+            model.requestAdjustments(.paste)
+        }
     }
     menu.addItem(.separator())
     if let collection = model.regularCollectionID {
-        action(L10n.text("photoRemoval.removeFromCollection", defaultValue: "Remove from This Collection"), in: menu) { model.membership(collection, add: false) }
+        action(L10n.text("photoRemoval.removeFromCollection", defaultValue: "Remove from This Collection"),
+               image: symbol("folder.badge.minus"), in: menu) { model.membership(collection, add: false) }
     }
-    action(L10n.text("photoRemoval.removeFromCatalog", defaultValue: "Remove from Catalog…"), in: menu) { model.requestPhotoRemoval() }
-    action(L10n.text("photoRemoval.trash", defaultValue: "Move Originals to Trash…"), in: menu, enabled: model.canTrashPhotos) { model.requestPhotoRemoval(trash: true) }
+    action(L10n.text("photoRemoval.removeFromCatalog", defaultValue: "Remove from Catalog…"),
+           image: symbol("minus.circle"), in: menu) { model.requestPhotoRemoval() }
+    action(L10n.text("photoRemoval.trash", defaultValue: "Move Originals to Trash…"),
+           image: symbol("trash"), in: menu, enabled: model.canTrashPhotos) {
+        model.requestPhotoRemoval(trash: true)
+    }
     return menu
+}
+
+private func ratingMenuStars(_ star: NSImage, count: Int) -> NSImage {
+    let size = star.size
+    let image = NSImage(size: NSSize(width: size.width * CGFloat(count), height: size.height), flipped: false) { _ in
+        for index in 0..<count {
+            star.draw(at: NSPoint(x: size.width * CGFloat(index), y: 0), from: .zero, operation: .sourceOver, fraction: 1)
+        }
+        return true
+    }
+    image.isTemplate = true
+    return image
 }
 
 private final class PhotoMenuItem: NSMenuItem {
