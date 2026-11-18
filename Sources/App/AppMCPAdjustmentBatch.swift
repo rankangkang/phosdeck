@@ -190,7 +190,7 @@ extension AppMCPTools {
             let saved: [Photo]
             let roots = Dictionary(rows.map { ($0.root.id, $0.root) }, uniquingKeysWith: { first, _ in first })
             do {
-                saved = try model.publishRecipeBatch(changes, title: title, catalog: catalog, expecting: rows.map(\.photo),
+                saved = try await model.publishRecipeBatch(changes, title: title, catalog: catalog, expecting: rows.map(\.photo),
                                                      expectingRoots: Array(roots.values), closedUndo: true)
             } catch let conflict as RecipeBatchConflict {
                 throw MCPToolProblem.stalePhoto.forPhoto(conflict.photoID)

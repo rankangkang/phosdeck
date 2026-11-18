@@ -3,6 +3,7 @@ import GRDB
 
 struct CatalogArchive {
     private static let indexName = ".phosdeck-archive.json"
+    private static let stageFolder = ".phosdeck-plugin-stages"
 
     struct Index: Codable {
         let catalogID: String
@@ -54,11 +55,11 @@ struct CatalogArchive {
         try catalog.backup(to: file)
         let database = try DatabaseQueue(path: file.path)
         defer { try? database.close() }
-        let (roots, sources, attachments) = try await database.read { db in
+        let (roots, sources, attachments, pluginStages) = try await database.read { db in
             let rows = try Row.fetchAll(db, sql: "SELECT DISTINCT p.rootID,a.relativePath,a.digest FROM attachment a JOIN photo p ON p.id=a.photoID").map { row in
                 (root: row["rootID"] as String, path: row["relativePath"] as String, digest: row["digest"] as String)
             }
-            return (try StorageRoot.fetchAll(db), try CatalogSource.fetchAll(db), rows)
+            return (try StorageRoot.fetchAll(db), try CatalogSource.fetchAll(db), rows, try PluginStageFiles.references(in: db))
         }
         let before = snapshot.map { ($0.id, $0.path, $0.bookmark) }
         let after = roots.sorted { $0.path < $1.path }.map { ($0.id, $0.path, $0.bookmark) }
@@ -71,7 +72,7 @@ struct CatalogArchive {
         var folders: [String] = []
         var labels = Set<String>()
         let catalogFiles = Set(["", ".lock", "-journal", "-wal", "-shm"].map { catalog.fileURL.path + $0 } +
-                               [catalog.directory.appendingPathComponent(indexName).path] +
+                               [catalog.directory.appendingPathComponent(indexName).path, catalog.directory.appendingPathComponent(stageFolder).path] +
                                (catalog.fileURL.lastPathComponent == "Catalog.sqlite" ? [catalog.directory.appendingPathComponent("Catalog.lock").path] : []))
         for folder in top {
             try Task.checkCancellation()
@@ -109,6 +110,18 @@ struct CatalogArchive {
             guard let entry = byPath[relative], !entry.directory else { throw missing(relative) }
             guard digests[relative] == nil || digests[relative] == digest else { throw ProjectCopy.changed(entry.url) }
             digests[relative] = digest
+        }
+        if !pluginStages.isEmpty {
+            let folder = project.staging.appendingPathComponent(stageFolder, isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+            for stage in pluginStages {
+                let source = try PluginStageFiles.url(stage, create: false)
+                let identity = try FileIdentity.read(source)
+                guard identity.size == Int64(stage.width) * Int64(stage.height) * 16 else { throw ProjectCopy.changed(source) }
+                let relative = stageFolder + "/" + stage.fileName
+                entries.append(Entry(relative: relative, url: source, identity: identity, directory: false))
+                digests[relative] = stage.digest
+            }
         }
         let files = entries.filter { !$0.directory }
         let bytes = files.reduce(Int64(0)) { $0 + min($1.identity.size, Int64.max - $0) }
@@ -180,9 +193,11 @@ struct CatalogArchive {
     }
 
     /// Regrant access within the opened project and rebind verified copies after a move to another disk.
-    static func restoreRoots(file: URL, database: DatabaseQueue) throws {
+    static func restoreRoots(file: URL, database: DatabaseQueue) throws -> [String] {
         let parent = file.deletingLastPathComponent()
-        guard let index = try loadIndex(file: file, database: database) else { return }
+        guard let index = try loadIndex(file: file, database: database) else { return [] }
+        let stages = try database.read { try PluginStageFiles.references(in: $0) }
+        let stageWarnings = try restorePluginStages(stages, from: parent.appendingPathComponent(stageFolder, isDirectory: true))
         let roots = try database.read { try StorageRoot.fetchAll($0) }
         var updates: [(StorageRoot, URL, Data, [(String, FileIdentity?)])] = []
         for root in roots {
@@ -211,7 +226,7 @@ struct CatalogArchive {
             }
             updates.append((root, location, bookmark, verified))
         }
-        guard !updates.isEmpty else { return }
+        guard !updates.isEmpty else { return stageWarnings }
         try database.write { db in
             for (root, location, bookmark, verified) in updates {
                 try db.execute(sql: "UPDATE storageRoot SET path=?,bookmark=? WHERE id=?", arguments: [location.path, bookmark, root.id])
@@ -223,6 +238,31 @@ struct CatalogArchive {
                 }
             }
         }
+        return stageWarnings
+    }
+
+    private static func restorePluginStages(_ stages: [FrozenPluginStage], from folder: URL) throws -> [String] {
+        var failures = 0
+        for stage in stages {
+            try Task.checkCancellation()
+            let target = try PluginStageFiles.url(stage)
+            do {
+                if FileManager.default.fileExists(atPath: target.path) {
+                    try PluginStageFiles.check(stage, at: target)
+                } else {
+                    let source = folder.appendingPathComponent(stage.fileName)
+                    let identity = try FileIdentity.read(source)
+                    guard identity.size == Int64(stage.width) * Int64(stage.height) * 16 else { throw ProjectCopy.changed(source) }
+                    try SafeFileWriter.requireCapacity(in: target.deletingLastPathComponent(), bytes: identity.size)
+                    do { try ProjectCopy.copy(source, to: target, expected: identity, digest: stage.digest) }
+                    catch {
+                        guard (try? PluginStageFiles.check(stage, at: target)) != nil else { throw error }
+                    }
+                }
+            } catch is CancellationError { throw CancellationError() }
+            catch { failures += 1 }
+        }
+        return failures == 0 ? [] : [L10n.text("plugins.archiveStagesMissing", defaultValue: "\(failures) Warm Print stage files from the archive could not be restored.")]
     }
 
     static func hasIndex(beside file: URL) -> Bool {

@@ -13,6 +13,13 @@ struct PhotoCanvas: View {
         return model.cropMode == model.previewIsCrop ? (model.showPointColorRange && !model.pointSampling ? model.pointRangeImage ?? model.image : model.image) : nil
     }
     private var maskEditing: MaskCanvasEditing? {
+        if !model.before, !model.cropMode, !model.spotMode, model.canvasCoordinatesCurrent,
+           let draft = model.currentHighlightDraft, let size = model.orientedSourceSize {
+            return MaskCanvasEditing(group: draft.group, component: nil, recipe: draft.recipe, sourceSize: size,
+                                     reference: draft.reference, showOverlay: true, showGuides: false, color: model.maskOverlayColor,
+                                     style: .color, brushRadius: model.brushRadius, brushFeather: model.brushFeather,
+                                     brushErase: false, awaitingDraw: false, sampling: false)
+        }
         guard model.maskMode, model.previewingMaskID == nil, model.canvasCoordinatesCurrent, !model.before, let recipe = model.recipe, let size = model.orientedSourceSize else { return nil }
         var draftComponent: MaskComponent?
         if let session = model.smartMaskSession { var c = MaskComponent(tool: .object); c.id = session.id; c.raster = session.displayedRaster; draftComponent = c }
@@ -72,14 +79,16 @@ struct PhotoCanvas: View {
                                    onTargetNudge: { model.nudgeTargetedAdjustment($0) },
                                    onTargetExit: { model.cancelTargetedAdjustment() },
                                    onZoneSample: model.whiteBalanceSampling ? { model.sampleWhiteBalance(at: $0) } : model.pointSampling ? { model.samplePointColor(at:$0) } : model.zoneSampling ? { model.sampleZone(at: $0) } : nil,
-                                   maskEditing: maskEditing, onMaskPointer: { model.maskPointer($0, phase: $1, modifiers: $2, action: $3) },
+                                   maskEditing: maskEditing, onMaskPointer: { if model.currentHighlightDraft == nil { model.maskPointer($0, phase: $1, modifiers: $2, action: $3) } },
                                    onMaskError: { model.error = $0 },
                                    spotEditing: spotEditing, onSpotPointer: { model.spotPointer($0, phase: $1, markerRadius: $2) },
                                    spotDraft: { model.spotCanvasDraft },
                                    clipping: model.showClipping && !model.cropMode && !model.showPointColorRange,
                                    clipShadows: shadowWarning, clipHighlights: highlightWarning,
                                    onPixelReadout: pixelReadout(for: displayImage),
-                                   splitBefore: beforeAfter == .split ? model.beforeImage : nil)
+                                   splitBefore: beforeAfter == .split ? model.beforeImage : nil,
+                                   proof: beforeAfter == .off && !model.before && !model.cropMode && !model.showPointColorRange &&
+                                       model.photoSwitchDisplay == nil ? model.printProof.display(for: displayImage) : nil)
                         .allowsHitTesting(model.photoSwitchDisplay == nil)
                     TargetedCanvasStatus(model: model, mat: mat)
                     if displayImage == nil, !model.loadingPhoto {

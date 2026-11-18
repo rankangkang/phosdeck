@@ -62,6 +62,7 @@ final class CatalogStore: @unchecked Sendable {
     private let lock: CatalogLock
     private let browseChanges = CatalogBrowseChanges()
     let database: DatabaseQueue
+    private(set) var pluginStageWarnings: [String] = []
     static let schemaVersion = 13
 
     /// New working directory or an exactly current catalog; no migration.
@@ -192,7 +193,10 @@ final class CatalogStore: @unchecked Sendable {
             """)
             }
         }
-        if !create { try CatalogArchive.restoreRoots(file: self.fileURL, database: database) }
+        if !create {
+            pluginStageWarnings = try CatalogArchive.restoreRoots(file: self.fileURL, database: database)
+            pluginStageWarnings += try PluginStageCommit.recover(in: self)
+        }
         try database.write { db in
             try db.execute(sql: "UPDATE exportItem SET state = 'interrupted' WHERE state IN ('planned','rendering','verified','published')")
             for payload in try Data.fetchAll(db, sql: "SELECT payload FROM importPlan WHERE state='running'") {
@@ -317,6 +321,9 @@ final class CatalogStore: @unchecked Sendable {
     }
     private static func saveRecipe(db: Database, id: String, recipe: EditRecipe, title: String?) throws -> Photo? {
         try recipe.validate()
+        guard try !recipe.requiresWarmPrintStage() else {
+            throw LRCError(L10n.text("plugins.saveWarmPrintFirst", defaultValue: "Save the Warm Print effect before exporting."))
+        }
         let encoded = try JSONEncoder().encode(recipe)
         guard var photo = try Photo.fetchOne(db, key: id), photo.availability == "available" else { throw LRCError(L10n.text("app.theSourceIsUnavailableEditDraftPreserved", defaultValue: "The source is unavailable. Edit draft preserved")) }
         try recipe.validate(for: photo)
@@ -866,12 +873,27 @@ final class CatalogStore: @unchecked Sendable {
         let destination = directory.appendingPathComponent("Catalog.sqlite")
         let identity = try publishRestoredBackup(from: source, to: destination, createParent: true)
         try requireIdentity(identity, at: destination)
-        return try CatalogStore(fileURL: destination)
+        let catalog = try CatalogStore(fileURL: destination)
+        try catalog.checkRestoredPluginStages()
+        return catalog
     }
     static func restore(from source: URL, toFile destination: URL, access: AccessLease? = nil) throws -> CatalogStore {
         let identity = try publishRestoredBackup(from: source, to: destination)
         try requireIdentity(identity, at: destination)
-        return try CatalogStore(fileURL: destination, access: access)
+        let catalog = try CatalogStore(fileURL: destination, access: access)
+        try catalog.checkRestoredPluginStages()
+        return catalog
+    }
+
+    func checkRestoredPluginStages() throws {
+        let stages = try database.read { try PluginStageFiles.references(in: $0) }
+        let missing = stages.filter { stage in
+            guard let url = try? PluginStageFiles.url(stage, create: false), let identity = try? FileIdentity.read(url) else { return true }
+            return identity.size != Int64(stage.width) * Int64(stage.height) * 16
+        }.count
+        if missing > 0 {
+            pluginStageWarnings.append(L10n.text("plugins.backupStagesMissing", defaultValue: "This database backup references \(missing) missing Warm Print stage files. Restore them from a whole-catalog archive."))
+        }
     }
     static func publishRestoredBackup(from source: URL, to destination: URL, expectedSource: FileIdentity? = nil,
                                       createParent: Bool = false) throws -> FileIdentity {

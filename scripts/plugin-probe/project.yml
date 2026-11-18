@@ -1,0 +1,50 @@
+name: PluginProbe
+options:
+  deploymentTarget:
+    macOS: '26.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    GENERATE_INFOPLIST_FILE: YES
+    MARKETING_VERSION: '1.0'
+    CURRENT_PROJECT_VERSION: '1'
+    CODE_SIGNING_ALLOWED: NO
+    EX_ENABLE_EXTENSION_POINT_GENERATION: YES
+targets:
+  ProbeHost:
+    type: application
+    platform: macOS
+    sources: [Host.swift, Peer.swift, Preview.swift, Wire.swift]
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.cmkk.phosdeck.pluginprobe
+    dependencies:
+      - target: BundledTone
+        embed: true
+  BundledTone:
+    type: extensionkit-extension
+    platform: macOS
+    sources: [Extension.swift, Wire.swift]
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.cmkk.phosdeck.pluginprobe.tone
+  ProbeVendor:
+    type: application
+    platform: macOS
+    sources: [Vendor.swift]
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.cmkk.phosdeck.probevendor
+      EX_ENABLE_EXTENSION_POINT_GENERATION: NO
+    dependencies:
+      - target: VendorTone
+        embed: true
+  VendorTone:
+    type: extensionkit-extension
+    platform: macOS
+    sources: [Extension.swift, Wire.swift]
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.cmkk.phosdeck.probevendor.tone
+schemes:
+  PluginProbe:
+    build:
+      targets:
+        ProbeHost: all
+        ProbeVendor: all

@@ -33,6 +33,7 @@ struct DevelopPanel: View {
     @AppStorage("developZonesOpen") private var zonesOpen = false
     @AppStorage("developVignetteOpen") private var vignetteOpen = false
     @AppStorage("developGrainOpen") private var grainOpen = false
+    @AppStorage("developWarmPrintOpen") private var warmPrintOpen = false
     @AppStorage("developPointColorOpen") private var pointOpen = false
     @AppStorage("developSoloMode") private var solo = false
     @AppStorage("developShowOnlyModified") private var showOnlyModified = false
@@ -129,6 +130,12 @@ struct DevelopPanel: View {
                 if isVisible(.vignette) { PanelSection(L10n.text("app.creativeVignette", defaultValue: "Creative Vignette"), group: .vignette, isExpanded: expansion(6), reset: { change { $0.vignette = CreativeVignette() } }, modified: isModified(.vignette), previewing: previewingGroup == .vignette, preview: previewHandler(.vignette), previewPulse: previewPulseHandler(.vignette)) {
                     vignette.sectionContent()
                 } }
+                if !showOnlyModified || recipe?.warmPrint != nil || model.hasWarmPrintDraft {
+                    PanelSection(L10n.text("plugins.warmPrint", defaultValue: "Warm Print"), isExpanded: $warmPrintOpen,
+                                 modified: recipe?.warmPrint != nil) {
+                        warmPrint.sectionContent()
+                    }
+                }
                 if isVisible(.grain) { PanelSection(L10n.text("app.grain", defaultValue: "Grain"), group: .grain, isExpanded: expansion(7), reset: { change { $0.grain = FilmGrain() } }, modified: isModified(.grain), previewing: previewingGroup == .grain, preview: previewHandler(.grain), previewPulse: previewPulseHandler(.grain)) {
                     grain.sectionContent()
                 } }
@@ -161,6 +168,8 @@ struct DevelopPanel: View {
             EditorLoadFailure(visible: model.editorUsesPreviousPhoto && !model.loadingPhoto, detail: model.imageStatus,
                               retry: model.retryPhotoLoad)
                 .environment(\.isEnabled, model.workspaceAvailable)
+            if !model.cropMode { PrintProofControl(proof: model.printProof) }
+            if !model.cropMode { HighlightPluginControl(model: model) }
             Menu {
                 Toggle(L10n.text("app.expandOneAdjustmentPanelAtATime", defaultValue: "Expand One Adjustment Panel at a Time"), isOn: $solo)
                 Toggle(L10n.text("app.modifiedOnly", defaultValue: "Modified Only"), isOn: $showOnlyModified)
@@ -404,6 +413,28 @@ struct DevelopPanel: View {
             change: { value, commit in change({ $0.vignette[keyPath: key] = value }, commit: commit) },
             commit: { model.commitRecipe() })
     }
+    private var warmPrint: some View {
+        VStack(alignment: .leading, spacing: Metrics.gap) {
+            let strength = (recipe?.warmPrint?.strength ?? 0) * 100
+            AdjustmentRow(label: L10n.text("plugins.strength", defaultValue: "Strength"), value: strength, range: 0...100, unit: "%",
+                          change: { value, _ in model.setWarmPrintStrength(value / 100) },
+                          commit: { if model.hasWarmPrintDraft { model.requestPreview() } })
+                .accessibilityIdentifier("warm-print-strength")
+                .controlUnavailable(model.savingWarmPrint)
+            if model.hasWarmPrintDraft || model.savingWarmPrint {
+                HStack(spacing: Metrics.gap) {
+                    Button(L10n.text("app.apply", defaultValue: "Apply")) {
+                        model.commitRecipe(title: L10n.text("plugins.warmPrint", defaultValue: "Warm Print"))
+                    }
+                    .buttonStyle(.key).accessibilityIdentifier("warm-print-apply")
+                    .controlUnavailable(model.savingWarmPrint)
+                    Button(L10n.text("app.cancel", defaultValue: "Cancel"), action: model.cancelWarmPrintDraft)
+                        .buttonStyle(.key).accessibilityIdentifier("warm-print-cancel")
+                }
+            }
+        }
+    }
+
     private var grain: some View {
         VStack(alignment: .leading, spacing: 0) {
             grainRow(L10n.text("app.amount", defaultValue: "Amount"), \.amount)

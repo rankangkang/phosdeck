@@ -16,6 +16,8 @@ settings:
 configFiles:
   Debug: Config/Debug.xcconfig
 packages:
+  PhosdeckPluginKit:
+    path: Packages/PhosdeckPluginKit
   SmartMaskRuntime:
     path: Packages/SmartMaskRuntime
   GRDB:
@@ -48,7 +50,7 @@ targets:
       # Includes LightroomCatalog.swift, LightroomImporter.swift, LightroomSettings.swift and LightroomImportSheet.swift.
       # Includes App/PhotoRemoval.swift for confirmed catalog and disk removal.
       - path: Sources
-        excludes: [Imaging/raster-exposure-colour-v4.bin]
+        excludes: [Imaging/raster-exposure-colour-v4.bin, Plugins]
       - path: design/logo/wordmark-approved-ivory.svg
         buildPhase: resources
       - path: design/logo/wordmark-approved-graphite.svg
@@ -90,6 +92,13 @@ targets:
             UTTypeTagSpecification:
               public.filename-extension: [phoscat, omlcat, omlrcat]
     dependencies:
+      - package: PhosdeckPluginKit
+      - target: PhosdeckSoftProof
+        embed: true
+      - target: PhosdeckHighlights
+        embed: true
+      - target: PhosdeckWarmPrint
+        embed: true
       - package: GRDB
       - package: SmartMaskRuntime
         product: SmartMaskRuntime
@@ -120,8 +129,78 @@ targets:
         ENABLE_APP_SANDBOX: YES
         ENABLE_USER_SELECTED_FILES: readwrite
         SWIFT_EMIT_LOC_STRINGS: YES
+        EX_ENABLE_EXTENSION_POINT_GENERATION: YES
         MTL_COMPILER_FLAGS: '-fcikernel'
         MTLLINKER_FLAGS: '-cikernel'
+  PhosdeckSoftProof:
+    type: extensionkit-extension
+    platform: macOS
+    sources:
+      - path: Sources/Plugins/SoftProof
+        excludes: [Info.plist]
+    info:
+      path: Sources/Plugins/SoftProof/Info.plist
+      properties:
+        CFBundleDisplayName: Soft Proof
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        PhosdeckPluginHost: dev.cmkk.oh-my-lrc
+    dependencies:
+      - package: PhosdeckPluginKit
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.cmkk.oh-my-lrc.soft-proof
+      MARKETING_VERSION: '0.1.0'
+      CURRENT_PROJECT_VERSION: '1'
+      EX_ENABLE_EXTENSION_POINT_GENERATION: YES
+      CODE_SIGN_ENTITLEMENTS: Sources/Plugins/PhotoTool.entitlements
+      ENABLE_APP_SANDBOX: YES
+      APPLICATION_EXTENSION_API_ONLY: YES
+  PhosdeckHighlights:
+    type: extensionkit-extension
+    platform: macOS
+    sources:
+      - path: Sources/Plugins/Highlights
+        excludes: [Info.plist]
+    info:
+      path: Sources/Plugins/Highlights/Info.plist
+      properties:
+        CFBundleDisplayName: Select Highlights
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        PhosdeckPluginHost: dev.cmkk.oh-my-lrc
+    dependencies:
+      - package: PhosdeckPluginKit
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.cmkk.oh-my-lrc.select-highlights
+      MARKETING_VERSION: '0.1.0'
+      CURRENT_PROJECT_VERSION: '1'
+      EX_ENABLE_EXTENSION_POINT_GENERATION: YES
+      CODE_SIGN_ENTITLEMENTS: Sources/Plugins/PhotoTool.entitlements
+      ENABLE_APP_SANDBOX: YES
+      APPLICATION_EXTENSION_API_ONLY: YES
+  PhosdeckWarmPrint:
+    type: extensionkit-extension
+    platform: macOS
+    sources:
+      - path: Sources/Plugins/WarmPrint
+        excludes: [Info.plist]
+    info:
+      path: Sources/Plugins/WarmPrint/Info.plist
+      properties:
+        CFBundleDisplayName: Warm Print
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        PhosdeckPluginHost: dev.cmkk.oh-my-lrc
+    dependencies:
+      - package: PhosdeckPluginKit
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.cmkk.oh-my-lrc.warm-print
+      MARKETING_VERSION: '0.1.0'
+      CURRENT_PROJECT_VERSION: '1'
+      EX_ENABLE_EXTENSION_POINT_GENERATION: YES
+      CODE_SIGN_ENTITLEMENTS: Sources/Plugins/PhotoTool.entitlements
+      ENABLE_APP_SANDBOX: YES
+      APPLICATION_EXTENSION_API_ONLY: YES
   PhosdeckTests:
     type: bundle.unit-test
     platform: macOS
@@ -132,6 +211,7 @@ targets:
       # Includes Agent*Tests.swift for MCP checks.
       # Includes AgentMaintenanceTests.swift for preferences, recovery, and camera reports.
       # Includes CatalogArchiveTests.swift for independent project copies.
+      # Includes PluginSystemTests.swift for signed tool calls, receipts and frozen stages.
       # Includes LightroomImportTests.swift for read-only catalog conversion and file handling.
       - path: Tests
         excludes: [test_calibration_paths.py]

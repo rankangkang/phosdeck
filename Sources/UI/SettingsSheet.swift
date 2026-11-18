@@ -1,14 +1,16 @@
 import SwiftUI
 import AppKit
+import ExtensionKit
 
 enum SettingsPane: String, CaseIterable {
-    case appearance = "外观", storage = "缓存与存储", shortcuts = "快捷键", agent = "Agent"
+    case appearance = "外观", storage = "缓存与存储", shortcuts = "快捷键", agent = "Agent", plugins = "插件"
     var title: String {
         switch self {
         case .appearance: L10n.text("app.appearance", defaultValue: "Appearance")
         case .storage: L10n.text("app.cacheAndStorage", defaultValue: "Cache and Storage")
         case .shortcuts: L10n.text("app.shortcuts", defaultValue: "Shortcuts")
         case .agent: L10n.text("agent.settings", defaultValue: "Agent")
+        case .plugins: L10n.text("plugins.settings", defaultValue: "Plugins")
         }
     }
 
@@ -37,6 +39,7 @@ struct SettingsSheet: View {
                     case .storage: storage
                     case .shortcuts: shortcuts
                     case .agent: AgentSettings(service: model.mcp)
+                    case .plugins: PluginBrowser().frame(minHeight: 260)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
             }
@@ -178,6 +181,14 @@ struct SettingsSheet: View {
             } catch { failure = error.localizedDescription }
         }
     }
+}
+
+private struct PluginBrowser: NSViewControllerRepresentable {
+    func makeNSViewController(context: Context) -> EXAppExtensionBrowserViewController {
+        EXAppExtensionBrowserViewController()
+    }
+
+    func updateNSViewController(_ controller: EXAppExtensionBrowserViewController, context: Context) {}
 }
 
 private struct SettingsWindowReader: NSViewRepresentable {

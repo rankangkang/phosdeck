@@ -104,6 +104,7 @@ struct EditRecipe: Codable, Equatable {
     var cropPreviewAngle: Double { perspective.isNeutral ? (flipHorizontal != flipVertical ? -straightenDegrees : straightenDegrees) : 0 }
     var cropRenderRecipe: Self {
         var r = self
+        r.warmPrint = nil
         r.crop = Crop(); r.perspective.constrainCrop = false
         if perspective.isNeutral { r.straightenDegrees = 0 }
         return r
@@ -127,6 +128,7 @@ struct EditRecipe: Codable, Equatable {
     var develop = DevelopAdjustments()
     var vignette = CreativeVignette()
     var grain = FilmGrain()
+    var warmPrint: WarmPrintEffect?
     var sharpening = GeneralSharpening()
     var noiseReduction = GeneralNoiseReduction()
     var defringe: ManualDefringe?
@@ -139,7 +141,7 @@ struct EditRecipe: Codable, Equatable {
     var cropAspectRatio: Double?
 
     enum CodingKeys: String, CodingKey {
-        case localAdjustments, repairs, maskVersion, rawDetails, vignette, grain
+        case localAdjustments, repairs, maskVersion, rawDetails, vignette, grain, warmPrint
         case schemaVersion, pipelineVersion, sourceDigest, decoderVersion, systemVersion, appBuild
         case baselineExposure, baselineTemperature, baselineTint, exposure, temperature, tint
         case asShotWhiteBalance, contrast, saturation, quarterTurns, crop, develop, straightenDegrees, cropAspectRatio
@@ -178,6 +180,10 @@ struct EditRecipe: Codable, Equatable {
         try repairs.forEach { try $0.validate() }
         try vignette.validate()
         try grain.validate()
+        if let effect = warmPrint {
+            guard effect.strength.isFinite, (0...1).contains(effect.strength) else { throw LRCError("Invalid Warm Print strength") }
+            try effect.frozen?.validate()
+        }
         guard straightenDegrees.isFinite, (-45...45).contains(straightenDegrees),
               cropAspectRatio.map({ $0.isFinite && (0.1...10).contains($0) }) ?? true
         else { throw LRCError(L10n.text("app.invalidCropAngleOrAspectRatio", defaultValue: "Invalid crop angle or aspect ratio")) }
@@ -210,6 +216,7 @@ struct EditRecipe: Codable, Equatable {
         r.perspective = PerspectiveSettings()
         r.vignette = CreativeVignette()
         r.grain = FilmGrain()
+        r.warmPrint = nil
         r.sharpening = GeneralSharpening()
         r.noiseReduction = GeneralNoiseReduction()
         r.defringe = nil
@@ -281,6 +288,7 @@ extension EditRecipe {
         repairs = try c.decodeIfPresent([SpotRepair].self, forKey: .repairs) ?? []
         vignette = try c.decodeIfPresent(CreativeVignette.self, forKey: .vignette) ?? CreativeVignette()
         grain = try c.decodeIfPresent(FilmGrain.self, forKey: .grain) ?? FilmGrain()
+        warmPrint = try c.decodeIfPresent(WarmPrintEffect.self, forKey: .warmPrint)
     }
 }
 
@@ -404,6 +412,7 @@ extension EditRecipe {
         if repairs != previous.repairs { parts.append(L10n.text("app.spotRemoval", defaultValue: "Spot Removal")) }
         if vignette != previous.vignette { parts.append(L10n.text("app.creativeVignette", defaultValue: "Creative Vignette")) }
         if grain != previous.grain { parts.append(L10n.text("app.grain", defaultValue: "Grain")) }
+        if warmPrint?.strength != previous.warmPrint?.strength { parts.append(L10n.text("plugins.warmPrint", defaultValue: "Warm Print")) }
         if exposure != previous.exposure { parts.append(String(format: L10n.text("app.exposure2f", defaultValue: "Exposure %+.2f"), exposure)) }
         if temperature != previous.temperature || tint != previous.tint || asShotWhiteBalance != previous.asShotWhiteBalance { parts.append(L10n.text("app.whiteBalance", defaultValue: "White Balance")) }
         if contrast != previous.contrast || saturation != previous.saturation || develop != previous.develop { parts.append(L10n.text("app.toneAndColor", defaultValue: "Tone and Color")) }

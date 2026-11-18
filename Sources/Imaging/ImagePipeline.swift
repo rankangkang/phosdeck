@@ -1,4 +1,5 @@
 import Foundation
+import PhosdeckPluginKit
 import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
@@ -179,10 +180,10 @@ actor ImagePipeline {
         }
     }
 
-    func renderThumbnail(_ request: ImageRequest, edge: Int) throws -> CGImage {
+    func renderThumbnail(_ request: ImageRequest, edge: Int) async throws -> CGImage {
         // Finish each RAW before the next request can enter this pipeline.
         let recipe = request.recipe == nil && request.photo.isRAW ? try baseline(request) : request.recipe
-        return try render(ImageRequest(photo: request.photo, root: request.root, recipe: recipe), longEdge: edge).image
+        return try await render(ImageRequest(photo: request.photo, root: request.root, recipe: recipe), longEdge: edge).image
     }
 
     func rawDefaults(_ request: ImageRequest) throws -> RAWDetailSettings {
@@ -236,7 +237,10 @@ actor ImagePipeline {
                     if raw.isContrastSupported { raw.contrastAmount = 0 }
                     if raw.isDetailSupported { raw.detailAmount = 0 }
                     if raw.isMoireReductionSupported { raw.moireReductionAmount = 0 }
-                    if raw.isDespeckleSupported { raw.despeckleAmount = 0 }
+                    // Some runtimes lack these selectors even when the SDK declares them.
+                    if raw.responds(to: #selector(getter: CIRAWFilter.isDespeckleSupported)),
+                       raw.responds(to: #selector(setter: CIRAWFilter.despeckleAmount)),
+                       raw.isDespeckleSupported { raw.despeckleAmount = 0 }
                 }
                 guard let output = raw.outputImage else { throw LRCError(L10n.text("app.rawDecodingFailed", defaultValue:"RAW decoding failed")) }
                 image = Self.originZero(output)
@@ -586,6 +590,13 @@ actor ImagePipeline {
 
     func sampleMask(_ request: ImageRequest, at point: MaskPoint) throws -> MaskSample? {
         try MaskSample.read(at: point, from: maskReference(request), context: developContext)
+    }
+
+    func highlightPluginSource(_ request: ImageRequest, orientedSize: CGSize) throws -> (CGImage, PluginImage) {
+        guard let recipe = request.recipe else { throw PluginFailure.invalidImage }
+        let baseline = try maskReference(request)
+        let crop = try Self.geometry(CIImage(cgImage: baseline), recipe: recipe, referenceSize: orientedSize)
+        return (baseline, try pluginPixels(crop))
     }
 
     func renderMaskOverlay(_ rendered: RenderedImage, request: ImageRequest, group: LocalAdjustment,
@@ -1030,6 +1041,148 @@ actor ImagePipeline {
         return result
     }
 
+    func printProofSource(_ request: ImageRequest, longEdge: Int?, interactive: Bool) async throws -> (CGImage, PluginImage) {
+        let stage = try await warmPrintStage(request, purpose: interactive ? .draft : .quality, edge: longEdge)
+        return try autoreleasepool {
+            let (lease, url) = try source(request)
+            defer { withExtendedLifetime(lease) {} }
+            var orientedSize = CGSize.zero
+            let developed = try stage.map { Self.pluginImage($0.pixels) }
+                ?? graph(request, url: url, orientedSourceSize: &orientedSize, previewEdge: interactive ? 960 : nil)
+            let finished = try Self.finish(Self.resized(developed, longEdge: longEdge), request: request)
+            let white = CIImage(color: .white).cropped(to: finished.extent)
+            let sending = try Self.materialize16(finished.composited(over: white), context: developContext, preserveJPEG8: false)
+            let pixels = try pluginPixels(CIImage(cgImage: sending))
+            let expected = try JSONDecoder().decode(FileIdentity.self, from: request.photo.identity)
+            guard try FileIdentity.read(url) == expected else {
+                throw LRCError(L10n.text("app.theSourceChangedDuringRendering", defaultValue: "The source changed during rendering"))
+            }
+            return (sending, pixels)
+        }
+    }
+
+    private func pluginPixels(_ image: CIImage) throws -> PluginImage {
+        let bounds = image.extent.integral
+        let frame = try PluginFrame(width: Int(bounds.width), height: Int(bounds.height))
+        var data = Data(count: frame.byteCount)
+        try data.withUnsafeMutableBytes { buffer in
+            let target = CIRenderDestination(bitmapData: buffer.baseAddress!, width: frame.width, height: frame.height,
+                                             bytesPerRow: frame.rowBytes, format: .RGBAf)
+            target.colorSpace = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
+            target.alphaMode = .unpremultiplied
+            target.isFlipped = true
+            target.isDithered = false
+            _ = try developContext.startTask(toRender: image, from: bounds, to: target, at: .zero).waitUntilCompleted()
+            let pixels = buffer.bindMemory(to: SIMD4<Float>.self)
+            for i in pixels.indices where pixels[i].w == 0 { pixels[i] = .zero }
+        }
+        try Task.checkCancellation()
+        return try PluginImage(frame: frame, pixels: data)
+    }
+
+    static func pluginImage(_ input: PluginImage) -> CIImage {
+        let frame = input.frame
+        return CIImage(bitmapData: input.pixels, bytesPerRow: frame.rowBytes,
+                       size: CGSize(width: frame.width, height: frame.height), format: .RGBAf,
+                       colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!)
+            .premultiplyingAlpha()
+    }
+
+    private var cachedPluginInput: (key: String, stage: PluginRenderStage, file: FileHandle)?
+
+    private func developPluginInput(_ request: ImageRequest, purpose: ToolRequest.Purpose, edge: Int?) throws -> PluginRenderStage {
+        let (lease, url) = try source(request)
+        defer { withExtendedLifetime(lease) {} }
+        var sourceSize = CGSize.zero
+        var neutral = request.recipe
+        neutral?.warmPrint = nil
+        let upstream = ImageRequest(photo: request.photo, root: request.root, recipe: neutral)
+        let developed = try graph(upstream, url: url, orientedSourceSize: &sourceSize, previewEdge: purpose == .draft ? edge : nil)
+        let image = purpose == .final ? developed : Self.resized(developed, longEdge: edge)
+        let input = try pluginPixels(image)
+        guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: request.photo.identity) else {
+            throw LRCError(L10n.text("app.theSourceChangedDuringRendering", defaultValue: "The source changed during rendering"))
+        }
+        return PluginRenderStage(pixels: input, orientedSize: sourceSize, offsets: renderedSpotOffsets)
+    }
+
+    private func warmPrintStage(_ request: ImageRequest, purpose: ToolRequest.Purpose, edge: Int?,
+                                requireFrozen: Bool = false) async throws -> PluginRenderStage? {
+        guard let recipe = request.recipe, let effect = recipe.warmPrint, effect.strength > 0 else {
+            cachedPluginInput = nil
+            return nil
+        }
+        if let frozen = try recipe.matchingFrozenStage() { return try PluginStageFiles.read(frozen) }
+        if requireFrozen {
+            throw LRCError(L10n.text("plugins.saveWarmPrintFirst", defaultValue: "Save the Warm Print effect before exporting."))
+        }
+        return try await evaluateWarmPrint(request, strength: effect.strength, purpose: purpose, edge: edge)
+    }
+
+    private func evaluateWarmPrint(_ request: ImageRequest, strength: Double, purpose: ToolRequest.Purpose,
+                                   edge: Int?) async throws -> PluginRenderStage {
+        let input: PluginRenderStage
+        let staged: FileHandle?
+        if purpose == .draft, var neutral = request.recipe {
+            neutral.warmPrint = nil
+            neutral.grain = FilmGrain()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let key = "\(request.photo.id)|\(request.photo.revision)|\(request.photo.identity.base64EncodedString())|\(edge ?? 0)|"
+                + PluginStageFiles.digest(try encoder.encode(neutral))
+            if let cachedPluginInput, cachedPluginInput.key == key {
+                let (lease, _) = try source(request, verifyDigest: false)
+                withExtendedLifetime(lease) {}
+                input = cachedPluginInput.stage
+                staged = cachedPluginInput.file
+            } else {
+                input = try developPluginInput(request, purpose: purpose, edge: edge)
+                let file = try PluginFile.stage(input.pixels.pixels)
+                cachedPluginInput = (key, input, file)
+                staged = file
+            }
+        } else {
+            input = try developPluginInput(request, purpose: purpose, edge: edge)
+            staged = nil
+        }
+        let result = try await PhotoToolHost.shared.evaluate(key: "warm-print",
+            request: .init(revision: 0, purpose: purpose, parameters: .developEffect(strength: strength)),
+            input: input.pixels, stagedInput: staged, algorithm: 1)
+        guard case .developEffect(let pixels) = result else { throw PluginFailure.invalidResult }
+        return PluginRenderStage(pixels: pixels, orientedSize: input.orientedSize, offsets: input.offsets)
+    }
+
+    func freezeWarmPrint(_ request: ImageRequest, operation: UUID) async throws -> (FrozenPluginStage, PluginImage) {
+        guard let recipe = request.recipe, let effect = recipe.warmPrint, effect.strength > 0,
+              let id = Bundle.main.bundleIdentifier else { throw PluginFailure.invalidControl }
+        let team = try PluginSignature.ownTeam()
+        let bundle = id + ".warm-print"
+        let key = try recipe.warmPrintKey(team: team, bundle: bundle, algorithm: 1)
+        let stage = try await evaluateWarmPrint(request, strength: effect.strength, purpose: .final, edge: nil)
+        let (lease, _) = try source(request)
+        defer { withExtendedLifetime(lease) {} }
+        let digest = PluginStageFiles.digest(stage.pixels.pixels)
+        let ref = FrozenPluginStage(key: key, digest: digest, team: team, bundle: bundle, algorithm: 1, operation: operation,
+                                    width: stage.pixels.frame.width, height: stage.pixels.frame.height,
+                                    sourceWidth: Int(stage.orientedSize.width), sourceHeight: Int(stage.orientedSize.height),
+                                    spotOffsets: stage.offsets)
+        try ref.validate()
+        return (ref, stage.pixels)
+    }
+
+    func printProofDisplay(_ input: PluginImage, gamut: Data?) throws -> (CGImage, CGImage?) {
+        let image = try Self.materialize8(Self.pluginImage(input), context: developContext)
+        let warning = try gamut.map { data in
+            guard data.count == input.frame.count, let provider = CGDataProvider(data: data as CFData),
+                  let mask = CGImage(width: input.frame.width, height: input.frame.height, bitsPerComponent: 8, bitsPerPixel: 8,
+                                     bytesPerRow: input.frame.width, space: CGColorSpace(name: CGColorSpace.linearGray)!,
+                                     bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue), provider: provider,
+                                     decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { throw PluginFailure.invalidResult }
+            return mask
+        }
+        return (image, warning)
+    }
+
     static func materialize8(_ image: CIImage, context: CIContext) throws -> CGImage {
         let bounds = image.extent.integral, width = Int(bounds.width), height = Int(bounds.height)
         guard width > 0, height > 0, width <= Int.max / 4 / height else { throw LRCError(L10n.text("app.invalid8BitOutputDimensions", defaultValue: "Invalid 8-bit output dimensions")) }
@@ -1088,7 +1241,16 @@ actor ImagePipeline {
     /// storage. Reuse only the verified color controls at original screen size;
     /// other processing and high-depth output retain the original graph.
     func render(_ request: ImageRequest, longEdge: Int?, pixelFormat: CIFormat = .RGBA8, reuseDecoded: Bool = false,
-                jpegMatte: JPEGMatte? = nil, nativePixelRegion: (@Sendable (CGSize) throws -> CGRect)? = nil) throws -> RenderedImage {
+                jpegMatte: JPEGMatte? = nil, nativePixelRegion: (@Sendable (CGSize) throws -> CGRect)? = nil) async throws -> RenderedImage {
+        let started = Date()
+        let stage = try await warmPrintStage(request, purpose: .quality, edge: longEdge)
+        return try renderFrame(request, longEdge: longEdge, pixelFormat: pixelFormat, reuseDecoded: reuseDecoded,
+                               jpegMatte: jpegMatte, nativePixelRegion: nativePixelRegion, stage: stage, started: started)
+    }
+
+    private func renderFrame(_ request: ImageRequest, longEdge: Int?, pixelFormat: CIFormat, reuseDecoded: Bool = false,
+                             jpegMatte: JPEGMatte? = nil, nativePixelRegion: (@Sendable (CGSize) throws -> CGRect)? = nil,
+                             stage: PluginRenderStage?, started: Date = Date()) throws -> RenderedImage {
         return try autoreleasepool {
             try Task.checkCancellation()
             var completed = false
@@ -1101,8 +1263,7 @@ actor ImagePipeline {
                     nativeOpacity = nil
                 }
             }
-            let started = Date()
-            let cacheDecoded = reuseDecoded && longEdge == nil && pixelFormat == .RGBA8 && Self.canCacheDecoded(request)
+            let cacheDecoded = stage == nil && reuseDecoded && longEdge == nil && pixelFormat == .RGBA8 && Self.canCacheDecoded(request)
             if reuseDecoded, !cacheDecoded, qualitySourceKey != nil {
                 qualityDecoded = nil; qualityCacheBytes = 0; qualitySourceKey = nil
                 maskBaselineCache = nil; maskCache.removeAll()
@@ -1126,8 +1287,16 @@ actor ImagePipeline {
                 }
             }
             var orientedSize = CGSize.zero
-            let graph = try graph(request, url: url, orientedSourceSize: &orientedSize, reuseDecoded: cacheDecoded,
-                                  nativeArea: nativeArea)
+            let graph: CIImage
+            if let stage {
+                orientedSize = stage.orientedSize
+                renderedSpotOffsets = stage.offsets
+                graph = Self.pluginImage(stage.pixels)
+                _ = try nativeArea?(orientedSize)
+            } else {
+                graph = try self.graph(request, url: url, orientedSourceSize: &orientedSize, reuseDecoded: cacheDecoded,
+                                       nativeArea: nativeArea)
+            }
             var image = try Self.finish(Self.resized(graph, longEdge: longEdge), request: request)
             let finishedFrame = image
             if let region {
@@ -1175,7 +1344,8 @@ actor ImagePipeline {
             // High-depth export does not need a display histogram or an extra 16→8 bit readback.
             let histogram = pixelFormat == .RGBA8 ? ImageHistogram.calculate(result) : nil
             completed = true
-            return RenderedImage(image: result, fullSize: region?.canvas ?? graph.extent.size, orientedSourceSize: orientedSize,
+            let fullSize = try region?.canvas ?? (stage == nil ? graph.extent.size : Self.nativeOutputSize(orientedSize, recipe: request.recipe))
+            return RenderedImage(image: result, fullSize: fullSize, orientedSourceSize: orientedSize,
                                  histogram: histogram, elapsed: Date().timeIntervalSince(started),
                                  spotOffsets: renderedSpotOffsets, nativePixelRegion: region?.pixels)
         }
@@ -1183,13 +1353,14 @@ actor ImagePipeline {
 
     /// Low-resolution screen feedback only. The committed render/export always
     /// validates the complete source digest and uses the full-resolution graph.
-    func renderInteractive(_ request: ImageRequest, longEdge: Int = 960) throws -> RenderedImage {
-        try autoreleasepool {
+    func renderInteractive(_ request: ImageRequest, longEdge: Int = 960) async throws -> RenderedImage {
+        let started = Date()
+        let stage = try await warmPrintStage(request, purpose: .draft, edge: longEdge)
+        return try autoreleasepool {
             var completed = false
             defer { if !completed { maskBaselineCache = nil; maskCache.removeAll() } }
             try Task.checkCancellation()
             PreviewLog.logger.debug("pipeline-draft-enter")
-            let started = Date()
             let (lease, url) = try source(request, verifyDigest: false)
             defer { withExtendedLifetime(lease) {} }
             // Verify once when starting a new cached source; later frames reuse it.
@@ -1200,7 +1371,14 @@ actor ImagePipeline {
                 }
             }
             var orientedSize = CGSize.zero
-            let graph = try graph(request, url: url, orientedSourceSize: &orientedSize, previewEdge: longEdge)
+            let graph: CIImage
+            if let stage {
+                orientedSize = stage.orientedSize
+                renderedSpotOffsets = stage.offsets
+                graph = Self.pluginImage(stage.pixels)
+            } else {
+                graph = try self.graph(request, url: url, orientedSourceSize: &orientedSize, previewEdge: longEdge)
+            }
             let image = try Self.finish(Self.resized(graph, longEdge: longEdge), request: request)
             let result: CGImage
             if Self.mayHaveTransparency(request), Self.hasTransparency(image, context: developContext) {
@@ -1243,7 +1421,8 @@ actor ImagePipeline {
                               retainedStaging: snapshot.retainedStaging, metadata: frozen)
     }
 
-    func export(_ request: ImageRequest, staging: URL, options: ExportOptions, metadata: ExportMetadata = ExportMetadata()) throws -> (Int, Int) {
+    func export(_ request: ImageRequest, staging: URL, options: ExportOptions, metadata: ExportMetadata = ExportMetadata()) async throws -> (Int, Int) {
+        let stage = try await warmPrintStage(request, purpose: .final, edge: nil, requireFrozen: true)
         return try autoreleasepool {
             guard request.photo.details?.tiffPageCount == nil else { throw LRCError(PhotoFileType.multipageTIFFPreviewOnly) }
             try options.validate()
@@ -1252,8 +1431,8 @@ actor ImagePipeline {
             defer { withExtendedLifetime(lease) {} }
             let digest = try SafeFileWriter.sha256(url)
             if let expected = request.recipe?.sourceDigest ?? request.photo.digest, expected != digest { throw LRCError(L10n.text("app.sourceContentsMismatchExportStopped", defaultValue: "Source contents mismatch. Export stopped")) }
-            let result = try render(request, longEdge: options.longEdge, pixelFormat: options.format == .tiff ? .RGBA16 : .RGBA8,
-                jpegMatte: options.format == .jpeg ? options.jpegMatte : nil)
+            let result = try renderFrame(request, longEdge: options.longEdge, pixelFormat: options.format == .tiff ? .RGBA16 : .RGBA8,
+                jpegMatte: options.format == .jpeg ? options.jpegMatte : nil, stage: stage)
             guard let destination = CGImageDestinationCreateWithURL(staging as CFURL, options.format.type.identifier as CFString, 1, nil) else { throw LRCError(L10n.text("app.cannotCreate", defaultValue: "Cannot create \(options.format.title)")) }
             CGImageDestinationSetProperties(destination, [kCGImageDestinationEmbedThumbnail: false,
                 kCGImageMetadataShouldExcludeGPS: true, kCGImageMetadataShouldExcludeXMP: metadata.descriptive.isEmpty] as CFDictionary)

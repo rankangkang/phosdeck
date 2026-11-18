@@ -647,9 +647,9 @@ float4 filmGrain(sample_t s, float4 extent, float4 params, float4 seedParts, des
     return premultiply(float4(c, s.a));
 }
 // Linear thresholds sit halfway between the 8-bit sRGB codes 254/255 and 0/1 of the preview, matching the histogram's end bins.
-float4 clipWarning(sample_t s, float3 shadow, float3 highlight, float showShadow, float showHighlight) {
-    if (s.a <= 0) return float4(0);
-    float3 c = straightColor(s).rgb;
+float4 clipWarning(sample_t s, sample_t reference, float3 shadow, float3 highlight, float showShadow, float showHighlight) {
+    if (reference.a <= 0) return s;
+    float3 c = straightColor(reference).rgb;
     if (showHighlight > 0.5f && max(c.r, max(c.g, c.b)) > 0.99555f) return premultiply(float4(highlight, s.a));
     if (showShadow > 0.5f && min(c.r, min(c.g, c.b)) < 0.000152f) return premultiply(float4(shadow, s.a));
     return s;

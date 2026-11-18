@@ -259,6 +259,7 @@ extension AppMCPWorkflows {
                 let next = try await Task.detached {
                     guard try FileIdentity.read(url) == identity else { throw Self.catalogOutputVerification }
                     let next = try CatalogStore(fileURL: url, access: target.lease)
+                    try next.checkRestoredPluginStages()
                     guard try FileIdentity.read(url) == identity else { throw Self.catalogOutputVerification }
                     return next
                 }.value
@@ -267,6 +268,7 @@ extension AppMCPWorkflows {
                     try self.model.activateCreatedCatalog(next, directory: target.url, bookmark: bookmark)
                 }
                 job.data["opened"] = true
+                if !next.pluginStageWarnings.isEmpty { job.data["warnings"] = .array(next.pluginStageWarnings.map(Value.string)) }
                 job.finish(.succeeded, "Restored, verified and opened the new catalog.", committed: "committed")
             } catch {
                 self.model.error = error.localizedDescription

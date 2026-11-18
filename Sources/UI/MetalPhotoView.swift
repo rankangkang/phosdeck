@@ -38,6 +38,7 @@ struct MetalPhotoView: NSViewRepresentable {
     var onPixelReadout: ((DisplayPixelSample?) -> Void)? = nil
     /// Drawn left of the split line, scaled onto `image`; both must share geometry.
     var splitBefore: CGImage?
+    var proof: PrintProofDisplay?
     func makeNSView(context: Context) -> PhotoMetalCanvas { PhotoMetalCanvas() }
     func updateNSView(_ view: PhotoMetalCanvas, context: Context) {
         let maskChanged = view.maskEditing != maskEditing
@@ -54,7 +55,9 @@ struct MetalPhotoView: NSViewRepresentable {
             (view.onZoneSample == nil) != (onZoneSample == nil) || (view.maskEditing == nil) != (maskEditing == nil) || (view.spotEditing == nil) != (spotEditing == nil)
         let changed = maskChanged || spotChanged || view.source !== image || view.actualPixels != actualPixels || view.photoID != photoID || view.nativeSize != nativeSize || view.backdrop != backdrop || view.displayCenter != viewport.center || view.zoomScale != zoomScale || view.fill != fill || view.cropAngle != cropAngle || view.cropAutoZoom != cropAutoZoom
             || view.clipShadows != nextShadows || view.clipHighlights != nextHighlights || view.readoutEnabled != nextReadoutEnabled || view.splitSource !== splitBefore
+            || view.proof?.image !== proof?.image || view.proof?.gamut !== proof?.gamut
         view.clipShadows = nextShadows; view.clipHighlights = nextHighlights; view.splitSource = splitBefore
+        view.proof = proof
         let zoomChanged = view.actualPixels != actualPixels || view.zoomScale != zoomScale || view.fill != fill
         let resetMotion = view.photoID != photoID || view.cropAngle != cropAngle || image == nil
         if resetMotion || targetChanged || zoomChanged { view.cancelTargetGesture() }
@@ -199,6 +202,14 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
     private var splitImage: CIImage?
     var clipShadows = false
     var clipHighlights = false
+    var proof: PrintProofDisplay? {
+        didSet {
+            if oldValue?.image !== proof?.image { proofImage = proof.map { CIImage(cgImage: $0.image) } }
+            if oldValue?.gamut !== proof?.gamut { gamutImage = proof?.gamut.map { CIImage(cgImage: $0) } }
+        }
+    }
+    private var proofImage: CIImage?
+    private var gamutImage: CIImage?
     var clipping: Bool {
         get { clipShadows || clipHighlights }
         set { clipShadows = newValue; clipHighlights = newValue }
@@ -445,8 +456,14 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
                     PreviewLog.logger.info("zoom-transition-complete frames=\(self.zoomFrameCount) elapsed-ms=\((now - motion.start) * 1000)")
                     zoomMotion = nil; isPaused = true; enableSetNeedsDisplay = true
                 }
-                var presented = (clipShadows || clipHighlights)
-                    ? DisplayOverlay.clipping(input, shadows: clipShadows, highlights: clipHighlights) : input
+                var presented = proofImage.map { Self.fitted($0, to: input.extent) } ?? input
+                if let gamutImage {
+                    presented = DisplayOverlay.maskView(presented, coverage: Self.fitted(gamutImage, to: input.extent),
+                                                       style: .color, tint: CIVector(x: 1, y: 0.38, z: 0))
+                }
+                if clipShadows || clipHighlights {
+                    presented = DisplayOverlay.clipping(presented, shadows: clipShadows, highlights: clipHighlights, reference: input)
+                }
                 var splitX: CGFloat?
                 if let before = splitImage, rect.width > 0 {
                     // The split follows the canvas centre so it stays visible while zoomed.
@@ -1148,10 +1165,10 @@ enum DisplayOverlay {
     static func clipping(_ image: CIImage) -> CIImage {
         clipping(image, shadows: true, highlights: true)
     }
-    static func clipping(_ image: CIImage, shadows: Bool, highlights: Bool) -> CIImage {
+    static func clipping(_ image: CIImage, shadows: Bool, highlights: Bool, reference: CIImage? = nil) -> CIImage {
         guard shadows || highlights else { return image }
         return clipKernel?.apply(extent: image.extent,
-                                 arguments: [image, linear(Palette.clipShadow), linear(Palette.clipHighlight),
+                                 arguments: [image, reference ?? image, linear(Palette.clipShadow), linear(Palette.clipHighlight),
                                              shadows ? 1.0 : 0.0, highlights ? 1.0 : 0.0]) ?? image
     }
     /// Composites a mask view over the photo. The result replaces the displayed frame and is not exported.

@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
         if model.changingCatalogExtension { return .terminateCancel }
-        if !model.commitRecipe() { return .terminateCancel }
+        if !model.commitRecipe(resume: { [weak sender] in sender?.terminate(nil) }) { return .terminateCancel }
         if waitingForTermination { return .terminateLater }
         let merge = model.mergeSession
         let transfer = model.catalogTransfer
@@ -55,6 +55,7 @@ struct PhosdeckApp: App {
                     model.openStartupCatalogIfNeeded()
                     model.mcp.attach(to: model)
                 }
+                .task { await model.watchPluginAvailability() }
         }.defaultSize(width: 1380, height: 850)
         .windowStyle(.hiddenTitleBar)
         .defaultLaunchBehavior(.presented)

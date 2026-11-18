@@ -328,6 +328,8 @@ final class AppModel {
     var activeID: String? {
         didSet {
             guard activeID != oldValue else { return }
+            printProof.clearSource()
+            cancelHighlightPreview()
             selectionGeneration = UUID()
             cancelAutomaticAdjustment()
             cancelTargetedAdjustment(clearReference: true)
@@ -377,7 +379,7 @@ final class AppModel {
     private var lastAppliedHold = false
     var isViewingImport: Bool { lastImport.map { scope == $0.scope } ?? false }
     private var librarySingleView = false
-    var editMode = false { didSet { if !editMode { cancelAutomaticAdjustment(); cancelTargetedAdjustment(); cancelDirectAdjustment(); cancelSmartMask(); cancelWhiteBalanceSampling(); endAdjustmentPreview(); endDevelopReference(); cancelPointColorTools(); cancelZoneSampling(); if !singleView { beforeAfter = .off } } else { endComparison(); endSurvey() } } }
+    var editMode = false { didSet { if !editMode { printProof.leaveDevelop(); cancelHighlightPreview(); cancelAutomaticAdjustment(); cancelTargetedAdjustment(); cancelDirectAdjustment(); cancelSmartMask(); cancelWhiteBalanceSampling(); endAdjustmentPreview(); endDevelopReference(); cancelPointColorTools(); cancelZoneSampling(); if !singleView { beforeAfter = .off } } else { endComparison(); endSurvey() } } }
     var singleView = false { didSet { if !singleView { endComparison(); endSurvey(); if !editMode { beforeAfter = .off } } } }
     var comparison: PhotoComparison?
     private var comparisonOrigin: (context: ImportBrowseContext, query: PhotoQuery)?
@@ -425,6 +427,15 @@ final class AppModel {
     var notice: WorkspaceNotice?
     @ObservationIgnored private var noticeTask: Task<Void, Never>?
     var image: CGImage? { didSet { if oldValue !== image { displayPixelReadout = nil } } }
+    let printProof = PrintProofEditing()
+    var highlightDraft: HighlightDraft?
+    var highlightWorking = false
+    var highlightMessage = ""
+    @ObservationIgnored var highlightTask: Task<Void, Never>?
+    @ObservationIgnored var highlightGeneration = UUID()
+    private(set) var savingWarmPrint = false
+    @ObservationIgnored private var warmSave: Task<Void, Never>?
+    @ObservationIgnored private var resumeAfterWarmSave: (() -> Void)?
     var previewIsCrop = false
     var histogram: ImageHistogram?
     var orientedSourceSize: CGSize?
@@ -613,7 +624,9 @@ final class AppModel {
             let previous: WorkspaceMode = origin.surveyIDs != nil ? .survey : origin.edit ? .develop : origin.single ? .single : .grid
             if mode == previous { finishComparison(); return }
         }
-        if editMode, mode != .develop, !selectDevelopTool(.adjust) { return }
+        if editMode, mode != .develop {
+            guard commitRecipe(resume: { [weak self] in self?.selectWorkspace(mode) }), selectDevelopTool(.adjust) else { return }
+        }
         if stackComparison != nil, mode != .compare, mode != .survey,
            !perform({ try finishStackComparison() }) { return }
         if mode != .survey, mode != .compare { endSurvey() }
@@ -641,7 +654,8 @@ final class AppModel {
             setSpotMode(false)
             guard !spotMode else { return false }
         }
-        guard commitRecipe() else { return false }
+        guard commitRecipe(resume: { [weak self] in _ = self?.selectDevelopTool(tool) }) else { return false }
+        if tool != .adjust { cancelHighlightPreview() }
         switch tool {
         case .adjust:
             let wasCrop = cropMode
@@ -688,7 +702,7 @@ final class AppModel {
         cropGuide = cropGuide.next
     }
     func requestExport(preset: ExportPreset? = nil) {
-        guard canExportPhotos, commitRecipe() else { return }
+        guard canExportPhotos, commitRecipe(resume: { [weak self] in self?.requestExport(preset: preset) }) else { return }
         requestedExportPreset = preset
         showExport = true
     }
@@ -769,7 +783,9 @@ final class AppModel {
             // Explicit synthetic validation launch; failures never fall back to a recent/private catalog.
             if let path = ProcessInfo.processInfo.environment["PHOSDECK_SYNTHETIC_CATALOG"] {
                 catalog = try CatalogStore(fileURL:URL(fileURLWithPath:path))
-                try reload(); configureCache(); status = L10n.text("app.syntheticCatalogVerification", defaultValue: "Synthetic catalog verification · ") + catalogName; return
+                try reload(); configureCache(); status = L10n.text("app.syntheticCatalogVerification", defaultValue: "Synthetic catalog verification · ") + catalogName
+                reportPluginStageWarnings()
+                return
             }
             #endif
             let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -778,7 +794,7 @@ final class AppModel {
             if let recent = recentCatalogs.first {
                 let lease = try AccessLease(bookmark: recent.bookmark)
                 let url = lease.url.appendingPathComponent(recent.filename)
-                if CatalogFile.isLegacy(url) || CatalogArchive.hasIndex(beside: url) {
+                if CatalogFile.isLegacy(url) || CatalogArchive.hasIndex(beside: url) || PluginStageCommit.hasPendingReceipts() {
                     startupCatalogOpen = CatalogOpenRequest(url: url, access: lease, bookmark: recent.bookmark, restoreWorkspace: true)
                     status = CatalogFile.isLegacy(url) ? L10n.text("catalogExtension.waitingForChoice", defaultValue: "Choose how to open this catalog.")
                         : L10n.text("archive.opening", defaultValue: "Opening archived catalog…")
@@ -830,6 +846,13 @@ final class AppModel {
         if let count = try catalog?.database.read({ try Int.fetchOne($0, sql: "SELECT count(*) FROM exportItem WHERE state IN ('interrupted','needsReview')") }), count > 0 {
             reports = [L10n.text("app.outputsWereInterruptedOrNeedVerificationRetryThemManually", defaultValue: "\(count) outputs were interrupted or need verification. Retry them manually; published files will be preserved.")]
         }
+        reportPluginStageWarnings()
+    }
+
+    private func reportPluginStageWarnings() {
+        guard let warnings = catalog?.pluginStageWarnings, !warnings.isEmpty else { return }
+        reports += warnings
+        status = warnings[0]
     }
 
     // Construct this closure outside MainActor. A closure created in init can
@@ -1000,7 +1023,7 @@ final class AppModel {
         try catalog?.firstResult(query, within: ids)?.id ?? ids.min()
     }
     func setScope(_ value: String) {
-        guard value != scope, workspaceAvailable, commitRecipe() else { return }
+        guard value != scope, workspaceAvailable, commitRecipe(resume: { [weak self] in self?.setScope(value) }) else { return }
         perform { try updateLibraryQuery(source: value) }
     }
     var isViewingRelated: Bool { scope.hasPrefix("related:") }
@@ -1104,7 +1127,7 @@ final class AppModel {
         return roots.contains { $0.id == context.scope }
     }
     func navigateBrowse(_ delta: Int) {
-        guard delta != 0, workspaceAvailable, commitRecipe() else { return }
+        guard delta != 0, workspaceAvailable, commitRecipe(resume: { [weak self] in self?.navigateBrowse(delta) }) else { return }
         if stackComparison != nil { if delta < 0 { endComparison() }; return }
         if importBrowseContext != nil { if delta < 0 { returnFromImport() }; return }
         if editMode, !selectDevelopTool(.adjust) { return }
@@ -1204,7 +1227,7 @@ final class AppModel {
     }
     func changePage(_ delta: Int, selectingEdge: Bool = false) {
         let destination = min(max(0, pageOffset + delta * pageSize), max(0, (visibleCount - 1) / pageSize * pageSize))
-        guard destination != pageOffset, commitRecipe() else { return }
+        guard destination != pageOffset, commitRecipe(resume: { [weak self] in self?.changePage(delta, selectingEdge: selectingEdge) }) else { return }
         pageOffset = destination
         perform {
             try reloadPhotos()
@@ -1236,7 +1259,7 @@ final class AppModel {
         }
         let ids = comparison == nil ? ids : Set(id.map { [$0] } ?? [])
         if activeID != id {
-            guard commitRecipe() else { return }
+            guard commitRecipe(resume: { [weak self] in self?.choose(ids, active: id) }) else { return }
             clearSavedEditPreview(); endAdjustmentPreview(redraw: false); displayPixelReadout = nil; presetListFocused = false; beforeReference = nil; endMaskEffectPreview(redraw: false)
             if id != nil, comparison == nil, survey == nil {
                 if let recipe, canEdit || retainedEditorDisplay == nil {
@@ -1717,9 +1740,9 @@ final class AppModel {
         let sql = "SELECT photo.* FROM \(query.relation) WHERE \(predicate) AND photo.availability='available' ORDER BY \(query.order) LIMIT ?"
         let roots = roots, thumbnails = thumbnails
         let cacheSetup = cacheConfigurationTask
-        importThumbnailWarmup = Task(priority: .utility) { [weak self] in
+        importThumbnailWarmup = Task(priority: .utility) { [weak self, weak catalog] in
             await cacheSetup?.value
-            guard !Task.isCancelled, self?.catalog === catalog else { return }
+            guard !Task.isCancelled, let catalog, self?.catalog === catalog else { return }
             guard let batch = try? await catalog.database.read({ db in
                 try Photo.fetchAll(db, sql: sql, arguments: arguments + [ThumbnailService.prewarmLimit])
             }), !Task.isCancelled, self?.catalog === catalog else { return }
@@ -2309,7 +2332,7 @@ final class AppModel {
     }
     func changeRecipe(_ mutation: (inout EditRecipe) -> Void, commit: Bool = true, title: String? = nil, preview: Bool = true) {
         if !applyingDirectAdjustment { cancelDirectAdjustment() }
-        guard canEdit, !applyingAdjustments, var value = recipe else { return }
+        guard canEdit, !applyingAdjustments, !savingWarmPrint, var value = recipe else { return }
         let started = CFAbsoluteTimeGetCurrent()
         mutation(&value)
         value.schemaVersion = max(value.schemaVersion, value.localAdjustments.isEmpty ? 2 : 3)
@@ -2323,6 +2346,7 @@ final class AppModel {
         } catch { self.error = error.localizedDescription; return }
         PreviewLog.logger.debug("recipe-validated ms=\((CFAbsoluteTimeGetCurrent() - started) * 1000)")
         guard value != recipe else { return }
+        cancelHighlightPreview()
         clearSavedEditPreview()
         endAdjustmentPreview(redraw: false)
         endMaskEffectPreview(redraw: false)
@@ -2331,14 +2355,125 @@ final class AppModel {
             if !commitRecipe(title: title), preview { requestPreview() }
         } else if preview { requestPreview(interactive: true) }
     }
-    @discardableResult func commitRecipe(title: String? = nil) -> Bool {
+    @discardableResult func commitRecipe(title: String? = nil, resume: (() -> Void)? = nil) -> Bool {
         cancelDirectAdjustment()
         endAdjustmentPreview(redraw: false)
+        if savingWarmPrint {
+            if let resume { resumeAfterWarmSave = resume }
+            return false
+        }
         guard dirty else { return true }
         guard let catalog, let id = activeID, let value = recipe else { return false }
         do {
+            if try value.requiresWarmPrintStage(), let expected = active {
+                prepareWarmSave(value, photo: expected, catalog: catalog, title: title, resume: resume)
+                return false
+            }
+        } catch { self.error = error.localizedDescription; return false }
+        return saveRecipeAndPublish(value, id: id, catalog: catalog, title: title)
+    }
+
+    private func prepareWarmSave(_ value: EditRecipe, photo: Photo, catalog: CatalogStore, title: String?, resume: (() -> Void)?) {
+        guard !savingWarmPrint else { return }
+        let session = catalogSessionID
+        let expectedDraft = recipe
+        let name = title ?? value.changeTitle(from: savedRecipe)
+        savingWarmPrint = true
+        resumeAfterWarmSave = resume
+        status = L10n.text("plugins.savingWarmPrint", defaultValue: "Saving Warm Print…")
+        renderTask?.cancel()
+        qualityRender?.cancel()
+        pendingPreview = nil
+        pendingQualityPreview = nil
+        warmSave = Task {
+            var prepared: PluginStageCommit?
+            do {
+                prepared = try await PluginStageCommit.prepare(catalog: catalog, changes: [(photo: photo, recipe: value)], title: name)
+                guard let receipt = prepared, let ready = receipt.changes.first?.recipe else { throw OrganizationError.versionConflict }
+                try Task.checkCancellation()
+                guard self.catalog === catalog, catalogSessionID == session, activeID == photo.id, recipe == expectedDraft else {
+                    throw OrganizationError.versionConflict
+                }
+                try await receipt.publish()
+                try Task.checkCancellation()
+                guard self.catalog === catalog, catalogSessionID == session, activeID == photo.id, recipe == expectedDraft else {
+                    throw OrganizationError.versionConflict
+                }
+                let saved = saveRecipeAndPublish(ready, id: photo.id, catalog: catalog, title: name, prepared: receipt)
+                if !saved { await receipt.abandon() }
+                let action = saved ? resumeAfterWarmSave : nil
+                resumeAfterWarmSave = nil
+                warmSave = nil
+                savingWarmPrint = false
+                action?()
+            } catch {
+                await prepared?.abandon()
+                warmSave = nil
+                resumeAfterWarmSave = nil
+                savingWarmPrint = false
+                if error is CancellationError {
+                    status = L10n.text("plugins.saveCancelled", defaultValue: "Save cancelled. Your draft was preserved.")
+                } else {
+                    status = L10n.text("app.saveFailedYourDraftWasPreserved", defaultValue: "Save failed. Your draft was preserved: \(error.localizedDescription)")
+                    self.error = status
+                }
+                requestPreview(prepareInteractive: true)
+            }
+        }
+    }
+
+    var hasWarmPrintDraft: Bool { recipe?.warmPrint?.strength != savedRecipe?.warmPrint?.strength }
+
+    func setWarmPrintStrength(_ strength: Double) {
+        guard strength.isFinite, (0...1).contains(strength), strength != (recipe?.warmPrint?.strength ?? 0) else { return }
+        changeRecipe({
+            $0.warmPrint = strength == 0 ? nil : WarmPrintEffect(strength: strength, frozen: $0.warmPrint?.frozen)
+        }, commit: false)
+    }
+
+    func cancelWarmPrintDraft() {
+        if savingWarmPrint { warmSave?.cancel(); return }
+        guard hasWarmPrintDraft else { return }
+        changeRecipe({ $0.warmPrint = savedRecipe?.warmPrint }, commit: false)
+        if self.recipe == savedRecipe { dirty = false }
+        requestPreview(prepareInteractive: true)
+    }
+
+    func applyHighlightPreview() {
+        guard let draft = currentHighlightDraft, workspaceAvailable, canEdit, !dirty, !savingWarmPrint, let catalog else { return }
+        var value = draft.recipe
+        value.localAdjustments.append(draft.group)
+        value.schemaVersion = 3
+        value.maskVersion = 3
+        let title = L10n.text("plugins.selectHighlights", defaultValue: "Select Highlights")
+        if (try? value.requiresWarmPrintStage()) == true {
+            prepareWarmSave(value, photo: draft.photo, catalog: catalog, title: title, resume: { [weak self] in self?.selectSavedHighlight(draft, title: title) })
+            return
+        }
+        guard saveRecipeAndPublish(value, id: draft.photo.id, catalog: catalog, title: title, expected: draft.photo) else { return }
+        selectSavedHighlight(draft, title: title)
+    }
+
+    private func selectSavedHighlight(_ draft: HighlightDraft, title: String) {
+        cancelHighlightPreview()
+        setMaskMode(true)
+        selectMask(draft.group.id, component: draft.group.components.first?.id)
+        undo.setActionName(title)
+    }
+
+    private func saveRecipeAndPublish(_ value: EditRecipe, id: String, catalog: CatalogStore, title: String?, expected: Photo? = nil,
+                                     prepared: PluginStageCommit? = nil) -> Bool {
+        do {
             let started = CFAbsoluteTimeGetCurrent()
-            try catalog.saveRecipe(id: id, recipe: value, title: title)
+            if let prepared {
+                _ = try prepared.commit(in: catalog)
+                recipe = value
+            } else if let expected {
+                _ = try catalog.saveRecipes([(photo: expected, recipe: value)], title: title ?? L10n.text("app.adjustPhoto", defaultValue: "Adjust Photo"))
+                recipe = value
+            } else {
+                try catalog.saveRecipe(id: id, recipe: value, title: title)
+            }
             PreviewLog.logger.debug("recipe-saved ms=\((CFAbsoluteTimeGetCurrent() - started) * 1000)")
             if let previous = savedRecipe {
                 undo.registerUndo(withTarget: self) { $0.restoreRecipe(previous, id: id) }
@@ -2737,7 +2872,7 @@ final class AppModel {
                         catch { results.append(L10n.text("app.skipped", defaultValue: "Skipped \(photo.name): \(error.localizedDescription)")) }
                     }
                     try Task.checkCancellation()
-                    try publishRecipeBatch(changes, title: title, catalog: catalog)
+                    try await publishRecipeBatch(changes, title: title, catalog: catalog)
                     published = true
                     if !changes.isEmpty {
                         try refreshAfterBatch(ids: Set(changes.map { $0.photo.id }))
@@ -2827,7 +2962,7 @@ final class AppModel {
                     }
                     try Task.checkCancellation()
                     if !changes.isEmpty {
-                        try publishRecipeBatch(changes, title: title, catalog: catalog)
+                        try await publishRecipeBatch(changes, title: title, catalog: catalog)
                         published = true
                         try refreshAfterBatch(ids: Set(changes.map { $0.photo.id }))
                     }
@@ -2848,8 +2983,23 @@ final class AppModel {
 
     @discardableResult
     func publishRecipeBatch(_ changes: [(photo: Photo, recipe: EditRecipe)], title: String, catalog: CatalogStore,
-                            expecting: [Photo] = [], expectingRoots: [StorageRoot] = [], closedUndo: Bool = false) throws -> [Photo] {
-        let saved = try catalog.saveRecipes(changes, title: title, expecting: expecting, expectingRoots: expectingRoots)
+                            expecting: [Photo] = [], expectingRoots: [StorageRoot] = [], closedUndo: Bool = false) async throws -> [Photo] {
+        let saved: [Photo]
+        if let receipt = try await PluginStageCommit.prepare(catalog: catalog, changes: changes, title: title,
+                                                             expecting: expecting, expectingRoots: expectingRoots) {
+            do {
+                guard self.catalog === catalog else { throw OrganizationError.versionConflict }
+                try await receipt.publish()
+                try Task.checkCancellation()
+                guard self.catalog === catalog else { throw OrganizationError.versionConflict }
+                saved = try receipt.commit(in: catalog)
+            } catch {
+                await receipt.abandon()
+                throw error
+            }
+        } else {
+            saved = try catalog.saveRecipes(changes, title: title, expecting: expecting, expectingRoots: expectingRoots)
+        }
         guard !saved.isEmpty else { return [] }
         let savedIDs = Set(saved.map(\.id))
         let previous = changes.map(\.photo).filter { savedIDs.contains($0.id) }
@@ -3087,6 +3237,12 @@ final class AppModel {
         renderedCoordinateRecipe = job.request.recipe
         renderedNativeSize = result.fullSize
         spotRenderedOffsets = result.spotOffsets
+        if editMode, !before, !job.cropPreview, !isPreviewingAdjustment {
+            printProof.setSource(job.request, normal: result.image, revision: job.revision,
+                                 edge: job.interactive ? 960 : job.edge, interactive: job.interactive)
+        } else {
+            printProof.clearSource()
+        }
         imageStatus = job.interactive ? L10n.text("app.interactivePreviewReleaseToUpdateTheDetailedPreview", defaultValue: "Interactive preview · Release to update the detailed preview") :
             L10n.text("app.s", defaultValue: "\(job.edge == nil ? L10n.text("app.fullSizePreviewDragToPan", defaultValue: "Full-size preview · Drag to pan") : L10n.text("app.fit", defaultValue: "Fit")) · \(Int(result.fullSize.width)) × \(Int(result.fullSize.height)) · \(String(format: "%.2f", result.elapsed)) s")
     }
@@ -3394,7 +3550,7 @@ final class AppModel {
         }
     }
     func requestCatalogArchive() {
-        guard canSwitchCatalog, catalog != nil, commitRecipe() else { return }
+        guard canSwitchCatalog, catalog != nil, commitRecipe(resume: { [weak self] in self?.requestCatalogArchive() }) else { return }
         showCatalogArchive = true
     }
     func requestLightroomImport() {
@@ -3509,7 +3665,7 @@ final class AppModel {
         }
     }
     func restoreBackup() {
-        guard canSwitchCatalog, commitRecipe() else { return }
+        guard canSwitchCatalog, commitRecipe(resume: { [weak self] in self?.restoreBackup() }) else { return }
         let panel = Self.catalogBackupPanel()
         guard panel.runModal() == .OK, let source = panel.url else { return }
         catalogRestoreSource = source; showNewCatalog = true
@@ -3554,10 +3710,10 @@ extension AppModel {
 
     @discardableResult
     func requestCatalogOpen(_ request: CatalogOpenRequest, choice: CatalogExtensionChoice? = nil) -> Task<Void, Never>? {
-        guard canSwitchCatalog, commitRecipe() else { return nil }
+        guard canSwitchCatalog, commitRecipe(resume: { [weak self] in _ = self?.requestCatalogOpen(request, choice: choice) }) else { return nil }
         do {
             guard CatalogFile.isLegacy(request.url) else {
-                if CatalogArchive.hasIndex(beside: request.url) {
+                if CatalogArchive.hasIndex(beside: request.url) || PluginStageCommit.hasPendingReceipts() {
                     let previousStatus = status
                     let title = L10n.text("archive.opening", defaultValue: "Opening archived catalog…")
                     runCatalogTransfer(title: title) { _ in
@@ -3668,7 +3824,7 @@ extension AppModel {
     }
 
     func createCatalog() {
-        guard canSwitchCatalog, commitRecipe() else { return }
+        guard canSwitchCatalog, commitRecipe(resume: { [weak self] in self?.createCatalog() }) else { return }
         catalogRestoreSource = nil; showNewCatalog = true
     }
     func createCatalog(name: String, directory: URL) throws {
@@ -3700,7 +3856,7 @@ extension AppModel {
         try rememberCatalog(next.fileURL, directory: directory, bookmark: bookmark)
     }
     func openCatalog() {
-        guard canSwitchCatalog, commitRecipe() else { return }
+        guard canSwitchCatalog, commitRecipe(resume: { [weak self] in self?.openCatalog() }) else { return }
         let panel = Self.catalogFilePanel()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         openCatalog(url: url)
@@ -3720,7 +3876,7 @@ extension AppModel {
             return
         }
         guard canSwitchCatalog else { error = L10n.text("app.finishTheCurrentTaskOrCloseTheImportWindow", defaultValue: "Finish the current task or close the import window before switching catalogs"); return }
-        guard commitRecipe() else { return }
+        guard commitRecipe(resume: { [weak self] in self?.openCatalog(url: url) }) else { return }
         if let recent = recentCatalogs.first(where: { $0.path == url.path }), (try? AccessLease(bookmark: recent.bookmark)) != nil { openRecent(recent); return }
         if url.resolvingSymlinksInPath().standardizedFileURL == catalog?.fileURL { return }
         guard url.pathExtension.lowercased() != "lrcat" else { error = L10n.text("app.adobeLrcatFilesUseADifferentFormatOpenAn", defaultValue: "Adobe .lrcat files use a different format. Open a .phoscat catalog file"); return }
@@ -3751,7 +3907,7 @@ extension AppModel {
         return panel
     }
     func openRecent(_ recent: RecentCatalog) {
-        guard canSwitchCatalog, commitRecipe() else { return }
+        guard canSwitchCatalog, commitRecipe(resume: { [weak self] in self?.openRecent(recent) }) else { return }
         perform {
             let lease = try AccessLease(bookmark: recent.bookmark)
             let url = lease.url.appendingPathComponent(recent.filename)
@@ -3814,6 +3970,7 @@ extension AppModel {
         else {
             try reload(); configureCache()
             status = L10n.text("app.openedPhotos", defaultValue: "Opened \(catalogName) · \(totalCount) photos")
+            reportPluginStageWarnings()
         }
     }
 }

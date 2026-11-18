@@ -557,7 +557,7 @@ extension AppMCPTools {
                 if let historyID, let change = changes.first {
                     after = try model.publishHistoryStep(historyID, photo: change.photo, catalog: catalog, closedUndo: true).map { [$0] } ?? []
                 } else {
-                    after = try model.publishRecipeBatch(changes, title: title, catalog: catalog, expecting: targets + [source].compactMap { $0 }, closedUndo: true)
+                    after = try await model.publishRecipeBatch(changes, title: title, catalog: catalog, expecting: targets + [source].compactMap { $0 }, closedUndo: true)
                 }
             } catch let conflict as RecipeBatchConflict { throw MCPToolProblem.stalePhoto.forPhoto(conflict.photoID) }
             afterSave()
