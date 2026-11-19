@@ -79,7 +79,7 @@
 
 - 固定合成图库的现有数据全部保留（含用户自建蒙版组、调整、历史、输出记录）；验证产生的历史照实保留，不回灌旧备份，不为字节一致覆盖图库。
 - 图库后缀统一为 `.phoscat`；用户要求旧 `.omlcat`／`.omlrcat` 继续可打开，并在打开时确认是否在原位置无覆盖改名。只改后缀、不改内部数据；不迁移旧 schema，用户重新决定时再考虑。
-- 普通 `.phoscat` 通过文件授权打开，锁与恢复日志通过 macOS 的关联文件机制授权；用户要求一次选择，整库归档和旧后缀改名继续按需取得文件夹授权，项目结构或系统权限机制改变时重新核对。
+- 普通 `.phoscat` 可从文件菜单单选打开、在访达中打开或从最近目录返回。用户要求目录文件只选择一次，这三个入口参考 Lightroom Classic 与 Capture One。锁与恢复日志通过 macOS 的关联文件机制授权，整库归档和旧后缀改名按需取得文件夹授权。项目结构或系统权限机制改变时重新核对。[Lightroom Classic](https://helpx.adobe.com/lightroom-classic/desktop/manage-catalogs-and-files/create-catalogs.html) · [Capture One](https://support.captureone.com/hc/en-us/articles/360003108698-Complete-Guide-to-Using-Catalogs)
 - 用户要求跨盘归档为独立项目，保存图库数据库和选定的完整项目文件夹，可从新盘继续编辑。独立数据库备份仍保留，项目归档范围由用户重新决定时调整。
 - 改 schema 时如需更新固定合成图库，须用户再次明确许可；此前的单库例外不可复用，正式 App 仍不加 schema 迁移。
 - 缺少当前冻结快照字段的旧输出任务拒绝重试，其数据与成片原样保留。

@@ -3353,7 +3353,11 @@ final class AppModel {
         guard catalog != nil, !cacheMaintenance else { return }
         cacheMaintenance = true
         cacheConfigurationTask = Task {
-            defer { cacheMaintenance = false; cacheConfigurationTask = nil }
+            defer {
+                cacheMaintenance = false
+                cacheConfigurationTask = nil
+                openDeferredCatalogIfNeeded()
+            }
             do { try await applyCacheQuota() }
             catch { self.error = error.localizedDescription }
         }
@@ -3707,12 +3711,15 @@ extension AppModel {
         openingStartupCatalog = true
         defer {
             openingStartupCatalog = false
-            if let url = deferredCatalogURL {
-                deferredCatalogURL = nil
-                openCatalog(url: url)
-            }
+            openDeferredCatalogIfNeeded()
         }
         requestCatalogOpen(request)
+    }
+
+    private func openDeferredCatalogIfNeeded() {
+        guard !openingStartupCatalog, let url = deferredCatalogURL else { return }
+        deferredCatalogURL = nil
+        openCatalog(url: url)
     }
 
     @discardableResult
@@ -3889,6 +3896,11 @@ extension AppModel {
         if openingStartupCatalog && catalogUtilityOpen {
             deferredCatalogURL = url
             NSApp.abortModal()
+            return
+        }
+        // Automatic cache setup may still be running for the restored catalog.
+        if cacheConfigurationTask != nil, !busy, !applyingAdjustments, !presentingSheet {
+            deferredCatalogURL = url
             return
         }
         guard canSwitchCatalog else { error = L10n.text("app.finishTheCurrentTaskOrCloseTheImportWindow", defaultValue: "Finish the current task or close the import window before switching catalogs"); return }

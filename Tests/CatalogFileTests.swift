@@ -94,6 +94,28 @@ final class CatalogFileTests: XCTestCase {
         XCTAssertEqual(try catalog.photo("p")?.rating, 4)
     }
 
+    @MainActor func testFinderOpenKeepsLatestFileWhileThePreviousCatalogConfiguresItsCache() async throws {
+        let previous = try fixture("Previous.phoscat")
+        let first = try fixture("First.phoscat")
+        let latest = try fixture("Latest.phoscat")
+        let model = AppModel()
+        model.catalog = try CatalogStore(fileURL: previous)
+        model.configureCache()
+        let cache = try XCTUnwrap(model.cacheConfigurationTask)
+
+        model.openCatalog(url: first)
+        model.openCatalog(url: latest)
+        XCTAssertNil(model.error)
+        XCTAssertEqual(model.catalog?.fileURL, previous.resolvingSymlinksInPath())
+
+        await cache.value
+        await model.catalogTransfer?.value
+        await model.cacheConfigurationTask?.value
+        XCTAssertEqual(model.catalog?.fileURL, latest.resolvingSymlinksInPath())
+        XCTAssertNil(model.error)
+        model.catalog = nil
+    }
+
     func testCatalogRecoveryAccessPreservesAnExistingJournal() throws {
         let file = try fixture("恢复.phoscat")
         let journal = URL(fileURLWithPath: file.path + "-journal")
