@@ -58,8 +58,6 @@ private final class CatalogBrowseChanges: TransactionObserver {
 final class CatalogStore: @unchecked Sendable {
     let fileURL: URL
     var directory: URL { fileURL.deletingLastPathComponent() }
-    private let access: AccessLease?
-    private let lock: CatalogLock
     private let browseChanges = CatalogBrowseChanges()
     let database: DatabaseQueue
     private(set) var pluginStageWarnings: [String] = []
@@ -80,14 +78,15 @@ final class CatalogStore: @unchecked Sendable {
         } else {
             self.fileURL = fileURL.resolvingSymlinksInPath().standardizedFileURL
         }
-        self.access = access
         if create {
             // Exclusive publication refuses even a file created after the save dialog.
             try SafeFileWriter.write(Data(), to: self.fileURL)
         } else {
             _ = try FileIdentity.read(self.fileURL)
         }
-        lock = try CatalogLock(fileURL: self.fileURL)
+        let fileAccessOnly = access?.url.resolvingSymlinksInPath().standardizedFileURL.path == self.fileURL.path
+        let lock = try CatalogLock(fileURL: self.fileURL, coordinating: fileAccessOnly)
+        let recoveryAccess = try fileAccessOnly ? CatalogRelatedFile.recoveryAccess(beside: self.fileURL) : []
         if !create {
             var readOnly = Configuration(); readOnly.readonly = true
             let candidate = try DatabaseQueue(path: self.fileURL.path, configuration: readOnly)
@@ -96,6 +95,8 @@ final class CatalogStore: @unchecked Sendable {
         }
         var configuration = Configuration()
         configuration.prepareDatabase { db in
+            // The connection retains its lock and scopes through SQLite's close.
+            withExtendedLifetime((access, recoveryAccess, lock)) {}
             db.add(function: DatabaseFunction("photo_filename", argumentCount: 1, pure: true) { values in
                 guard let path = String.fromDatabaseValue(values[0]) else { return nil }
                 return URL(fileURLWithPath: path).lastPathComponent

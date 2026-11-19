@@ -85,6 +85,12 @@ targets:
             CFBundleTypeRole: Editor
             LSHandlerRank: Owner
             LSItemContentTypes: [dev.cmkk.oh-my-lrc.catalog]
+          - CFBundleTypeName: Phosdeck Catalog Companion
+            # Declare the suffixes directly so related access works independently of UTI registration.
+            CFBundleTypeExtensions: [phoscat-lock, phoscat-journal, phoscat-wal, phoscat-shm]
+            CFBundleTypeRole: Editor
+            LSHandlerRank: None
+            NSIsRelatedItemType: true
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: dev.cmkk.oh-my-lrc.catalog
             UTTypeDescription: Phosdeck Catalog

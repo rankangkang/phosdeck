@@ -66,6 +66,58 @@ final class CatalogFileTests: XCTestCase {
         }
     }
 
+    @MainActor func testCatalogFileBookmarkOpensWritesAndReopensTheSameCatalog() async throws {
+        let file = try fixture("测试.phoscat")
+        let bookmark = try AccessLease.bookmark(file, readOnly: false)
+        let recent = RecentCatalog(path: file.path, filename: file.lastPathComponent, bookmark: bookmark)
+        let request = try recent.openRequest()
+        XCTAssertTrue(request.fileAccessOnly)
+        XCTAssertEqual(request.url.standardizedFileURL, file.standardizedFileURL)
+
+        let model = AppModel()
+        let opened = try XCTUnwrap(model.requestCatalogOpen(request))
+        await opened.value
+        await model.cacheConfigurationTask?.value
+        do {
+            let catalog = try XCTUnwrap(model.catalog, model.error ?? "")
+            XCTAssertThrowsError(try CatalogStore(fileURL: file))
+            try catalog.setOrganization(ids: ["p"], rating: 3)
+            try catalog.setOrganization(ids: ["p"], rating: 4)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path + "-journal"))
+        model.catalog = nil
+
+        let reopened = try XCTUnwrap(model.requestCatalogOpen(try recent.openRequest(restoringWorkspace: true)))
+        await reopened.value
+        await model.cacheConfigurationTask?.value
+        let catalog = try XCTUnwrap(model.catalog, model.error ?? "")
+        XCTAssertEqual(try catalog.photo("p")?.rating, 4)
+    }
+
+    func testCatalogRecoveryAccessPreservesAnExistingJournal() throws {
+        let file = try fixture("恢复.phoscat")
+        let journal = URL(fileURLWithPath: file.path + "-journal")
+        let payload = Data("Existing recovery file".utf8)
+        try payload.write(to: journal)
+        let access = try CatalogRelatedFile.recoveryAccess(beside: file)
+        defer { withExtendedLifetime(access) {} }
+        XCTAssertEqual(try Data(contentsOf: journal), payload)
+    }
+
+    func testFileBookmarkPreparesMissingWALFilesForValidation() throws {
+        let file = try fixture("WAL.phoscat")
+        let database = try DatabaseQueue(path: file.path)
+        XCTAssertEqual(try database.writeWithoutTransaction { try String.fetchOne($0, sql: "PRAGMA journal_mode=WAL") }, "wal")
+        try database.close()
+        let companions = ["-wal", "-shm"].map { file.path + $0 }
+        XCTAssertTrue(companions.allSatisfy { !FileManager.default.fileExists(atPath: $0) })
+
+        let catalog = try CatalogStore(fileURL: file, access: AccessLease(url: file))
+        XCTAssertTrue(companions.allSatisfy { FileManager.default.fileExists(atPath: $0) })
+        try catalog.setOrganization(ids: ["p"], rating: 2)
+        XCTAssertEqual(try catalog.photo("p")?.rating, 2)
+    }
+
     func testDestinationCollisionPreservesBothFiles() throws {
         let source = try fixture(), before = try Data(contentsOf: source)
         let change = try CatalogExtensionChange(source: source)

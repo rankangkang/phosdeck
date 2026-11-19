@@ -9,12 +9,77 @@ enum CatalogFile {
 
     static func isLegacy(_ url: URL) -> Bool { legacyExtensions.contains(url.pathExtension.lowercased()) }
 
+    static func needsFolderAccess(_ url: URL) -> Bool {
+        let file = url.resolvingSymlinksInPath()
+        return file.pathExtension.lowercased() != pathExtension || CatalogArchive.hasIndex(beside: file)
+    }
+
     static func filename(_ name: String) -> String {
         let url = URL(fileURLWithPath: name)
         if isLegacy(url) || url.pathExtension.lowercased() == pathExtension {
             return url.deletingPathExtension().lastPathComponent + "." + pathExtension
         }
         return name + "." + pathExtension
+    }
+}
+
+/// macOS extends the sandbox to a declared companion for the duration of coordination.
+final class CatalogRelatedFile: NSObject, NSFilePresenter {
+    let primaryPresentedItemURL: URL?
+    let presentedItemURL: URL?
+    let presentedItemOperationQueue = OperationQueue()
+
+    init(catalog: URL, file: URL) {
+        primaryPresentedItemURL = catalog
+        presentedItemURL = file
+    }
+
+    static func coordinate<T>(_ file: URL, beside catalog: URL, _ access: (URL) throws -> T) throws -> T {
+        let presenter = CatalogRelatedFile(catalog: catalog, file: file)
+        NSFileCoordinator.addFilePresenter(presenter)
+        defer { NSFileCoordinator.removeFilePresenter(presenter) }
+        var error: NSError?
+        var result: Result<T, Error>?
+        NSFileCoordinator(filePresenter: presenter).coordinate(writingItemAt: file, options: [], error: &error) { url in
+            result = Result { try access(url) }
+        }
+        if let error { throw error }
+        guard let result else { throw CocoaError(.fileWriteNoPermission, userInfo: [NSURLErrorKey: file]) }
+        return try result.get()
+    }
+
+    static func recoveryAccess(beside catalog: URL) throws -> [AccessLease] {
+        let handle = try FileHandle(forReadingFrom: catalog)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: 18)
+        let modes = try handle.read(upToCount: 2)
+        // SQLite header bytes 18 and 19 identify WAL format even when the WAL is absent.
+        let suffixes = modes?.contains(2) == true ? ["-journal", "-wal", "-shm"] : ["-journal"]
+        return try suffixes.map { suffix in
+            let file = URL(fileURLWithPath: catalog.path + suffix)
+            return try coordinate(file, beside: catalog) { url in
+                // A scoped bookmark requires a file. O_EXCL preserves any existing recovery data.
+                let fd = Darwin.open(url.path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, S_IRUSR | S_IWUSR)
+                guard fd >= 0 || errno == EEXIST else {
+                    throw SafeFileWriter.posix(L10n.text("app.openCatalogRecoveryFile", defaultValue: "Open Catalog Recovery File"))
+                }
+                defer { if fd >= 0 { close(fd) } }
+                let identity = try FileIdentity.read(url)
+                defer {
+                    // Read-only WAL validation needs both companions present. SQLite manages their removal.
+                    if fd >= 0, suffix == "-journal" {
+                        var original = stat()
+                        if fstat(fd, &original) == 0, original.st_ino == identity.inode, original.st_dev == identity.device,
+                           original.st_size == 0, (try? FileIdentity.read(url)) == identity {
+                            _ = unlink(url.path)
+                        }
+                    }
+                }
+                let lease = try AccessLease(bookmark: AccessLease.bookmark(url, readOnly: false))
+                guard lease.scoped else { throw CocoaError(.fileWriteNoPermission, userInfo: [NSURLErrorKey: url]) }
+                return lease
+            }
+        }
     }
 }
 

@@ -80,16 +80,27 @@ enum SafeFileWriter {
     }
 }
 
-final class CatalogLock {
+final class CatalogLock: Sendable {
     private let descriptor: Int32
-    init(fileURL: URL) throws {
-        let lockPath = fileURL.lastPathComponent == "Catalog.sqlite" ? fileURL.deletingLastPathComponent().appendingPathComponent("Catalog.lock").path : fileURL.path + ".lock"
-        descriptor = Darwin.open(lockPath, O_CREAT | O_RDWR | O_NOFOLLOW, S_IRUSR | S_IWUSR)
+    static func url(for file: URL) -> URL {
+        if file.lastPathComponent == "Catalog.sqlite" {
+            return file.deletingLastPathComponent().appendingPathComponent("Catalog.lock")
+        }
+        let suffix = file.pathExtension.lowercased() == CatalogFile.pathExtension ? "-lock" : ".lock"
+        return URL(fileURLWithPath: file.path + suffix)
+    }
+    init(fileURL: URL, coordinating: Bool = false) throws {
+        let lock = Self.url(for: fileURL)
+        descriptor = try coordinating ? CatalogRelatedFile.coordinate(lock, beside: fileURL, Self.acquire) : Self.acquire(lock)
+    }
+    private static func acquire(_ url: URL) throws -> Int32 {
+        let descriptor = Darwin.open(url.path, O_CREAT | O_RDWR | O_NOFOLLOW, S_IRUSR | S_IWUSR)
         guard descriptor >= 0 else { throw SafeFileWriter.posix(L10n.text("app.openCatalogLock", defaultValue: "Open Catalog Lock")) }
         guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
             close(descriptor)
             throw LRCError(L10n.text("app.theCatalogIsInUseByAnotherInstanceAnd", defaultValue: "The catalog is in use by another instance and cannot be written concurrently"))
         }
+        return descriptor
     }
     deinit { flock(descriptor, LOCK_UN); close(descriptor) }
 }

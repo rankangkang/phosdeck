@@ -792,21 +792,21 @@ final class AppModel {
                 .appendingPathComponent("OhMyLRC", isDirectory: true)
             recentCatalogs = (UserDefaults.standard.data(forKey: "recentCatalogs").flatMap { try? JSONDecoder().decode([RecentCatalog].self, from: $0) }) ?? []
             if let recent = recentCatalogs.first {
-                let lease = try AccessLease(bookmark: recent.bookmark)
-                let url = lease.url.appendingPathComponent(recent.filename)
-                if CatalogFile.isLegacy(url) || CatalogArchive.hasIndex(beside: url) || PluginStageCommit.hasPendingReceipts() {
-                    startupCatalogOpen = CatalogOpenRequest(url: url, access: lease, bookmark: recent.bookmark, restoreWorkspace: true)
-                    status = CatalogFile.isLegacy(url) ? L10n.text("catalogExtension.waitingForChoice", defaultValue: "Choose how to open this catalog.")
-                        : L10n.text("archive.opening", defaultValue: "Opening archived catalog…")
+                let request = try recent.openRequest(restoringWorkspace: true)
+                let archived = CatalogArchive.hasIndex(beside: request.url)
+                if CatalogFile.isLegacy(request.url) || archived || PluginStageCommit.hasPendingReceipts() {
+                    startupCatalogOpen = request
+                    status = CatalogFile.isLegacy(request.url) ? L10n.text("catalogExtension.waitingForChoice", defaultValue: "Choose how to open this catalog.")
+                        : Self.openingCatalogTitle(archived: archived)
                     return
                 }
-                catalog = try CatalogStore(fileURL: url, access: lease)
+                catalog = try CatalogStore(fileURL: request.url, access: request.access)
             } else {
                 let folder = UserDefaults.standard.string(forKey: "catalogFolder") ?? "DefaultCatalog"
                 let legacy = base.appendingPathComponent(folder).appendingPathComponent("Catalog.sqlite")
                 if FileManager.default.fileExists(atPath: legacy.path) {
                     catalog = try CatalogStore(fileURL: legacy)
-                    try rememberCatalog(legacy, directory: legacy.deletingLastPathComponent())
+                    try rememberCatalog(legacy, accessURL: legacy.deletingLastPathComponent())
                 }
             }
             guard catalog != nil else { status = L10n.text("app.createOrOpenACatalogToBegin", defaultValue: "Create or open a catalog to begin"); return }
@@ -3684,6 +3684,12 @@ struct RecentCatalog: Codable, Identifiable {
     let filename: String
     let bookmark: Data
     var id: String { path }
+
+    func openRequest(restoringWorkspace: Bool = false) throws -> CatalogOpenRequest {
+        let access = try AccessLease(bookmark: bookmark)
+        let url = access.url.hasDirectoryPath ? access.url.appendingPathComponent(filename) : access.url
+        return CatalogOpenRequest(url: url, access: access, bookmark: bookmark, restoreWorkspace: restoringWorkspace)
+    }
 }
 
 struct CatalogOpenRequest: Sendable {
@@ -3691,6 +3697,7 @@ struct CatalogOpenRequest: Sendable {
     let access: AccessLease
     let bookmark: Data?
     var restoreWorkspace = false
+    var fileAccessOnly: Bool { access.url.path == url.path }
 }
 
 extension AppModel {
@@ -3711,13 +3718,17 @@ extension AppModel {
     @discardableResult
     func requestCatalogOpen(_ request: CatalogOpenRequest, choice: CatalogExtensionChoice? = nil) -> Task<Void, Never>? {
         guard canSwitchCatalog, commitRecipe(resume: { [weak self] in _ = self?.requestCatalogOpen(request, choice: choice) }) else { return nil }
+        if request.url.resolvingSymlinksInPath().standardizedFileURL == catalog?.fileURL { return nil }
         do {
             guard CatalogFile.isLegacy(request.url) else {
-                if CatalogArchive.hasIndex(beside: request.url) || PluginStageCommit.hasPendingReceipts() {
+                let archived = CatalogArchive.hasIndex(beside: request.url)
+                if request.fileAccessOnly || archived || PluginStageCommit.hasPendingReceipts() {
                     let previousStatus = status
-                    let title = L10n.text("archive.opening", defaultValue: "Opening archived catalog…")
-                    runCatalogTransfer(title: title) { _ in
-                        try CatalogStore(fileURL: request.url, access: request.access)
+                    runCatalogTransfer(title: Self.openingCatalogTitle(archived: archived)) { _ in
+                        try Task.checkCancellation()
+                        let next = try CatalogStore(fileURL: request.url, access: request.access)
+                        try Task.checkCancellation()
+                        return next
                     } complete: { [self] next in
                         do {
                             try finishCatalogOpen(request.url, request: request, prepared: next)
@@ -3767,6 +3778,11 @@ extension AppModel {
         return nil
     }
 
+    private static func openingCatalogTitle(archived: Bool) -> String {
+        archived ? L10n.text("archive.opening", defaultValue: "Opening archived catalog…")
+                 : L10n.text("app.openingCatalog", defaultValue: "Opening catalog…")
+    }
+
     private func chooseCatalogExtension(_ change: CatalogExtensionChange) -> CatalogExtensionChoice {
         catalogUtilityOpen = true
         defer { catalogUtilityOpen = false }
@@ -3804,7 +3820,7 @@ extension AppModel {
         if renamed {
             if usesPreferences { Self.transferCatalogPreferences(from: request.url, to: url, defaults: .standard) }
             // A completed rename must be discoverable even if opening later fails.
-            try rememberCatalog(url, directory: request.access.url, bookmark: request.bookmark, replacing: request.url)
+            try rememberCatalog(url, accessURL: request.access.url, bookmark: request.bookmark, replacing: request.url)
         }
         let next = try prepared ?? CatalogStore(fileURL: url, access: request.access)
         if request.restoreWorkspace && catalog == nil {
@@ -3813,7 +3829,7 @@ extension AppModel {
         } else {
             try activateCatalog(next, restoringWorkspace: renamed && usesPreferences)
         }
-        if !renamed { try rememberCatalog(url, directory: request.access.url, bookmark: request.bookmark) }
+        if !renamed { try rememberCatalog(url, accessURL: request.access.url, bookmark: request.bookmark) }
     }
 
     static func transferCatalogPreferences(from source: URL, to destination: URL, defaults: UserDefaults) {
@@ -3853,7 +3869,7 @@ extension AppModel {
     }
     func activateCreatedCatalog(_ next: CatalogStore, directory: URL, bookmark: Data) throws {
         try activateCatalog(next)
-        try rememberCatalog(next.fileURL, directory: directory, bookmark: bookmark)
+        try rememberCatalog(next.fileURL, accessURL: directory, bookmark: bookmark)
     }
     func openCatalog() {
         guard canSwitchCatalog, commitRecipe(resume: { [weak self] in self?.openCatalog() }) else { return }
@@ -3877,18 +3893,27 @@ extension AppModel {
         }
         guard canSwitchCatalog else { error = L10n.text("app.finishTheCurrentTaskOrCloseTheImportWindow", defaultValue: "Finish the current task or close the import window before switching catalogs"); return }
         guard commitRecipe(resume: { [weak self] in self?.openCatalog(url: url) }) else { return }
-        if let recent = recentCatalogs.first(where: { $0.path == url.path }), (try? AccessLease(bookmark: recent.bookmark)) != nil { openRecent(recent); return }
         if url.resolvingSymlinksInPath().standardizedFileURL == catalog?.fileURL { return }
         guard url.pathExtension.lowercased() != "lrcat" else { error = L10n.text("app.adobeLrcatFilesUseADifferentFormatOpenAn", defaultValue: "Adobe .lrcat files use a different format. Open a .phoscat catalog file"); return }
+        let needsFolder = CatalogFile.needsFolderAccess(url)
+        if let recent = recentCatalogs.first(where: { $0.path == url.path }), let request = try? recent.openRequest(),
+           !needsFolder || !request.fileAccessOnly {
+            requestCatalogOpen(request)
+            return
+        }
         perform {
-            guard let lease = catalogDirectoryAccess(for: url) else { return }
-            let selected = lease.url
-            let bookmark = try AccessLease.bookmark(selected, readOnly: false)
+            let lease: AccessLease
+            if needsFolder {
+                guard let directory = catalogDirectoryAccess(for: url) else { return }
+                lease = directory
+            } else {
+                lease = AccessLease(url: url)
+            }
+            let bookmark = try AccessLease.bookmark(lease.url, readOnly: false)
             requestCatalogOpen(CatalogOpenRequest(url: url, access: lease, bookmark: bookmark))
         }
     }
     private func catalogDirectoryAccess(for url: URL) -> AccessLease? {
-        // SQLite needs its containing folder for the lock and rollback journal.
         let parent = url.deletingLastPathComponent().resolvingSymlinksInPath()
         if let lease = cachedCatalogDirectoryAccess(parent) { return lease }
         let panel = Self.catalogDirectoryPanel(parent)
@@ -3897,9 +3922,11 @@ extension AppModel {
         return AccessLease(url: selected)
     }
     func cachedCatalogDirectoryAccess(_ parent: URL) -> AccessLease? {
-        guard let recent = recentCatalogs.first(where: { URL(fileURLWithPath: $0.path).deletingLastPathComponent().resolvingSymlinksInPath() == parent }),
-              let lease = try? AccessLease(bookmark: recent.bookmark), lease.url.resolvingSymlinksInPath() == parent else { return nil }
-        return lease
+        for recent in recentCatalogs where URL(fileURLWithPath: recent.path).deletingLastPathComponent().resolvingSymlinksInPath() == parent {
+            if let lease = try? AccessLease(bookmark: recent.bookmark),
+               lease.url.resolvingSymlinksInPath().path == parent.path { return lease }
+        }
+        return nil
     }
     static func catalogDirectoryPanel(_ parent: URL) -> NSOpenPanel {
         let panel = directoryPanel(title: L10n.text("app.authorizeCatalogFolder", defaultValue: "Authorize Catalog Folder"), initialURL: parent)
@@ -3908,16 +3935,11 @@ extension AppModel {
     }
     func openRecent(_ recent: RecentCatalog) {
         guard canSwitchCatalog, commitRecipe(resume: { [weak self] in self?.openRecent(recent) }) else { return }
-        perform {
-            let lease = try AccessLease(bookmark: recent.bookmark)
-            let url = lease.url.appendingPathComponent(recent.filename)
-            if url.resolvingSymlinksInPath().standardizedFileURL == catalog?.fileURL { return }
-            requestCatalogOpen(CatalogOpenRequest(url: url, access: lease, bookmark: recent.bookmark))
-        }
+        perform { requestCatalogOpen(try recent.openRequest()) }
     }
-    private func rememberCatalog(_ url: URL, directory: URL, bookmark: Data? = nil, replacing oldURL: URL? = nil) throws {
+    private func rememberCatalog(_ url: URL, accessURL: URL, bookmark: Data? = nil, replacing oldURL: URL? = nil) throws {
         guard usesPreferences else { return }
-        let entry = RecentCatalog(path: url.path, filename: url.lastPathComponent, bookmark: try bookmark ?? AccessLease.bookmark(directory, readOnly: false))
+        let entry = RecentCatalog(path: url.path, filename: url.lastPathComponent, bookmark: try bookmark ?? AccessLease.bookmark(accessURL, readOnly: false))
         recentCatalogs.removeAll { $0.path == entry.path || $0.path == oldURL?.path }
         recentCatalogs.insert(entry, at: 0); recentCatalogs = Array(recentCatalogs.prefix(10))
         UserDefaults.standard.set(try JSONEncoder().encode(recentCatalogs), forKey: "recentCatalogs")

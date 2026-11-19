@@ -18,6 +18,23 @@
 				<string>dev.cmkk.oh-my-lrc.catalog</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Phosdeck Catalog Companion</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>phoscat-lock</string>
+				<string>phoscat-journal</string>
+				<string>phoscat-wal</string>
+				<string>phoscat-shm</string>
+			</array>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>None</string>
+			<key>NSIsRelatedItemType</key>
+			<true/>
+		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>

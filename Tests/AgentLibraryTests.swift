@@ -99,8 +99,9 @@ final class AgentLibraryTests: XCTestCase {
         XCTAssertEqual(expired["tool_error"], "file_access_required")
         let another = files.directory.appendingPathComponent("Another.phoscat")
         do { _ = try CatalogStore(fileURL: another, create: true) }
-        picker.urls = [another, files.directory]
+        picker.urls = [another]
         let open = try await client.access(.openCatalog)
+        XCTAssertTrue(picker.urls.isEmpty)
         let opened = try await client.job(await client.call(.openCatalog, ["access_id": open]))
         XCTAssertEqual(opened["catalog_name"], "Another")
         XCTAssertEqual(opened["state"], "succeeded")

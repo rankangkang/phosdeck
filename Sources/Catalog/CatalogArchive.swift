@@ -72,8 +72,8 @@ struct CatalogArchive {
         var folders: [String] = []
         var labels = Set<String>()
         let catalogFiles = Set(["", ".lock", "-journal", "-wal", "-shm"].map { catalog.fileURL.path + $0 } +
-                               [catalog.directory.appendingPathComponent(indexName).path, catalog.directory.appendingPathComponent(stageFolder).path] +
-                               (catalog.fileURL.lastPathComponent == "Catalog.sqlite" ? [catalog.directory.appendingPathComponent("Catalog.lock").path] : []))
+                               [CatalogLock.url(for: catalog.fileURL).path, catalog.directory.appendingPathComponent(indexName).path,
+                                catalog.directory.appendingPathComponent(stageFolder).path])
         for folder in top {
             try Task.checkCancellation()
             let name = folder.lastPathComponent.isEmpty ? "Files" : folder.lastPathComponent

@@ -2,7 +2,7 @@ import Foundation
 
 final class AccessLease: Sendable, Identifiable {
     let url: URL
-    private let scoped: Bool
+    let scoped: Bool
     private let parent: AccessLease?
     convenience init(url: URL) { self.init(url: url, retaining: nil) }
     init(url: URL, retaining parent: AccessLease?) {

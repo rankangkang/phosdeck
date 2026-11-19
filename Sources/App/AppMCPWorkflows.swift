@@ -310,16 +310,15 @@ final class AppMCPWorkflows {
             if let access {
                 let grant = try grant(access, purpose: .openCatalog)
                 return start(tool) { job in
-                    guard let directory = grant.directory, try FileIdentity.read(grant.url) == grant.identity else { throw Self.accessExpired }
-                    try await self.open(.init(url: grant.url, access: directory, bookmark: nil), job: job)
+                    guard try FileIdentity.read(grant.url) == grant.identity else { throw Self.accessExpired }
+                    try await self.open(.init(url: grant.url, access: grant.directory ?? grant.lease, bookmark: nil), job: job)
                 }
             }
             guard let recent = model.recentCatalogs.first(where: { recentIDs[$0.path] == recentID }) else {
                 throw MCPToolProblem(code: "recent_catalog_unavailable", summary: "The recent catalog is no longer listed.", next: "Refresh list_recent_catalogs or request file access.")
             }
             return start(tool) { job in
-                let lease = try AccessLease(bookmark: recent.bookmark)
-                try await self.open(.init(url: lease.url.appendingPathComponent(recent.filename), access: lease, bookmark: recent.bookmark), job: job)
+                try await self.open(recent.openRequest(), job: job)
             }
         default:
             guard let catalog = model.catalog else { throw MCPToolProblem.noCatalog }
@@ -490,14 +489,14 @@ final class AppMCPWorkflows {
         if purpose == .openCatalog || purpose == .locateOriginal {
             grant.identity = try FileIdentity.read(url)
             let parent = url.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
-            if purpose == .openCatalog {
+            if purpose == .openCatalog && CatalogFile.needsFolderAccess(url) {
                 if let directory = model.cachedCatalogDirectoryAccess(parent) { grant.directory = directory }
                 else {
                     guard let directory = try await pick(AppModel.catalogDirectoryPanel(parent), job: job, action: "authorize_catalog_folder") else { throw CancellationError() }
                     guard directory.resolvingSymlinksInPath().standardizedFileURL.path == parent.path else { throw Self.accessExpired }
                     grant.directory = AccessLease(url: directory)
                 }
-            } else {
+            } else if purpose == .locateOriginal {
                 let path = url.resolvingSymlinksInPath().standardizedFileURL.path
                 if !model.roots.contains(where: { path.hasPrefix($0.path == "/" ? "/" : $0.path + "/") }) {
                     let title = L10n.text("app.authorizeTheOriginalPhotoFolder", defaultValue: "Authorize the original photo folder · \(url.lastPathComponent)")
@@ -555,7 +554,12 @@ final class AppMCPWorkflows {
     private func open(_ request: CatalogOpenRequest, job: Job) async throws {
         var url = request.url
         let normalized = url.resolvingSymlinksInPath().standardizedFileURL
-        guard request.access.url.resolvingSymlinksInPath().standardizedFileURL.path == normalized.deletingLastPathComponent().path else { throw Self.accessExpired }
+        let access = request.access.url.resolvingSymlinksInPath().standardizedFileURL
+        if request.fileAccessOnly {
+            guard access == normalized, !CatalogFile.needsFolderAccess(normalized) else { throw Self.accessExpired }
+        } else {
+            guard access.path == normalized.deletingLastPathComponent().path else { throw Self.accessExpired }
+        }
         let previous = model.catalogSessionID
         if normalized != model.catalog?.fileURL {
             if CatalogFile.isLegacy(url) {
@@ -574,7 +578,15 @@ final class AppMCPWorkflows {
                     job.data["commit_state"] = "committed"
                 }
             }
-            try await activate(job) { try model.finishCatalogOpen(url, request: request) }
+            let prepared: CatalogStore?
+            if request.fileAccessOnly {
+                let worker = Task.detached(priority: .utility) { try CatalogStore(fileURL: request.url, access: request.access) }
+                prepared = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                try Task.checkCancellation()
+            } else {
+                prepared = nil
+            }
+            try await activate(job) { try model.finishCatalogOpen(url, request: request, prepared: prepared) }
         }
         job.data["catalog_session_id"] = model.catalogSessionID.map(Value.string) ?? .null
         job.data["catalog_name"] = .string(model.catalogName)
@@ -608,9 +620,9 @@ final class AppMCPWorkflows {
         let items: [Value] = await Task.detached {
             entries.map { entry in
                 let available: Bool
-                if let lease = try? AccessLease(bookmark: entry.bookmark) {
-                    available = (try? FileIdentity.read(lease.url.appendingPathComponent(entry.filename))) != nil
-                    withExtendedLifetime(lease) {}
+                if let request = try? entry.openRequest() {
+                    available = (try? FileIdentity.read(request.url)) != nil
+                    withExtendedLifetime(request.access) {}
                 } else { available = false }
                 return ["recent_catalog_id": .string(ids[entry.path]!), "name": .string(entry.filename),
                         "available": .bool(available), "is_current": .bool(current == entry.path)]

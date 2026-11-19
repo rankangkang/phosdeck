@@ -218,7 +218,7 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 ### 图库和导入接口
 
-具体输入以 `tools/list` 为准。图库打开后，`request_file_access`、`create_catalog` 和 `open_catalog` 同样携带当前 `catalog_session_id`。系统面板返回按用途绑定的 `access_id`，打开新位置的图库文件时还会核对包含它的文件夹。切库和停止服务会使旧授权与计划失效。文件授权、计划和任务结果返回名称、相对名称及业务 ID。[macOS App 沙箱文件授权](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox)
+具体输入以 `tools/list` 为准。图库打开后，`request_file_access`、`create_catalog` 和 `open_catalog` 同样携带当前 `catalog_session_id`。系统面板返回按用途绑定的 `access_id`。普通 `.phoscat` 一次选择文件即可授权，整库归档和旧后缀目录仍可能请求授权所在文件夹。切库和停止服务会使旧授权与计划失效。文件授权、计划和任务结果返回名称、相对名称及业务 ID。[macOS App 沙箱文件授权](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox)
 
 长操作返回 `job_id`，用 `get_job` 查看 `state`、`phase`、进度、`user_action` 和结果。等待复制冲突时，结果提供 `conflict_id`、文件名和当前允许的策略。取消后继续读终态及已保存结果。任务结果和来源列表用 `next_offset` 分页。工作区的 `agent_job` 表示当前进行中的 Agent 任务。
 

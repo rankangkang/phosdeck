@@ -27229,6 +27229,23 @@
         }
       }
     },
+    "app.openCatalogRecoveryFile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Catalog Recovery File"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开图库恢复文件"
+          }
+        }
+      }
+    },
     "app.openCloseMasks": {
       "extractionState": "manual",
       "comment": "Sources/UI/SettingsSheet.swift: 113",
@@ -27279,6 +27296,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开或完成裁剪 / 污点修复"
+          }
+        }
+      }
+    },
+    "app.openingCatalog": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opening catalog…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在打开目录…"
           }
         }
       }
