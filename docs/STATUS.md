@@ -91,6 +91,7 @@ Lightroom 功能补齐第一批（匹配总曝光、直方图拖动、图上目�
 - **外部编辑往返（用户暂缓）**：参考 [外部编辑](https://helpx.adobe.com/lightroom-classic/desktop/work-with-external-editors/open-lightroom-photos-external-applications.html)。复用 TIFF16 导出生成派生文件、交给外部 App，再核验并作为独立来源入库关联；文件生命周期、身份与中断恢复须单独设计。
 - **离线可编辑代理（用户暂缓）**：参考 [Smart Previews](https://helpx.adobe.com/uk/lightroom-classic/desktop/viewing-photos/lightroom-smart-previews.html)。已有缩略图／预览缓存，原片不可用时仍缺编辑代理；须定义代理格式、来源身份、RAW 基准、重连核验和最终输出规则。
 
+- **相机风格**处于离线验证。X‑S10 PROVIA 的可随包候选在留出照片上改善不一致，α7R V 跨品牌套用时扩展域候选在提亮后增加高光剪切风险。App 接入待不同光线的同机配对和高光复测。
 - 合成后续：实拍核对 HDR／全景来源控制、星轨前景与断点填补及满序列资源占用。
 - 智能蒙版：用户体验现有功能后，再决定对象请求队列、跨照片部位缓存和逐人索引持久化。
 - 模型分发：确认训练数据条款对现有 FaceParsing 权重的适用性，或更换授权依据清晰的权重；补齐运行时依赖声明并确定安装方式。
