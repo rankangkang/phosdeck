@@ -40,7 +40,8 @@ final class CatalogArchiveTests: XCTestCase {
 
     private func verifyCopy(_ file: URL, photoID: String, recipe: EditRecipe, original: CatalogStore, targetDevice: Int32,
                             pipeline: ImagePipeline) async throws {
-        let archived = try CatalogStore(fileURL: file)
+        XCTAssertFalse(CatalogFile.needsFolderAccess(file))
+        let archived = try CatalogStore(fileURL: file, access: AccessLease(url: file))
         let copied = try XCTUnwrap(archived.photo(photoID))
         let copiedRoot = try XCTUnwrap(archived.roots().first)
         XCTAssertEqual(try JSONDecoder().decode(FileIdentity.self, from: copied.identity).device, targetDevice)
@@ -94,16 +95,27 @@ final class CatalogArchiveTests: XCTestCase {
         let output = fixture.target.appendingPathComponent("Archive")
         let exported = try await CatalogArchive.create(catalog: original, destination: output, extras: [extra])
         XCTAssertEqual(exported.lastPathComponent, "Archive.phoscat")
-        XCTAssertTrue(fm.fileExists(atPath: output.appendingPathComponent("Files/source/2026/拍摄/Empty").path))
-        XCTAssertEqual(try String(contentsOf: output.appendingPathComponent("Files/Delivery/Notes.txt"), encoding: .utf8), "notes")
-        XCTAssertEqual(try SafeFileWriter.sha256(output.appendingPathComponent("Files/source/2026/拍摄/A.xmp")), try SafeFileWriter.sha256(sidecar))
+        let contents = output.appendingPathComponent("Archive.phoscat-files")
+        let folder = try contents.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+        XCTAssertEqual(folder.isDirectory, true)
+        XCTAssertEqual(folder.isPackage, false)
+        XCTAssertTrue(fm.fileExists(atPath: contents.appendingPathComponent("source/2026/拍摄/Empty").path))
+        XCTAssertEqual(try String(contentsOf: contents.appendingPathComponent("Delivery/Notes.txt"), encoding: .utf8), "notes")
+        XCTAssertEqual(try SafeFileWriter.sha256(contents.appendingPathComponent("source/2026/拍摄/A.xmp")), try SafeFileWriter.sha256(sidecar))
         XCTAssertEqual(try original.roots().first?.path, root.path)
 
+        do {
+            let opened = try CatalogStore(fileURL: exported, access: AccessLease(url: exported))
+            let openedRoot = try XCTUnwrap(opened.roots().first)
+            XCTAssertTrue(try AccessLease(bookmark: openedRoot.bookmark).scoped)
+        }
         let relocated = fixture.target.appendingPathComponent("Relocated")
         try fm.copyItem(at: output, to: relocated)
         try fm.removeItem(at: output)
         try fm.moveItem(at: fixture.source, to: fixture.directory.appendingPathComponent("Disconnected"))
-        let reopened = try CatalogStore(fileURL: relocated.appendingPathComponent(exported.lastPathComponent))
+        let movedFile = relocated.appendingPathComponent(exported.lastPathComponent)
+        XCTAssertFalse(CatalogFile.needsFolderAccess(movedFile))
+        let reopened = try CatalogStore(fileURL: movedFile, access: AccessLease(url: movedFile))
         let reopenedPhoto = try XCTUnwrap(reopened.photo(photo.id))
         let reopenedRoot = try XCTUnwrap(reopened.roots().first)
         XCTAssertEqual(reopenedPhoto.rating, 5)
@@ -117,7 +129,7 @@ final class CatalogArchiveTests: XCTestCase {
         XCTAssertThrowsError(try ExportService.reauthorizeTarget(id: oldJob.id, directory: fixture.target, catalog: reopened))
         XCTAssertFalse(fm.fileExists(atPath: oldOutput.path))
         XCTAssertEqual(try ExportService.history(catalog: original).logs.first?.state, "failed")
-        XCTAssertTrue(reopenedRoot.path.contains("/Relocated/Files/source"))
+        XCTAssertTrue(reopenedRoot.path.hasSuffix("/Relocated/Archive.phoscat-files/source"))
         XCTAssertNotEqual(reopenedPhoto.identityKey, photo.identityKey)
         let rendered = try await pipeline.render(ImageRequest(photo: reopenedPhoto, root: reopenedRoot, recipe: recipe), longEdge: 40)
         XCTAssertEqual(rendered.image.width, 20)
@@ -126,7 +138,22 @@ final class CatalogArchiveTests: XCTestCase {
         XCTAssertNotEqual(try reopened.photo(photo.id)?.recipe, try original.photo(photo.id)?.recipe)
 
         let second = try await CatalogArchive.create(catalog: reopened, destination: fixture.target.appendingPathComponent("Second"), extras: [])
-        XCTAssertTrue(fm.fileExists(atPath: second.deletingLastPathComponent().appendingPathComponent("Files/Delivery/Notes.txt").path))
+        XCTAssertTrue(fm.fileExists(atPath: second.deletingLastPathComponent().appendingPathComponent("Second.phoscat-files/Delivery/Notes.txt").path))
+    }
+
+    func testRejectsSymbolicLinkInPlaceOfArchiveFiles() async throws {
+        let fixture = ImportTests(); try fixture.setUpWithError(); defer { try? fixture.tearDownWithError() }
+        let fm = FileManager.default
+        let original = try XCTUnwrap(fixture.catalog)
+        let project = fixture.target.appendingPathComponent("Archive")
+        let file = try await CatalogArchive.create(catalog: original, destination: project, extras: [])
+        let contents = project.appendingPathComponent("Archive.phoscat-files")
+        let elsewhere = fixture.target.appendingPathComponent("Elsewhere")
+        try fm.moveItem(at: contents, to: elsewhere)
+        try fm.createSymbolicLink(at: contents, withDestinationURL: elsewhere)
+        XCTAssertThrowsError(try CatalogStore(fileURL: file, access: AccessLease(url: file))) {
+            XCTAssertTrue($0.localizedDescription.contains(contents.path))
+        }
     }
 
     func testMissingFileCancellationAndLateDestinationRaceDoNotPublish() async throws {

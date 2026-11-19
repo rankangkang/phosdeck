@@ -79,8 +79,8 @@
 
 - 固定合成图库的现有数据全部保留（含用户自建蒙版组、调整、历史、输出记录）；验证产生的历史照实保留，不回灌旧备份，不为字节一致覆盖图库。
 - 图库后缀统一为 `.phoscat`；用户要求旧 `.omlcat`／`.omlrcat` 继续可打开，并在打开时确认是否在原位置无覆盖改名。只改后缀、不改内部数据；不迁移旧 schema，用户重新决定时再考虑。
-- 普通 `.phoscat` 可从文件菜单单选打开、在访达中打开或从最近目录返回。用户要求目录文件只选择一次，这三个入口参考 Lightroom Classic 与 Capture One。锁与恢复日志通过 macOS 的关联文件机制授权，整库归档和旧后缀改名按需取得文件夹授权。项目结构或系统权限机制改变时重新核对。[Lightroom Classic](https://helpx.adobe.com/lightroom-classic/desktop/manage-catalogs-and-files/create-catalogs.html) · [Capture One](https://support.captureone.com/hc/en-us/articles/360003108698-Complete-Guide-to-Using-Catalogs)
-- 用户要求跨盘归档为独立项目，保存图库数据库和选定的完整项目文件夹，可从新盘继续编辑。独立数据库备份仍保留，项目归档范围由用户重新决定时调整。
+- `.phoscat` 可从文件菜单单选打开、在访达中打开或从最近目录返回。三个入口参考 Lightroom Classic 与 Capture One。锁、恢复日志和新整库归档的原片文件夹通过 macOS 的关联文件机制授权。`Files` 布局的项目和旧后缀改名按需取得文件夹授权。系统权限机制改变时重新核对。[Lightroom Classic](https://helpx.adobe.com/lightroom-classic/desktop/manage-catalogs-and-files/create-catalogs.html) · [Capture One](https://support.captureone.com/hc/en-us/articles/360003108698-Complete-Guide-to-Using-Catalogs)
+- 用户选定 Lightroom Classic 的整库迁移交互。归档为普通项目文件夹，并排保存 `.phoscat` 与同名的 `.phoscat-files` 原片文件夹，复制时保留相对路径及完整项目资料，到新位置直接打开 `.phoscat`。用户重新决定项目归档范围时调整。[Adobe 迁移指南](https://helpx.adobe.com/lightroom-classic/desktop/manage-catalogs-and-files/create-catalogs.html) · [Apple 关联文件授权](https://developer.apple.com/documentation/foundation/nsfilepresenter/primarypresenteditemurl)
 - 改 schema 时如需更新固定合成图库，须用户再次明确许可；此前的单库例外不可复用，正式 App 仍不加 schema 迁移。
 - 缺少当前冻结快照字段的旧输出任务拒绝重试，其数据与成片原样保留。
 - 模型权重、自动测试样片和对照测量输出放在已忽略的 `build/` 下，用户体验数据按 [常驻体验目录约定](../AGENTS.md) 保留；不含私人信息的合成图对照记录、校准工具和回归测试保留在仓库。

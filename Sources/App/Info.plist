@@ -35,6 +35,20 @@
 			<key>NSIsRelatedItemType</key>
 			<true/>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Phosdeck Archive Files</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>None</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>dev.cmkk.oh-my-lrc.archive-files</string>
+			</array>
+			<key>NSIsRelatedItemType</key>
+			<true/>
+		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
@@ -71,6 +85,23 @@
 					<string>phoscat</string>
 					<string>omlcat</string>
 					<string>omlrcat</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.folder</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Phosdeck Archive Files</string>
+			<key>UTTypeIdentifier</key>
+			<string>dev.cmkk.oh-my-lrc.archive-files</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>phoscat-files</string>
 				</array>
 			</dict>
 		</dict>

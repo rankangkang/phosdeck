@@ -4,6 +4,7 @@ import GRDB
 struct CatalogArchive {
     private static let indexName = ".phosdeck-archive.json"
     private static let stageFolder = ".phosdeck-plugin-stages"
+    private static let filesExtension = "phoscat-files"
 
     struct Index: Codable {
         let catalogID: String
@@ -34,12 +35,13 @@ struct CatalogArchive {
         }
         let extraLeases = extras.map { AccessLease(url: $0) }
         defer { withExtendedLifetime((recorded, extraLeases)) {} }
-        let existing = try loadIndex(file: catalog.fileURL, database: catalog.database)
-        let archivedFolders: [URL] = try (existing?.folders ?? []).map { relative in
-            let folder = try ProjectCopy.child(relative, of: catalog.directory)
-            guard folder.resolvingSymlinksInPath().path == folder.path else { throw ProjectCopy.changed(folder) }
-            return folder
-        }
+        let archivedFolders: [URL] = try loadProject(file: catalog.fileURL, database: catalog.database).map { archive in
+            try archive.index.folders.map { relative in
+                let folder = try ProjectCopy.child(relative, of: archive.directory)
+                guard folder.resolvingSymlinksInPath().path == folder.path else { throw ProjectCopy.changed(folder) }
+                return folder
+            }
+        } ?? []
         let directories = Set((recorded.map { $0.1.url } + archivedFolders + extras).map { $0.resolvingSymlinksInPath().standardizedFileURL })
         let top = directories.sorted { $0.path < $1.path }.filter { folder in
             !directories.contains { $0.path != folder.path && ProjectCopy.contains($0, folder) }
@@ -52,6 +54,9 @@ struct CatalogArchive {
         let project = try ProjectCopy(destination: destination)
         defer { project.discard() }
         let file = project.staging.appendingPathComponent(CatalogFile.filename(destination.lastPathComponent))
+        let contents = filesDirectory(beside: file)
+        let finalContents = destination.appendingPathComponent(contents.lastPathComponent, isDirectory: true)
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: false)
         try catalog.backup(to: file)
         let database = try DatabaseQueue(path: file.path)
         defer { try? database.close() }
@@ -70,25 +75,27 @@ struct CatalogArchive {
         var mappings: [String: String] = [:]
         var entries: [Entry] = []
         var folders: [String] = []
-        var labels = Set<String>()
-        let catalogFiles = Set(["", ".lock", "-journal", "-wal", "-shm"].map { catalog.fileURL.path + $0 } +
-                               [CatalogLock.url(for: catalog.fileURL).path, catalog.directory.appendingPathComponent(indexName).path,
-                                catalog.directory.appendingPathComponent(stageFolder).path])
+        var labels = Set([indexName, stageFolder].map(ExportNamingPlanner.collisionKey))
+        var catalogFiles = Set(["", ".lock", "-journal", "-wal", "-shm"].map { catalog.fileURL.path + $0 })
+        catalogFiles.insert(CatalogLock.url(for: catalog.fileURL).path)
+        for directory in [catalog.directory, filesDirectory(beside: catalog.fileURL)] {
+            catalogFiles.insert(directory.appendingPathComponent(indexName).path)
+            catalogFiles.insert(directory.appendingPathComponent(stageFolder).path)
+        }
         for folder in top {
             try Task.checkCancellation()
             let name = folder.lastPathComponent.isEmpty ? "Files" : folder.lastPathComponent
             var label = name
             var suffix = 2
             while !labels.insert(ExportNamingPlanner.collisionKey(label)).inserted { label = "\(name) \(suffix)"; suffix += 1 }
-            let relative = "Files/" + label
-            folders.append(relative)
+            folders.append(label)
             for root in roots {
                 let rootURL = URL(fileURLWithPath: root.path, isDirectory: true)
                 guard ProjectCopy.contains(folder, rootURL) else { continue }
                 let suffix = rootURL.path == folder.path ? "" : "/" + rootURL.path.dropFirst(folder.path == "/" ? 1 : folder.path.count + 1)
-                mappings[root.id] = relative + suffix
+                mappings[root.id] = label + suffix
             }
-            try collect(folder, relative: relative, excluding: catalogFiles, entries: &entries)
+            try collect(folder, relative: label, excluding: catalogFiles, entries: &entries)
         }
         var byPath: [String: Entry] = [:]
         var paths = Set<String>()
@@ -112,7 +119,7 @@ struct CatalogArchive {
             digests[relative] = digest
         }
         if !pluginStages.isEmpty {
-            let folder = project.staging.appendingPathComponent(stageFolder, isDirectory: true)
+            let folder = contents.appendingPathComponent(stageFolder, isDirectory: true)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
             for stage in pluginStages {
                 let source = try PluginStageFiles.url(stage, create: false)
@@ -131,7 +138,7 @@ struct CatalogArchive {
         var done = 0
         for entry in entries {
             try Task.checkCancellation()
-            let target = try ProjectCopy.child(entry.relative, of: project.staging)
+            let target = try ProjectCopy.child(entry.relative, of: contents)
             if entry.directory {
                 try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
             } else {
@@ -147,14 +154,14 @@ struct CatalogArchive {
             try Task.checkCancellation()
             if entry.directory {
                 guard try ProjectCopy.directoryIdentity(entry.url) == entry.identity else { throw ProjectCopy.changed(entry.url) }
-                try SafeFileWriter.flush(ProjectCopy.child(entry.relative, of: project.staging))
+                try SafeFileWriter.flush(ProjectCopy.child(entry.relative, of: contents))
             } else {
                 guard try FileIdentity.read(entry.url) == entry.identity else { throw ProjectCopy.changed(entry.url) }
             }
         }
-        if !top.isEmpty { try SafeFileWriter.flush(project.staging.appendingPathComponent("Files", isDirectory: true)) }
+        if !pluginStages.isEmpty { try SafeFileWriter.flush(contents.appendingPathComponent(stageFolder, isDirectory: true)) }
         let locations = try mappings.mapValues { relative in
-            Location(path: relative, directoryIdentity: try ProjectCopy.directoryIdentity(ProjectCopy.child(relative, of: project.staging)).key)
+            Location(path: relative, directoryIdentity: try ProjectCopy.directoryIdentity(ProjectCopy.child(relative, of: contents)).key)
         }
 
         let id = UUID().uuidString
@@ -162,7 +169,7 @@ struct CatalogArchive {
             try db.execute(sql: "UPDATE catalogMeta SET id=?", arguments: [id])
             for root in roots {
                 guard let relative = mappings[root.id] else { throw missing(root.path) }
-                let new = try ProjectCopy.child(relative, of: destination)
+                let new = try ProjectCopy.child(relative, of: finalContents)
                 try db.execute(sql: "UPDATE storageRoot SET path=?,bookmark=? WHERE id=?", arguments: [new.path, Data(), root.id])
             }
             for source in sources {
@@ -183,7 +190,8 @@ struct CatalogArchive {
         try CatalogStore.validate(database)
         try database.close()
         try SafeFileWriter.flush(file)
-        try writeIndex(Index(catalogID: id, roots: locations, folders: folders), in: project.staging)
+        try writeIndex(Index(catalogID: id, roots: locations, folders: folders), in: contents)
+        try SafeFileWriter.flush(contents)
         let fileIdentity = try FileIdentity.read(file)
         try project.publish()
         let published = destination.appendingPathComponent(file.lastPathComponent)
@@ -195,21 +203,23 @@ struct CatalogArchive {
     /// Regrant access within the opened project and rebind verified copies after a move to another disk.
     static func restoreRoots(file: URL, database: DatabaseQueue) throws -> [String] {
         let parent = file.deletingLastPathComponent()
-        guard let index = try loadIndex(file: file, database: database) else { return [] }
+        guard let archive = try loadProject(file: file, database: database) else { return [] }
+        let prefix = archive.directory.path == parent.path ? "" : archive.directory.lastPathComponent + "/"
         let stages = try database.read { try PluginStageFiles.references(in: $0) }
-        let stageWarnings = try restorePluginStages(stages, from: parent.appendingPathComponent(stageFolder, isDirectory: true))
+        let stageWarnings = try restorePluginStages(stages, from: archive.directory.appendingPathComponent(stageFolder, isDirectory: true))
         let roots = try database.read { try StorageRoot.fetchAll($0) }
         var updates: [(StorageRoot, URL, Data, [(String, FileIdentity?)])] = []
         for root in roots {
             try Task.checkCancellation()
-            guard let mapping = index.roots[root.id], root.path.hasSuffix("/" + mapping.path) else { continue }
-            let location = try ProjectCopy.child(mapping.path, of: parent)
+            guard let mapping = archive.index.roots[root.id], root.path.hasSuffix("/" + prefix + mapping.path) else { continue }
+            let location = try ProjectCopy.child(mapping.path, of: archive.directory)
             guard location.resolvingSymlinksInPath().path == location.path else { throw ProjectCopy.changed(location) }
             let lease = try? AccessLease(bookmark: root.bookmark)
             let folderIdentity = try? ProjectCopy.directoryIdentity(location)
             let present = folderIdentity != nil
             let sameDirectory = folderIdentity?.key == mapping.directoryIdentity
-            let authorized = root.path == location.path && lease?.url.resolvingSymlinksInPath().path == location.path
+            let authorized = root.path == location.path && lease?.scoped == true &&
+                lease?.url.resolvingSymlinksInPath().path == location.path
             let alreadyVerified = try authorized && !sameDirectory && present && sourceIdentityMatches(in: location, root: root, database: database)
             if authorized && (sameDirectory || alreadyVerified) { continue }
             let bookmark = present ? try AccessLease.bookmark(location, readOnly: true) : Data()
@@ -265,8 +275,30 @@ struct CatalogArchive {
         return failures == 0 ? [] : [L10n.text("plugins.archiveStagesMissing", defaultValue: "\(failures) Warm Print stage files from the archive could not be restored.")]
     }
 
+    static func filesDirectory(beside file: URL) -> URL {
+        file.deletingPathExtension().appendingPathExtension(filesExtension)
+    }
+
+    static func hasIndex(in directory: URL) -> Bool {
+        FileManager.default.fileExists(atPath: directory.appendingPathComponent(indexName).path)
+    }
+
     static func hasIndex(beside file: URL) -> Bool {
-        FileManager.default.fileExists(atPath: file.deletingLastPathComponent().appendingPathComponent(indexName).path)
+        hasIndex(in: filesDirectory(beside: file)) || hasIndex(in: file.deletingLastPathComponent())
+    }
+
+    static func accessFiles(beside file: URL) throws -> AccessLease? {
+        let directory = filesDirectory(beside: file)
+        guard hasIndex(in: directory) else { return nil }
+        let identity = try ProjectCopy.directoryIdentity(directory)
+        return try CatalogRelatedFile.coordinate(directory, beside: file) { url in
+            guard url.standardizedFileURL.path == directory.path,
+                  try ProjectCopy.directoryIdentity(url) == identity else { throw ProjectCopy.changed(directory) }
+            let lease = try AccessLease(bookmark: AccessLease.bookmark(url, readOnly: true))
+            guard lease.scoped, lease.url.standardizedFileURL.path == directory.path,
+                  try ProjectCopy.directoryIdentity(lease.url) == identity else { throw ProjectCopy.changed(directory) }
+            return lease
+        }
     }
 
     static func writeIndex(_ index: Index, in directory: URL) throws {
@@ -282,13 +314,18 @@ struct CatalogArchive {
         }
     }
 
-    private static func loadIndex(file: URL, database: DatabaseQueue) throws -> Index? {
-        guard hasIndex(beside: file) else { return nil }
-        let url = file.deletingLastPathComponent().appendingPathComponent(indexName)
-        let identity = try FileIdentity.read(url)
-        guard identity.size <= 1_048_576 else { throw ProjectCopy.changed(url) }
-        let index = try JSONDecoder().decode(Index.self, from: Data(contentsOf: url))
-        return try database.read { try String.fetchOne($0, sql: "SELECT id FROM catalogMeta") == index.catalogID } ? index : nil
+    private static func loadProject(file: URL, database: DatabaseQueue) throws -> (directory: URL, index: Index)? {
+        for directory in [filesDirectory(beside: file), file.deletingLastPathComponent()] where hasIndex(in: directory) {
+            _ = try ProjectCopy.directoryIdentity(directory)
+            let url = directory.appendingPathComponent(indexName)
+            let identity = try FileIdentity.read(url)
+            guard identity.size <= 1_048_576 else { throw ProjectCopy.changed(url) }
+            let index = try JSONDecoder().decode(Index.self, from: Data(contentsOf: url))
+            if try database.read({ try String.fetchOne($0, sql: "SELECT id FROM catalogMeta") == index.catalogID }) {
+                return (directory, index)
+            }
+        }
+        return nil
     }
 
     private static func mapped(_ relative: String, root: String, in mappings: [String: String]) throws -> String {

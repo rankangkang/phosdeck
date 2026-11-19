@@ -11,7 +11,9 @@ enum CatalogFile {
 
     static func needsFolderAccess(_ url: URL) -> Bool {
         let file = url.resolvingSymlinksInPath()
-        return file.pathExtension.lowercased() != pathExtension || CatalogArchive.hasIndex(beside: file)
+        return file.pathExtension.lowercased() != pathExtension ||
+            (!CatalogArchive.hasIndex(in: CatalogArchive.filesDirectory(beside: file)) &&
+             CatalogArchive.hasIndex(in: file.deletingLastPathComponent()))
     }
 
     static func filename(_ name: String) -> String {

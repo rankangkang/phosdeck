@@ -93,10 +93,11 @@ final class CatalogStore: @unchecked Sendable {
             do { try Self.validate(candidate); try candidate.close() }
             catch { try? candidate.close(); throw LRCError(L10n.text("app.cannotOpenCatalogTheFileIsDamagedItsVersion", defaultValue: "Cannot open catalog: the file is damaged, its version is unsupported, or it is not a Phosdeck catalog.\n") + error.localizedDescription) }
         }
+        let archiveFilesAccess = try fileAccessOnly ? CatalogArchive.accessFiles(beside: self.fileURL) : nil
         var configuration = Configuration()
         configuration.prepareDatabase { db in
             // The connection retains its lock and scopes through SQLite's close.
-            withExtendedLifetime((access, recoveryAccess, lock)) {}
+            withExtendedLifetime((access, recoveryAccess, archiveFilesAccess, lock)) {}
             db.add(function: DatabaseFunction("photo_filename", argumentCount: 1, pure: true) { values in
                 guard let path = String.fromDatabaseValue(values[0]) else { return nil }
                 return URL(fileURLWithPath: path).lastPathComponent
