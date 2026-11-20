@@ -15,6 +15,7 @@ struct DevelopPanel: View {
         guard let source = local ? model.recipe : model.editorRecipe else { return nil }
         return local ? model.selectedMask?.editingRecipe(from: source) : source
     }
+    var showsCameraLook: Bool { !local && recipe?.isRaster == false }
     private func change(_ edit: (inout EditRecipe) -> Void, commit: Bool = true) {
         if local { model.changeLocalDevelop(edit, commit: commit) }
         else { model.changeRecipe(edit, commit: commit) }
@@ -466,9 +467,9 @@ struct DevelopPanel: View {
         VStack(spacing: 0) {
             keyField(L10n.text("app.treatment", defaultValue: "Treatment"), [KeyOption(false, L10n.text("app.color_1139", defaultValue: "Color")), KeyOption(true, L10n.text("app.blackWhite", defaultValue: "Black & White"))],
                      Binding(get: { recipe?.develop.blackAndWhite ?? false }, set: { v in change { $0.develop.blackAndWhite = v } }))
-            if !local, recipe?.isRaster == false {
-                CameraLookRow(selection: recipe?.cameraLook, onSelect: model.selectCameraLook,
-                              onPreview: model.previewCameraLook, onEndPreview: model.endCameraLookPreview)
+            if showsCameraLook {
+                CameraLookRow(selection: recipe?.cameraLook, browsing: model.cameraLookBrowserOpen,
+                              onBrowse: model.toggleCameraLookBrowser)
                     .id(model.activeID)
             }
             HStack(spacing: Metrics.gap) {
@@ -712,166 +713,6 @@ struct DevelopPanel: View {
                             value: (recipe?[keyPath: key] ?? 0) * scale + offset,
                             range: range, step: step, digits: digits, scale: scale, offset: offset, reset: reset, unit: unit)
             .equatable()
-    }
-}
-
-/// A RAW-only camera-look selector aligned with the Basic panel's key rows.
-private struct CameraLookRow: View {
-    @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.preservesControlAppearance) private var preservesAppearance
-    @State private var browsing = false
-    @State private var hoveredLook: String?
-    let selection: CameraLookSelection?
-    let onSelect: (CameraLookSelection?) -> Void
-    let onPreview: (CameraLookSelection?) -> Void
-    let onEndPreview: () -> Void
-
-    private var library: CameraLookLibrary { .shared }
-    private var defaultTitle: String { L10n.text("cameraLook.default", defaultValue: "Default Rendering") }
-    private var browseTitle: String { L10n.text("cameraLook.browse", defaultValue: "Browse Camera Looks") }
-    private var currentTitle: String {
-        selection.map { library.title(for: $0) } ?? defaultTitle
-    }
-
-    var body: some View {
-        let sections = library.menuSections()
-        let selectableSelections = Set(sections.flatMap { $0.entries.map(\.selection) })
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .top, spacing: Metrics.gap) {
-                Text(L10n.text("cameraLook.label", defaultValue: "Camera Look"))
-                    .frame(width: Metrics.rowLabel, height: Metrics.key, alignment: .leading)
-                Menu {
-                    Toggle(isOn: Binding(get: { selection == nil }, set: { _ in onSelect(nil) })) {
-                        Text(defaultTitle)
-                    }
-                    if let selection, !selectableSelections.contains(selection) {
-                        Toggle(isOn: .constant(true)) {
-                            Text(library.title(for: selection))
-                        }
-                    }
-                    ForEach(sections, id: \.group.id) { section in
-                        Divider()
-                        Section(section.group.displayTitle()) {
-                            ForEach(section.entries) { entry in
-                                Toggle(isOn: Binding(get: { selection == entry.selection },
-                                                     set: { _ in onSelect(entry.selection) })) {
-                                    Text(library.title(for: entry.selection))
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(currentTitle)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        Spacer(minLength: 4)
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(isEnabled || preservesAppearance ? Theme.textSecondary : Theme.textDisabled)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .keySurface(selected: selection != nil, enabled: isEnabled, preservesAppearance: preservesAppearance)
-                .accessibilityIdentifier("camera-look-menu")
-                .accessibilityLabel(L10n.text("cameraLook.label", defaultValue: "Camera Look"))
-                .accessibilityValue(currentTitle)
-                .help(L10n.text("cameraLook.help", defaultValue: "Choose Default Rendering or a camera look for this RAW photo. Existing exposure, white balance, masks, and other adjustments are preserved."))
-                Button {
-                    browsing.toggle()
-                } label: {
-                    Image(systemName: "square.grid.2x2")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .buttonStyle(.key(selected: browsing, padding: 9))
-                .accessibilityIdentifier("camera-look-browser")
-                .accessibilityLabel(browseTitle)
-                .accessibilityAddTraits(browsing ? .isSelected : [])
-                .help(browseTitle)
-                .popover(isPresented: $browsing, arrowEdge: .trailing) {
-                    browser(sections)
-                }
-            }
-            if let selection, library.entry(for: selection)?.diagnostic == true {
-                Text(L10n.text("cameraLook.diagnosticNote", defaultValue: "Test lookup table for camera-look pipeline verification only, not a calibrated camera profile."))
-                    .font(.caption11)
-                    .foregroundStyle(Theme.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.vertical, 2)
-        .onChange(of: browsing) { _, open in
-            if !open { endBrowserPreview() }
-        }
-        .onChange(of: isEnabled) { _, enabled in
-            if !enabled { browsing = false }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-            if browsing { browsing = false }
-        }
-        .onDisappear { endBrowserPreview() }
-    }
-
-    private func browser(_ sections: [(group: CameraLookGroup, entries: [CameraLookEntry])]) -> some View {
-        let count = 1 + sections.reduce(0) { $0 + $1.entries.count }
-        let height = CGFloat(count) * (Metrics.key + 4) + CGFloat(sections.count) * 28 + 4
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(browseTitle).font(.headline).accessibilityAddTraits(.isHeader)
-                Spacer()
-                Button(L10n.text("app.done", defaultValue: "Done")) { browsing = false }
-                    .buttonStyle(.key(height: 22))
-                    .keyboardShortcut(.cancelAction)
-            }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
-                    browserChoice(defaultTitle, selection: nil)
-                    ForEach(sections, id: \.group.id) { section in
-                        SubgroupLabel(section.group.displayTitle())
-                        ForEach(section.entries) { entry in
-                            browserChoice(library.title(for: entry.selection), selection: entry.selection)
-                        }
-                    }
-                }.padding(2)
-            }.frame(height: min(height, 340))
-        }
-        .padding(12)
-        .frame(width: 274)
-        .background(Theme.panel)
-    }
-
-    private func browserChoice(_ title: String, selection candidate: CameraLookSelection?) -> some View {
-        let selected = selection == candidate
-        let key = candidate.map { "\($0.id)@\($0.version)" } ?? "default"
-        return Button {
-            onSelect(candidate)
-        } label: {
-            HStack {
-                Text(title)
-                Spacer()
-                if selected { Image(systemName: "checkmark").accessibilityHidden(true) }
-            }
-        }
-        .buttonStyle(.key(selected: selected, expand: true))
-        .accessibilityIdentifier("camera-look-choice-" + key)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .onHover { inside in
-            if inside {
-                hoveredLook = key
-                onPreview(candidate)
-            } else if hoveredLook == key {
-                endBrowserPreview()
-            }
-        }
-    }
-
-    private func endBrowserPreview() {
-        hoveredLook = nil
-        onEndPreview()
     }
 }
 

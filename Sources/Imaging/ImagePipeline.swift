@@ -72,6 +72,8 @@ extension RAWDetailSettings {
 actor ImagePipeline {
     /// Shared serialized analysis lane, separate from interactive previews.
     static let automaticAnalysis = ImagePipeline()
+    /// Small browser thumbnails reuse a RAW decode without occupying the canvas lane.
+    static let cameraLookThumbnails = ImagePipeline()
     private let context: CIContext
     private let developContext: CIContext
     static let outputSpace = CGColorSpace(name: CGColorSpace.sRGB)!

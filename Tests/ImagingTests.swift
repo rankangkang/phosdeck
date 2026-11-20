@@ -1050,6 +1050,16 @@ final class ImagingTests: XCTestCase {
         let narrow = WorkspaceDimensions.widths(available: 960, left: 232, right: 336, showLeft: true, showRight: true)
         XCTAssertEqual(narrow.left, 0, "The optional left panel yields before the photo drops below its minimum")
         XCTAssertGreaterThanOrEqual(960 - narrow.right - 1, 480)
+
+        for seamWidth: CGFloat in [1, 2] {
+            let available = 1000 - 2 * (Metrics.rim + seamWidth)
+            let dock = WorkspaceDimensions.cameraLookDockWidth(available: available, seamWidth: seamWidth)
+            let withBrowser = WorkspaceDimensions.widths(available: available - dock,
+                left: 232, right: 336, showLeft: true, showRight: true, seamWidth: seamWidth)
+            XCTAssertLessThan(dock, Metrics.cameraLookDockWidth)
+            XCTAssertEqual(withBrowser.left, 0)
+            XCTAssertGreaterThanOrEqual(available - dock - withBrowser.right - seamWidth, Metrics.photoMinWidth)
+        }
     }
 
     @MainActor func testWorkspaceKeysRespectEditorsAndSliderFocus() throws {

@@ -13,6 +13,7 @@ private struct WorkspaceRegion<Content: View>: View {
 struct WorkspaceView: View {
     @Bindable var model: AppModel
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.displayScale) private var displayScale
     @AppStorage("showLeftPanel") private var left = true
     @AppStorage("showRightPanel") private var right = true
     @AppStorage("showFilmstrip") private var film = true
@@ -67,8 +68,12 @@ struct WorkspaceView: View {
         GeometryReader { geometry in
         let showMasks = model.editMode && model.maskMode
         let maskDockWidth: CGFloat = showMasks ? (maskListExpanded ? 266 : 26) : 0
-        let widths = WorkspaceDimensions.widths(available: geometry.size.width - maskDockWidth - 2 * (Metrics.rim + 1),
-                                                left: leftWidth, right: rightWidth, showLeft: left, showRight: right)
+        let seamWidth = 2 / max(1, displayScale)
+        let available = geometry.size.width - 2 * (Metrics.rim + seamWidth)
+        let lookDockWidth = model.cameraLookBrowserOpen && right && model.workspaceMode == .develop && model.developTool == .adjust
+            ? WorkspaceDimensions.cameraLookDockWidth(available: available, seamWidth: seamWidth) : 0
+        let widths = WorkspaceDimensions.widths(available: available - maskDockWidth - lookDockWidth,
+                                                left: leftWidth, right: rightWidth, showLeft: left, showRight: right, seamWidth: seamWidth)
         VStack(spacing: 0) {
             WorkspaceRegion { topBar }
             Seam()
@@ -76,7 +81,7 @@ struct WorkspaceView: View {
                 RimToggle(edge: .leading, isOpen: widths.left > 0, label: L10n.text("app.leftPanel", defaultValue: "Left Panel"), shortcut: "⌥⌘1",
                           blocked: left && widths.left == 0 ? L10n.text("app.theWindowIsTooNarrowTheLeftPanelWas", defaultValue: "The window is too narrow; the left panel was collapsed. Hide the right panel or widen the window to show it") : nil) { left.toggle() }
                 Seam(axis: .vertical)
-                panels(widths: widths, showMasks: showMasks, maskDockWidth: maskDockWidth,
+                panels(widths: widths, showMasks: showMasks, maskDockWidth: maskDockWidth, lookDockWidth: lookDockWidth,
                        compactMasks: showMasks && geometry.size.height < Metrics.compactMaskWindowHeight)
                 Seam(axis: .vertical)
                 RimToggle(edge: .trailing, isOpen: right, label: L10n.text("app.rightPanel", defaultValue: "Right Panel"), shortcut: "⌥⌘2") { right.toggle() }
@@ -113,7 +118,9 @@ struct WorkspaceView: View {
             if utilityOpen { model.endAdjustmentPreview(); clippingPreview.cancel() }
         }
         .onChange(of: model.activeID) { clippingPreview.cancel() }
-        .onChange(of: model.developTool) { clippingPreview.cancel(); model.displayPixelReadout = nil }
+        .onChange(of: model.developTool) { clippingPreview.cancel(); model.displayPixelReadout = nil; model.closeCameraLookBrowser() }
+        .onChange(of: model.canEdit) { _, available in if !available { model.closeCameraLookBrowser() } }
+        .onChange(of: right) { _, visible in if !visible { model.closeCameraLookBrowser() } }
         .onChange(of: model.showShadowClipping) { clippingPreview.cancel() }
         .onChange(of: model.showHighlightClipping) { clippingPreview.cancel() }
         .onChange(of: model.manualOrderEnabled) { model.filterCriteriaChanged() }
@@ -155,12 +162,12 @@ struct WorkspaceView: View {
         model.displayPixelReadout = nil; clippingPreview.cancel()
     }
     private func editModeChanged() {
-        if !model.editMode { model.clearSavedEditPreview() }
+        if !model.editMode { model.clearSavedEditPreview(); model.closeCameraLookBrowser() }
         if !model.editMode { model.maskMode = false }
         if !model.editMode && model.cropMode { model.cropMode = false; model.requestPreview() }
         model.persistWorkspace()
     }
-    private func panels(widths: (left: CGFloat, right: CGFloat), showMasks: Bool, maskDockWidth: CGFloat, compactMasks: Bool) -> some View {
+    private func panels(widths: (left: CGFloat, right: CGFloat), showMasks: Bool, maskDockWidth: CGFloat, lookDockWidth: CGFloat, compactMasks: Bool) -> some View {
         HStack(spacing: 0) {
             if widths.left > 0 {
                 Group {
@@ -181,14 +188,20 @@ struct WorkspaceView: View {
                         filterbar
                         if viewMode.wrappedValue != .grid { Seam() }
                     }
-                    WorkspaceRegion { centerContent(showMasks: showMasks) }
-                        .overlay(alignment: .bottom) {
-                            if let notice = model.notice { WorkspaceNoticeBadge(text: notice.text).padding(.bottom, 18).id(notice.id) }
+                    HStack(spacing: 0) {
+                        WorkspaceRegion { centerContent(showMasks: showMasks) }
+                            .overlay(alignment: .bottom) {
+                                if let notice = model.notice { WorkspaceNoticeBadge(text: notice.text).padding(.bottom, 18).id(notice.id) }
+                            }
+                        if lookDockWidth > 0 {
+                            Seam(axis: .vertical).frame(width: 2)
+                            CameraLookBrowser(model: model).frame(width: lookDockWidth - 2)
                         }
+                    }
                     Seam()
                     WorkspaceRegion { centerToolbar }
                 }.frame(width: center.size.width, height: center.size.height)
-            }.frame(minWidth: showMasks ? 200 + maskDockWidth : 440)
+            }.frame(minWidth: showMasks ? 200 + maskDockWidth : lookDockWidth > 0 ? Metrics.photoMinWidth + lookDockWidth : 440)
             if widths.right > 0 {
                 WorkspaceResizeHandle(value: $rightWidth, range: Metrics.rightPanel.range, initial: Metrics.rightPanel.initial, direction: -1, label: L10n.text("app.rightPanelWidth", defaultValue: "Right Panel Width"))
                 WorkspaceRegion { inspector(compactMasks: compactMasks) }.frame(width: widths.right)
@@ -1601,14 +1614,20 @@ struct PhotoLoadingIndicator: View {
 /// Reserve a usable canvas even when both stored panel widths exceed the current window.
 /// Narrow windows drop the optional left panel before squeezing the inspector's values.
 enum WorkspaceDimensions {
-    static func widths(available: CGFloat, left: Double, right: Double, showLeft: Bool, showRight: Bool) -> (left: CGFloat, right: CGFloat) {
+    static func cameraLookDockWidth(available: CGFloat, seamWidth: CGFloat) -> CGFloat {
+        let space = available - Metrics.photoMinWidth - Metrics.rightPanel.range.lowerBound - seamWidth
+        return min(Metrics.cameraLookDockWidth, max(0, floor(space)))
+    }
+
+    static func widths(available: CGFloat, left: Double, right: Double, showLeft: Bool, showRight: Bool,
+                       seamWidth: CGFloat = 1) -> (left: CGFloat, right: CGFloat) {
         let leftRange = Metrics.leftPanel.range, rightRange = Metrics.rightPanel.range
         let minR = showRight ? rightRange.lowerBound : 0
-        let fitsLeft = showLeft && available - minR - Metrics.photoMinWidth - 2 >= leftRange.lowerBound
+        let fitsLeft = showLeft && available - minR - Metrics.photoMinWidth - 2 * seamWidth >= leftRange.lowerBound
         let l = fitsLeft ? min(leftRange.upperBound, max(leftRange.lowerBound, left)) : 0
         let r = showRight ? min(rightRange.upperBound, max(rightRange.lowerBound, right)) : 0
         let minL = fitsLeft ? leftRange.lowerBound : 0
-        let seams: CGFloat = (fitsLeft ? 1 : 0) + (showRight ? 1 : 0)
+        let seams = (fitsLeft ? seamWidth : 0) + (showRight ? seamWidth : 0)
         let budget = max(minL + minR, available - Metrics.photoMinWidth - seams)
         let extra = l + r - minL - minR
         let ratio = extra > 0 ? min(1, max(0, budget - minL - minR) / extra) : 1

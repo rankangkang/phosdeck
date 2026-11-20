@@ -159,6 +159,7 @@ enum Metrics {
     static let leftPanel = (initial: 232.0, range: 200.0...280.0)
     static let rightPanel = (initial: 336.0, range: 304.0...400.0)
     static let photoMinWidth: CGFloat = 480
+    static let cameraLookDockWidth: CGFloat = 266
     static let compactMaskWindowHeight: CGFloat = 800
     static let histogramPlot = (regular: CGFloat(80), compact: CGFloat(36))
     static let padding: CGFloat = 16

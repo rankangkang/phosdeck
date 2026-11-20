@@ -3,6 +3,37 @@ import CryptoKit
 import Foundation
 import simd
 
+/// Saved develop inputs shared by all look previews for the current photo.
+struct CameraLookThumbnailSource: Equatable {
+    let selection: CameraLookSelection?
+    private let photo: Photo
+    private let root: StorageRoot
+    private let recipe: EditRecipe
+
+    init(photo: Photo, root: StorageRoot, recipe: EditRecipe) {
+        self.selection = recipe.cameraLook
+        self.photo = photo
+        self.root = root
+        var base = recipe
+        base.cameraLook = nil
+        self.recipe = base
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.photo.id == rhs.photo.id && lhs.photo.relativePath == rhs.photo.relativePath
+            && lhs.photo.identity == rhs.photo.identity && lhs.photo.digest == rhs.photo.digest
+            && lhs.photo.availability == rhs.photo.availability
+            && lhs.root.id == rhs.root.id && lhs.root.path == rhs.root.path && lhs.root.bookmark == rhs.root.bookmark
+            && lhs.recipe == rhs.recipe
+    }
+
+    func request(for selection: CameraLookSelection?) -> ImageRequest {
+        var value = recipe
+        value.setCameraLook(selection)
+        return ImageRequest(photo: photo, root: root, recipe: value)
+    }
+}
+
 /// Versioned camera look identifier stored independently on a RAW `EditRecipe`.
 /// `nil` on `EditRecipe.cameraLook` represents the default native RAW rendering.
 struct CameraLookSelection: Codable, Equatable, Hashable, Sendable {

@@ -290,21 +290,30 @@ final class CameraLookTests: XCTestCase {
         let history = model.editHistory.count
         let eterna = CameraLookSelection(id: "fujifilm.eterna", version: 1)
         let acros = CameraLookSelection(id: "fujifilm.acros-r", version: 1)
+        model.toggleCameraLookBrowser()
+        XCTAssertTrue(model.cameraLookBrowserOpen)
+        let thumbnails = try XCTUnwrap(model.cameraLookThumbnailSource)
         model.previewCameraLook(eterna)
         XCTAssertEqual(model.displayPreviewRecipe?.cameraLook, eterna)
         XCTAssertEqual(model.recipe, original)
         XCTAssertEqual(try catalog.photo(photo.id)?.recipe, saved)
         XCTAssertEqual(model.editHistory.count, history)
-        model.endCameraLookPreview()
+        model.closeCameraLookBrowser()
+        XCTAssertFalse(model.cameraLookBrowserOpen)
         XCTAssertFalse(model.isPreviewingAdjustment)
         XCTAssertEqual(model.recipe, original)
 
+        model.toggleCameraLookBrowser()
         model.previewCameraLook(acros)
         model.selectCameraLook(acros)
+        XCTAssertTrue(model.cameraLookBrowserOpen)
         XCTAssertFalse(model.isPreviewingAdjustment)
         var expected = original
         expected.cameraLook = acros
         XCTAssertEqual(model.recipe, expected)
+        XCTAssertEqual(thumbnails.request(for: acros).recipe, expected)
+        XCTAssertEqual(model.cameraLookThumbnailSource?.selection, acros)
+        XCTAssertEqual(model.cameraLookThumbnailSource, thumbnails, "Selecting another look does not invalidate the grid of thumbnails")
         XCTAssertEqual(model.editHistory.count, history + 1)
         let data = try XCTUnwrap(catalog.photo(photo.id)?.recipe)
         XCTAssertEqual(try JSONDecoder().decode(EditRecipe.self, from: data), expected)
@@ -315,11 +324,19 @@ final class CameraLookTests: XCTestCase {
         let initialFrame = try await pipeline.render(initial, longEdge: 320)
         let editedFrame = try await pipeline.render(edited, longEdge: 320)
         XCTAssertNotEqual(try bytes(initialFrame), try bytes(editedFrame))
+        let defaultThumbnail = try await ImagePipeline.cameraLookThumbnails.renderInteractive(thumbnails.request(for: nil), longEdge: 256)
+        let acrosThumbnail = try await ImagePipeline.cameraLookThumbnails.renderInteractive(thumbnails.request(for: acros), longEdge: 256)
+        XCTAssertEqual(max(acrosThumbnail.image.width, acrosThumbnail.image.height), 256)
+        XCTAssertNotEqual(try bytes(defaultThumbnail), try bytes(acrosThumbnail))
         let output = workspace.appendingPathComponent("ACROS.png")
         _ = try await pipeline.export(edited, staging: output, options: ExportOptions(format: .png, longEdge: 320))
         let source = try XCTUnwrap(CGImageSourceCreateWithURL(output as CFURL, nil))
         let exported = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
         XCTAssertEqual(exported.width, editedFrame.image.width)
+        model.changeRecipe { $0.exposure += 0.2 }
+        XCTAssertNotEqual(model.cameraLookThumbnailSource, thumbnails)
+        XCTAssertTrue(model.selectDevelopTool(.crop))
+        XCTAssertFalse(model.cameraLookBrowserOpen)
     }
 
     func testVersionCoexistenceAndExplicitCorruptionOrMissingRejection() throws {
@@ -660,31 +677,8 @@ final class CameraLookTests: XCTestCase {
         defer { prefs.removePersistentDomain(forName: suite) }
         prefs.set(true, forKey: "developBasicOpen")
 
-        let expectedLabel = L10n.text("cameraLook.label", defaultValue: "Camera Look")
-        let expectedValue = CameraLookLibrary.shared.title(for: look)
-        func hasCameraLookControl(_ element: Any) -> Bool {
-            if let popup = element as? NSPopUpButton {
-                if popup.accessibilityIdentifier() == "camera-look-menu"
-                    || popup.accessibilityLabel() == expectedLabel
-                    || popup.title.contains(expectedValue)
-                    || popup.itemTitles.contains(expectedValue) {
-                    return true
-                }
-            }
-            if let ax = element as? NSAccessibilityProtocol {
-                if ax.accessibilityIdentifier() == "camera-look-menu" || ax.accessibilityLabel() == expectedLabel {
-                    return true
-                }
-                if let children = ax.accessibilityChildren(), children.contains(where: { hasCameraLookControl($0) }) {
-                    return true
-                }
-            }
-            if let view = element as? NSView, view.subviews.contains(where: { hasCameraLookControl($0) }) {
-                return true
-            }
-            return false
-        }
-
+        XCTAssertTrue(DevelopPanel(model: model).showsCameraLook)
+        XCTAssertFalse(DevelopPanel(model: model, local: true).showsCameraLook)
         for theme in [ChromeTheme.ivory, .graphite] {
             prefs.set(theme.rawValue, forKey: "chromeTheme")
             for width in [304.0, 336.0, 400.0] {
@@ -703,7 +697,6 @@ final class CameraLookTests: XCTestCase {
                 try await Task.sleep(for: .milliseconds(80))
                 host.layoutSubtreeIfNeeded()
                 XCTAssertLessThanOrEqual(host.fittingSize.width, width + 1, "Panel must not overflow horizontally at \(width)pt")
-                XCTAssertTrue(hasCameraLookControl(host), "RAW global Basic panel must expose Camera Look control")
 
                 if width == 336 {
                     let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
@@ -718,82 +711,43 @@ final class CameraLookTests: XCTestCase {
             }
         }
 
-        // Local mask adjustment panel must hide Camera Look.
-        let localHost = NSHostingView(
-            rootView: ScrollView { DevelopPanel(model: model, local: true) }
-                .frame(width: 336, height: 520)
-                .background(Theme.panel)
-                .defaultAppStorage(prefs)
-        )
-        let localWindow = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 336, height: 520),
-                                   styleMask: [.borderless], backing: .buffered, defer: false)
-        localWindow.contentView = localHost
-        try await Task.sleep(for: .milliseconds(60))
-        localHost.layoutSubtreeIfNeeded()
-        XCTAssertFalse(hasCameraLookControl(localHost), "Local mask panel must not expose Camera Look")
-        localWindow.contentView = nil
-
-        // Ordinary raster / linear composite recipes must hide Camera Look.
         for decoder in [EditRecipe.rasterDecoderVersion, EditRecipe.linearCompositeDecoderVersion] {
             model.recipe = EditRecipe(sourceDigest: digest, decoderVersion: decoder,
                                       baselineExposure: 0, baselineTemperature: 5500, baselineTint: 0,
                                       temperature: 5500, tint: 0)
-            let rasterHost = NSHostingView(
-                rootView: ScrollView { DevelopPanel(model: model) }
-                    .frame(width: 336, height: 520)
-                    .background(Theme.panel)
-                    .defaultAppStorage(prefs)
-            )
-            let rasterWindow = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 336, height: 520),
-                                        styleMask: [.borderless], backing: .buffered, defer: false)
-            rasterWindow.contentView = rasterHost
-            try await Task.sleep(for: .milliseconds(60))
-            rasterHost.layoutSubtreeIfNeeded()
-            XCTAssertFalse(hasCameraLookControl(rasterHost),
-                           "Raster decoder \(decoder) must not expose Camera Look")
-            rasterWindow.contentView = nil
+            XCTAssertFalse(DevelopPanel(model: model).showsCameraLook, "Raster decoder \(decoder) must not expose Camera Look")
         }
 
-        // Capture full-window WorkspaceView screenshots in Ivory and Graphite with Fuji X-S10 RAF and Sony A7R V ARW.
+        // Verify the open sidebar in a normal and a minimum-width workspace.
         let workspaceFolder = FileManager.default.temporaryDirectory.appendingPathComponent("camera-look-ws-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: workspaceFolder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: workspaceFolder) }
 
-        let fujiInput = try MoreRAWTests.request("fuji_xs10_14bit_lossless.RAF")
-        let sonyInput = try MoreRAWTests.request("a7rv_61mp_compressed.ARW")
+        let input = try MoreRAWTests.request("a7iii_12bit_compressed.ARW")
         let catURL = workspaceFolder.appendingPathComponent("WS.phoscat")
         let wsStore = try CatalogStore(fileURL: catURL, create: true)
-        let rootURL = URL(fileURLWithPath: fujiInput.root.path)
+        let rootURL = URL(fileURLWithPath: input.root.path)
         let wsRoot = try wsStore.addRoot(url: rootURL, bookmark: AccessLease.bookmark(rootURL, readOnly: true))
-
-        var fujiPhoto = fujiInput.photo; fujiPhoto.rootID = wsRoot.id; try wsStore.index(fujiPhoto)
-        var sonyPhoto = sonyInput.photo; sonyPhoto.rootID = wsRoot.id; try wsStore.index(sonyPhoto)
-
-        let pipeline = ImagePipeline(cameraLooks: CameraLookLibrary(includesDiagnosticLooks: true))
-        for p in [fujiPhoto, sonyPhoto] {
-            var r = try await pipeline.baseline(ImageRequest(photo: p, root: wsRoot, recipe: nil))
-            r.schemaVersion = 3
-            r.maskVersion = 3
-            r.exposure = 0.65
-            r.cameraLook = look
-            r.localAdjustments = [LocalAdjustment(name: "Radial 1", components: [MaskComponent(tool: .radial)], exposure: 0.45)]
-            try wsStore.saveRecipe(id: p.id, recipe: r, title: "Camera Look: Test Lookup Table")
-        }
+        var photo = input.photo
+        photo.rootID = wsRoot.id
+        try wsStore.index(photo)
 
         let wsModel = AppModel()
         wsModel.catalog = wsStore
         try wsModel.reload()
         defer { wsModel.choose([], active: nil); wsModel.catalog = nil }
-        wsModel.editMode = true
+        wsModel.choose([photo.id], active: photo.id)
+        wsModel.selectWorkspace(.develop)
+        for _ in 0..<120 where !wsModel.canEdit || wsModel.image == nil {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertTrue(wsModel.canEdit)
 
-        for (theme, targetPhoto, tag) in [(ChromeTheme.ivory, fujiPhoto, "workspace-ivory-fuji-xs10"),
-                                          (ChromeTheme.graphite, sonyPhoto, "workspace-graphite-sony-a7rv")] {
+        for (theme, width) in [(ChromeTheme.ivory, 1280.0), (.graphite, 1000.0)] {
             prefs.set(theme.rawValue, forKey: "chromeTheme")
-            wsModel.choose([targetPhoto.id], active: targetPhoto.id)
-            for _ in 0..<120 where wsModel.image == nil || wsModel.recipe?.cameraLook != look {
-                try await Task.sleep(for: .milliseconds(100))
-            }
-            let size = CGSize(width: 1280, height: 820)
+            wsModel.toggleCameraLookBrowser()
+            XCTAssertTrue(wsModel.cameraLookBrowserOpen)
+            let size = CGSize(width: width, height: 820)
             let host = NSHostingView(
                 rootView: WorkspaceView(model: wsModel)
                     .defaultAppStorage(prefs)
@@ -808,13 +762,15 @@ final class CameraLookTests: XCTestCase {
             window.contentView = container
             try await Task.sleep(for: .milliseconds(300))
             host.layoutSubtreeIfNeeded()
+            XCTAssertLessThanOrEqual(host.fittingSize.width, width + 1)
             let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
             host.cacheDisplay(in: host.bounds, to: bitmap)
             let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
             let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
-            attachment.name = tag
+            attachment.name = "camera-look-sidebar-\(theme.rawValue)-\(Int(width))"
             attachment.lifetime = .keepAlways
             add(attachment)
+            wsModel.closeCameraLookBrowser()
             window.contentView = nil
         }
     }

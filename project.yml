@@ -49,7 +49,7 @@ targets:
       # Includes CatalogArchive.swift, ProjectCopy.swift and CatalogArchiveSheet.swift.
       # Includes LightroomCatalog.swift, LightroomImporter.swift, LightroomSettings.swift and LightroomImportSheet.swift.
       # Includes App/PhotoRemoval.swift for confirmed catalog and disk removal.
-      # Includes Imaging/CameraLook.swift and Imaging/CameraLooks/ for manifest-driven RAW camera looks.
+      # Includes Imaging/CameraLook.swift and UI/CameraLookBrowser.swift for RAW camera looks.
       - path: Sources
         excludes: [Imaging/raster-exposure-colour-v4.bin, Imaging/CameraLooks, Plugins]
       - path: design/logo/wordmark-approved-ivory.svg

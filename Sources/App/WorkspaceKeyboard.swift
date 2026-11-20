@@ -33,6 +33,8 @@ final class WorkspaceKeyboard {
             }
             if model.smartMaskSession?.inspection.focused != nil, modifiers.intersection([.command, .control, .option]).isEmpty { return event }
         }
+        if event.keyCode == 53, model.cameraLookBrowserOpen { model.closeCameraLookBrowser(); return nil }
+        if model.cameraLookBrowserFocused, modifiers.isEmpty, [116, 121, 123, 124, 125, 126].contains(event.keyCode) { return event }
         if model.presetListFocused, modifiers.intersection([.command, .control, .option]).isEmpty { return event }
         if event.keyCode == 53, model.isPreviewingAdjustment { model.endAdjustmentPreview(); return nil }
         if event.keyCode == 53, model.previewingMaskID != nil { model.endMaskEffectPreview(); return nil }

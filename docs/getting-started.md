@@ -78,7 +78,9 @@ Lightroom Classic 的 `.lrcat` 可通过“文件 → 从 Lightroom Classic 目�
 
 单击编辑页的历史步骤可直接切到该状态并高亮对应行，再点击另一条即可往返。切换会保存当前状态并保留原有历史，新调整和应用命名快照会保存为新的步骤。
 
-在 RAW 的“编辑 → 基本调整 → 相机风格”中可选默认显色，或从旁边的浏览键按品牌查看风格。富士有 X‑S10 的 18 个固定胶片模拟（含 ACROS 和黑白的黄、红、绿滤镜变体），另有 Nostalgic Neg. 和 REALA ACE。索尼提供 ST 标准色彩。悬停时画布临时试显，移开恢复。点击风格会保存到当前照片并新增一条历史。各风格可以跨机身应用，保留曝光、白平衡和局部调整。随包色表提供近似显色。[Redlamp 来源与授权](references/redlamp-LICENSE.txt) · [Fuji Recipe Converter 来源与授权](references/fuji-recipe-converter-LICENSE.txt) · [LightCraft 来源与授权](references/lightcraft-LICENSE.txt)
+编辑 RAW 时，点击“基本调整 → 相机风格”打开画布右侧的浏览栏。默认显色和各品牌风格用当前照片生成双列缩略图。悬停时画布临时试显，移开恢复。点击卡片应用并新增一条历史，也可以用 Tab 或方向键选择卡片，按回车应用。点“完成”或按 Esc 收起侧栏。各风格可以跨机身应用，保留曝光、白平衡和局部调整。
+
+富士有 X‑S10 的 18 个固定胶片模拟（含 ACROS 和黑白的黄、红、绿滤镜变体），另有 Nostalgic Neg. 和 REALA ACE。索尼提供 ST 标准色彩。随包色表提供近似显色。[Redlamp 来源与授权](references/redlamp-LICENSE.txt) · [Fuji Recipe Converter 来源与授权](references/fuji-recipe-converter-LICENSE.txt) · [LightCraft 来源与授权](references/lightcraft-LICENSE.txt)
 
 基本调整的白平衡与明暗分组各有“自动”键。自动白平衡从当前裁剪区域的原生浮点解码估计整体中性色（已应用拍摄时白平衡和原生基准的线性 sRGB），再通过实际 RAW／Core Image 白平衡变换求出色温与色调；它采用 [Shades of Gray](https://library.imaging.org/admin/apis/public/api/ist/website/downloadArticle/cic/12/1/art00008) 的六次范数假设，排除透明、近黑与通道剪切像素。单色场景或混合光可能估计错误，请使用中性区域取样或手动参数。
 

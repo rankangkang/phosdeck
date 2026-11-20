@@ -417,6 +417,8 @@ final class AppModel {
     }
     var displayPixelReadout: DisplayPixelSample?
     var presetListFocused = false
+    private(set) var cameraLookBrowserOpen = false
+    @ObservationIgnored var cameraLookBrowserFocused = false
     private(set) var previewingDevelopGroup: DevelopGroup?
     private(set) var previewingPresetID: String?
     @ObservationIgnored private var previewingCameraLook = false
@@ -656,7 +658,7 @@ final class AppModel {
             guard !spotMode else { return false }
         }
         guard commitRecipe(resume: { [weak self] in _ = self?.selectDevelopTool(tool) }) else { return false }
-        if tool != .adjust { cancelHighlightPreview() }
+        if tool != .adjust { closeCameraLookBrowser(); cancelHighlightPreview() }
         switch tool {
         case .adjust:
             let wasCrop = cropMode
@@ -1261,6 +1263,7 @@ final class AppModel {
         let ids = comparison == nil ? ids : Set(id.map { [$0] } ?? [])
         if activeID != id {
             guard commitRecipe(resume: { [weak self] in self?.choose(ids, active: id) }) else { return }
+            closeCameraLookBrowser()
             clearSavedEditPreview(); endAdjustmentPreview(redraw: false); displayPixelReadout = nil; presetListFocused = false; beforeReference = nil; endMaskEffectPreview(redraw: false)
             if id != nil, comparison == nil, survey == nil {
                 if let recipe, canEdit || retainedEditorDisplay == nil {
@@ -2657,13 +2660,30 @@ final class AppModel {
         guard previewingPresetID != nil, presetID == nil || previewingPresetID == presetID else { return }
         endAdjustmentPreview()
     }
+    func toggleCameraLookBrowser() {
+        if cameraLookBrowserOpen { closeCameraLookBrowser(); return }
+        guard workspaceAvailable, workspaceMode == .develop, developTool == .adjust,
+              canEdit, recipe?.isRaster == false else { return }
+        cameraLookBrowserOpen = true
+    }
+    func closeCameraLookBrowser() {
+        guard cameraLookBrowserOpen else { return }
+        cameraLookBrowserOpen = false
+        cameraLookBrowserFocused = false
+        endCameraLookPreview()
+    }
+    var cameraLookThumbnailSource: CameraLookThumbnailSource? {
+        guard canEdit, let photo = active, photo.isRAW, let savedRecipe,
+              let root = roots.first(where: { $0.id == photo.rootID }) else { return nil }
+        return CameraLookThumbnailSource(photo: photo, root: root, recipe: savedRecipe)
+    }
     func selectCameraLook(_ selection: CameraLookSelection?) {
         guard workspaceAvailable, canEdit, let recipe, !recipe.isRaster else { return }
         if recipe.cameraLook == selection {
             endCameraLookPreview()
             return
         }
-        changeRecipe { Self.setCameraLook(selection, in: &$0) }
+        changeRecipe { $0.setCameraLook(selection) }
     }
     func previewCameraLook(_ selection: CameraLookSelection?) {
         guard workspaceAvailable, editMode, developTool == .adjust, canEdit, !before,
@@ -2673,15 +2693,11 @@ final class AppModel {
             return
         }
         guard !previewingCameraLook || adjustmentDisplayRecipe?.cameraLook != selection else { return }
-        Self.setCameraLook(selection, in: &value)
+        value.setCameraLook(selection)
         startAdjustmentPreview(recipe: value, title: cameraLookTitle(selection), cameraLook: true)
     }
     func endCameraLookPreview() {
         if previewingCameraLook { endAdjustmentPreview() }
-    }
-    private static func setCameraLook(_ selection: CameraLookSelection?, in recipe: inout EditRecipe) {
-        if selection != nil { recipe.pipelineVersion = 2 }
-        recipe.cameraLook = selection
     }
     private func cameraLookTitle(_ selection: CameraLookSelection?) -> String {
         selection.map { CameraLookLibrary.shared.title(for: $0) }
@@ -4010,6 +4026,7 @@ extension AppModel {
         comparisonOrigin = nil
         comparison?.cancel(); comparison = nil; survey?.cancel(); survey = nil
         cancelDirectAdjustment()
+        closeCameraLookBrowser()
         clearSavedEditPreview(); endAdjustmentPreview(redraw: false); presetListFocused = false; displayPixelReadout = nil; beforeReference = nil; endMaskEffectPreview(redraw: false)
         endDevelopReference(); pinnedDevelopPhoto = nil
         previewTask?.cancel(); previewGeneration = UUID(); pendingPreview = nil; pendingQualityPreview = nil

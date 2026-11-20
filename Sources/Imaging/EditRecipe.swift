@@ -133,6 +133,10 @@ struct EditRecipe: Codable, Equatable {
     var noiseReduction = GeneralNoiseReduction()
     var defringe: ManualDefringe?
     var cameraLook: CameraLookSelection?
+    mutating func setCameraLook(_ selection: CameraLookSelection?) {
+        if selection != nil { pipelineVersion = 2 }
+        cameraLook = selection
+    }
     var rawDetails = RAWDetailSettings()
     var straightenDegrees = 0.0
     /// Imported straightening can carry its own crop in the rotated source pixels.

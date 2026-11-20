@@ -239,6 +239,23 @@
         }
       }
     },
+    "cameraLook.previewUnavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览不可用"
+          }
+        }
+      }
+    },
     "cameraLook.shaderFailed": {
       "extractionState": "manual",
       "localizations": {

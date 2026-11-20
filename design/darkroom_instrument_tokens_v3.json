@@ -275,6 +275,7 @@
       "max": 400
     },
     "photoViewportMinWidth": 480,
+    "cameraLookDockWidth": 266,
     "filmstrip": {
       "defaultHeight": 122,
       "minHeight": 80,

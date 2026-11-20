@@ -67,6 +67,7 @@
 		3B3957DA1E2C8389DD1363CF /* PreviewDiskCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E2CDD4A7553AC5493AD5EE2 /* PreviewDiskCache.swift */; };
 		3BCCD0E518A08B7C47E541C5 /* ToneSampling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 380FA93B9ECD82C27394219A /* ToneSampling.swift */; };
 		3BCEFB62BAEF4B48B9607CDC /* DevelopPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE106C89EE0DB54D36371E8 /* DevelopPanel.swift */; };
+		25BA60BD2E0D4BD7AF6BD670 /* CameraLookBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D1A61A37B054AC7A8A7A6ED /* CameraLookBrowser.swift */; };
 		3C46E8F6343CF9C35E3B9FB3 /* AgentMCPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4B11209A9EA291A3C4018DB /* AgentMCPTests.swift */; };
 		3D5F5729F4E767751083C4B5 /* AppMCPWorkflows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81636D05175FEE45A800E345 /* AppMCPWorkflows.swift */; };
 		3E2F707EBC09D92B49DAC1E8 /* FocusStackFusion.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECCAC07337882A9E9581F9F8 /* FocusStackFusion.swift */; };
@@ -377,6 +378,7 @@
 		09DC7785A56961A6C694931E /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
 		0D64F599920CD31B241BA51C /* DevelopV2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevelopV2Tests.swift; sourceTree = "<group>"; };
 		0DE106C89EE0DB54D36371E8 /* DevelopPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevelopPanel.swift; sourceTree = "<group>"; };
+		9D1A61A37B054AC7A8A7A6ED /* CameraLookBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraLookBrowser.swift; sourceTree = "<group>"; };
 		0E64CADBD235F561192D7F2C /* lightcraft-adaptation-vectors.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "lightcraft-adaptation-vectors.json"; sourceTree = "<group>"; };
 		0F35D897F17C9009CDBBE151 /* SmartCollectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartCollectionTests.swift; sourceTree = "<group>"; };
 		106F4297014E9E97B7821EC7 /* MaskPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaskPanel.swift; sourceTree = "<group>"; };
@@ -829,6 +831,7 @@
 			isa = PBXGroup;
 			children = (
 				D5326EE1C195E589C79C9DD8 /* CameraDiagnosticsView.swift */,
+				9D1A61A37B054AC7A8A7A6ED /* CameraLookBrowser.swift */,
 				2FA32F86CE3A419F8E235F97 /* CatalogArchiveSheet.swift */,
 				33D2CAD128C8E9D74C3AE361 /* ColorLabelKeys.swift */,
 				A965FA1DDB2CDE1D48F98CBE /* CopyImportSheet.swift */,
@@ -1578,6 +1581,7 @@
 				A25F84000B5305C1D54591E5 /* DevelopGroups.swift in Sources */,
 				E74960ECB9E5305434C3595C /* DevelopKernels.metal in Sources */,
 				3BCEFB62BAEF4B48B9607CDC /* DevelopPanel.swift in Sources */,
+				25BA60BD2E0D4BD7AF6BD670 /* CameraLookBrowser.swift in Sources */,
 				7F8907581E76E1DB1BD31B36 /* DevelopPipeline.swift in Sources */,
 				207A90B52AE19E789735EAE5 /* DirectAdjustments.swift in Sources */,
 				B23B131076E0BE25BC7092C3 /* EditRecipe.swift in Sources */,
