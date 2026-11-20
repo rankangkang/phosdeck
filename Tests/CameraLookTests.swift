@@ -7,6 +7,24 @@ import simd
 @testable import Phosdeck
 
 final class CameraLookTests: XCTestCase {
+    @MainActor func testCollapsedGroupsGuideFocusAndExcludeHiddenPreviews() {
+        let sections = CameraLookLibrary(includesDiagnosticLooks: false).menuSections()
+        let velvia = CameraLookSelection(id: "fujifilm.velvia", version: 1)
+        let collapsed = CameraLookBrowser.Layout(sections: sections, selection: velvia, collapsed: ["fujifilm"])
+        XCTAssertEqual(collapsed.selectedTarget, .group("fujifilm"))
+        XCTAssertEqual(collapsed.visibleChoices.map(\.id), ["default", "sony.st@1"])
+        XCTAssertEqual(collapsed.destination(from: .tile("default"), key: .tab), .group("fujifilm"))
+        XCTAssertEqual(collapsed.destination(from: .group("fujifilm"), key: .downArrow), .group("sony"))
+        XCTAssertEqual(collapsed.destination(from: .group("sony"), key: .tab), .tile("sony.st@1"))
+
+        let expanded = CameraLookBrowser.Layout(sections: sections, selection: velvia, collapsed: ["sony"])
+        XCTAssertEqual(expanded.selectedTarget, .tile("fujifilm.velvia@1"))
+        XCTAssertEqual(expanded.visibleChoices.count, 21)
+        XCTAssertEqual(expanded.destination(from: .group("fujifilm"), key: .downArrow), .tile("fujifilm.provia@1"))
+        XCTAssertEqual(expanded.destination(from: .tile("fujifilm.velvia@1"), key: .downArrow), .tile("fujifilm.classic-chrome@1"))
+        XCTAssertEqual(expanded.destination(from: .group("fujifilm"), key: .tab, backwards: true), .tile("default"))
+    }
+
     private let linearSpace = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
     private lazy var linearContext = CIContext(options: [
         .workingFormat: CIFormat.RGBAf,

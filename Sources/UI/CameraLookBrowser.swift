@@ -48,7 +48,7 @@ struct CameraLookRow: View {
 struct CameraLookBrowser: View {
     let model: AppModel
 
-    private struct Choice: Identifiable {
+    struct Choice: Identifiable, Equatable {
         let selection: CameraLookSelection?
         var id: String { selection.map { "\($0.id)@\($0.version)" } ?? "default" }
         var title: String {
@@ -56,21 +56,71 @@ struct CameraLookBrowser: View {
                 ?? L10n.text("cameraLook.default", defaultValue: "Default Rendering")
         }
     }
-    private enum Focus: Hashable { case done, tile(String) }
+    enum Focus: Hashable { case done, group(String), tile(String) }
+    struct LookGroup: Identifiable {
+        let group: CameraLookGroup
+        let choices: [Choice]
+        let isExpanded: Bool
+        var id: String { group.id }
+        var visibleChoices: [Choice] { isExpanded ? choices : [] }
+    }
+    struct Layout {
+        let ungrouped: [Choice]
+        let groups: [LookGroup]
+        let selectedTarget: Focus
+
+        init(sections: [(group: CameraLookGroup, entries: [CameraLookEntry])],
+             selection: CameraLookSelection?, collapsed: Set<String>) {
+            let groups = sections.map { section in
+                LookGroup(group: section.group, choices: section.entries.map { Choice(selection: $0.selection) },
+                          isExpanded: !collapsed.contains(section.group.id))
+            }
+            let selected = Choice(selection: selection)
+            let group = groups.first { $0.choices.contains(selected) }
+            self.ungrouped = [Choice(selection: nil)] + (selection != nil && group == nil ? [selected] : [])
+            self.groups = groups
+            if let group, !group.isExpanded { self.selectedTarget = .group(group.id) }
+            else { self.selectedTarget = .tile(selected.id) }
+        }
+
+        var visibleChoices: [Choice] { ungrouped + groups.flatMap(\.visibleChoices) }
+
+        func destination(from current: Focus, key: KeyEquivalent, backwards: Bool = false) -> Focus? {
+            let rows = [ungrouped.map { Focus.tile($0.id) }] + groups.flatMap { group in
+                let choices = group.visibleChoices
+                let tiles = stride(from: 0, to: choices.count, by: 2).map { index in
+                    choices[index..<min(index + 2, choices.count)].map { Focus.tile($0.id) }
+                }
+                return [[Focus.group(group.id)]] + tiles
+            }
+            if key == .upArrow || key == .downArrow {
+                guard let row = rows.firstIndex(where: { $0.contains(current) }),
+                      let column = rows[row].firstIndex(of: current) else { return nil }
+                let next = row + (key == .upArrow ? -1 : 1)
+                if next < 0 { return .done }
+                guard rows.indices.contains(next) else { return nil }
+                return rows[next][min(column, rows[next].count - 1)]
+            }
+            let order = rows.flatMap { $0 }
+            guard let index = order.firstIndex(of: current) else { return nil }
+            let next = index + (key == .leftArrow || backwards ? -1 : 1)
+            if next < 0 { return .done }
+            return order.indices.contains(next) ? order[next] : nil
+        }
+    }
     private enum Thumbnail { case image(CGImage), unavailable }
-    private struct PreviewKey: Equatable {
+    private struct PreviewRequest: Equatable {
         let source: CameraLookThumbnailSource?
-        let unlisted: CameraLookSelection?
+        let choices: [Choice]
     }
     private struct PreviewBatch {
-        let key: PreviewKey
+        let source: CameraLookThumbnailSource
         var thumbnails: [String: Thumbnail] = [:]
     }
 
-    private static let defaults = Choice(selection: nil)
     private static let sections = CameraLookLibrary.shared.menuSections()
-    private static let choices = [defaults] + sections.flatMap { $0.entries.map { Choice(selection: $0.selection) } }
     private static let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: Metrics.gap), count: 2)
+    @AppStorage("cameraLookCollapsedGroups") private var storedCollapsedGroups = ""
     @FocusState private var focus: Focus?
     @State private var hovered: String?
     @State private var batch: PreviewBatch?
@@ -79,10 +129,9 @@ struct CameraLookBrowser: View {
         let source = model.cameraLookThumbnailSource
         let current = source?.selection
         let selected = Choice(selection: current)
-        let unlisted = Self.choices.contains(where: { $0.selection == current }) ? nil : current
-        let key = PreviewKey(source: source, unlisted: unlisted)
-        let order = Self.choices(including: unlisted)
-        let thumbnails = batch?.key == key ? batch?.thumbnails ?? [:] : [:]
+        let layout = Layout(sections: Self.sections, selection: current, collapsed: collapsedGroups)
+        let request = PreviewRequest(source: source, choices: layout.visibleChoices)
+        let thumbnails = batch?.source == source ? batch?.thumbnails ?? [:] : [:]
         VStack(spacing: 0) {
             HStack(spacing: Metrics.gap) {
                 Text(L10n.text("cameraLook.label", defaultValue: "Camera Look"))
@@ -93,10 +142,10 @@ struct CameraLookBrowser: View {
                     .focusable()
                     .focused($focus, equals: .done)
                     .onKeyPress(.return) { model.closeCameraLookBrowser(); return .handled }
-                    .onKeyPress(.downArrow) { focus = .tile(selected.id); return .handled }
+                    .onKeyPress(.downArrow) { focus = layout.selectedTarget; return .handled }
                     .onKeyPress(keys: [.tab]) { press in
                         guard !press.modifiers.contains(.shift) else { return .ignored }
-                        focus = .tile(selected.id)
+                        focus = layout.selectedTarget
                         return .handled
                     }
                     .keyboardShortcut(.cancelAction)
@@ -106,19 +155,18 @@ struct CameraLookBrowser: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVGrid(columns: Self.columns, alignment: .leading, spacing: Metrics.gap) {
-                        tile(Self.defaults, selected: current == nil, thumbnail: thumbnails[Self.defaults.id], order: order)
-                        if let unlisted {
-                            let choice = Choice(selection: unlisted)
-                            tile(choice, selected: true, thumbnail: thumbnails[choice.id], order: order)
+                        ForEach(layout.ungrouped) { choice in
+                            tile(choice, selected: choice.selection == current, thumbnail: thumbnails[choice.id], layout: layout)
                         }
-                        ForEach(Self.sections, id: \.group.id) { section in
+                        ForEach(layout.groups) { group in
                             Section {
-                                ForEach(section.entries) { entry in
-                                    let choice = Choice(selection: entry.selection)
-                                    tile(choice, selected: entry.selection == current, thumbnail: thumbnails[choice.id], order: order)
+                                if group.isExpanded {
+                                    ForEach(group.choices) { choice in
+                                        tile(choice, selected: choice.selection == current, thumbnail: thumbnails[choice.id], layout: layout)
+                                    }
                                 }
                             } header: {
-                                SubgroupLabel(section.group.displayTitle())
+                                groupHeader(group, layout: layout)
                             }
                         }
                     }
@@ -126,11 +174,11 @@ struct CameraLookBrowser: View {
                 }
                 .accessibilityIdentifier("camera-look-scroll")
                 .onAppear {
-                    if current != nil { proxy.scrollTo(selected.id, anchor: .center) }
+                    if current != nil { proxy.scrollTo(layout.selectedTarget, anchor: .center) }
                     focus = .done
                 }
                 .onChange(of: focus) { _, value in
-                    if case let .tile(id) = value { proxy.scrollTo(id) }
+                    if let value, value != .done { proxy.scrollTo(value) }
                 }
             }
         }
@@ -141,12 +189,61 @@ struct CameraLookBrowser: View {
         .onChange(of: focus) { _, value in model.cameraLookBrowserFocused = value != nil }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in hovered = nil }
         .onDisappear { model.cameraLookBrowserFocused = false; model.endCameraLookPreview() }
-        .task(id: key, priority: .utility) { await loadThumbnails(key, selected: selected) }
+        .task(id: request, priority: .utility) { await loadThumbnails(request, selected: selected) }
     }
 
-    private func tile(_ choice: Choice, selected: Bool, thumbnail: Thumbnail?, order: [Choice]) -> some View {
+    private var collapsedGroups: Set<String> {
+        Set(storedCollapsedGroups.split(separator: ",").map(String.init))
+    }
+
+    private func groupHeader(_ group: LookGroup, layout: Layout) -> some View {
+        let title = group.group.displayTitle()
+        let count = group.choices.count.formatted()
+        let target = Focus.group(group.id)
+        return Button { toggleGroup(group) } label: {
+            HStack(spacing: 6) {
+                Image(systemName: group.isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold)).frame(width: 10).accessibilityHidden(true)
+                SilkText(title)
+                Text("(\(count))").font(.caption11.monospacedDigit())
+                Seam().frame(maxWidth: .infinity)
+            }
+            .foregroundStyle(Theme.textSecondary)
+            .frame(height: 24)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable()
+        .focused($focus, equals: target)
+        .onKeyPress(.return) { toggleGroup(group); return .handled }
+        .onKeyPress(keys: [.leftArrow, .rightArrow]) { press in
+            if group.isExpanded == (press.key == .leftArrow) { toggleGroup(group) }
+            return .handled
+        }
+        .onKeyPress(keys: [.tab, .upArrow, .downArrow]) { moveFocus(from: target, press: $0, layout: layout) }
+        .accessibilityLabel("\(title) (\(count))")
+        .accessibilityValue(group.isExpanded ? L10n.text("app.expanded", defaultValue: "Expanded") : L10n.text("app.collapsed", defaultValue: "Collapsed"))
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("camera-look-group-\(group.id)")
+        .id(target)
+    }
+
+    private func toggleGroup(_ group: LookGroup) {
+        focus = .group(group.id)
+        var collapsed = collapsedGroups
+        if group.isExpanded {
+            collapsed.insert(group.id)
+            if let hovered, group.choices.contains(where: { $0.id == hovered }) { endHover(hovered) }
+        } else {
+            collapsed.remove(group.id)
+        }
+        storedCollapsedGroups = collapsed.sorted().joined(separator: ",")
+    }
+
+    private func tile(_ choice: Choice, selected: Bool, thumbnail: Thumbnail?, layout: Layout) -> some View {
         let id = choice.id
-        let isFocused = focus == .tile(id)
+        let target = Focus.tile(id)
+        let isFocused = focus == target
         let title = choice.title
         let apply = { model.selectCameraLook(choice.selection) }
         return Button(action: apply) {
@@ -180,16 +277,16 @@ struct CameraLookBrowser: View {
         }
         .buttonStyle(.plain)
         .focusable()
-        .focused($focus, equals: .tile(id))
+        .focused($focus, equals: target)
         .onKeyPress(.return) { apply(); return .handled }
         .onKeyPress(keys: [.tab, .leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
-            moveFocus(from: id, press: press, order: order)
+            moveFocus(from: target, press: press, layout: layout)
         }
         .accessibilityLabel(title)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("camera-look-choice-" + id)
         .help(tileHelp(title, thumbnail: thumbnail))
-        .id(id)
+        .id(target)
         .onHover { inside in
             if inside { hovered = id; model.previewCameraLook(choice.selection) }
             else { endHover(id) }
@@ -197,29 +294,11 @@ struct CameraLookBrowser: View {
         .onDisappear { endHover(id) }
     }
 
-    private func moveFocus(from id: String, press: KeyPress, order: [Choice]) -> KeyPress.Result {
-        guard let index = order.firstIndex(where: { $0.id == id }) else { return .ignored }
-        let offset: Int
-        switch press.key {
-        case .tab: offset = press.modifiers.contains(.shift) ? -1 : 1
-        case .leftArrow: offset = -1
-        case .rightArrow: offset = 1
-        case .upArrow: offset = -2
-        case .downArrow: offset = 2
-        default: return .ignored
-        }
-        let next = index + offset
-        if next < 0 { focus = .done; return .handled }
-        if next >= order.count { return press.key == .tab ? .ignored : .handled }
-        focus = .tile(order[next].id)
+    private func moveFocus(from target: Focus, press: KeyPress, layout: Layout) -> KeyPress.Result {
+        guard let destination = layout.destination(from: target, key: press.key, backwards: press.modifiers.contains(.shift) && press.key == .tab)
+        else { return press.key == .tab ? .ignored : .handled }
+        focus = destination
         return .handled
-    }
-
-    private static func choices(including unlisted: CameraLookSelection?) -> [Choice] {
-        guard let unlisted else { return choices }
-        var all = choices
-        all.insert(Choice(selection: unlisted), at: 1)
-        return all
     }
 
     private func tileHelp(_ title: String, thumbnail: Thumbnail?) -> String {
@@ -235,13 +314,14 @@ struct CameraLookBrowser: View {
         model.endCameraLookPreview()
     }
 
-    private func loadThumbnails(_ key: PreviewKey, selected: Choice) async {
-        guard !Task.isCancelled, let source = key.source else { return }
-        batch = PreviewBatch(key: key)
-        let choices = Self.choices(including: key.unlisted)
+    private func loadThumbnails(_ request: PreviewRequest, selected: Choice) async {
+        guard !Task.isCancelled, let source = request.source else { return }
+        if batch?.source != source { batch = PreviewBatch(source: source) }
+        let choices = request.choices
         let start = max(0, (choices.firstIndex { $0.id == selected.id } ?? 0) - 4)
         for choice in choices[start...] + choices[..<start] {
             guard !Task.isCancelled else { return }
+            if batch?.thumbnails[choice.id] != nil { continue }
             let thumbnail: Thumbnail
             do {
                 let frame = try await ImagePipeline.cameraLookThumbnails.renderInteractive(source.request(for: choice.selection), longEdge: 256)
@@ -249,7 +329,7 @@ struct CameraLookBrowser: View {
             } catch {
                 thumbnail = .unavailable
             }
-            guard !Task.isCancelled, batch?.key == key else { return }
+            guard !Task.isCancelled, batch?.source == source else { return }
             batch?.thumbnails[choice.id] = thumbnail
         }
     }
