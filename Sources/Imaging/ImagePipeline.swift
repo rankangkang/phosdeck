@@ -89,6 +89,7 @@ actor ImagePipeline {
     private var spotDone: (key: String, repairs: [SpotRepair], rendered: SpotRepairMath.Rendered)?
     private var spotCut: (key: String, index: Int, prefix: [SpotRepair], buffer: SpotBuffer, offsets: [UUID: MaskPoint])?
     private var nativeOpacity: (key: String, opaque: Bool)?
+    nonisolated let cameraLooks: CameraLookLibrary
 
     private final class NativePreviewArea {
         let canvas: CGSize
@@ -104,8 +105,9 @@ actor ImagePipeline {
             CGRect(x: pixels.minX, y: canvas.height - pixels.maxY, width: pixels.width, height: pixels.height)
         }
     }
-    init(cacheIntermediates: Bool = false, qualityCacheLimit: Int = 512 * 1024 * 1024) {
+    init(cacheIntermediates: Bool = false, qualityCacheLimit: Int = 512 * 1024 * 1024, cameraLooks: CameraLookLibrary = .shared) {
         self.qualityCacheLimit = max(0, qualityCacheLimit)
+        self.cameraLooks = cameraLooks
         let options: [CIContextOption: Any] = [.workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!, .workingFormat: CIFormat.RGBAh, .cacheIntermediates: cacheIntermediates]
         if let device = MTLCreateSystemDefaultDevice() { context = CIContext(mtlDevice: device, options: options) }
         else { context = CIContext(options: options) }
@@ -118,7 +120,7 @@ actor ImagePipeline {
     }
 
     nonisolated private func source(_ request: ImageRequest, verifyDigest: Bool = true) throws -> (AccessLease, URL) {
-        try request.recipe?.validate(for: request.photo)
+        try request.recipe?.validate(for: request.photo, lookLibrary: cameraLooks)
         let lease = try AccessLease(bookmark: request.root.bookmark)
         let url = lease.url.appendingPathComponent(request.photo.relativePath)
         try SourceAvailability.check(root: lease.url, file: url)
@@ -192,7 +194,7 @@ actor ImagePipeline {
         guard request.photo.isRAW else { throw LRCError(L10n.text("app.theSourceIsNotRAW", defaultValue: "The source is not RAW")) }
         let raw = try PhotoFileType.rawFilter(url)
         if let recipe = request.recipe {
-            try recipe.validate()
+            try recipe.validate(lookLibrary: cameraLooks)
             let decoder = CIRAWDecoderVersion(rawValue: recipe.decoderVersion)
             guard raw.supportedDecoderVersions.contains(decoder) else { throw LRCError(L10n.text("app.theRecipeSOriginalDecoderIsUnavailable", defaultValue: "The recipe's original decoder is unavailable")) }
             raw.decoderVersion = decoder
@@ -324,7 +326,7 @@ actor ImagePipeline {
         var image: CIImage
         if request.photo.isRAW {
             guard let recipe = request.recipe else { throw LRCError(L10n.text("app.theRAWEditBaselineHasNotBeenCreated", defaultValue: "The RAW edit baseline has not been created")) }
-            try recipe.validate()
+            try recipe.validate(lookLibrary: cameraLooks)
             let sourceKey = "\(url.path):\(request.photo.identity.base64EncodedString()):\(recipe.sourceDigest):\(recipe.decoderVersion)"
             if reuseDecoded, qualitySourceKey != sourceKey {
                 qualityDecoded = nil; qualityCacheBytes = 0; qualitySourceKey = sourceKey
@@ -481,7 +483,8 @@ actor ImagePipeline {
         let opaque = nativeArea?.sourceIsOpaque == true
         let repaired = try repairedLinear(decoded, recipe: recipe, cacheKey: decodeKey, region: region)
         let denoised = try GeneralDetailPipeline.denoise(repaired,recipe.noiseReduction,sourceSize:sourceSize)
-        let base = try ManualDefringePipeline.apply(denoised, recipe.manualDefringe, sourceSize: sourceSize)
+        let defringed = try ManualDefringePipeline.apply(denoised, recipe.manualDefringe, sourceSize: sourceSize)
+        let base = try CameraLookPipeline.apply(defringed, selection: recipe.cameraLook, library: cameraLooks)
         if pointReferenceOnly {
             let spatial = try SpatialDevelopPipeline.apply(base,adjustments:recipe.develop,context:developContext)
             var contrastOnly = recipe; contrastOnly.saturation = 1
@@ -581,7 +584,7 @@ actor ImagePipeline {
         let (lease, url) = try source(request)
         defer { withExtendedLifetime(lease) {} }
         guard let recipe = request.recipe else { throw LRCError(L10n.text("app.thePhotoIsNotReady", defaultValue: "The photo is not ready")) }
-        try recipe.validate()
+        try recipe.validate(lookLibrary: cameraLooks)
         let image = try maskBaseline(url: url, recipe: recipe, edge: 1536)
         guard let result = developContext.createCGImage(image, from: image.extent, format: .RGBAh, colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!) else { throw LRCError(L10n.text("app.rangeSamplingFailed", defaultValue: "Range sampling failed")) }
         try Task.checkCancellation()
@@ -732,7 +735,8 @@ actor ImagePipeline {
                 let input: CIImage
                 if let cached = exposed[value.exposure] { input = cached }
                 else {
-                    let decoded = try decode(current, exposure: value.exposure)
+                    let decoded = try CameraLookPipeline.apply(decode(current, exposure: value.exposure),
+                                                               selection: recipe.cameraLook, library: cameraLooks)
                     guard let cg = developContext.createCGImage(decoded, from: decoded.extent, format: .RGBAf,
                         colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!, deferred: false) else { throw AutomaticAdjustmentPixels.insufficient }
                     input = CIImage(cgImage: cg); exposed[value.exposure] = input
@@ -755,7 +759,7 @@ actor ImagePipeline {
         let (lease, url) = try source(request)
         defer { withExtendedLifetime(lease) {} }
         guard let recipe = request.recipe else { throw LRCError(L10n.text("app.thePhotoIsNotReady", defaultValue: "The photo is not ready")) }
-        try recipe.validate(for: request.photo)
+        try recipe.validate(for: request.photo, lookLibrary: cameraLooks)
         let raw: CIRAWFilter?
         let base: CIImage?
         let size: CGSize
@@ -914,6 +918,7 @@ actor ImagePipeline {
         let repairKey = SpotRepair.cacheToken(recipe.repairs)
         let decodedKey = decodedKey + ":nr:" + (try encoder.encode(recipe.noiseReduction)).base64EncodedString()
             + ":defringe:" + (try encoder.encode(recipe.defringe)).base64EncodedString()
+            + ":look:" + (try encoder.encode(recipe.cameraLook)).base64EncodedString()
         let key = repairKey.isEmpty ? decodedKey + ":" + spatialKey : decodedKey + ":" + repairKey + ":" + spatialKey
         let input: CIImage
         if let cached = previewSpatial, cached.key == key { input = cached.image }
@@ -1224,7 +1229,7 @@ actor ImagePipeline {
         // Decoder 7 (the measured M8/D700/X-T20 files) changes pixels when
         // materialized early, even in RGBA32. Keep its original quality graph.
         // shortcut: early RAW materialization changes cropped pixels; keep the full graph until crop reuse is byte-exact.
-        guard request.photo.isRAW, let recipe = request.recipe, recipe.decoderVersion == "8", recipe.pipelineVersion == 2, recipe.contrast == 1, recipe.straightenDegrees == 0, recipe.crop == Crop(),
+        guard request.photo.isRAW, let recipe = request.recipe, recipe.decoderVersion == "8", recipe.pipelineVersion == 2, recipe.cameraLook == nil, recipe.contrast == 1, recipe.straightenDegrees == 0, recipe.crop == Crop(),
               recipe.perspective.isNeutral, !recipe.vignette.isActive, !recipe.grain.isActive, !recipe.sharpening.isActive, !recipe.noiseReduction.isActive,
               !recipe.repairs.contains(where: { $0.enabled && $0.opacity > 0 && !$0.points.isEmpty }),
               !recipe.localAdjustments.contains(where: { $0.enabled && $0.amount > 0 && !$0.isNeutral }) else { return false }

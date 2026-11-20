@@ -13,6 +13,9 @@ enum SpatialDevelopPipeline {
     private static let rasterColourKernel: Result<CIKernel, Error> = Result {
         try CIKernel(functionName: "rasterExposureColour", fromMetalLibraryData: library.get(), outputPixelFormat: .RGBAf)
     }
+    private static let cameraLookKernel: Result<CIKernel, Error> = Result {
+        try CIKernel(functionName: "cameraLook", fromMetalLibraryData: library.get(), outputPixelFormat: .RGBAf)
+    }
     private static let kernels: Result<[String: CIColorKernel], Error> = Result {
         let data = try library.get()
         let names = ["mergeReadback", "logLuminance", "linearLuminance", "guideMoments", "guideProduct", "guideCoefficients", "guideReconstruct", "darkChannel", "transmission", "removeHaze", "toneEqualize", "detailEnhance", "toneCurves", "zoneExposure", "blackWhiteMix", "pointColorInput", "pointColorRange", "pointColorMix", "guideWeight", "guideUnweight", "alphaCoverage", "rasterExposure"]
@@ -32,6 +35,14 @@ enum SpatialDevelopPipeline {
             roiCallback: { index, rect in index < 2 ? rect : low.extent },
             arguments: [input, base, low, high, powers, weight]) else {
             throw LRCError(L10n.text("app.rasterExposureColorShaderFailed", defaultValue: "Raster exposure color shader failed"))
+        }
+        return image
+    }
+    static func cameraLook(_ input: CIImage, atlas: CIImage, dimension: Int, upperBound: Float) throws -> CIImage {
+        guard let image = try cameraLookKernel.get().apply(extent: input.extent,
+            roiCallback: { index, rect in index == 0 ? rect : atlas.extent },
+            arguments: [input, atlas, Float(dimension), upperBound]) else {
+            throw LRCError(L10n.text("cameraLook.shaderFailed", defaultValue: "Camera look shader failed"))
         }
         return image
     }

@@ -74,6 +74,7 @@ enum DevelopGroup: String, CaseIterable, Identifiable, Hashable {
             value.develop.dehaze = aligned.develop.dehaze
             value.develop.vibrance = aligned.develop.vibrance
             value.develop.blackAndWhite = aligned.develop.blackAndWhite
+            value.cameraLook = aligned.cameraLook
         case .curves:
             value.develop.curves = aligned.develop.curves
         case .zones:

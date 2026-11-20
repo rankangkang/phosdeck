@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "groups": [
+    {
+      "id": "diagnostic",
+      "title": "Pipeline Verification",
+      "localizedTitles": {
+        "en": "Pipeline Verification",
+        "zh-Hans": "测试验证"
+      }
+    }
+  ],
+  "looks": [
+    {
+      "id": "diagnostic.test-table",
+      "version": 1,
+      "group": "diagnostic",
+      "title": "Test Lookup Table",
+      "localizedTitles": {
+        "en": "Test Lookup Table",
+        "zh-Hans": "测试色表"
+      },
+      "diagnostic": true,
+      "selectable": true,
+      "file": "diagnostic-test-table-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "2c0ed40b094c55a98f4e970be9289fcc4f2836e55b2559f5307a9558ea3b9af2"
+    }
+  ]
+}

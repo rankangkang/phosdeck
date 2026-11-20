@@ -35,7 +35,7 @@ enum TargetedAdjustment: Equatable, Sendable {
             // Residual fringe input: decoded WB/exposure, repairs and denoise,
             // before this operation and all tone/HSL/curve adjustments. Geometry
             // remains the actual output geometry, avoiding an inverse remapping.
-            r.defringe = nil; r.develop = DevelopAdjustments(); r.contrast = 1
+            r.defringe = nil; r.cameraLook = nil; r.develop = DevelopAdjustments(); r.contrast = 1
         }
         r.saturation = 1; r.develop.mixer = Array(repeating: HSLBand(), count: 8)
         if isCurve { r.develop.curves = nil }

@@ -130,6 +130,9 @@
 		69C7E29F85D174B76F029A09 /* PhotoFileType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790D86A9D1B3EB4B60F12A2B /* PhotoFileType.swift */; };
 		69D86E27037D72EA71624195 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270ACB168370B4450AF0DAA3 /* AppModel.swift */; };
 		69ED68F0DDE6EDAE20D83282 /* ManualDefringe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E0A01DFEE26B12D8738FB9 /* ManualDefringe.swift */; };
+		CA11BF1700014CA8A1B2C3D4 /* CameraLook.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11F17E00014CA8A1B2C3D4 /* CameraLook.swift */; };
+		CA11BF1700024CA8A1B2C3D4 /* CameraLooks in Resources */ = {isa = PBXBuildFile; fileRef = CA11F17E00024CA8A1B2C3D4 /* CameraLooks */; };
+		CA11BF1700034CA8A1B2C3D4 /* CameraLookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */; };
 		6AB6461EBE8AD700A2F77691 /* MergeRetouch.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE7F8EC215D83D4C44204F6C /* MergeRetouch.swift */; };
 		6B6451CD6EB692EF9FB34F22 /* CopyImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 396462D8FA0A606288246598 /* CopyImporter.swift */; };
 		6B89DEB27BDF636E96F7E4FD /* MergeSourceConstraints.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8566DFC204EA5ECB32B6F41 /* MergeSourceConstraints.swift */; };
@@ -599,6 +602,9 @@
 		D3872F94163F29CFBB42BE66 /* AgentOrganizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentOrganizationTests.swift; sourceTree = "<group>"; };
 		D412F5DF92F42B7D727D6EB6 /* lightcraft-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "lightcraft-LICENSE.txt"; sourceTree = "<group>"; };
 		D4E0A01DFEE26B12D8738FB9 /* ManualDefringe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualDefringe.swift; sourceTree = "<group>"; };
+		CA11F17E00014CA8A1B2C3D4 /* CameraLook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraLook.swift; sourceTree = "<group>"; };
+		CA11F17E00024CA8A1B2C3D4 /* CameraLooks */ = {isa = PBXFileReference; lastKnownFileType = folder; path = CameraLooks; sourceTree = "<group>"; };
+		CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraLookTests.swift; sourceTree = "<group>"; };
 		D5108D77A264E78F7FA33FCC /* ExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
 		D52005774225CC370C0FE0B2 /* smart-mask-fixture.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "smart-mask-fixture.json"; sourceTree = "<group>"; };
 		D5326EE1C195E589C79C9DD8 /* CameraDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraDiagnosticsView.swift; sourceTree = "<group>"; };
@@ -982,6 +988,8 @@
 			children = (
 				67278415E53B3543BA704BFF /* AutomaticAdjustments.swift */,
 				25717AF63718F24B4A842A20 /* CameraDiagnostics.swift */,
+				CA11F17E00014CA8A1B2C3D4 /* CameraLook.swift */,
+				CA11F17E00024CA8A1B2C3D4 /* CameraLooks */,
 				A6DFE3EF9CB2B1039A15DEAE /* CreativeVignette.swift */,
 				7A42B662A6F13C7727073AA0 /* CropInteraction.swift */,
 				6283A228CC0A84851E1695B8 /* CullingMetrics.swift */,
@@ -1102,6 +1110,7 @@
 				F76CE44C74DE3B8EC5475B02 /* LocalizationTests.swift */,
 				3C6AE47922597822F0A07526 /* LocalParameterPresetTests.swift */,
 				13493A41D462FFE0B8CCFE87 /* ManualDefringeTests.swift */,
+				CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */,
 				136DDEBBB9B67684C4A8E07D /* MaskingTests.swift */,
 				B388E5663A53B8A967A5E66A /* MoreRAWTests.swift */,
 				FAB33D099D411E9A62472751 /* MultiExportTests.swift */,
@@ -1345,6 +1354,7 @@
 				A942241A165064F331A069C5 /* mcp-NOTICES.txt in Resources */,
 				B641194595A82AD57EB72BBA /* oklab-LICENSE.txt in Resources */,
 				2839DA7140FEE64BACCD4910 /* phosdeck in Resources */,
+				CA11BF1700024CA8A1B2C3D4 /* CameraLooks in Resources */,
 				3544CB46CB725EE79DFD266E /* raster-exposure-colour-v4.bin in Resources */,
 				B8D361A117ED521E4958E3AE /* redlamp-LICENSE.txt in Resources */,
 				CFD9A89F051F144E1BA21595 /* wordmark-approved-graphite.svg in Resources */,
@@ -1464,6 +1474,7 @@
 				C1AE977CD9BACC3685DDF45D /* LocalParameterPresetTests.swift in Sources */,
 				37F2D11A67BCE63CD166941E /* LocalizationTests.swift in Sources */,
 				516141394FECD54B51CEC6E6 /* ManualDefringeTests.swift in Sources */,
+				CA11BF1700034CA8A1B2C3D4 /* CameraLookTests.swift in Sources */,
 				A7BFFBE08EC5243BFEB6CB94 /* MaskingTests.swift in Sources */,
 				88077A5B55E9F590612254DC /* MoreRAWTests.swift in Sources */,
 				EFC097407C520378932F221E /* MultiExportTests.swift in Sources */,
@@ -1603,6 +1614,7 @@
 				D9989497F308D68D15583255 /* Localization.swift in Sources */,
 				77ECF9DDE7BF352D009BC266 /* MCPHTTPListener.swift in Sources */,
 				69ED68F0DDE6EDAE20D83282 /* ManualDefringe.swift in Sources */,
+				CA11BF1700014CA8A1B2C3D4 /* CameraLook.swift in Sources */,
 				B874ACB486CD7D353079465A /* MaskEditing.swift in Sources */,
 				40F166656C67FF065CE34932 /* MaskPanel.swift in Sources */,
 				9B7078BFA4C624465E3805A0 /* Masking.swift in Sources */,

@@ -1865,12 +1865,16 @@ private struct PasteAdjustmentsSheet: View {
     private var allowsRAWDetails: Bool {
         !source.isRaster && (saving || targets.contains { ids.contains($0.id) && $0.isRAW })
     }
+    private var allowsCameraLook: Bool {
+        !source.isRaster && (saving || targets.contains { ids.contains($0.id) && $0.isRAW })
+    }
     private var allowsWhiteBalance: Bool {
         saving || targets.contains { ids.contains($0.id) && $0.supportsEditing && source.isRaster == !$0.isRAW }
     }
     private var effectiveOptions: RecipePasteOptions {
         var value = options
         if !allowsRAWDetails { value.details = false }
+        if !allowsCameraLook { value.cameraLook = false }
         if !allowsWhiteBalance { value.whiteBalance = false }
         return value
     }
@@ -1928,6 +1932,7 @@ private struct PasteAdjustmentsSheet: View {
                     if options.importedXMP?.contains(.color) ?? true { Toggle(options.importedXMP == nil ? L10n.text("app.saturationBlackAndWhiteHSLPointColorAndGrading", defaultValue: "Saturation, black and white, HSL, Point Color, and grading") : L10n.text("app.saturationBlackAndWhiteHSLAndGrading", defaultValue: "Saturation, black and white, HSL, and grading"), isOn: $options.color) }
                     if options.importedXMP?.contains(.generalDetails) ?? true { Toggle(L10n.text("app.generalDetailNoiseReductionAndSharpening", defaultValue: "General Detail (Noise Reduction, Sharpening and Defringe)"), isOn: $options.generalDetails) }
                     if options.importedXMP == nil {
+                        Toggle(L10n.text("cameraLook.pasteToggle", defaultValue: "Camera Look"), isOn: Binding(get: { allowsCameraLook && options.cameraLook }, set: { options.cameraLook = $0 })).disabled(!allowsCameraLook)
                         Toggle(L10n.text("app.rawDecodingDetailAndLensCorrection", defaultValue: "RAW Decoding Detail and Lens Correction"), isOn: Binding(get: { allowsRAWDetails && options.details }, set: { options.details = $0 })).disabled(!allowsRAWDetails)
                         Toggle(L10n.text("app.cropRotateAndFlip", defaultValue: "Crop, Rotate, and Flip"), isOn: $options.geometry)
                     }

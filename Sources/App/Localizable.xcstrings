@@ -1,6 +1,295 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "cameraLook.corruptResource": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera look resource has unsupported table geometry"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格资源的色表规格不受支持"
+          }
+        }
+      }
+    },
+    "cameraLook.corruptValues": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera look resource contains out-of-range or non-finite values"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格资源包含越界或非有限数值"
+          }
+        }
+      }
+    },
+    "cameraLook.currentPipeline": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera looks require the current development pipeline"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格需要当前显影管线版本"
+          }
+        }
+      }
+    },
+    "cameraLook.default": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default Rendering"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认显色"
+          }
+        }
+      }
+    },
+    "cameraLook.diagnosticNote": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test lookup table for camera-look pipeline verification only, not a calibrated camera profile."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试色表仅用于验证相机风格管线，并非已校准的相机风格。"
+          }
+        }
+      }
+    },
+    "cameraLook.help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose Default Rendering or a camera look for this RAW photo. Existing exposure, white balance, masks, and other adjustments are preserved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为此 RAW 照片选择默认显色或相机风格；已有的曝光、白平衡、局部蒙版等调整会保留。"
+          }
+        }
+      }
+    },
+    "cameraLook.historyTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera Look: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格：%@"
+          }
+        }
+      }
+    },
+    "cameraLook.invalidManifest": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera look manifest is unreadable or invalid"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格清单无法读取或格式无效"
+          }
+        }
+      }
+    },
+    "cameraLook.invalidSelection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid camera look identifier or version"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格标识或版本无效"
+          }
+        }
+      }
+    },
+    "cameraLook.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera Look"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格"
+          }
+        }
+      }
+    },
+    "cameraLook.missingManifest": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera look resources are missing from the app bundle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用包中缺少相机风格资源"
+          }
+        }
+      }
+    },
+    "cameraLook.missingResourceFile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera look resource file is missing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格资源文件缺失"
+          }
+        }
+      }
+    },
+    "cameraLook.pasteToggle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera Look"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格"
+          }
+        }
+      }
+    },
+    "cameraLook.shaderFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera look shader failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格着色器执行失败"
+          }
+        }
+      }
+    },
+    "cameraLook.transferSkippedForRaster": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera looks apply only to sensor RAW photos and were skipped"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格仅适用于传感器 RAW 照片，已跳过"
+          }
+        }
+      }
+    },
+    "cameraLook.unavailableSelection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera look “%@” (v%lld) is unavailable in this build. Original data preserved"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前版本不包含相机风格“%@”（v%lld），原始数据已保留"
+          }
+        }
+      }
+    },
+    "cameraLook.verificationFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera look resource checksum verification failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机风格资源校验和核验失败"
+          }
+        }
+      }
+    },
     "photoRemoval.addToCollection": {
       "extractionState": "manual",
       "localizations": {

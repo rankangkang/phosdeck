@@ -4,7 +4,7 @@ import MCP
 enum MCPRecipeGroups {
     private static let fields: [String: WritableKeyPath<RecipePasteOptions, Bool>] = [
         "tone": \.tone, "white_balance": \.whiteBalance, "color": \.color, "geometry": \.geometry,
-        "raw_detail": \.details, "general_detail": \.generalDetails, "curves": \.curves, "zones": \.zones
+        "raw_detail": \.details, "camera_look": \.cameraLook, "general_detail": \.generalDetails, "curves": \.curves, "zones": \.zones
     ]
     static var keys: [String] { fields.keys.sorted() }
     static func names(_ options: RecipePasteOptions) -> Value {
@@ -93,6 +93,7 @@ enum MCPDevelopParameters {
             var props = numberSchemas(global)
             props["as_shot_white_balance"] = ["type": "boolean"]
             props["black_and_white"] = ["type": "boolean"]
+            props["camera_look"] = cameraLookSchema
             props["pipeline_version"] = numberSchema(2...2)
             return objectSchema(props)
         case .detailAdjustments:
@@ -115,6 +116,7 @@ enum MCPDevelopParameters {
         case .localAdjustments:
             var basic = schema(.globalAdjustments).objectValue!["properties"]!.objectValue!
             basic.removeValue(forKey: "pipeline_version")
+            basic.removeValue(forKey: "camera_look")
             return objectSchema(["basic": objectSchema(basic), "color": schema(.colorAdjustments), "zone_gains": gainsSchema,
                                  "curves": curvesSchema])
         default: preconditionFailure("Only adjustment patches have a parameter schema.")
@@ -130,6 +132,9 @@ enum MCPDevelopParameters {
         switch fields["type"]?.stringValue {
         case "object":
             guard let properties = fields["properties"]?.objectValue, let values = value.objectValue, !values.isEmpty else { return false }
+            if let required = fields["required"]?.arrayValue?.compactMap(\.stringValue), !required.allSatisfy({ values[$0] != nil }) {
+                return false
+            }
             return values.allSatisfy { name, item in properties[name].map { accepts(item, schema: $0) } ?? false }
         case "number":
             guard let number = value.number, let lower = fields["minimum"]?.number, let upper = fields["maximum"]?.number else { return false }
@@ -153,6 +158,14 @@ enum MCPDevelopParameters {
         }
     }
 
+    static let cameraLookSchema: Value = [
+        "anyOf": [
+            ["type": "null"],
+            ["type": "object", "required": ["id", "version"], "additionalProperties": false,
+             "properties": ["id": ["type": "string", "minLength": 1, "maxLength": 80],
+                            "version": ["type": "integer", "minimum": 1, "maximum": 9999]]]
+        ]
+    ]
     static let pointsSchema: Value = [
         "type": "array", "minItems": 2, "maxItems": .int(ToneCurves.maxPoints),
         "items": ["type": "object", "required": ["x", "y"], "additionalProperties": false,
@@ -213,6 +226,7 @@ enum MCPDevelopParameters {
                 "grading": .object(grading)
             ],
             "baseline": ["exposure": .double(recipe.baselineExposure), "temperature": .double(recipe.baselineTemperature), "tint": .double(recipe.baselineTint)],
+            "camera_look": recipe.cameraLook.map { ["id": .string($0.id), "version": .int($0.version)] } ?? .null,
             "pipeline_version": .int(recipe.pipelineVersion), "raw": .bool(!recipe.isRaster),
             "geometry": MCPCanvasFields.geometry(recipe), "point_colors": .array(recipe.develop.pointColors.map(MCPCanvasFields.pointColor)),
             "raw_defaults": rawDefaults == nil ? .null : .object(available)
@@ -261,6 +275,20 @@ enum MCPDevelopParameters {
                 recipe.tint = recipe.baselineTint
             }
             if let monochrome = values["black_and_white"]?.boolValue { recipe.develop.blackAndWhite = monochrome }
+            if let lookValue = values["camera_look"] {
+                if lookValue == .null {
+                    if !recipe.isRaster { recipe.cameraLook = nil }
+                } else {
+                    guard !recipe.isRaster else { throw MCPToolProblem.invalid("Camera looks require a sensor RAW photo.") }
+                    guard let obj = lookValue.objectValue, let id = obj["id"]?.stringValue, let version = obj["version"]?.intValue else {
+                        throw MCPToolProblem.invalid("Camera look requires id and integer version.")
+                    }
+                    let selection = CameraLookSelection(id: id, version: version)
+                    try CameraLookLibrary.shared.validate(selection)
+                    recipe.pipelineVersion = 2
+                    recipe.cameraLook = selection
+                }
+            }
         case .detailAdjustments:
             if recipe.isRaster, values.keys.contains(where: { $0.hasPrefix("raw_") }) {
                 throw MCPToolProblem.invalid("RAW detail controls require a RAW photo.")

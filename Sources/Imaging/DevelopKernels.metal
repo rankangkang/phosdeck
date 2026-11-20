@@ -183,6 +183,30 @@ float3 rasterColourSample(coreimage::sampler table, float3 encoded, float power)
     float3 e = mix(rasterColourNode(table,i+float3(0,1,1)),rasterColourNode(table,i+float3(1,1,1)),f.x);
     return mix(mix(a,c,f.y),mix(d,e,f.y),f.z);
 }
+float3 cameraLookNode(coreimage::sampler table, float3 node, float n) {
+    // The 2D atlas stores R fastest, then G across X, with one bitmap row per B plane.
+    float2 p = float2(node.x + n * node.y + 0.5f, n - node.z - 0.5f);
+    return table.sample(table.transform(p)).rgb;
+}
+float3 cameraLookTetrahedron(coreimage::sampler table, float3 position, float n) {
+    float3 cell = clamp(floor(position), 0.0f, n - 2.0f);
+    float3 fraction = clamp(position - cell, 0.0f, 1.0f);
+    float3 first;
+    if (fraction.x >= fraction.y && fraction.x >= fraction.z) first = float3(1, 0, 0);
+    else if (fraction.y >= fraction.z) first = float3(0, 1, 0);
+    else first = float3(0, 0, 1);
+    float3 last;
+    if (fraction.z <= fraction.x && fraction.z <= fraction.y) last = float3(0, 0, 1);
+    else if (fraction.y <= fraction.x) last = float3(0, 1, 0);
+    else last = float3(1, 0, 0);
+    float high = max(fraction.x, max(fraction.y, fraction.z));
+    float low = min(fraction.x, min(fraction.y, fraction.z));
+    float middle = (fraction.x + fraction.y + fraction.z) - high - low;
+    return cameraLookNode(table, cell, n) * (1.0f - high)
+        + cameraLookNode(table, cell + first, n) * (high - middle)
+        + cameraLookNode(table, cell + 1.0f - last, n) * (middle - low)
+        + cameraLookNode(table, cell + 1.0f, n) * low;
+}
 extern "C" { namespace coreimage {
 float4 pointColorInput(sample_t input,float4 hue0,float4 hue1,float4 sat0,float4 sat1,float4 lum0,float4 lum1) {
     float4 s = straightColor(input);
@@ -416,6 +440,16 @@ float4 rasterExposureColour(sampler photo, sampler base, sampler low, sampler hi
     float3 a = rasterColourSample(low,e,powers.x);
     float3 delta = weight == 0 ? a : mix(a,rasterColourSample(high,e,powers.y),weight);
     return float4(base.sample(base.coord()).rgb+delta*s.a,s.a);
+}
+float4 cameraLook(sampler source, sampler table, float dimension, float upperBound) {
+    float4 pixel = straightColor(source.sample(source.coord()));
+    if (pixel.a <= 0) return float4(0);
+    float3 bounded = clamp(pixel.rgb, 0.0f, upperBound);
+    float3 coordinate = log2(1.0f + bounded / 0.18f) / log2(1.0f + upperBound / 0.18f);
+    float3 output = cameraLookTetrahedron(table, coordinate * (dimension - 1.0f), dimension);
+    // Preserve signed out-of-gamut primaries and highlight headroom above upperBound continuously.
+    output += pixel.rgb - bounded;
+    return premultiply(float4(output, pixel.a));
 }
 float4 toneCurves(sample_t s, float4 p0, float4 p1, float4 p2, float4 p3, float4 p4, float4 p5, float4 p6, float4 p7, float4 p8, float4 p9, float4 p10, float4 p11, float4 p12, float4 p13, float4 p14, float4 p15, float pointCount, float channel) {
     float4 points[16] = { p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15 };

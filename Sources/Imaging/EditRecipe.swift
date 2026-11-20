@@ -132,6 +132,7 @@ struct EditRecipe: Codable, Equatable {
     var sharpening = GeneralSharpening()
     var noiseReduction = GeneralNoiseReduction()
     var defringe: ManualDefringe?
+    var cameraLook: CameraLookSelection?
     var rawDetails = RAWDetailSettings()
     var straightenDegrees = 0.0
     /// Imported straightening can carry its own crop in the rotated source pixels.
@@ -145,21 +146,25 @@ struct EditRecipe: Codable, Equatable {
         case schemaVersion, pipelineVersion, sourceDigest, decoderVersion, systemVersion, appBuild
         case baselineExposure, baselineTemperature, baselineTint, exposure, temperature, tint
         case asShotWhiteBalance, contrast, saturation, quarterTurns, crop, develop, straightenDegrees, cropAspectRatio
-        case flipHorizontal, flipVertical, perspective, sharpening, noiseReduction, defringe, straightenAtSourceScale
+        case flipHorizontal, flipVertical, perspective, sharpening, noiseReduction, defringe, cameraLook, straightenAtSourceScale
     }
 
-    func validate() throws {
+    func validate(lookLibrary: CameraLookLibrary = .shared) throws {
         guard !decoderVersion.hasPrefix("imageio-") || isRaster else { throw LRCError(L10n.text("app.unsupportedRasterDevelopmentVersionOriginalDataPreserved", defaultValue: "Unsupported raster development version. Original data preserved")) }
         guard (1...3).contains(schemaVersion), (0...2).contains(pipelineVersion) else { throw LRCError(L10n.text("app.unsupportedRecipeOrPipelineVersionOriginalDataPreserved", defaultValue: "Unsupported recipe or pipeline version. Original data preserved")) }
         if isRaster {
             guard pipelineVersion == 2, baselineExposure == 0, baselineTemperature == 5500, baselineTint == 0,
-                  rawDetails.isDefault else { throw LRCError(L10n.text("app.jpegTIFFPNGRecipesCannotContainARAWBaseline", defaultValue: "JPEG/TIFF/PNG recipes cannot contain a RAW baseline or RAW-specific detail parameters")) }
+                  rawDetails.isDefault, cameraLook == nil else { throw LRCError(L10n.text("app.jpegTIFFPNGRecipesCannotContainARAWBaseline", defaultValue: "JPEG/TIFF/PNG recipes cannot contain a RAW baseline or RAW-specific detail parameters")) }
         }
         try rawDetails.validate()
         try sharpening.validate()
         try noiseReduction.validate()
         try defringe?.validate()
         guard defringe == nil || pipelineVersion == 2 else { throw LRCError(L10n.text("defringe.currentPipeline", defaultValue: "Manual defringe requires the current development pipeline")) }
+        if let cameraLook {
+            guard pipelineVersion == 2 else { throw LRCError(L10n.text("cameraLook.currentPipeline", defaultValue: "Camera looks require the current development pipeline")) }
+            try lookLibrary.validate(cameraLook)
+        }
         try perspective.validate()
         try develop.validate()
         guard pipelineVersion == 2 || develop.pointColors.allSatisfy(\.isNeutral) else { throw LRCError(L10n.text("app.pointColorRequiresTheCurrentDevelopmentPipeline", defaultValue: "Point Color requires the current development pipeline")) }
@@ -195,8 +200,8 @@ struct EditRecipe: Codable, Equatable {
               crop.x + crop.width <= 1.0000001, crop.y + crop.height <= 1.0000001,
               sourceDigest.count == 64, sourceDigest.allSatisfy(\.isHexDigit), !decoderVersion.isEmpty else { throw LRCError(L10n.text("app.theRecipeContainsInvalidOrOutOfRangeParameters", defaultValue: "The recipe contains invalid or out-of-range parameters")) }
     }
-    func validate(for photo: Photo) throws {
-        try validate()
+    func validate(for photo: Photo, lookLibrary: CameraLookLibrary = .shared) throws {
+        try validate(lookLibrary: lookLibrary)
         guard photo.supportsEditing, isRaster == !photo.isRAW, isLinearComposite == (photo.details?.composite != nil) else { throw LRCError(L10n.text("app.theRecipeDoesNotMatchTheSourceFileType", defaultValue: "The recipe does not match the source file type")) }
     }
     func resetForCurrentPipeline() -> Self {
@@ -220,6 +225,7 @@ struct EditRecipe: Codable, Equatable {
         r.sharpening = GeneralSharpening()
         r.noiseReduction = GeneralNoiseReduction()
         r.defringe = nil
+        r.cameraLook = nil
         return r
     }
     /// `baseline()` tones on the current rotation, crop and lens correction, so before and after line up pixel for pixel.
@@ -267,6 +273,7 @@ extension EditRecipe {
         sharpening = try c.decode(GeneralSharpening.self, forKey: .sharpening)
         noiseReduction = try c.decode(GeneralNoiseReduction.self, forKey: .noiseReduction)
         defringe = try c.decodeIfPresent(ManualDefringe.self, forKey: .defringe)
+        cameraLook = try c.decodeIfPresent(CameraLookSelection.self, forKey: .cameraLook)
         crop = try c.decode(Crop.self, forKey: .crop)
         if schemaVersion == 1 {
             develop = try c.decodeIfPresent(DevelopAdjustments.self, forKey: .develop) ?? DevelopAdjustments()
@@ -293,19 +300,54 @@ extension EditRecipe {
 }
 
 struct RecipePasteOptions: Codable, Equatable {
-    var tone = true
-    var whiteBalance = true
-    var color = true
-    var geometry = false
-    var details = false
-    var generalDetails = false
-    var curves = true
-    var zones = true
+    var tone: Bool
+    var whiteBalance: Bool
+    var color: Bool
+    var geometry: Bool
+    var details: Bool
+    var generalDetails: Bool
+    var curves: Bool
+    var zones: Bool
+    var cameraLook: Bool
     /// Present only for imported sparse presets; ordinary copy/paste keeps its group semantics.
     var importedXMP: XMPPresetSettings?
-    var hasSelection: Bool { tone || whiteBalance || color || geometry || details || generalDetails || curves || zones }
+
+    init(tone: Bool = true, whiteBalance: Bool = true, color: Bool = true, geometry: Bool = false,
+         details: Bool = false, generalDetails: Bool = false, curves: Bool = true, zones: Bool = true,
+         cameraLook: Bool = false, importedXMP: XMPPresetSettings? = nil) {
+        self.tone = tone
+        self.whiteBalance = whiteBalance
+        self.color = color
+        self.geometry = geometry
+        self.details = details
+        self.generalDetails = generalDetails
+        self.curves = curves
+        self.zones = zones
+        self.cameraLook = cameraLook
+        self.importedXMP = importedXMP
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case tone, whiteBalance, color, geometry, details, generalDetails, curves, zones, cameraLook, importedXMP
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        tone = try c.decode(Bool.self, forKey: .tone)
+        whiteBalance = try c.decode(Bool.self, forKey: .whiteBalance)
+        color = try c.decode(Bool.self, forKey: .color)
+        geometry = try c.decode(Bool.self, forKey: .geometry)
+        details = try c.decode(Bool.self, forKey: .details)
+        generalDetails = try c.decode(Bool.self, forKey: .generalDetails)
+        curves = try c.decode(Bool.self, forKey: .curves)
+        zones = try c.decode(Bool.self, forKey: .zones)
+        cameraLook = try c.decodeIfPresent(Bool.self, forKey: .cameraLook) ?? false
+        importedXMP = try c.decodeIfPresent(XMPPresetSettings.self, forKey: .importedXMP)
+    }
+
+    var hasSelection: Bool { tone || whiteBalance || color || geometry || details || generalDetails || curves || zones || cameraLook }
     var summary: String {
-        let groups = [(tone, L10n.text("app.tone", defaultValue: "Tone")), (curves, L10n.text("app.curves", defaultValue: "Curves")), (zones, L10n.text("app.zones", defaultValue: "Zones")), (whiteBalance, L10n.text("app.whiteBalance", defaultValue: "White Balance")),
+        let groups = [(cameraLook, L10n.text("cameraLook.label", defaultValue: "Camera Look")), (tone, L10n.text("app.tone", defaultValue: "Tone")), (curves, L10n.text("app.curves", defaultValue: "Curves")), (zones, L10n.text("app.zones", defaultValue: "Zones")), (whiteBalance, L10n.text("app.whiteBalance", defaultValue: "White Balance")),
                       (color, L10n.text("app.color", defaultValue: "Color")), (generalDetails, L10n.text("app.generalDetail", defaultValue: "General Detail")), (details, L10n.text("app.rawDetail", defaultValue: "RAW Detail")), (geometry, L10n.text("app.geometry", defaultValue: "Geometry"))]
         return groups.filter { $0.0 }.map { $0.1 }.joined(separator: "、")
     }
@@ -313,8 +355,8 @@ struct RecipePasteOptions: Codable, Equatable {
 
 extension EditRecipe {
     /// Transfer adjustments, never source identity, decoder metadata or RAW baseline.
-    func pasting(_ source: EditRecipe, options: RecipePasteOptions) throws -> Self {
-        try source.validate()
+    func pasting(_ source: EditRecipe, options: RecipePasteOptions, lookLibrary: CameraLookLibrary = .shared) throws -> Self {
+        try source.validate(lookLibrary: lookLibrary)
         var value = self
         // Partial pastes must not silently reinterpret untouched settings in a new pipeline.
         guard source.pipelineVersion == pipelineVersion else { throw LRCError(L10n.text("app.developmentVersionsDifferUseTheSameVersionOnBoth", defaultValue: "Development versions differ. Use the same version on both photos before pasting")) }
@@ -347,10 +389,11 @@ extension EditRecipe {
         }
         if options.generalDetails { value.sharpening = source.sharpening; value.noiseReduction = source.noiseReduction; value.defringe = source.defringe }
         if options.details, !isRaster, !source.isRaster { value.rawDetails = source.rawDetails }
+        if options.cameraLook, !isRaster, !source.isRaster { value.cameraLook = source.cameraLook }
         if options.curves { value.develop.curves = source.develop.curves }
         if options.zones { value.develop.zones = source.develop.zones }
         value.schemaVersion = max(value.schemaVersion, value.localAdjustments.isEmpty ? 2 : 3)
-        try value.validate()
+        try value.validate(lookLibrary: lookLibrary)
         return value
     }
 
@@ -360,13 +403,13 @@ extension EditRecipe {
     /// already have the same name and components; their effect is scaled by amount.
     /// Follows lightcraft `crates/develop/src/presets.rs` `apply_partial` at commit 5436951.
     /// Attribution: docs/references/lightcraft-LICENSE.txt.
-    func applyingPreset(_ source: EditRecipe, options: RecipePasteOptions, amount: Double) throws -> Self {
-        try source.validate()
+    func applyingPreset(_ source: EditRecipe, options: RecipePasteOptions, amount: Double, lookLibrary: CameraLookLibrary = .shared) throws -> Self {
+        try source.validate(lookLibrary: lookLibrary)
         if let imported = options.importedXMP {
             let resolved = try imported.resolved(on: self, options: options)
             var native = options
             native.importedXMP = nil
-            return try applyingPreset(resolved, options: native, amount: amount)
+            return try applyingPreset(resolved, options: native, amount: amount, lookLibrary: lookLibrary)
         }
         guard source.pipelineVersion == pipelineVersion else { throw LRCError(L10n.text("app.developmentVersionsDifferUseTheSameVersionOnBoth", defaultValue: "Development versions differ. Use the same version on both photos before pasting")) }
         let t = amount.isFinite ? min(2, max(0, amount)) : 1
@@ -379,13 +422,13 @@ extension EditRecipe {
             if toward.asShotWhiteBalance { toward.temperature = baselineTemperature; toward.tint = baselineTint }
             scaled = from.mixing(toward, amount: t)
         }
-        var value = try pasting(scaled, options: options)
+        var value = try pasting(scaled, options: options, lookLibrary: lookLibrary)
         if abs(t - 1) >= 1e-9, options.whiteBalance, isRaster == source.isRaster {
             let atShot = value.temperature == baselineTemperature && value.tint == baselineTint
             value.asShotWhiteBalance = atShot && RecipeMix.pick(asShotWhiteBalance, source.asShotWhiteBalance, t)
-            try value.validate()
+            try value.validate(lookLibrary: lookLibrary)
         }
-        return try value.addingPresetMasks(from: source, amount: t)
+        return try value.addingPresetMasks(from: source, amount: t, lookLibrary: lookLibrary)
     }
 
     func transferNotes(from source: EditRecipe, options: RecipePasteOptions) -> [String] {
@@ -402,12 +445,18 @@ extension EditRecipe {
         }
         if options.whiteBalance, isRaster != source.isRaster { notes.append(L10n.text("app.rawAndJPEGTIFFPNGUseDifferentWhiteBalance", defaultValue: "RAW and JPEG/TIFF/PNG use different white balance models. Target white balance preserved")) }
         if options.details, isRaster || source.isRaster { notes.append(L10n.text("app.rawSpecificNoiseReductionSharpeningAndLensCorrectionSkipped", defaultValue: "RAW-specific noise reduction, sharpening, and lens correction skipped")) }
+        if options.cameraLook, isRaster || source.isRaster { notes.append(L10n.text("cameraLook.transferSkippedForRaster", defaultValue: "Camera looks apply only to sensor RAW photos and were skipped")) }
         return notes
     }
 
     func changeTitle(from previous: Self?) -> String {
         guard let previous else { return L10n.text("app.initialState", defaultValue: "Initial State") }
         var parts: [String] = []
+        if cameraLook != previous.cameraLook {
+            let label = cameraLook.map { CameraLookLibrary.shared.title(for: $0) }
+                ?? L10n.text("cameraLook.default", defaultValue: "Default Rendering")
+            parts.append(L10n.text("cameraLook.historyTitle", defaultValue: "Camera Look: \(label)"))
+        }
         if localAdjustments != previous.localAdjustments { parts.append(L10n.text("app.masksAndLocalAdjustments", defaultValue: "Masks and Local Adjustments")) }
         if repairs != previous.repairs { parts.append(L10n.text("app.spotRemoval", defaultValue: "Spot Removal")) }
         if vignette != previous.vignette { parts.append(L10n.text("app.creativeVignette", defaultValue: "Creative Vignette")) }
@@ -456,11 +505,12 @@ extension EditRecipe {
         value.sharpening = sharpening.mixing(toward.sharpening, amount: t)
         value.noiseReduction = noiseReduction.mixing(toward.noiseReduction, amount: t)
         value.manualDefringe = manualDefringe.mixing(toward.manualDefringe, amount: t)
+        value.cameraLook = isRaster == toward.isRaster ? RecipeMix.pick(cameraLook, toward.cameraLook, t) : toward.cameraLook
         value.rawDetails = isRaster == toward.isRaster ? rawDetails.mixing(toward.rawDetails, amount: t) : toward.rawDetails
         return value
     }
 
-    private func addingPresetMasks(from source: EditRecipe, amount: Double) throws -> Self {
+    private func addingPresetMasks(from source: EditRecipe, amount: Double, lookLibrary: CameraLookLibrary = .shared) throws -> Self {
         guard !source.localAdjustments.isEmpty else { return self }
         var value = self
         for mask in source.localAdjustments {
@@ -475,7 +525,7 @@ extension EditRecipe {
         value.schemaVersion = max(value.schemaVersion, value.localAdjustments.isEmpty ? 2 : 3)
         if value.localAdjustments.contains(where: { $0.settings != nil }) { value.maskVersion = max(value.maskVersion, 2) }
         if value.localAdjustments.contains(where: { $0.components.contains(where: { $0.raster != nil }) }) { value.maskVersion = 3 }
-        try value.validate()
+        try value.validate(lookLibrary: lookLibrary)
         return value
     }
 }

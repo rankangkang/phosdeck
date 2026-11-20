@@ -228,6 +228,7 @@ struct DevelopPanel: View {
             r.develop.blackWhiteMixer = old.blackWhiteMixer; r.develop.pointColors = old.pointColors
             r.exposure = 0; r.contrast = 1; r.saturation = 1
             r.asShotWhiteBalance = true; r.temperature = r.baselineTemperature; r.tint = r.baselineTint
+            r.cameraLook = nil
         }
     }
     private func expansion(_ panel: Int) -> Binding<Bool> {
@@ -465,6 +466,14 @@ struct DevelopPanel: View {
         VStack(spacing: 0) {
             keyField(L10n.text("app.treatment", defaultValue: "Treatment"), [KeyOption(false, L10n.text("app.color_1139", defaultValue: "Color")), KeyOption(true, L10n.text("app.blackWhite", defaultValue: "Black & White"))],
                      Binding(get: { recipe?.develop.blackAndWhite ?? false }, set: { v in change { $0.develop.blackAndWhite = v } }))
+            if !local, recipe?.isRaster == false {
+                CameraLookRow(selection: recipe?.cameraLook) { selection in
+                    change { r in
+                        if selection != nil { r.pipelineVersion = 2 }
+                        r.cameraLook = selection
+                    }
+                }
+            }
             HStack(spacing: Metrics.gap) {
                 SubgroupLabel(L10n.text("app.whiteBalance", defaultValue: "White Balance"))
                 if !local {
@@ -706,6 +715,79 @@ struct DevelopPanel: View {
                             value: (recipe?[keyPath: key] ?? 0) * scale + offset,
                             range: range, step: step, digits: digits, scale: scale, offset: offset, reset: reset, unit: unit)
             .equatable()
+    }
+}
+
+/// A RAW-only camera-look selector aligned with the Basic panel's key rows.
+private struct CameraLookRow: View {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
+    let selection: CameraLookSelection?
+    let onSelect: (CameraLookSelection?) -> Void
+
+    private var library: CameraLookLibrary { .shared }
+    private var defaultTitle: String { L10n.text("cameraLook.default", defaultValue: "Default Rendering") }
+    private var currentTitle: String {
+        selection.map { library.title(for: $0) } ?? defaultTitle
+    }
+
+    var body: some View {
+        let sections = library.menuSections()
+        let selectableSelections = Set(sections.flatMap { $0.entries.map(\.selection) })
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: Metrics.gap) {
+                Text(L10n.text("cameraLook.label", defaultValue: "Camera Look"))
+                    .frame(width: Metrics.rowLabel, height: Metrics.key, alignment: .leading)
+                Menu {
+                    Toggle(isOn: Binding(get: { selection == nil }, set: { _ in onSelect(nil) })) {
+                        Text(defaultTitle)
+                    }
+                    if let selection, !selectableSelections.contains(selection) {
+                        Toggle(isOn: .constant(true)) {
+                            Text(library.title(for: selection))
+                        }
+                    }
+                    ForEach(sections, id: \.group.id) { section in
+                        Divider()
+                        Section(section.group.displayTitle()) {
+                            ForEach(section.entries) { entry in
+                                Toggle(isOn: Binding(get: { selection == entry.selection },
+                                                     set: { _ in onSelect(entry.selection) })) {
+                                    Text(library.title(for: entry.selection))
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(currentTitle)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 4)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(isEnabled || preservesAppearance ? Theme.textSecondary : Theme.textDisabled)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .keySurface(selected: selection != nil, enabled: isEnabled, preservesAppearance: preservesAppearance)
+                .accessibilityIdentifier("camera-look-menu")
+                .accessibilityLabel(L10n.text("cameraLook.label", defaultValue: "Camera Look"))
+                .accessibilityValue(currentTitle)
+                .help(L10n.text("cameraLook.help", defaultValue: "Choose Default Rendering or a camera look for this RAW photo. Existing exposure, white balance, masks, and other adjustments are preserved."))
+            }
+            if let selection, library.entry(for: selection)?.diagnostic == true {
+                Text(L10n.text("cameraLook.diagnosticNote", defaultValue: "Test lookup table for camera-look pipeline verification only, not a calibrated camera profile."))
+                    .font(.caption11)
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 
