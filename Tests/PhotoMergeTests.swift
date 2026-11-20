@@ -706,7 +706,9 @@ final class PhotoMergeTests: XCTestCase {
         if raw.isContrastSupported { raw.contrastAmount = 0 }
         if raw.isDetailSupported { raw.detailAmount = 0 }
         if raw.isMoireReductionSupported { raw.moireReductionAmount = 0 }
-        if raw.isDespeckleSupported { raw.despeckleAmount = 0 }
+        if raw.responds(to: #selector(getter: CIRAWFilter.isDespeckleSupported)),
+           raw.responds(to: #selector(setter: CIRAWFilter.despeckleAmount)),
+           raw.isDespeckleSupported { raw.despeckleAmount = 0 }
         let expectedNeutral = try MergeImage.read(XCTUnwrap(raw.outputImage),context:context)
         let calibrated = try await pipeline.mergeDecode(request,longEdge:longEdge,whiteBalance:wb,forDarkCalibration:true).image
         XCTAssertEqual([calibrated.width,calibrated.height],[expectedNeutral.width,expectedNeutral.height])
