@@ -42,21 +42,26 @@ are included. Lightroom's public Upright workflow is an interaction reference;
 no closed-source implementation or output-fitted parameters are used here.
 
 The bundled Phosdeck Fujifilm looks use Redlamp's MPL-2.0 Standard, Vivid Slide
-and Chrome tables at version 2, fitted to CC0 RAW/embedded-JPEG pairs.
+and Chrome tables at version 2, fitted to CC0 RAW/embedded-JPEG pairs, and the
+hand-designed version 1 Soft Slide, four Negatives, Cinema, Bleach and four
+Monochrome tables.
 Upstream revision: dfcd8f54f2ab6be0ec7b0b4e164ab6e740fc4b90 (2026-11-20).
 Source tables and index:
 https://github.com/pdcgomes/redlamp/tree/dfcd8f54f2ab6be0ec7b0b4e164ab6e740fc4b90/packages/RedlampRecipes/Resources/BaseLooks
 Files: base-standard@2.look.lzma, base-vivid-slide@2.look.lzma,
-base-chrome@2.look.lzma, and BaseLooks.json.
+base-chrome@2.look.lzma, base-soft-slide.look.lzma, base-negative-{high,standard,
+classic,nostalgic}.look.lzma, base-cinema.look.lzma, base-bleach.look.lzma,
+base-monochrome.look.lzma, base-monochrome-{yellow,red,green}.look.lzma and
+BaseLooks.json. StarterPackLooks.swift also supplies the monochrome mixers.
 Format and rendering references: BundledLookFile.swift, LookTable.swift,
-Develop.metal, BundledBaseLookTests.swift, and docs/recipes/look-development.md.
+Develop.metal, BundledBaseLookTests.swift, docs/recipes/look-development.md
+and docs/recipes/camera-card-mapping.md.
 The adapted tables and their editable generation code are available under
 MPL-2.0 at https://github.com/rankangkang/phosdeck/tree/master/Sources/Imaging/CameraLooks
 and https://github.com/rankangkang/phosdeck/blob/master/scripts/pack-camera-looks.py.
 Generation resamples the sRGB-encoded Rec.2020 data to Phosdeck's log-spaced
-extended-linear-sRGB tables with display white protection. The bundled inputs
-are Redlamp's independently fitted tables; the GPU renderer and picker are
-Phosdeck's existing native implementations.
+extended-linear-sRGB tables with display white protection. Phosdeck's renderer
+extends the monochrome tables into floating-point luminance headroom.
 
 Mozilla Public License Version 2.0
 ==================================

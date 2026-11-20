@@ -183,8 +183,12 @@ final class CameraLookTests: XCTestCase {
         XCTAssertEqual(previewSections.last?.entries.map(\.selection), [selection])
         let releaseSections = releaseLibrary.menuSections()
         XCTAssertEqual(releaseSections.map(\.group.id), ["fujifilm", "sony"])
-        XCTAssertEqual(releaseSections.flatMap(\.entries).map(\.selection.id),
-                       ["fujifilm.provia", "fujifilm.velvia", "fujifilm.classic-chrome", "sony.st"])
+        let fujiLooks = ["provia", "velvia", "astia", "classic-chrome", "pro-neg-hi", "pro-neg-std",
+                         "classic-neg", "nostalgic-neg", "reala-ace", "eterna", "eterna-bleach-bypass",
+                         "acros", "acros-ye", "acros-r", "acros-g", "monochrome", "monochrome-ye",
+                         "monochrome-r", "monochrome-g", "sepia"]
+        XCTAssertEqual(releaseSections.first?.entries.map(\.selection.id), fujiLooks.map { "fujifilm.\($0)" })
+        XCTAssertEqual(releaseSections.last?.entries.map(\.selection.id), ["sony.st"])
 
         XCTAssertEqual(previewLibrary.title(for: selection, language: "en"), "Test Lookup Table")
         XCTAssertEqual(previewLibrary.title(for: selection, language: "zh-Hans"), "测试色表")
@@ -197,25 +201,58 @@ final class CameraLookTests: XCTestCase {
 
     func testBundledLooksChangeColorAndPreserveHighlightHeadroom() throws {
         let library = CameraLookLibrary(includesDiagnosticLooks: false)
-        let middle = SIMD3<Float>(0.15, 0.48, 0.29)
+        let patches: [SIMD3<Float>] = [SIMD3(0.15, 0.48, 0.29), SIMD3(0.72, 0.14, 0.03), SIMD3(0.16, 0.04, 0.62)]
         let high = SIMD3<Float>(-0.075, 2.2, 5.5)
         let nearWhite: [SIMD3<Float>] = [SIMD3(repeating: 0.9999), SIMD3(0.9999, 0, 0.23),
                                        SIMD3(0.10, 0.9999, 0.61), SIMD3(0.19, 0.44, 0.9999)]
-        var colors = Set<SIMD3<Float>>()
+        var swatches = Set<[SIMD3<Float>]>()
         for entry in library.menuSections().flatMap(\.entries) {
             let table = try library.table(for: entry.selection)
-            let color = table.referenceSample(middle)
-            colors.insert(color)
-            XCTAssertGreaterThan(simd_length(color - middle), 0.001, entry.selection.id)
-            let highlight = table.referenceSample(high)
-            XCTAssertEqual(highlight.x, high.x, accuracy: 0.0001)
-            XCTAssertEqual(highlight.y, high.y, accuracy: 0.004)
-            XCTAssertEqual(highlight.z, high.z, accuracy: 0.0001)
+            let colors = patches.map(table.referenceSample)
+            XCTAssertTrue(swatches.insert(colors).inserted, entry.selection.id)
+            XCTAssertGreaterThan(simd_length(colors[0] - patches[0]), 0.001, entry.selection.id)
+            if table.headroomWeights == nil {
+                let highlight = table.referenceSample(high)
+                XCTAssertEqual(highlight.x, high.x, accuracy: 0.0001)
+                XCTAssertEqual(highlight.y, high.y, accuracy: 0.004)
+                XCTAssertEqual(highlight.z, high.z, accuracy: 0.0001)
+            }
             for point in nearWhite {
                 XCTAssertLessThan(simd_reduce_max(table.referenceSample(point)), 1, entry.selection.id)
             }
         }
-        XCTAssertEqual(colors.count, 4)
+    }
+
+    func testMonochromeAndSepiaKeepTheirTreatmentThroughExtendedHighlights() throws {
+        let library = CameraLookLibrary(includesDiagnosticLooks: false)
+        let samples: [SIMD3<Float>] = [SIMD3(0.25, 0.25, 0.25), SIMD3(0.99, 0.66, 0.41),
+                                      SIMD3(1.3, 1.8, 0.4), SIMD3(-0.075, 4.3, 5.5)]
+        let alpha: Float = 0.35
+        let input = makeLinearImage(samples.flatMap { [$0.x * alpha, $0.y * alpha, $0.z * alpha, alpha] },
+                                    width: samples.count, height: 1)
+        let monochrome = ["acros", "acros-ye", "acros-r", "acros-g", "monochrome", "monochrome-ye",
+                          "monochrome-r", "monochrome-g"]
+        for look in monochrome + ["sepia"] {
+            let selection = CameraLookSelection(id: "fujifilm.\(look)", version: 1)
+            let table = try library.table(for: selection)
+            _ = try XCTUnwrap(table.headroomWeights)
+            let pixels = renderLinearPixels(try CameraLookPipeline.apply(input, selection: selection, library: library))
+            for (index, sample) in samples.enumerated() {
+                let offset = index * 4
+                let actual = SIMD3(pixels[offset], pixels[offset + 1], pixels[offset + 2]) / alpha
+                let expected = table.referenceSample(sample)
+                XCTAssertEqual(pixels[offset + 3], alpha, accuracy: 1e-7, look)
+                XCTAssertLessThan(simd_length(actual - expected), 0.00002, look)
+                if look == "sepia" {
+                    XCTAssertGreaterThan(actual.x, actual.y, look)
+                    XCTAssertGreaterThan(actual.y, actual.z, look)
+                } else {
+                    XCTAssertEqual(actual.x, actual.y, accuracy: 1e-6, look)
+                    XCTAssertEqual(actual.y, actual.z, accuracy: 1e-6, look)
+                }
+            }
+            XCTAssertGreaterThan(pixels[12] / alpha, 1, look)
+        }
     }
 
     @MainActor
@@ -251,10 +288,10 @@ final class CameraLookTests: XCTestCase {
         let original = try XCTUnwrap(model.recipe)
         let saved = try XCTUnwrap(catalog.photo(photo.id)?.recipe)
         let history = model.editHistory.count
-        let fuji = CameraLookSelection(id: "fujifilm.provia", version: 1)
-        let sony = CameraLookSelection(id: "sony.st", version: 1)
-        model.previewCameraLook(fuji)
-        XCTAssertEqual(model.displayPreviewRecipe?.cameraLook, fuji)
+        let eterna = CameraLookSelection(id: "fujifilm.eterna", version: 1)
+        let acros = CameraLookSelection(id: "fujifilm.acros-r", version: 1)
+        model.previewCameraLook(eterna)
+        XCTAssertEqual(model.displayPreviewRecipe?.cameraLook, eterna)
         XCTAssertEqual(model.recipe, original)
         XCTAssertEqual(try catalog.photo(photo.id)?.recipe, saved)
         XCTAssertEqual(model.editHistory.count, history)
@@ -262,11 +299,11 @@ final class CameraLookTests: XCTestCase {
         XCTAssertFalse(model.isPreviewingAdjustment)
         XCTAssertEqual(model.recipe, original)
 
-        model.previewCameraLook(sony)
-        model.selectCameraLook(sony)
+        model.previewCameraLook(acros)
+        model.selectCameraLook(acros)
         XCTAssertFalse(model.isPreviewingAdjustment)
         var expected = original
-        expected.cameraLook = sony
+        expected.cameraLook = acros
         XCTAssertEqual(model.recipe, expected)
         XCTAssertEqual(model.editHistory.count, history + 1)
         let data = try XCTUnwrap(catalog.photo(photo.id)?.recipe)
@@ -278,7 +315,7 @@ final class CameraLookTests: XCTestCase {
         let initialFrame = try await pipeline.render(initial, longEdge: 320)
         let editedFrame = try await pipeline.render(edited, longEdge: 320)
         XCTAssertNotEqual(try bytes(initialFrame), try bytes(editedFrame))
-        let output = workspace.appendingPathComponent("ST.png")
+        let output = workspace.appendingPathComponent("ACROS.png")
         _ = try await pipeline.export(edited, staging: output, options: ExportOptions(format: .png, longEdge: 320))
         let source = try XCTUnwrap(CGImageSourceCreateWithURL(output as CFURL, nil))
         let exported = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))

@@ -45,6 +45,7 @@ struct CameraLookEntry: Equatable, Identifiable, Sendable {
     let dimension: Int
     let upperBound: Float
     let sha256: String
+    let headroomWeights: SIMD3<Float>?
 
     var id: CameraLookSelection { selection }
 
@@ -62,10 +63,12 @@ struct CameraLookTable: @unchecked Sendable {
     let selection: CameraLookSelection
     let dimension: Int
     let upperBound: Float
+    let headroomWeights: SIMD3<Float>?
     let texels: [SIMD4<Float16>]
     let atlas: CIImage
 
-    init(selection: CameraLookSelection, dimension: Int, upperBound: Float, rgbTriplets: [Float16]) throws {
+    init(selection: CameraLookSelection, dimension: Int, upperBound: Float, rgbTriplets: [Float16],
+         headroomWeights: SIMD3<Float>? = nil) throws {
         guard Self.dimensionRange.contains(dimension),
               upperBound.isFinite, Self.upperBoundRange.contains(upperBound) else {
             throw LRCError(L10n.text("cameraLook.corruptResource", defaultValue: "Camera look resource has unsupported table geometry"))
@@ -93,6 +96,7 @@ struct CameraLookTable: @unchecked Sendable {
         self.selection = selection
         self.dimension = dimension
         self.upperBound = upperBound
+        self.headroomWeights = headroomWeights
         self.texels = texels
         let width = dimension * dimension
         self.atlas = CIImage(
@@ -167,7 +171,11 @@ struct CameraLookTable: @unchecked Sendable {
             output += (next - previous) * offset[axis]
             previous = next
         }
-        return output + (rgb - bounded)
+        let residual = rgb - bounded
+        if let headroomWeights {
+            return output + SIMD3(repeating: simd_dot(residual, headroomWeights))
+        }
+        return output + residual
     }
 }
 
@@ -193,6 +201,7 @@ final class CameraLookLibrary: @unchecked Sendable {
             let dimension: Int
             let upperBound: Float
             let sha256: String
+            let headroomWeights: [Float]?
         }
         let formatVersion: Int
         let groups: [GroupRecord]?
@@ -351,6 +360,14 @@ final class CameraLookLibrary: @unchecked Sendable {
                   bySelection[selection] == nil else {
                 throw LRCError(L10n.text("cameraLook.invalidManifest", defaultValue: "Camera look manifest is unreadable or invalid"))
             }
+            var headroomWeights: SIMD3<Float>?
+            if let weights = item.headroomWeights {
+                guard weights.count == 3, weights.allSatisfy({ $0.isFinite && $0 >= 0 }),
+                      abs(weights.reduce(0, +) - 1) < 0.0001 else {
+                    throw LRCError(L10n.text("cameraLook.invalidManifest", defaultValue: "Camera look manifest is unreadable or invalid"))
+                }
+                headroomWeights = SIMD3(weights[0], weights[1], weights[2])
+            }
             let entry = CameraLookEntry(
                 selection: selection,
                 group: item.group,
@@ -361,7 +378,8 @@ final class CameraLookLibrary: @unchecked Sendable {
                 file: item.file,
                 dimension: item.dimension,
                 upperBound: item.upperBound,
-                sha256: item.sha256
+                sha256: item.sha256,
+                headroomWeights: headroomWeights
             )
             ordered.append(entry)
             bySelection[selection] = entry
@@ -399,7 +417,8 @@ final class CameraLookLibrary: @unchecked Sendable {
                 triplets.append(Float16(bitPattern: bits))
             }
         }
-        return try CameraLookTable(selection: entry.selection, dimension: entry.dimension, upperBound: entry.upperBound, rgbTriplets: triplets)
+        return try CameraLookTable(selection: entry.selection, dimension: entry.dimension, upperBound: entry.upperBound,
+                                   rgbTriplets: triplets, headroomWeights: entry.headroomWeights)
     }
 
     private static func isSafeFileName(_ name: String) -> Bool {
@@ -428,6 +447,7 @@ enum CameraLookPipeline {
     static func apply(_ input: CIImage, selection: CameraLookSelection?, library: CameraLookLibrary = .shared) throws -> CIImage {
         guard let selection else { return input }
         let table = try library.table(for: selection)
-        return try SpatialDevelopPipeline.cameraLook(input, atlas: table.atlas, dimension: table.dimension, upperBound: table.upperBound)
+        return try SpatialDevelopPipeline.cameraLook(input, atlas: table.atlas, dimension: table.dimension,
+                                                     upperBound: table.upperBound, headroomWeights: table.headroomWeights)
     }
 }

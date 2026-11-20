@@ -441,14 +441,15 @@ float4 rasterExposureColour(sampler photo, sampler base, sampler low, sampler hi
     float3 delta = weight == 0 ? a : mix(a,rasterColourSample(high,e,powers.y),weight);
     return float4(base.sample(base.coord()).rgb+delta*s.a,s.a);
 }
-float4 cameraLook(sampler source, sampler table, float dimension, float upperBound) {
+float4 cameraLook(sampler source, sampler table, float dimension, float upperBound, float4 headroomWeights) {
     float4 pixel = straightColor(source.sample(source.coord()));
     if (pixel.a <= 0) return float4(0);
     float3 bounded = clamp(pixel.rgb, 0.0f, upperBound);
     float3 coordinate = log2(1.0f + bounded / 0.18f) / log2(1.0f + upperBound / 0.18f);
     float3 output = cameraLookTetrahedron(table, coordinate * (dimension - 1.0f), dimension);
-    // Preserve signed out-of-gamut primaries and highlight headroom above upperBound continuously.
-    output += pixel.rgb - bounded;
+    // Monochrome looks extend the table's brightness without reintroducing source colour.
+    float3 residual = pixel.rgb - bounded;
+    output += headroomWeights.w > 0.0f ? float3(dot(residual, headroomWeights.xyz)) : residual;
     return premultiply(float4(output, pixel.a));
 }
 float4 toneCurves(sample_t s, float4 p0, float4 p1, float4 p2, float4 p3, float4 p4, float4 p5, float4 p6, float4 p7, float4 p8, float4 p9, float4 p10, float4 p11, float4 p12, float4 p13, float4 p14, float4 p15, float pointCount, float channel) {

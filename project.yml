@@ -63,6 +63,8 @@ targets:
         buildPhase: resources
       - path: LICENSE
         buildPhase: resources
+      - path: docs/references/fuji-recipe-converter-LICENSE.txt
+        buildPhase: resources
       - path: docs/references/grdb-LICENSE.txt
         buildPhase: resources
       - path: docs/references/litert-NOTICES.txt

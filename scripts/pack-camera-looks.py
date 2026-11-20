@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MPL-2.0
 """Bake the pinned open camera looks into Phosdeck's float16 LUT format.
 
-Requires NumPy for offline generation. Pass a directory containing the four
-upstream assets named below and a new output directory. The App reads only
-the baked resources. Upstream revisions and links are in docs/references/.
+Requires NumPy and Node.js for offline generation. Pass the pinned Redlamp and
+LightCraft assets directory, a new output directory, and --fuji-recipe pointing
+at the pinned Fuji Recipe Converter checkout. The app reads only the baked
+resources. Upstream revisions and file paths are in docs/references/.
 """
 import argparse
 import colorsys
@@ -14,6 +15,7 @@ import lzma
 import math
 from pathlib import Path
 import struct
+import subprocess
 
 import numpy as np
 
@@ -34,11 +36,58 @@ SRGB_TO_ROMM = np.array([
 ])
 REC2020_TO_SRGB = np.linalg.inv(SRGB_TO_REC2020)
 ROMM_TO_SRGB = np.linalg.inv(SRGB_TO_ROMM)
-FUJI = (
-    ("provia", "PROVIA", "standard", "33deb7c2e817a168c02fe2918636ab4e983ee48e00382fda4a1389c717fadadf"),
-    ("velvia", "Velvia", "vivid-slide", "0923f737c0ba849a48ad38cb6eedf4f6199e5d89c461998f524b21f7089ce311"),
-    ("classic-chrome", "Classic Chrome", "chrome", "e2ebc08aa271ef3e81ffee2b1543ee4a1a083b82a5b8e917e2e13aadee0f2761"),
+SRGB_LUMA = np.array([0.2126, 0.7152, 0.0722])
+FUJI_TITLES = (
+    ("provia", "PROVIA"), ("velvia", "Velvia"), ("astia", "ASTIA"),
+    ("classic-chrome", "Classic Chrome"), ("pro-neg-hi", "PRO Neg. Hi"),
+    ("pro-neg-std", "PRO Neg. Std"), ("classic-neg", "Classic Neg."),
+    ("nostalgic-neg", "Nostalgic Neg."), ("reala-ace", "REALA ACE"),
+    ("eterna", "ETERNA"), ("eterna-bleach-bypass", "ETERNA Bleach Bypass"),
+    ("acros", "ACROS"), ("acros-ye", "ACROS + Ye"),
+    ("acros-r", "ACROS + R"), ("acros-g", "ACROS + G"),
+    ("monochrome", "Monochrome"), ("monochrome-ye", "Monochrome + Ye"),
+    ("monochrome-r", "Monochrome + R"), ("monochrome-g", "Monochrome + G"),
+    ("sepia", "Sepia"),
 )
+FUJI_ZH_TITLES = {
+    "monochrome": "黑白", "monochrome-ye": "黑白 + 黄", "monochrome-r": "黑白 + 红",
+    "monochrome-g": "黑白 + 绿", "sepia": "棕褐色",
+}
+REDLAMP_FILES = {
+    "provia": ("standard@2", "33deb7c2e817a168c02fe2918636ab4e983ee48e00382fda4a1389c717fadadf"),
+    "velvia": ("vivid-slide@2", "0923f737c0ba849a48ad38cb6eedf4f6199e5d89c461998f524b21f7089ce311"),
+    "astia": ("soft-slide", "69342d5a32bca99a8b2c2371705be1472768f71075e3aee19fcc807420584ecc"),
+    "classic-chrome": ("chrome@2", "e2ebc08aa271ef3e81ffee2b1543ee4a1a083b82a5b8e917e2e13aadee0f2761"),
+    "pro-neg-hi": ("negative-high", "83f902a7116c90c08e784fe57cdd96f045e7daf49e0ca31904c6f86c6db90298"),
+    "pro-neg-std": ("negative-standard", "7ac48cf13d459f7ea61c0e14199469074e14bb441eabd0ad50b837a85df95e0c"),
+    "classic-neg": ("negative-classic", "39af4e6e692018a774510842ff62e6215dd15a5aa97a1c83a5598503a3dd1b6a"),
+    "nostalgic-neg": ("negative-nostalgic", "402ce3c6a0e5df9d59f1f4ab6fbf89e2c1ed36b788675eddbaf3d42d2395991f"),
+    "eterna": ("cinema", "9221b670c95b9d2482debbac77349fcaa69ab06c300d8717e6978e572dc360f2"),
+    "eterna-bleach-bypass": ("bleach", "4faca244c2f6eb36b87c69ff7baa76a71eb3428be88d8af8d21f906ad2f65568"),
+    "monochrome": ("monochrome", "6170ffa0726c3708b19aea7e23cb8340793b55de48f3ee3ea925391d15c0c3ce"),
+    "monochrome-ye": ("monochrome-yellow", "a31c3cac909ac86d00c8869969c53c86f4f9065c606948814639670d82993c9f"),
+    "monochrome-r": ("monochrome-red", "789c44129fb24c309ae3f7d9793b9303d87fefcb75dc3cb202bf861cfafc8973"),
+    "monochrome-g": ("monochrome-green", "0ef798fb5e4000d828dac838e6d4eabc38b3e618fe7738019c911ee7f8fd84fb"),
+}
+# StarterPackLooks.swift's linear Rec.2020 monochrome mixers.
+REDLAMP_MONO_WEIGHTS = {
+    "monochrome": (0.2627, 0.6780, 0.0593),
+    "monochrome-ye": (0.42, 0.55, 0.03),
+    "monochrome-r": (0.8, 0.2, 0),
+    "monochrome-g": (0.18, 0.78, 0.04),
+}
+FUJI_RECIPE_FILES = {
+    "js/data.js": "e0b7bb407413da3143c88d57126cc0307df3859450bdea02bd44ad05f72eb5bd",
+    "js/engine.js": "4bddd884627a3b4ba1b03f102b01f84480e1c709a79711567e2ae439200b22a8",
+}
+FUJI_RECIPE_LOOKS = {
+    "reala-ace": None,
+    "acros": SRGB_LUMA,
+    "acros-ye": SRGB_LUMA,
+    "acros-r": SRGB_LUMA,
+    "acros-g": SRGB_LUMA,
+    "sepia": SRGB_LUMA,
+}
 SONY_HASH = "455861b461eef57961bef49ed6c6045714f8c7f1f5954dd03c2de1c35012a95a"
 
 
@@ -92,11 +141,40 @@ def tetrahedral(table, inputs):
     return result
 
 
-def fuji_transform(inputs, table):
+def redlamp_transform(inputs, table, monochrome):
     display = np.clip(inputs @ SRGB_TO_REC2020.T, 0, 1)
     mapped = tetrahedral(table, srgb_encode(display))
-    delta = srgb_decode(np.maximum(mapped, 0)) - display
-    return inputs + delta @ REC2020_TO_SRGB.T
+    linear = srgb_decode(np.maximum(mapped, 0))
+    if monochrome:
+        gray = (linear @ (SRGB_LUMA @ REC2020_TO_SRGB))[:, None]
+        return np.broadcast_to(gray, inputs.shape)
+    return inputs + (linear - display) @ REC2020_TO_SRGB.T
+
+
+def fuji_recipe_tables(checkout, keys):
+    # Sample the upstream LUT exporter from verified source files without its UI
+    # or browser dependencies. A finer input grid reduces double resampling.
+    dimension = 65
+    sources = [checked_bytes(checkout / name, digest).decode() for name, digest in FUJI_RECIPE_FILES.items()]
+    payload = json.dumps({"sources": sources, "keys": keys, "dimension": dimension})
+    program = """
+        const fs = require('node:fs');
+        const vm = require('node:vm');
+        const { sources, keys, dimension } = JSON.parse(fs.readFileSync(0, 'utf8'));
+        const scope = vm.createContext({ window: {} });
+        for (const source of sources) vm.runInContext(source, scope);
+        const { FR } = scope.window;
+        for (const filmSim of keys) {
+            if (FR.simById(filmSim).id !== filmSim) throw new Error(`Unknown film simulation: ${filmSim}`);
+            const values = FR.buildLut(FR.derive({ filmSim }, { drInCurve: true }), dimension);
+            const bytes = Buffer.alloc(values.length * 4);
+            for (let i = 0; i < values.length; i++) bytes.writeFloatLE(values[i], i * 4);
+            process.stdout.write(bytes);
+        }
+    """
+    result = subprocess.run(["node", "-e", program], input=payload.encode(), stdout=subprocess.PIPE, check=True)
+    tables = np.frombuffer(result.stdout, dtype="<f4").reshape((len(keys),) + (dimension,) * 3 + (3,))
+    return dict(zip(keys, tables))
 
 
 def sony_transform(inputs, profile):
@@ -140,16 +218,23 @@ def sony_transform(inputs, profile):
     return inputs + (mapped - romm) @ ROMM_TO_SRGB.T
 
 
-def pack(transform):
+def pack(transform, headroom_weights=None):
     log_range = math.log1p(UPPER_BOUND / PIVOT)
     levels = PIVOT * np.expm1(np.linspace(0, log_range, DIMENSION))
     blue, green, red = np.meshgrid(levels, levels, levels, indexing="ij")
     inputs = np.column_stack((red.ravel(), green.ravel(), blue.ravel()))
-    mapped = transform(inputs)
-    # Fade the display look near SDR white so the RAW renderer keeps headroom
-    # for exposure and highlight recovery. Leave the signed residual to Metal.
-    weight = np.clip((1 - inputs.max(axis=1, keepdims=True)) / 0.25, 0, 1)
-    output = inputs + (mapped - inputs) * weight ** 2 * (3 - 2 * weight)
+    peak = inputs.max(axis=1, keepdims=True)
+    if headroom_weights is None:
+        # Fade colour looks near white while allowing highlight recovery.
+        weight = np.clip((1 - peak) / 0.25, 0, 1)
+        output = inputs + (transform(inputs) - inputs) * weight ** 2 * (3 - 2 * weight)
+        white_coordinates = inputs
+    else:
+        # Keep the upstream grayscale or sepia tint above display white.
+        normalized = inputs / np.maximum(1, peak)
+        residual = (inputs - normalized) @ headroom_weights
+        output = np.clip(transform(normalized), 0, 1) + residual[:, None]
+        white_coordinates = peak
     if not np.isfinite(output).all() or np.min(output) < -1 or np.max(output) > UPPER_BOUND + 1:
         raise ValueError("Baked camera look is outside Phosdeck's float range")
 
@@ -161,38 +246,47 @@ def pack(transform):
     half_bound = np.float16(white_bound)
     if half_bound > white_bound:
         half_bound = np.nextafter(half_bound, np.float16(-np.inf))
-    below = inputs < levels[low]
-    output = np.where(below, np.minimum(output, float(np.nextafter(np.float16(1), np.float16(0)))), output)
-    packed = output.astype("<f2").reshape((DIMENSION,) * 3 + (3,))
-    for channel, axis in enumerate((2, 1, 0)):
-        plane = np.moveaxis(packed[..., channel], axis, 0)
-        plane[low] = np.minimum(plane[low], half_bound)
-    return struct.pack("<8sIf", b"PHOSLK01", DIMENSION, UPPER_BOUND) + packed.tobytes()
+    below_white = float(np.nextafter(np.float16(1), np.float16(0)))
+    output = np.where(white_coordinates < levels[low], np.minimum(output, below_white), output)
+    output = np.where(white_coordinates == levels[low], np.minimum(output, half_bound), output)
+    return struct.pack("<8sIf", b"PHOSLK01", DIMENSION, UPPER_BOUND) + output.astype("<f2").tobytes()
 
 
-def write_look(output, group, key, title, translated, data):
+def write_look(output, group, key, title, translated, data, headroom_weights=None):
     filename = f"{group}-{key}-v1.bin"
     (output / filename).write_bytes(data)
-    return {
+    entry = {
         "id": f"{group}.{key}", "version": 1, "group": group,
         "title": title, "localizedTitles": {"en": title, "zh-Hans": translated},
         "file": filename, "dimension": DIMENSION, "upperBound": UPPER_BOUND,
         "sha256": hashlib.sha256(data).hexdigest(),
     }
+    if headroom_weights is not None:
+        entry["headroomWeights"] = np.round(headroom_weights, 7).tolist()
+    return entry
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("upstream", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--fuji-recipe", type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir()
+    recipe_tables = fuji_recipe_tables(args.fuji_recipe, list(FUJI_RECIPE_LOOKS))
     entries = []
-    for key, title, slot, digest in FUJI:
-        source = checked_bytes(args.upstream / f"base-{slot}@2.look.lzma", digest)
-        table = redlamp_table(source)
-        image = pack(lambda inputs: fuji_transform(inputs, table))
-        entries.append(write_look(args.output, "fujifilm", key, title, title, image))
+    for key, title in FUJI_TITLES:
+        if key in REDLAMP_FILES:
+            slot, digest = REDLAMP_FILES[key]
+            table = redlamp_table(checked_bytes(args.upstream / f"base-{slot}.look.lzma", digest))
+            monochrome = key in REDLAMP_MONO_WEIGHTS
+            weights = np.array(REDLAMP_MONO_WEIGHTS[key]) @ SRGB_TO_REC2020 if monochrome else None
+            image = pack(lambda inputs: redlamp_transform(inputs, table, monochrome), weights)
+        else:
+            table = recipe_tables[key]
+            weights = FUJI_RECIPE_LOOKS[key]
+            image = pack(lambda inputs: srgb_decode(tetrahedral(table, srgb_encode(np.minimum(inputs, 1)))), weights)
+        entries.append(write_look(args.output, "fujifilm", key, title, FUJI_ZH_TITLES.get(key, title), image, weights))
     profile = json.loads(checked_bytes(args.upstream / "ILCE-7RM5.json", SONY_HASH))
     image = pack(lambda inputs: sony_transform(inputs, profile))
     entries.append(write_look(args.output, "sony", "st", "ST Standard Color", "ST 标准色彩", image))

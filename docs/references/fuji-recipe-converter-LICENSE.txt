@@ -1,0 +1,34 @@
+Fuji Recipe Converter attribution
+
+Phosdeck's ACROS, ACROS + Ye, ACROS + R, ACROS + G, REALA ACE and Sepia
+resources use the independent simulations in Fuji Recipe Converter.
+Upstream revision: a6691ea0e880ddd5fd19d7ca2d48a502fb0e7e07 (2026-10-07).
+https://github.com/sadziu/Fuji-Recipe-Converter/tree/a6691ea0e880ddd5fd19d7ca2d48a502fb0e7e07
+
+scripts/pack-camera-looks.py runs FR.derive and FR.buildLut from js/data.js
+and js/engine.js with the default recipe settings for each film simulation.
+The display-referred sRGB transform follows FR.toCube in js/export.js. The
+script resamples it to Phosdeck's extended-linear-sRGB grid with highlight
+headroom. Only the generated look tables are included in the app.
+
+MIT License
+
+Copyright (c) 2026 Sadziu and contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

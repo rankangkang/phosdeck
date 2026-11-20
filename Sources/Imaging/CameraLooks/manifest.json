@@ -56,6 +56,20 @@
       "sha256": "0e3cc08850aab37bf7fba8ff0a0df9740b2b75b0db0b853091bffa64b68c191c"
     },
     {
+      "id": "fujifilm.astia",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "ASTIA",
+      "localizedTitles": {
+        "en": "ASTIA",
+        "zh-Hans": "ASTIA"
+      },
+      "file": "fujifilm-astia-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "af6b49f8c78f1b7e19c9c392167b95e5a52e6ef36b8840d5128263b13d1e80c3"
+    },
+    {
       "id": "fujifilm.classic-chrome",
       "version": 1,
       "group": "fujifilm",
@@ -68,6 +82,275 @@
       "dimension": 33,
       "upperBound": 4.0,
       "sha256": "8b3603349c02303997766ce615f3c0b74f95d2797f6f500cc91176334fe8d285"
+    },
+    {
+      "id": "fujifilm.pro-neg-hi",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "PRO Neg. Hi",
+      "localizedTitles": {
+        "en": "PRO Neg. Hi",
+        "zh-Hans": "PRO Neg. Hi"
+      },
+      "file": "fujifilm-pro-neg-hi-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "86e14d1b93dc0965f71cb9a475f6902d8e2c36514e149b386f46e73fa1c2bfba"
+    },
+    {
+      "id": "fujifilm.pro-neg-std",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "PRO Neg. Std",
+      "localizedTitles": {
+        "en": "PRO Neg. Std",
+        "zh-Hans": "PRO Neg. Std"
+      },
+      "file": "fujifilm-pro-neg-std-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "4171ab93e65b5ba2f9b399f4a052c10346350239902e47e236715fde42cad5ec"
+    },
+    {
+      "id": "fujifilm.classic-neg",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "Classic Neg.",
+      "localizedTitles": {
+        "en": "Classic Neg.",
+        "zh-Hans": "Classic Neg."
+      },
+      "file": "fujifilm-classic-neg-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "801a7943756d1f480cd18aa8010c7dcbcaab16ebd0af01a30b745d7f17162dee"
+    },
+    {
+      "id": "fujifilm.nostalgic-neg",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "Nostalgic Neg.",
+      "localizedTitles": {
+        "en": "Nostalgic Neg.",
+        "zh-Hans": "Nostalgic Neg."
+      },
+      "file": "fujifilm-nostalgic-neg-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "6770b6c0831773ce037468ac9cdb7964fd79326fb8c07ced358e51944b15ea47"
+    },
+    {
+      "id": "fujifilm.reala-ace",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "REALA ACE",
+      "localizedTitles": {
+        "en": "REALA ACE",
+        "zh-Hans": "REALA ACE"
+      },
+      "file": "fujifilm-reala-ace-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "b6d47966a3b611297719f4319d26c6f000ac7fb305bcb4056021c5b588de60b8"
+    },
+    {
+      "id": "fujifilm.eterna",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "ETERNA",
+      "localizedTitles": {
+        "en": "ETERNA",
+        "zh-Hans": "ETERNA"
+      },
+      "file": "fujifilm-eterna-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "dc3d37df020b67ea0aa25da52ac67c4e4de527a521667de9f9cedbe4c7f92fd6"
+    },
+    {
+      "id": "fujifilm.eterna-bleach-bypass",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "ETERNA Bleach Bypass",
+      "localizedTitles": {
+        "en": "ETERNA Bleach Bypass",
+        "zh-Hans": "ETERNA Bleach Bypass"
+      },
+      "file": "fujifilm-eterna-bleach-bypass-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "434f48127bede054ffb243bca52e7ca79c8277f5e7a1f400adb94fe1c399a031"
+    },
+    {
+      "id": "fujifilm.acros",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "ACROS",
+      "localizedTitles": {
+        "en": "ACROS",
+        "zh-Hans": "ACROS"
+      },
+      "file": "fujifilm-acros-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "c372c16c518c0ab384386f17463549fb2d056469640d789090f9fd3f8b222a9b",
+      "headroomWeights": [
+        0.2126,
+        0.7152,
+        0.0722
+      ]
+    },
+    {
+      "id": "fujifilm.acros-ye",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "ACROS + Ye",
+      "localizedTitles": {
+        "en": "ACROS + Ye",
+        "zh-Hans": "ACROS + Ye"
+      },
+      "file": "fujifilm-acros-ye-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "affb29b1bcb6b969ad4cf360b9a3d6394ff553187764c2290e4f671d94dff1a4",
+      "headroomWeights": [
+        0.2126,
+        0.7152,
+        0.0722
+      ]
+    },
+    {
+      "id": "fujifilm.acros-r",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "ACROS + R",
+      "localizedTitles": {
+        "en": "ACROS + R",
+        "zh-Hans": "ACROS + R"
+      },
+      "file": "fujifilm-acros-r-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "0c77a2b522b7abc6017a06b8ab3e9f4c795801f94d309cd327df37fcf8587503",
+      "headroomWeights": [
+        0.2126,
+        0.7152,
+        0.0722
+      ]
+    },
+    {
+      "id": "fujifilm.acros-g",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "ACROS + G",
+      "localizedTitles": {
+        "en": "ACROS + G",
+        "zh-Hans": "ACROS + G"
+      },
+      "file": "fujifilm-acros-g-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "038bfc3322a34fc7849cc315877d99c17e9758e9be93118e37bcf9bcb6a45865",
+      "headroomWeights": [
+        0.2126,
+        0.7152,
+        0.0722
+      ]
+    },
+    {
+      "id": "fujifilm.monochrome",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "Monochrome",
+      "localizedTitles": {
+        "en": "Monochrome",
+        "zh-Hans": "黑白"
+      },
+      "file": "fujifilm-monochrome-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "710a2c1c2daef1ddb18116d84781455903abcbb0406abc46db3421abf81a2a7d",
+      "headroomWeights": [
+        0.212639,
+        0.7151702,
+        0.0721908
+      ]
+    },
+    {
+      "id": "fujifilm.monochrome-ye",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "Monochrome + Ye",
+      "localizedTitles": {
+        "en": "Monochrome + Ye",
+        "zh-Hans": "黑白 + 黄"
+      },
+      "file": "fujifilm-monochrome-ye-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "1a0a72569e53c635fdb1a232086ca7eec576f96d7cd8dd7e0cc136afd51586c8",
+      "headroomWeights": [
+        0.3020049,
+        0.6466865,
+        0.0513086
+      ]
+    },
+    {
+      "id": "fujifilm.monochrome-r",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "Monochrome + R",
+      "localizedTitles": {
+        "en": "Monochrome + R",
+        "zh-Hans": "黑白 + 红"
+      },
+      "file": "fujifilm-monochrome-r-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "44bb4eb431f30747cb41819be2644d25ca00721d2bf62fe85b0d63e081a3c5ed",
+      "headroomWeights": [
+        0.5157426,
+        0.4473345,
+        0.0369229
+      ]
+    },
+    {
+      "id": "fujifilm.monochrome-g",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "Monochrome + G",
+      "localizedTitles": {
+        "en": "Monochrome + G",
+        "zh-Hans": "黑白 + 绿"
+      },
+      "file": "fujifilm-monochrome-g-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "6f0af49dd25ca10e344c72aeecf8b8bb3793e0443522c7af596f82b3bea2df59",
+      "headroomWeights": [
+        0.1674842,
+        0.780033,
+        0.0524828
+      ]
+    },
+    {
+      "id": "fujifilm.sepia",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "Sepia",
+      "localizedTitles": {
+        "en": "Sepia",
+        "zh-Hans": "棕褐色"
+      },
+      "file": "fujifilm-sepia-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "0b65475638ef2fb387b80b81c173ae4479567cd7e2c68db2d833840227a7176e",
+      "headroomWeights": [
+        0.2126,
+        0.7152,
+        0.0722
+      ]
     },
     {
       "id": "sony.st",

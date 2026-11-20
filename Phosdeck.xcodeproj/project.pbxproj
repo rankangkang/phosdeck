@@ -218,6 +218,7 @@
 		B6785C7315172566B7F49B7E /* SpotPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B10E41F6868FDB655B5E8E /* SpotPanel.swift */; };
 		B874ACB486CD7D353079465A /* MaskEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49F6593962FC4F735B7E9926 /* MaskEditing.swift */; };
 		B8D361A117ED521E4958E3AE /* redlamp-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 92D0762D0064535CAAD58F58 /* redlamp-LICENSE.txt */; };
+		FEA3C33FA1C949CDADF510ED /* fuji-recipe-converter-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1233A22499F84E79A4561E3A /* fuji-recipe-converter-LICENSE.txt */; };
 		BB7930C5D027E5D691928B54 /* TonalPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDEBC57B9C570BAD3D94287C /* TonalPipeline.swift */; };
 		BB9B4796FDFC59D09E667B9B /* MergeRetouchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB82D08EEF4109E1661556C0 /* MergeRetouchView.swift */; };
 		BBAC8B8B3455A67128C4BE54 /* PhosdeckHighlights.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 71D0FAA7DB8025C83B55E500 /* PhosdeckHighlights.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -528,6 +529,7 @@
 		8EDFC86F1483734FCBF99C87 /* MergeRetouchEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeRetouchEditing.swift; sourceTree = "<group>"; };
 		8FCE50A2BD5D10E27AFA91B0 /* CollectionOrderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionOrderingTests.swift; sourceTree = "<group>"; };
 		92D0762D0064535CAAD58F58 /* redlamp-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "redlamp-LICENSE.txt"; sourceTree = "<group>"; };
+		1233A22499F84E79A4561E3A /* fuji-recipe-converter-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "fuji-recipe-converter-LICENSE.txt"; sourceTree = "<group>"; };
 		941D7909B8BF86FE90DDCCFE /* Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extension.swift; sourceTree = "<group>"; };
 		9655299699AFFDDE3FA30355 /* PresetBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetBrowser.swift; sourceTree = "<group>"; };
 		966A253CF2ECD09C49881AFE /* PresetPreviewList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetPreviewList.swift; sourceTree = "<group>"; };
@@ -944,6 +946,7 @@
 		76025D70C52E93A98F022B19 /* references */ = {
 			isa = PBXGroup;
 			children = (
+				1233A22499F84E79A4561E3A /* fuji-recipe-converter-LICENSE.txt */,
 				C69F365FD4C871B86231ECE1 /* grdb-LICENSE.txt */,
 				D412F5DF92F42B7D727D6EB6 /* lightcraft-LICENSE.txt */,
 				BCD117B975B8D324E443FC7F /* litert-NOTICES.txt */,
@@ -1348,6 +1351,7 @@
 				402E64A68CEC27B4018B2670 /* InfoPlist.xcstrings in Resources */,
 				8BF79B0C48EA63B907775AC9 /* LICENSE in Resources */,
 				162C1D4370C8812CCEA15B8B /* Localizable.xcstrings in Resources */,
+				FEA3C33FA1C949CDADF510ED /* fuji-recipe-converter-LICENSE.txt in Resources */,
 				3456233BDEB5ABFDDAAC3B18 /* grdb-LICENSE.txt in Resources */,
 				C36A572B18B7D786059A4421 /* lightcraft-LICENSE.txt in Resources */,
 				92ACA5A376EA8D386D143200 /* litert-NOTICES.txt in Resources */,

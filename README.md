@@ -152,6 +152,7 @@ Project code is licensed under [AGPL-3.0-only](LICENSE). Third-party code, depen
 
 - [Lightcraft/PhotoCraft attribution and MIT license](docs/references/lightcraft-LICENSE.txt).
 - [Redlamp attribution and MPL-2.0 license](docs/references/redlamp-LICENSE.txt).
+- [Fuji Recipe Converter attribution and MIT license](docs/references/fuji-recipe-converter-LICENSE.txt).
 - [Oklab attribution and MIT license](docs/references/oklab-LICENSE.txt).
 - [GRDB MIT license](docs/references/grdb-LICENSE.txt).
 - [MCP Swift SDK, SwiftNIO, and dependency notices](docs/references/mcp-NOTICES.txt).

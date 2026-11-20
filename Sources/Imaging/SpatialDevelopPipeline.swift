@@ -38,10 +38,14 @@ enum SpatialDevelopPipeline {
         }
         return image
     }
-    static func cameraLook(_ input: CIImage, atlas: CIImage, dimension: Int, upperBound: Float) throws -> CIImage {
+    static func cameraLook(_ input: CIImage, atlas: CIImage, dimension: Int, upperBound: Float,
+                           headroomWeights: SIMD3<Float>? = nil) throws -> CIImage {
+        let weights = headroomWeights ?? .zero
+        let residual = CIVector(x: CGFloat(weights.x), y: CGFloat(weights.y), z: CGFloat(weights.z),
+                                w: headroomWeights == nil ? 0 : 1)
         guard let image = try cameraLookKernel.get().apply(extent: input.extent,
             roiCallback: { index, rect in index == 0 ? rect : atlas.extent },
-            arguments: [input, atlas, Float(dimension), upperBound]) else {
+            arguments: [input, atlas, Float(dimension), upperBound, residual]) else {
             throw LRCError(L10n.text("cameraLook.shaderFailed", defaultValue: "Camera look shader failed"))
         }
         return image
