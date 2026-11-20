@@ -419,6 +419,7 @@ final class AppModel {
     var presetListFocused = false
     private(set) var previewingDevelopGroup: DevelopGroup?
     private(set) var previewingPresetID: String?
+    @ObservationIgnored private var previewingCameraLook = false
     private(set) var adjustmentPreviewTitle = ""
     private var adjustmentDisplayRecipe: EditRecipe?
     private var adjustmentDisplayOriginal: AdjustmentDisplayState?
@@ -2656,6 +2657,36 @@ final class AppModel {
         guard previewingPresetID != nil, presetID == nil || previewingPresetID == presetID else { return }
         endAdjustmentPreview()
     }
+    func selectCameraLook(_ selection: CameraLookSelection?) {
+        guard workspaceAvailable, canEdit, let recipe, !recipe.isRaster else { return }
+        if recipe.cameraLook == selection {
+            endCameraLookPreview()
+            return
+        }
+        changeRecipe { Self.setCameraLook(selection, in: &$0) }
+    }
+    func previewCameraLook(_ selection: CameraLookSelection?) {
+        guard workspaceAvailable, editMode, developTool == .adjust, canEdit, !before,
+              var value = recipe, !value.isRaster, image != nil else { return }
+        if value.cameraLook == selection {
+            endCameraLookPreview()
+            return
+        }
+        guard !previewingCameraLook || adjustmentDisplayRecipe?.cameraLook != selection else { return }
+        Self.setCameraLook(selection, in: &value)
+        startAdjustmentPreview(recipe: value, title: cameraLookTitle(selection), cameraLook: true)
+    }
+    func endCameraLookPreview() {
+        if previewingCameraLook { endAdjustmentPreview() }
+    }
+    private static func setCameraLook(_ selection: CameraLookSelection?, in recipe: inout EditRecipe) {
+        if selection != nil { recipe.pipelineVersion = 2 }
+        recipe.cameraLook = selection
+    }
+    private func cameraLookTitle(_ selection: CameraLookSelection?) -> String {
+        selection.map { CameraLookLibrary.shared.title(for: $0) }
+            ?? L10n.text("cameraLook.default", defaultValue: "Default Rendering")
+    }
     func beginDevelopGroupPreview(_ group: DevelopGroup) {
         guard workspaceAvailable, editMode, developTool == .adjust, canEdit, !before,
               group != .crop, group != .perspective, let current = recipe, image != nil,
@@ -2676,7 +2707,8 @@ final class AppModel {
             self.endAdjustmentPreview()
         }
     }
-    private func startAdjustmentPreview(recipe value: EditRecipe, title: String, preset: String? = nil, group: DevelopGroup? = nil) {
+    private func startAdjustmentPreview(recipe value: EditRecipe, title: String, preset: String? = nil,
+                                        group: DevelopGroup? = nil, cameraLook: Bool = false) {
         guard let id = activeID, let current = recipe else { return }
         adjustmentPreviewPulse?.cancel(); adjustmentPreviewQuality?.cancel()
         if adjustmentDisplayOriginal == nil {
@@ -2686,6 +2718,7 @@ final class AppModel {
                 status: imageStatus, spotOffsets: spotRenderedOffsets)
         }
         clearSavedEditPreview(); endMaskEffectPreview(redraw: false)
+        previewingCameraLook = cameraLook
         previewingPresetID = preset; previewingDevelopGroup = group; adjustmentDisplayRecipe = value
         adjustmentPreviewTitle = title
         previewGeneration = UUID()
@@ -2705,6 +2738,7 @@ final class AppModel {
         adjustmentPreviewQuality?.cancel(); adjustmentPreviewQuality = nil
         guard isPreviewingAdjustment else { return }
         let original = adjustmentDisplayOriginal; adjustmentDisplayOriginal = nil
+        previewingCameraLook = false
         adjustmentDisplayRecipe = nil; previewingPresetID = nil; previewingDevelopGroup = nil; adjustmentPreviewTitle = ""
         previewGeneration = UUID(); pendingPreview = nil; pendingQualityPreview = nil; qualityRender?.cancel()
         wantsInteractivePreview = false

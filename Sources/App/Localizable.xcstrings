@@ -1,6 +1,23 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "cameraLook.browse": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browse Camera Looks"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览相机风格"
+          }
+        }
+      }
+    },
     "cameraLook.corruptResource": {
       "extractionState": "manual",
       "localizations": {

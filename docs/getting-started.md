@@ -78,6 +78,8 @@ Lightroom Classic 的 `.lrcat` 可通过“文件 → 从 Lightroom Classic 目�
 
 单击编辑页的历史步骤可直接切到该状态并高亮对应行，再点击另一条即可往返。切换会保存当前状态并保留原有历史，新调整和应用命名快照会保存为新的步骤。
 
+在 RAW 的“编辑 → 基本调整 → 相机风格”中可选默认显色、富士 PROVIA、Velvia、Classic Chrome 和索尼 ST 标准色彩。旁边的浏览键按品牌列出风格。在风格名称上悬停时，画布临时试显，移开恢复。点击风格会保存到当前照片并新增一条历史。各风格可以跨机身应用，保留曝光、白平衡和局部调整。富士使用 Redlamp 的近似色表，索尼使用 LightCraft 的 ST 色彩校正。[Redlamp 来源与授权](references/redlamp-LICENSE.txt) · [LightCraft 来源与授权](references/lightcraft-LICENSE.txt)
+
 基本调整的白平衡与明暗分组各有“自动”键。自动白平衡从当前裁剪区域的原生浮点解码估计整体中性色（已应用拍摄时白平衡和原生基准的线性 sRGB），再通过实际 RAW／Core Image 白平衡变换求出色温与色调；它采用 [Shades of Gray](https://library.imaging.org/admin/apis/public/api/ist/website/downloadArticle/cic/12/1/art00008) 的六次范数假设，排除透明、近黑与通道剪切像素。单色场景或混合光可能估计错误，请使用中性区域取样或手动参数。
 
 自动色调在当前白平衡下分析裁剪区域的亮度分布，以中位亮度和两端分位数为目标，经现有管线求出曝光、对比度、高光、阴影、白色与黑色；自动建议的曝光限于 ±3 EV，其余参数采用保守范围。原有色彩、曲线、局部调整和几何保留，分析不受当前明暗、HSL、黑白或分级效果反馈。高调、低调照片需要人工微调。这是 Phosdeck 的原生起点估计，不能还原已丢失的细节，也不等同于 [Lightroom 的自动算法](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/image-tone-color.html)。分析中可点“取消分析”或按 Esc；换图、切工具或改参数也会丢弃结果。成功只保存一次，可用 `⌘Z` 撤销；信息不足、源文件变更或分析失败时保留原配方。

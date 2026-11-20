@@ -136,6 +136,18 @@ pre-decode boundary, with the native pipeline's existing size budget.
 CatalogStore.swift::photo_filename_key adapts catalog/src/query.rs::cmp_name's
 per-Unicode-scalar lowercase comparison, preserving native SQL tie breakers.
 
+The bundled Sony ST Standard Color look adapts Yule (Brian) Wang's ILCE-7RM5
+profile, fitted to 220 original ARW/in-camera JPEG pairs and contributed to
+LightCraft as MIT OR Apache-2.0. Phosdeck uses MIT.
+Upstream revision: 368855cd1ec386da72c542932229997c3a1519f3 (2026-11-20).
+Source: https://github.com/storytold/lightcraft/blob/368855cd1ec386da72c542932229997c3a1519f3/assets/camera-profiles/ILCE-7RM5.json
+Provenance: assets/ATTRIBUTION.md. Rendering and test references:
+crates/engine/src/camera_profiles.rs, crates/engine/src/camera_preview/colour.rs,
+and crates/raw/src/profile.rs (HsvTableApply and its HSV table tests).
+scripts/pack-camera-looks.py adapts the post-matrix ROMM RGB HSV table to
+the decoded extended-linear-sRGB input. Sensor calibration, per-image tone
+fitting and RAW decoding remain in their host applications.
+
 Copyright (c) 2026 ArtCraft Team and the LightCraft contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

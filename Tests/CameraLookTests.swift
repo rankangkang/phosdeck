@@ -3,6 +3,7 @@ import CoreImage
 import ImageIO
 import AppKit
 import SwiftUI
+import simd
 @testable import Phosdeck
 
 final class CameraLookTests: XCTestCase {
@@ -178,15 +179,110 @@ final class CameraLookTests: XCTestCase {
         try releaseLibrary.validate(selection)
 
         let previewSections = previewLibrary.menuSections()
-        XCTAssertEqual(previewSections.map(\.group.id), ["diagnostic"])
-        XCTAssertEqual(previewSections.first?.entries.map(\.selection), [selection])
-        XCTAssertTrue(releaseLibrary.menuSections().isEmpty,
-                      "Diagnostic test tables must stay hidden from the Release picker while remaining valid for saved recipes")
+        XCTAssertEqual(previewSections.map(\.group.id), ["fujifilm", "sony", "diagnostic"])
+        XCTAssertEqual(previewSections.last?.entries.map(\.selection), [selection])
+        let releaseSections = releaseLibrary.menuSections()
+        XCTAssertEqual(releaseSections.map(\.group.id), ["fujifilm", "sony"])
+        XCTAssertEqual(releaseSections.flatMap(\.entries).map(\.selection.id),
+                       ["fujifilm.provia", "fujifilm.velvia", "fujifilm.classic-chrome", "sony.st"])
 
         XCTAssertEqual(previewLibrary.title(for: selection, language: "en"), "Test Lookup Table")
         XCTAssertEqual(previewLibrary.title(for: selection, language: "zh-Hans"), "测试色表")
-        XCTAssertEqual(previewSections.first?.group.displayTitle(language: "en"), "Pipeline Verification")
-        XCTAssertEqual(previewSections.first?.group.displayTitle(language: "zh-Hans"), "测试验证")
+        XCTAssertEqual(previewSections.last?.group.displayTitle(language: "en"), "Pipeline Verification")
+        XCTAssertEqual(previewSections.last?.group.displayTitle(language: "zh-Hans"), "测试验证")
+        XCTAssertEqual(releaseSections.first?.group.displayTitle(language: "zh-Hans"), "富士（近似）")
+        XCTAssertEqual(releaseLibrary.title(for: CameraLookSelection(id: "sony.st", version: 1), language: "zh-Hans"),
+                       "ST 标准色彩")
+    }
+
+    func testBundledLooksChangeColorAndPreserveHighlightHeadroom() throws {
+        let library = CameraLookLibrary(includesDiagnosticLooks: false)
+        let middle = SIMD3<Float>(0.15, 0.48, 0.29)
+        let high = SIMD3<Float>(-0.075, 2.2, 5.5)
+        let nearWhite: [SIMD3<Float>] = [SIMD3(repeating: 0.9999), SIMD3(0.9999, 0, 0.23),
+                                       SIMD3(0.10, 0.9999, 0.61), SIMD3(0.19, 0.44, 0.9999)]
+        var colors = Set<SIMD3<Float>>()
+        for entry in library.menuSections().flatMap(\.entries) {
+            let table = try library.table(for: entry.selection)
+            let color = table.referenceSample(middle)
+            colors.insert(color)
+            XCTAssertGreaterThan(simd_length(color - middle), 0.001, entry.selection.id)
+            let highlight = table.referenceSample(high)
+            XCTAssertEqual(highlight.x, high.x, accuracy: 0.0001)
+            XCTAssertEqual(highlight.y, high.y, accuracy: 0.004)
+            XCTAssertEqual(highlight.z, high.z, accuracy: 0.0001)
+            for point in nearWhite {
+                XCTAssertLessThan(simd_reduce_max(table.referenceSample(point)), 1, entry.selection.id)
+            }
+        }
+        XCTAssertEqual(colors.count, 4)
+    }
+
+    @MainActor
+    func testPublicRAWLookPreviewAndCommitKeepTheExistingRecipe() async throws {
+        let sample = try MoreRAWTests.request("a7iii_12bit_compressed.ARW")
+        let workspace = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let catalog = try CatalogStore(fileURL: workspace.appendingPathComponent("LookPreview.phoscat"), create: true)
+        let rootURL = URL(fileURLWithPath: sample.root.path)
+        let root = try catalog.addRoot(url: rootURL, bookmark: AccessLease.bookmark(rootURL, readOnly: true))
+        var photo = sample.photo
+        photo.rootID = root.id
+        try catalog.index(photo)
+
+        let model = AppModel()
+        model.catalog = catalog
+        try model.reload()
+        defer { model.choose([], active: nil); model.catalog = nil }
+        model.choose([photo.id], active: photo.id)
+        model.selectWorkspace(.develop)
+        for _ in 0..<120 where !model.canEdit || model.image == nil {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertTrue(model.canEdit)
+        _ = try XCTUnwrap(model.image)
+
+        model.changeRecipe {
+            $0.exposure = 0.65
+            $0.localAdjustments = [LocalAdjustment(name: "Test Radial",
+                components: [MaskComponent(tool: .radial)], exposure: 0.45)]
+        }
+        let original = try XCTUnwrap(model.recipe)
+        let saved = try XCTUnwrap(catalog.photo(photo.id)?.recipe)
+        let history = model.editHistory.count
+        let fuji = CameraLookSelection(id: "fujifilm.provia", version: 1)
+        let sony = CameraLookSelection(id: "sony.st", version: 1)
+        model.previewCameraLook(fuji)
+        XCTAssertEqual(model.displayPreviewRecipe?.cameraLook, fuji)
+        XCTAssertEqual(model.recipe, original)
+        XCTAssertEqual(try catalog.photo(photo.id)?.recipe, saved)
+        XCTAssertEqual(model.editHistory.count, history)
+        model.endCameraLookPreview()
+        XCTAssertFalse(model.isPreviewingAdjustment)
+        XCTAssertEqual(model.recipe, original)
+
+        model.previewCameraLook(sony)
+        model.selectCameraLook(sony)
+        XCTAssertFalse(model.isPreviewingAdjustment)
+        var expected = original
+        expected.cameraLook = sony
+        XCTAssertEqual(model.recipe, expected)
+        XCTAssertEqual(model.editHistory.count, history + 1)
+        let data = try XCTUnwrap(catalog.photo(photo.id)?.recipe)
+        XCTAssertEqual(try JSONDecoder().decode(EditRecipe.self, from: data), expected)
+
+        let pipeline = ImagePipeline()
+        let initial = ImageRequest(photo: photo, root: root, recipe: original)
+        let edited = ImageRequest(photo: photo, root: root, recipe: expected)
+        let initialFrame = try await pipeline.render(initial, longEdge: 320)
+        let editedFrame = try await pipeline.render(edited, longEdge: 320)
+        XCTAssertNotEqual(try bytes(initialFrame), try bytes(editedFrame))
+        let output = workspace.appendingPathComponent("ST.png")
+        _ = try await pipeline.export(edited, staging: output, options: ExportOptions(format: .png, longEdge: 320))
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(output as CFURL, nil))
+        let exported = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        XCTAssertEqual(exported.width, editedFrame.image.width)
     }
 
     func testVersionCoexistenceAndExplicitCorruptionOrMissingRejection() throws {

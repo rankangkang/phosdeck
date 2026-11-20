@@ -2,6 +2,22 @@
   "formatVersion": 1,
   "groups": [
     {
+      "id": "fujifilm",
+      "title": "Fujifilm (Approximate)",
+      "localizedTitles": {
+        "en": "Fujifilm (Approximate)",
+        "zh-Hans": "富士（近似）"
+      }
+    },
+    {
+      "id": "sony",
+      "title": "Sony (Approximate)",
+      "localizedTitles": {
+        "en": "Sony (Approximate)",
+        "zh-Hans": "索尼（近似）"
+      }
+    },
+    {
       "id": "diagnostic",
       "title": "Pipeline Verification",
       "localizedTitles": {
@@ -11,6 +27,62 @@
     }
   ],
   "looks": [
+    {
+      "id": "fujifilm.provia",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "PROVIA",
+      "localizedTitles": {
+        "en": "PROVIA",
+        "zh-Hans": "PROVIA"
+      },
+      "file": "fujifilm-provia-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "71d0095c67f5f2b71dd2de8a4ebc3ea809b3b212f0bd07abc7511599185afd59"
+    },
+    {
+      "id": "fujifilm.velvia",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "Velvia",
+      "localizedTitles": {
+        "en": "Velvia",
+        "zh-Hans": "Velvia"
+      },
+      "file": "fujifilm-velvia-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "0e3cc08850aab37bf7fba8ff0a0df9740b2b75b0db0b853091bffa64b68c191c"
+    },
+    {
+      "id": "fujifilm.classic-chrome",
+      "version": 1,
+      "group": "fujifilm",
+      "title": "Classic Chrome",
+      "localizedTitles": {
+        "en": "Classic Chrome",
+        "zh-Hans": "Classic Chrome"
+      },
+      "file": "fujifilm-classic-chrome-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "8b3603349c02303997766ce615f3c0b74f95d2797f6f500cc91176334fe8d285"
+    },
+    {
+      "id": "sony.st",
+      "version": 1,
+      "group": "sony",
+      "title": "ST Standard Color",
+      "localizedTitles": {
+        "en": "ST Standard Color",
+        "zh-Hans": "ST 标准色彩"
+      },
+      "file": "sony-st-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "4f5c92e66dd5ec693127b722dd0205d9826ba72fd7c8938ae7c071396862e680"
+    },
     {
       "id": "diagnostic.test-table",
       "version": 1,

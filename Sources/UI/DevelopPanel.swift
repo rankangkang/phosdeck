@@ -467,12 +467,9 @@ struct DevelopPanel: View {
             keyField(L10n.text("app.treatment", defaultValue: "Treatment"), [KeyOption(false, L10n.text("app.color_1139", defaultValue: "Color")), KeyOption(true, L10n.text("app.blackWhite", defaultValue: "Black & White"))],
                      Binding(get: { recipe?.develop.blackAndWhite ?? false }, set: { v in change { $0.develop.blackAndWhite = v } }))
             if !local, recipe?.isRaster == false {
-                CameraLookRow(selection: recipe?.cameraLook) { selection in
-                    change { r in
-                        if selection != nil { r.pipelineVersion = 2 }
-                        r.cameraLook = selection
-                    }
-                }
+                CameraLookRow(selection: recipe?.cameraLook, onSelect: model.selectCameraLook,
+                              onPreview: model.previewCameraLook, onEndPreview: model.endCameraLookPreview)
+                    .id(model.activeID)
             }
             HStack(spacing: Metrics.gap) {
                 SubgroupLabel(L10n.text("app.whiteBalance", defaultValue: "White Balance"))
@@ -722,11 +719,16 @@ struct DevelopPanel: View {
 private struct CameraLookRow: View {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.preservesControlAppearance) private var preservesAppearance
+    @State private var browsing = false
+    @State private var hoveredLook: String?
     let selection: CameraLookSelection?
     let onSelect: (CameraLookSelection?) -> Void
+    let onPreview: (CameraLookSelection?) -> Void
+    let onEndPreview: () -> Void
 
     private var library: CameraLookLibrary { .shared }
     private var defaultTitle: String { L10n.text("cameraLook.default", defaultValue: "Default Rendering") }
+    private var browseTitle: String { L10n.text("cameraLook.browse", defaultValue: "Browse Camera Looks") }
     private var currentTitle: String {
         selection.map { library.title(for: $0) } ?? defaultTitle
     }
@@ -778,6 +780,20 @@ private struct CameraLookRow: View {
                 .accessibilityLabel(L10n.text("cameraLook.label", defaultValue: "Camera Look"))
                 .accessibilityValue(currentTitle)
                 .help(L10n.text("cameraLook.help", defaultValue: "Choose Default Rendering or a camera look for this RAW photo. Existing exposure, white balance, masks, and other adjustments are preserved."))
+                Button {
+                    browsing.toggle()
+                } label: {
+                    Image(systemName: "square.grid.2x2")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.key(selected: browsing, padding: 9))
+                .accessibilityIdentifier("camera-look-browser")
+                .accessibilityLabel(browseTitle)
+                .accessibilityAddTraits(browsing ? .isSelected : [])
+                .help(browseTitle)
+                .popover(isPresented: $browsing, arrowEdge: .trailing) {
+                    browser(sections)
+                }
             }
             if let selection, library.entry(for: selection)?.diagnostic == true {
                 Text(L10n.text("cameraLook.diagnosticNote", defaultValue: "Test lookup table for camera-look pipeline verification only, not a calibrated camera profile."))
@@ -788,6 +804,74 @@ private struct CameraLookRow: View {
             }
         }
         .padding(.vertical, 2)
+        .onChange(of: browsing) { _, open in
+            if !open { endBrowserPreview() }
+        }
+        .onChange(of: isEnabled) { _, enabled in
+            if !enabled { browsing = false }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            if browsing { browsing = false }
+        }
+        .onDisappear { endBrowserPreview() }
+    }
+
+    private func browser(_ sections: [(group: CameraLookGroup, entries: [CameraLookEntry])]) -> some View {
+        let count = 1 + sections.reduce(0) { $0 + $1.entries.count }
+        let height = CGFloat(count) * (Metrics.key + 4) + CGFloat(sections.count) * 28 + 4
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(browseTitle).font(.headline).accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button(L10n.text("app.done", defaultValue: "Done")) { browsing = false }
+                    .buttonStyle(.key(height: 22))
+                    .keyboardShortcut(.cancelAction)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 4) {
+                    browserChoice(defaultTitle, selection: nil)
+                    ForEach(sections, id: \.group.id) { section in
+                        SubgroupLabel(section.group.displayTitle())
+                        ForEach(section.entries) { entry in
+                            browserChoice(library.title(for: entry.selection), selection: entry.selection)
+                        }
+                    }
+                }.padding(2)
+            }.frame(height: min(height, 340))
+        }
+        .padding(12)
+        .frame(width: 274)
+        .background(Theme.panel)
+    }
+
+    private func browserChoice(_ title: String, selection candidate: CameraLookSelection?) -> some View {
+        let selected = selection == candidate
+        let key = candidate.map { "\($0.id)@\($0.version)" } ?? "default"
+        return Button {
+            onSelect(candidate)
+        } label: {
+            HStack {
+                Text(title)
+                Spacer()
+                if selected { Image(systemName: "checkmark").accessibilityHidden(true) }
+            }
+        }
+        .buttonStyle(.key(selected: selected, expand: true))
+        .accessibilityIdentifier("camera-look-choice-" + key)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .onHover { inside in
+            if inside {
+                hoveredLook = key
+                onPreview(candidate)
+            } else if hoveredLook == key {
+                endBrowserPreview()
+            }
+        }
+    }
+
+    private func endBrowserPreview() {
+        hoveredLook = nil
+        onEndPreview()
     }
 }
 

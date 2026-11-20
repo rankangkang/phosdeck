@@ -41,6 +41,23 @@ No Redlamp RAW decoder, sensor calibration, report relay or camera thresholds
 are included. Lightroom's public Upright workflow is an interaction reference;
 no closed-source implementation or output-fitted parameters are used here.
 
+The bundled Phosdeck Fujifilm looks use Redlamp's MPL-2.0 Standard, Vivid Slide
+and Chrome tables at version 2, fitted to CC0 RAW/embedded-JPEG pairs.
+Upstream revision: dfcd8f54f2ab6be0ec7b0b4e164ab6e740fc4b90 (2026-11-20).
+Source tables and index:
+https://github.com/pdcgomes/redlamp/tree/dfcd8f54f2ab6be0ec7b0b4e164ab6e740fc4b90/packages/RedlampRecipes/Resources/BaseLooks
+Files: base-standard@2.look.lzma, base-vivid-slide@2.look.lzma,
+base-chrome@2.look.lzma, and BaseLooks.json.
+Format and rendering references: BundledLookFile.swift, LookTable.swift,
+Develop.metal, BundledBaseLookTests.swift, and docs/recipes/look-development.md.
+The adapted tables and their editable generation code are available under
+MPL-2.0 at https://github.com/rankangkang/phosdeck/tree/master/Sources/Imaging/CameraLooks
+and https://github.com/rankangkang/phosdeck/blob/master/scripts/pack-camera-looks.py.
+Generation resamples the sRGB-encoded Rec.2020 data to Phosdeck's log-spaced
+extended-linear-sRGB tables with display white protection. The bundled inputs
+are Redlamp's independently fitted tables; the GPU renderer and picker are
+Phosdeck's existing native implementations.
+
 Mozilla Public License Version 2.0
 ==================================
 
