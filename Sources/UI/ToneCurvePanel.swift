@@ -146,7 +146,10 @@ final class CurveNSView: NSControl {
             }
         }
         if window?.firstResponder === self {
-            Palette.traceActive.setStroke(); let ring = NSBezierPath(rect: bounds.insetBy(dx: 1,dy: 1)); ring.lineWidth = 2; ring.stroke()
+            Palette.focusRing.setFill()
+            let size = Metrics.focusMark
+            NSBezierPath(roundedRect: CGRect(x: bounds.midX - size.width / 2, y: isFlipped ? bounds.maxY - 4 : bounds.minY + 2,
+                                             width: size.width, height: size.height), xRadius: 1, yRadius: 1).fill()
         }
     }
     override func mouseDown(with event: NSEvent) {

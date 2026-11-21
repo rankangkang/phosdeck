@@ -32,11 +32,7 @@ private struct InstrumentToggleBody: View {
             .frame(minHeight: 28).contentShape(Rectangle())
         }
         .buttonStyle(.plain).focused($focused)
-        .overlay {
-            if focused && enabled {
-                RoundedRectangle(cornerRadius: 3).stroke(Theme.focusRing, lineWidth: 2).padding(-3).allowsHitTesting(false)
-            }
-        }
+        .instrumentFocusMark(focused && enabled)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isOn)
         .accessibilityRepresentation {
             Toggle(isOn: configuration.$isOn) { configuration.label }.toggleStyle(.checkbox)

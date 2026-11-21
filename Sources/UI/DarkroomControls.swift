@@ -157,6 +157,18 @@ struct KeySurface: View {
     }
 }
 
+extension View {
+    /// An inset focus cue also works for icon-only controls.
+    func instrumentFocusMark(_ visible: Bool, color: Color = Theme.focusRing) -> some View {
+        overlay(alignment: .bottom) {
+            if visible {
+                Capsule().fill(color).frame(width: Metrics.focusMark.width, height: Metrics.focusMark.height).padding(.bottom, 2)
+                    .allowsHitTesting(false).accessibilityHidden(true)
+            }
+        }
+    }
+}
+
 struct KeyButtonStyle: ButtonStyle {
     var selected = false
     var position: KeyPosition = .single
@@ -169,7 +181,6 @@ struct KeyButtonStyle: ButtonStyle {
     /// A key-face status lamp follows the key's latch and enabled pressure.
     var lampInside = false
     var expand = false
-    var underlineFocus = false
     func makeBody(configuration: Configuration) -> some View { KeyButtonBody(configuration: configuration, style: self) }
 }
 
@@ -304,7 +315,6 @@ private struct KeyButtonBody: View {
                 configuration.label
             }
         }
-            .underline(style.underlineFocus && focused && enabled)
             .frame(maxWidth: style.expand ? .infinity : nil)
             .offset(y: !reduceMotion ? travel.labelOffset(height: style.height) : 0)
             .font(.system(size: 12, weight: style.selected ? .semibold : .regular))
@@ -318,9 +328,7 @@ private struct KeyButtonBody: View {
             .overlay {
                 if !enabled { LockedKeyFeedback(pressed: $lockedPressed).environment(\.isEnabled, true).accessibilityHidden(true) }
             }
-            .overlay {
-                if focused && enabled && !style.underlineFocus { style.position.shape(radius: style.radius).stroke(Theme.focusRing, lineWidth: 2).padding(-2).allowsHitTesting(false) }
-            }
+            .instrumentFocusMark(focused && enabled)
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
             .onChange(of: configuration.isPressed) { _, pressed in if enabled { style.onPress?(pressed) } }
@@ -388,7 +396,7 @@ private struct PrimaryKeyBody: View {
             .overlay {
                 if !enabled { LockedKeyFeedback(pressed: $lockedPressed).environment(\.isEnabled, true).accessibilityHidden(true) }
             }
-            .overlay { if focused && enabled { shape.stroke(Theme.focusRing, lineWidth: 2).padding(-2).allowsHitTesting(false) } }
+            .instrumentFocusMark(focused && enabled, color: Theme.keyPrimaryText)
             .contentShape(Rectangle())
             .onChange(of: enabled) { _, _ in lockedPressed = false }
             .onDisappear { lockedPressed = false }
@@ -593,9 +601,10 @@ private struct InstrumentField<Content: View>: View {
             .background(Theme.raised.shadow(.inner(color: Theme.insetShadow.opacity(0.5), radius: 2, y: 1)), in: RoundedRectangle(cornerRadius: Metrics.inputRadius))
             .overlay {
                 RoundedRectangle(cornerRadius: Metrics.inputRadius)
-                    .strokeBorder(focused && enabled ? Theme.focusRing : enabled || preservesAppearance ? (contrast == .increased ? Theme.controlBorder : Theme.materialEdge) : Theme.textDisabled, lineWidth: focused && enabled ? 2 : 0.75)
+                    .strokeBorder(enabled || preservesAppearance ? (contrast == .increased ? Theme.controlBorder : Theme.materialEdge) : Theme.textDisabled, lineWidth: 0.75)
                     .allowsHitTesting(false)
             }
+            .instrumentFocusMark(focused && enabled)
     }
 }
 

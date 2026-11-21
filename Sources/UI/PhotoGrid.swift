@@ -20,6 +20,8 @@ struct PhotoGrid: NSViewRepresentable {
         layout.sectionInset = NSEdgeInsets(top: inset, left: inset, bottom: inset, right: inset)
         layout.scrollDirection = film ? .horizontal : .vertical
         let collection = KeyboardCollectionView()
+        collection.focusRingType = .none
+        scroll.focusRingType = .none
         collection.selectQuery = { [weak model] in
             guard let model, model.canSelectAllResults else { return false }
             model.selectAllResults()
@@ -690,7 +692,7 @@ final class PhotoItem: NSCollectionViewItem {
             button.target = self; button.action = #selector(toggleStack); button.identifier = NSUserInterfaceItemIdentifier(id)
         }
         stackLeading.edge = true; stackTrailing.edge = true
-        stackLeading.focusRingType = .none; stackTrailing.focusRingType = .none
+        stackButton.focusRingType = .none; stackLeading.focusRingType = .none; stackTrailing.focusRingType = .none
         stackButton.wantsLayer = true; stackButton.layer?.cornerRadius = 2
         stackButton.setContentHuggingPriority(.required, for: .horizontal)
         captionLeading = caption.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12)

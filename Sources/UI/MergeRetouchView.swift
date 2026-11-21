@@ -360,7 +360,8 @@ private struct MergeSourceThumbnail: View {
                 if excluded { Text(L10n.text("merge.inspect.frameOff",defaultValue:"Frame Excluded")).foregroundStyle(Theme.warning) }
             }.font(.caption11).padding(3).frame(maxWidth:.infinity)
                 .background(Theme.inset)
-                .overlay(Rectangle().stroke(focused ? Theme.focusRing : selected ? Theme.accentSignal : Theme.controlBorder,lineWidth:focused || selected ? 2 : 0.5))
+                .overlay(Rectangle().stroke(selected ? Theme.accentSignal : Theme.controlBorder,lineWidth:selected ? 2 : 0.5))
+                .instrumentFocusMark(focused)
         }.buttonStyle(.plain).focused($focused).disabled(!enabled).help(item.name)
             .accessibilityLabel("\(item.index+1) · \(item.name)")
             .accessibilityValue([selected ? L10n.text("merge.inspect.selected",defaultValue:"Selected") : "",coverageTitle,

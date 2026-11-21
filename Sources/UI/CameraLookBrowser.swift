@@ -24,9 +24,8 @@ struct CameraLookRow: View {
                         Image(systemName: "square.grid.2x2").accessibilityHidden(true)
                     }
                 }
-                .buttonStyle(KeyButtonStyle(selected: browsing, expand: true, underlineFocus: true))
+                .buttonStyle(.key(selected: browsing, expand: true))
                 .focusable()
-                .focusEffectDisabled()
                 .focused($focused)
                 .onKeyPress(.return) { onBrowse(); return .handled }
                 .accessibilityIdentifier("camera-look-browser")
@@ -139,9 +138,8 @@ struct CameraLookBrowser: View {
                     .font(.section).accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
                 Button(L10n.text("app.done", defaultValue: "Done"), action: model.closeCameraLookBrowser)
-                    .buttonStyle(KeyButtonStyle(height: 22, underlineFocus: true))
+                    .buttonStyle(.key(height: 22))
                     .focusable()
-                    .focusEffectDisabled()
                     .focused($focus, equals: .done)
                     .onKeyPress(.return) { model.closeCameraLookBrowser(); return .handled }
                     .onKeyPress(.downArrow) { focus = layout.selectedTarget; return .handled }
@@ -213,6 +211,7 @@ struct CameraLookBrowser: View {
             .foregroundStyle(Theme.textSecondary)
             .frame(height: Metrics.sectionHeader)
             .contentShape(Rectangle())
+            .instrumentFocusMark(focus == target)
         }
         .buttonStyle(.plain)
         .focusable()
@@ -245,7 +244,6 @@ struct CameraLookBrowser: View {
     private func tile(_ choice: Choice, selected: Bool, thumbnail: Thumbnail?, layout: Layout) -> some View {
         let id = choice.id
         let target = Focus.tile(id)
-        let isFocused = focus == target
         let title = choice.title
         let apply = { model.selectCameraLook(choice.selection) }
         return Button(action: apply) {
@@ -281,12 +279,12 @@ struct CameraLookBrowser: View {
             .background(selected ? Theme.selected : hovered == id ? Theme.raised : Color.clear)
             .contentShape(Rectangle())
             .overlay {
-                if isFocused || selected {
-                    Rectangle().strokeBorder(isFocused ? Theme.focusRing : Theme.accentSignal,
-                                             lineWidth: isFocused ? 2 : 1)
+                if selected {
+                    Rectangle().strokeBorder(Theme.accentSignal, lineWidth: 1)
                         .allowsHitTesting(false)
                 }
             }
+            .instrumentFocusMark(focus == target)
         }
         .buttonStyle(.plain)
         .focusable()

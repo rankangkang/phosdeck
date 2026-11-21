@@ -48,6 +48,7 @@ struct PhosdeckApp: App {
     var body: some Scene {
         Window("\(model.catalogName) — Phosdeck", id: "main") {
             WorkspaceView(model: model)
+                .focusEffectDisabled()
                 .onOpenURL { model.openCatalog(url: $0) }
                 .onAppear {
                     delegate.model = model
@@ -61,7 +62,7 @@ struct PhosdeckApp: App {
         .defaultLaunchBehavior(.presented)
         .commands { WorkspaceCommands(model: model) }
         Settings {
-            SettingsSheet(model: model).preferredColorScheme(chromeTheme.colorScheme)
+            SettingsSheet(model: model).focusEffectDisabled().preferredColorScheme(chromeTheme.colorScheme)
         }.windowResizability(.contentSize)
     }
 }

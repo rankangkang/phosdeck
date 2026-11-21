@@ -78,7 +78,7 @@ struct AdjustmentRow: View {
                     if editing || invalid {
                         RoundedRectangle(cornerRadius: Metrics.inputRadius).fill(Theme.raised)
                             .overlay(RoundedRectangle(cornerRadius: Metrics.inputRadius)
-                                .strokeBorder(invalid ? Theme.error : Theme.focusRing, lineWidth: invalid ? 1.5 : 1))
+                                .strokeBorder(invalid ? Theme.error : .clear, lineWidth: 1.5))
                     }
                 }
                 .focused($editing)

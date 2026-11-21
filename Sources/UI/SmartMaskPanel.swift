@@ -35,7 +35,7 @@ struct SmartMaskPanel: View {
         content.focusable(true).focusEffectDisabled().focused($focusedTarget, equals: target)
             .overlay {
                 if case .part = target, focusedTarget == target {
-                    RoundedRectangle(cornerRadius: 3).stroke(Theme.focusRing, lineWidth: 1.5).padding(-2).allowsHitTesting(false)
+                    Color.clear.instrumentFocusMark(true).allowsHitTesting(false).accessibilityHidden(true)
                 }
             }
             .onHover { model.inspectSmartMask(target, hovering: $0, sessionID: session.id) }
@@ -195,7 +195,7 @@ private struct SmartMaskAvatar: View {
             }.frame(width: 44, height: 44).clipShape(Circle())
                 .overlay { Circle().strokeBorder(selected ? Theme.accentSignal : Theme.controlBorder, lineWidth: selected ? 2 : 0.5) }
                 .padding(3)
-                .overlay { if focused { Circle().strokeBorder(Theme.focusRing, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2])) } }
+                .instrumentFocusMark(focused)
                 .overlay(alignment: .bottomTrailing) {
                     if selected {
                         Image(systemName: "checkmark.circle.fill").font(.system(size: 13))

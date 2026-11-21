@@ -140,6 +140,7 @@ enum Theme {
 }
 
 enum Metrics {
+    static let focusMark = CGSize(width: 10, height: 2)
     static let topBar: CGFloat = 32
     /// Centre line of the system window buttons inside the hidden title bar.
     static let topBarKeyLine: CGFloat = 16
