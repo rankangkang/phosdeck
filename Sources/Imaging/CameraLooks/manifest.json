@@ -3,18 +3,18 @@
   "groups": [
     {
       "id": "fujifilm",
-      "title": "Fujifilm (Approximate)",
+      "title": "Fujifilm",
       "localizedTitles": {
-        "en": "Fujifilm (Approximate)",
-        "zh-Hans": "富士（近似）"
+        "en": "Fujifilm",
+        "zh-Hans": "富士"
       }
     },
     {
       "id": "sony",
-      "title": "Sony (Approximate)",
+      "title": "Sony",
       "localizedTitles": {
-        "en": "Sony (Approximate)",
-        "zh-Hans": "索尼（近似）"
+        "en": "Sony",
+        "zh-Hans": "索尼"
       }
     },
     {

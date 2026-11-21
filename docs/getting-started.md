@@ -84,7 +84,7 @@ Lightroom Classic 的 `.lrcat` 可通过“文件 → 从 Lightroom Classic 目�
 
 富士有 X‑S10 的 18 个固定胶片模拟（含 ACROS 和黑白的黄、红、绿滤镜变体），另有 Nostalgic Neg. 和 REALA ACE。索尼随包提供 ST 标准色彩。随包色表提供近似显色。[Redlamp 来源与授权](references/redlamp-LICENSE.txt) · [Fuji Recipe Converter 来源与授权](references/fuji-recipe-converter-LICENSE.txt) · [LightCraft 来源与授权](references/lightcraft-LICENSE.txt)
 
-安装 Sony Look Bridge v4.0.0 的 α7R V 本机色表后，“索尼（近似）”会增加 PT、NT、VV、VV2、FL、IN、SH、BW 和 SE。采用照片日光版色表，经色彩空间和基准影调适配。上游的 MIT 许可覆盖实现代码，色表中的第三方参数另有授权边界。[α7R V 色表发布包](https://github.com/751K/sony-look-bridge/releases/tag/v4.0.0) · [Sony Look Bridge 授权说明](https://github.com/751K/sony-look-bridge/blob/01a5085d28526dc627f755c74de60f26b70eff93/README.md#license)
+安装 Sony Look Bridge v4.0.0 的 α7R V 本机色表后，“索尼”会增加 PT、NT、VV、VV2、FL、IN、SH、BW 和 SE。采用照片日光版色表，经色彩空间和基准影调适配。上游的 MIT 许可覆盖实现代码，色表中的第三方参数另有授权边界。[α7R V 色表发布包](https://github.com/751K/sony-look-bridge/releases/tag/v4.0.0) · [Sony Look Bridge 授权说明](https://github.com/751K/sony-look-bridge/blob/01a5085d28526dc627f755c74de60f26b70eff93/README.md#license)
 
 本机色表由 `python3 scripts/pack-sony-local-looks.py Sony-A7R-V-Creative-Looks.zip CameraLooks` 生成，需要 NumPy。将生成的 `CameraLooks` 目录放入当前 App 容器的 `Data/Library/Application Support/OhMyLRC/` 后重新打开应用。换机重算用到这些风格的配方时，需在目标机安装相同版本。
 

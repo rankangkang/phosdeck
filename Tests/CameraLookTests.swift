@@ -301,7 +301,8 @@ final class CameraLookTests: XCTestCase {
         XCTAssertEqual(previewLibrary.title(for: selection, language: "zh-Hans"), "测试色表")
         XCTAssertEqual(previewSections.last?.group.displayTitle(language: "en"), "Pipeline Verification")
         XCTAssertEqual(previewSections.last?.group.displayTitle(language: "zh-Hans"), "测试验证")
-        XCTAssertEqual(releaseSections.first?.group.displayTitle(language: "zh-Hans"), "富士（近似）")
+        XCTAssertEqual(releaseSections.map { $0.group.displayTitle(language: "zh-Hans") }, ["富士", "索尼"])
+        XCTAssertEqual(releaseSections.map { $0.group.displayTitle(language: "en") }, ["Fujifilm", "Sony"])
         XCTAssertEqual(releaseLibrary.title(for: CameraLookSelection(id: "sony.st", version: 1), language: "zh-Hans"),
                        "ST 标准色彩")
     }

@@ -205,11 +205,11 @@ struct CameraLookBrowser: View {
                 Image(systemName: group.isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 9, weight: .semibold)).frame(width: 10).accessibilityHidden(true)
                 SilkText(title)
-                Text("(\(count))").font(.caption11.monospacedDigit())
-                Seam().frame(maxWidth: .infinity)
+                Spacer(minLength: Metrics.gap)
+                Text(count).font(.caption11.monospacedDigit())
             }
             .foregroundStyle(Theme.textSecondary)
-            .frame(height: 24)
+            .frame(height: Metrics.sectionHeader)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -247,32 +247,45 @@ struct CameraLookBrowser: View {
         let title = choice.title
         let apply = { model.selectCameraLook(choice.selection) }
         return Button(action: apply) {
-            VStack(spacing: 0) {
-                PhotoMat.dark.color.aspectRatio(4.0 / 3, contentMode: .fit)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 3) {
+                    Text(title)
+                        .font(.caption11.weight(selected ? .semibold : .medium))
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                    if selected {
+                        Image(systemName: "checkmark")
+                            .font(.caption11.weight(.semibold))
+                            .accessibilityHidden(true)
+                    }
+                }
+                .foregroundStyle(selected ? Color(nsColor: Palette.textPrimary) : Theme.textSecondary)
+                .frame(height: Metrics.key)
+
+                Color.clear.aspectRatio(4.0 / 3, contentMode: .fit)
                     .overlay {
                         switch thumbnail {
                         case let .image(image):
                             Image(decorative: image, scale: 1).resizable().scaledToFit()
                         case .unavailable:
-                            Image(systemName: "exclamationmark.triangle").foregroundStyle(Color(nsColor: PhotoMat.dark.textSecondary))
+                            Image(systemName: "exclamationmark.triangle")
                         case nil:
-                            Image(systemName: "photo").foregroundStyle(Color(nsColor: PhotoMat.dark.textSecondary))
+                            Image(systemName: "photo")
                         }
                     }
+                    .foregroundStyle(Theme.textSecondary)
                     .accessibilityHidden(true)
-                HStack(spacing: 4) {
-                    Text(title).lineLimit(2).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
-                    Spacer(minLength: 0)
-                    if selected { Image(systemName: "checkmark").font(.caption11.weight(.semibold)) }
-                }
-                .padding(.horizontal, 6).frame(height: 32)
-                .font(.caption11.weight(selected ? .semibold : .regular))
-                .background(selected ? Theme.selected : hovered == id ? Theme.raised : Theme.inset)
             }
+            .padding(.horizontal, Metrics.thumbnailCell.inset)
+            .padding(.bottom, Metrics.thumbnailCell.inset)
+            .background(selected ? Theme.selected : hovered == id ? Theme.raised : Color.clear)
             .contentShape(Rectangle())
             .overlay {
-                Rectangle().strokeBorder(isFocused ? Theme.focusRing : selected ? Theme.accentSignal : Theme.controlBorder,
-                                         lineWidth: isFocused ? 2 : 1).allowsHitTesting(false)
+                if isFocused || selected {
+                    Rectangle().strokeBorder(isFocused ? Theme.focusRing : Theme.accentSignal,
+                                             lineWidth: isFocused ? 2 : 1)
+                        .allowsHitTesting(false)
+                }
             }
         }
         .buttonStyle(.plain)
