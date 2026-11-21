@@ -38,13 +38,21 @@ struct ImportCandidate: Identifiable, Sendable {
 
 /// Stores explicit import checks and the current selection in the photo grid.
 struct ImportSelection {
-    var skipDuplicates = true
+    var skipDuplicatesOnCheckAll = true
     private var choices: [String: Bool] = [:]
     private(set) var selectedIDs: Set<String> = []
     private(set) var activeID: String?
     private var anchorID: String?
 
-    func canSelect(_ item: ImportCandidate) -> Bool { item.canCheck(skippingDuplicates: skipDuplicates) }
+    func canSelect(_ item: ImportCandidate) -> Bool { item.canCheck(skippingDuplicates: false) }
+
+    func canIncludeInCheckAll(_ item: ImportCandidate) -> Bool {
+        item.canCheck(skippingDuplicates: skipDuplicatesOnCheckAll)
+    }
+
+    mutating func checkAll(in candidates: [ImportCandidate]) {
+        setChecked(true, for: candidates.filter(canIncludeInCheckAll))
+    }
 
     mutating func selectAll(_ candidates: [ImportCandidate]) {
         let available = candidates.filter(canSelect)

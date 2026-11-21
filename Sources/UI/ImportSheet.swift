@@ -48,7 +48,6 @@ struct ImportSheet: View {
         .frame(width: 1100, height: 700)
         .onChange(of: recursive) { scan() }
         .onChange(of: onlyNew) { selection.retainSelection(in: shown) }
-        .onChange(of: selection.skipDuplicates) { selection.retainSelection(in: shown) }
         .onDisappear { scanTask?.cancel() }
 
     }
@@ -136,8 +135,8 @@ struct ImportSheet: View {
             }
             Seam()
             HStack {
-                Button(L10n.text("app.importCheckAll", defaultValue: "Check All")) { selection.setChecked(true, for: visible) }
-                    .buttonStyle(.key).disabled(scanning || !visible.contains { selection.canSelect($0) && !selection.isChecked($0) })
+                Button(L10n.text("app.importCheckAll", defaultValue: "Check All")) { selection.checkAll(in: visible) }
+                    .buttonStyle(.key).disabled(scanning || !visible.contains { selection.canIncludeInCheckAll($0) && !selection.isChecked($0) })
                 Button(L10n.text("app.importUncheckAll", defaultValue: "Uncheck All")) { selection.setChecked(false, for: visible) }
                     .buttonStyle(.key).disabled(scanning || !visible.contains(where: selection.isChecked))
                 Spacer()
@@ -226,7 +225,7 @@ struct ImportSheet: View {
                 }
                 gridFocused = true
             } label: {
-                ImportThumbnail(url: item.url, dimmed: item.isDuplicate && selection.skipDuplicates)
+                ImportThumbnail(url: item.url, dimmed: item.isDuplicate && !selection.isChecked(item))
                     .frame(height: 116).frame(maxWidth: .infinity).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -251,9 +250,9 @@ struct ImportSheet: View {
         ScrollView {
         VStack(alignment: .leading, spacing: 16) {
             SubgroupLabel(L10n.text("app.fileHandling", defaultValue: "File Handling"))
-            Toggle(L10n.text("app.skipCatalogedPhotos", defaultValue: "Skip Previously Imported and Suspected Duplicates"), isOn: $selection.skipDuplicates)
+            Toggle(L10n.text("app.skipCatalogedPhotos", defaultValue: "Skip Duplicates When Checking All"), isOn: $selection.skipDuplicatesOnCheckAll)
                 .toggleStyle(InstrumentToggleStyle(expand: true))
-                .help(L10n.text("app.skipPhotosAlreadyRegisteredInThisCatalogCopyImport", defaultValue: "These photos stay visible and unchecked in All Photos. Turn this off to check them manually."))
+                .help(L10n.text("app.skipPhotosAlreadyRegisteredInThisCatalogCopyImport", defaultValue: "Applies to Check All. You can check a duplicate directly or as part of a selection."))
             SubgroupLabel(copy ? L10n.text("app.destination_1386", defaultValue: "Destination") : L10n.text("app.photoLocation", defaultValue: "Photo Location"))
             if copy {
                 Button(L10n.text("app.chooseDestinationFolder", defaultValue: "Choose Destination Folder…")) {

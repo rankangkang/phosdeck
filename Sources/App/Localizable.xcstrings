@@ -37173,13 +37173,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Skip Previously Imported and Suspected Duplicates"
+            "value": "Skip Duplicates When Checking All"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "跳过已入库和疑似重复的照片"
+            "value": "全部勾选时跳过重复照片"
           }
         }
       }
@@ -37209,13 +37209,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "These photos stay visible and unchecked in All Photos. Turn this off to check them manually."
+            "value": "Applies to Check All. You can check a duplicate directly or as part of a selection."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这些照片在“所有照片”中可见，默认不勾选。关闭后可手动勾选。"
+            "value": "适用于“全部勾选”。可直接勾选单张重复照片，也可以随组选一起勾选。"
           }
         }
       }

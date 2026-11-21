@@ -324,7 +324,7 @@ extension ImportTests {
         XCTAssertFalse(FileManager.default.fileExists(atPath: otherTarget.appendingPathComponent("A.jpg").path))
     }
 
-    func testImportChecksPreserveChoicesAcrossViewsAndDuplicateProtection() {
+    func testImportChecksAllowExplicitDuplicatesAndProtectCheckAllByDefault() {
         let fresh = ImportCandidate(url: source.appendingPathComponent("Fresh.jpg"), identity: .unverified, match: nil, problem: nil)
         let cataloged = ImportCandidate(url: source.appendingPathComponent("Cataloged.jpg"), identity: .unverified, match: .cataloged, problem: nil)
         let duplicate = ImportCandidate(url: source.appendingPathComponent("Duplicate.jpg"), identity: .unverified, match: .suspectedDuplicate, problem: nil)
@@ -334,17 +334,22 @@ extension ImportTests {
         XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [fresh.id])
         selection.setChecked(false, for: [fresh])
         XCTAssertFalse(selection.isChecked(fresh))
-        selection.setChecked(true, for: all)
+        selection.checkAll(in: all)
         XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [fresh.id])
-        selection.skipDuplicates = false
-        XCTAssertFalse(selection.isChecked(duplicate))
-        selection.setChecked(true, for: [duplicate, broken])
-        selection.setChecked(false, for: all.filter { !$0.isDuplicate })
-        XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [duplicate.id])
-        selection.skipDuplicates = true
-        XCTAssertTrue(all.filter(selection.isChecked).isEmpty)
-        selection.skipDuplicates = false
-        XCTAssertTrue(selection.isChecked(duplicate))
+        selection.select(cataloged, in: all)
+        XCTAssertEqual(selection.selectedIDs, [cataloged.id])
+        XCTAssertFalse(selection.isChecked(cataloged))
+        selection.setChecked(true, for: duplicate, in: all)
+        selection.setChecked(true, for: broken, in: all)
+        XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [fresh.id, duplicate.id])
+        selection.skipDuplicatesOnCheckAll = false
+        selection.checkAll(in: all)
+        XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [fresh.id, cataloged.id, duplicate.id])
+        selection.skipDuplicatesOnCheckAll = true
+        XCTAssertTrue(selection.isChecked(cataloged))
+        selection.setChecked(false, for: all)
+        selection.checkAll(in: all)
+        XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [fresh.id])
         selection.resetChoices()
         XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [fresh.id])
     }
@@ -359,22 +364,22 @@ extension ImportTests {
 
         selection.select(a, in: photos)
         selection.select(c, in: photos, extending: true)
-        XCTAssertEqual(selection.selectedIDs, [a.id, c.id])
+        XCTAssertEqual(selection.selectedIDs, [a.id, b.id, c.id])
         XCTAssertEqual(photos.filter(selection.isChecked).map(\.id), [a.id, c.id, d.id])
         selection.setChecked(false, for: c, in: photos)
         XCTAssertEqual(photos.filter(selection.isChecked).map(\.id), [d.id])
 
         selection.select(d, in: photos, toggling: true)
         selection.select(c, in: photos, toggling: true)
-        XCTAssertEqual(selection.selectedIDs, [a.id, d.id])
+        XCTAssertEqual(selection.selectedIDs, [a.id, b.id, d.id])
         selection.selectAll(photos)
-        XCTAssertEqual(selection.selectedIDs, [a.id, c.id, d.id])
+        XCTAssertEqual(selection.selectedIDs, [a.id, b.id, c.id, d.id])
         selection.move(-1, in: photos, extending: false)
-        XCTAssertEqual(selection.activeID, a.id)
+        XCTAssertEqual(selection.activeID, b.id)
         selection.move(1, in: photos, extending: true)
-        XCTAssertEqual(selection.selectedIDs, [a.id, c.id])
+        XCTAssertEqual(selection.selectedIDs, [b.id, c.id])
         selection.toggleSelectedChecks(in: photos)
-        XCTAssertEqual(photos.filter(selection.isChecked).map(\.id), [a.id, c.id, d.id])
+        XCTAssertEqual(photos.filter(selection.isChecked).map(\.id), [b.id, c.id, d.id])
 
         selection.retainSelection(in: [d])
         XCTAssertTrue(selection.selectedIDs.isEmpty)
