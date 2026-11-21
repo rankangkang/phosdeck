@@ -77,7 +77,7 @@ struct CameraLookBrowser: View {
             }
             let selected = Choice(selection: selection)
             let group = groups.first { $0.choices.contains(selected) }
-            self.ungrouped = [Choice(selection: nil)] + (selection != nil && group == nil ? [selected] : [])
+            self.ungrouped = [Choice(selection: nil), Choice(selection: .asShot)] + (selection != nil && selection != .asShot && group == nil ? [selected] : [])
             self.groups = groups
             if let group, !group.isExpanded { self.selectedTarget = .group(group.id) }
             else { self.selectedTarget = .tile(selected.id) }

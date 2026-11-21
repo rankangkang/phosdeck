@@ -132,6 +132,7 @@
 		69D86E27037D72EA71624195 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270ACB168370B4450AF0DAA3 /* AppModel.swift */; };
 		69ED68F0DDE6EDAE20D83282 /* ManualDefringe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E0A01DFEE26B12D8738FB9 /* ManualDefringe.swift */; };
 		CA11BF1700014CA8A1B2C3D4 /* CameraLook.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11F17E00014CA8A1B2C3D4 /* CameraLook.swift */; };
+		CA11BF1800014CA8A1B2C3D4 /* AsShotMatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11F18E00014CA8A1B2C3D4 /* AsShotMatch.swift */; };
 		CA11BF1700024CA8A1B2C3D4 /* CameraLooks in Resources */ = {isa = PBXBuildFile; fileRef = CA11F17E00024CA8A1B2C3D4 /* CameraLooks */; };
 		CA11BF1700034CA8A1B2C3D4 /* CameraLookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */; };
 		6AB6461EBE8AD700A2F77691 /* MergeRetouch.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE7F8EC215D83D4C44204F6C /* MergeRetouch.swift */; };
@@ -607,6 +608,7 @@
 		D412F5DF92F42B7D727D6EB6 /* lightcraft-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "lightcraft-LICENSE.txt"; sourceTree = "<group>"; };
 		D4E0A01DFEE26B12D8738FB9 /* ManualDefringe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualDefringe.swift; sourceTree = "<group>"; };
 		CA11F17E00014CA8A1B2C3D4 /* CameraLook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraLook.swift; sourceTree = "<group>"; };
+		CA11F18E00014CA8A1B2C3D4 /* AsShotMatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsShotMatch.swift; sourceTree = "<group>"; };
 		CA11F17E00024CA8A1B2C3D4 /* CameraLooks */ = {isa = PBXFileReference; lastKnownFileType = folder; path = CameraLooks; sourceTree = "<group>"; };
 		CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraLookTests.swift; sourceTree = "<group>"; };
 		D5108D77A264E78F7FA33FCC /* ExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
@@ -995,6 +997,7 @@
 				67278415E53B3543BA704BFF /* AutomaticAdjustments.swift */,
 				25717AF63718F24B4A842A20 /* CameraDiagnostics.swift */,
 				CA11F17E00014CA8A1B2C3D4 /* CameraLook.swift */,
+				CA11F18E00014CA8A1B2C3D4 /* AsShotMatch.swift */,
 				CA11F17E00024CA8A1B2C3D4 /* CameraLooks */,
 				A6DFE3EF9CB2B1039A15DEAE /* CreativeVignette.swift */,
 				7A42B662A6F13C7727073AA0 /* CropInteraction.swift */,
@@ -1623,6 +1626,7 @@
 				77ECF9DDE7BF352D009BC266 /* MCPHTTPListener.swift in Sources */,
 				69ED68F0DDE6EDAE20D83282 /* ManualDefringe.swift in Sources */,
 				CA11BF1700014CA8A1B2C3D4 /* CameraLook.swift in Sources */,
+				CA11BF1800014CA8A1B2C3D4 /* AsShotMatch.swift in Sources */,
 				B874ACB486CD7D353079465A /* MaskEditing.swift in Sources */,
 				40F166656C67FF065CE34932 /* MaskPanel.swift in Sources */,
 				9B7078BFA4C624465E3805A0 /* Masking.swift in Sources */,

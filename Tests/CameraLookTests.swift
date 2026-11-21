@@ -12,17 +12,68 @@ final class CameraLookTests: XCTestCase {
         let velvia = CameraLookSelection(id: "fujifilm.velvia", version: 1)
         let collapsed = CameraLookBrowser.Layout(sections: sections, selection: velvia, collapsed: ["fujifilm"])
         XCTAssertEqual(collapsed.selectedTarget, .group("fujifilm"))
-        XCTAssertEqual(collapsed.visibleChoices.map(\.id), ["default", "sony.st@1"])
-        XCTAssertEqual(collapsed.destination(from: .tile("default"), key: .tab), .group("fujifilm"))
+        XCTAssertEqual(collapsed.visibleChoices.map(\.id), ["default", "phosdeck.as-shot@1", "sony.st@1"])
+        XCTAssertEqual(collapsed.destination(from: .tile("phosdeck.as-shot@1"), key: .tab), .group("fujifilm"))
         XCTAssertEqual(collapsed.destination(from: .group("fujifilm"), key: .downArrow), .group("sony"))
         XCTAssertEqual(collapsed.destination(from: .group("sony"), key: .tab), .tile("sony.st@1"))
 
         let expanded = CameraLookBrowser.Layout(sections: sections, selection: velvia, collapsed: ["sony"])
         XCTAssertEqual(expanded.selectedTarget, .tile("fujifilm.velvia@1"))
-        XCTAssertEqual(expanded.visibleChoices.count, 21)
+        XCTAssertEqual(expanded.visibleChoices.count, 22)
         XCTAssertEqual(expanded.destination(from: .group("fujifilm"), key: .downArrow), .tile("fujifilm.provia@1"))
         XCTAssertEqual(expanded.destination(from: .tile("fujifilm.velvia@1"), key: .downArrow), .tile("fujifilm.classic-chrome@1"))
-        XCTAssertEqual(expanded.destination(from: .group("fujifilm"), key: .tab, backwards: true), .tile("default"))
+        XCTAssertEqual(expanded.destination(from: .group("fujifilm"), key: .tab, backwards: true), .tile("phosdeck.as-shot@1"))
+    }
+
+    func testAsShotFitsOnlyCorrespondingReference() {
+        let curve = SIMD3<Float>(0.28, -0.19, 0.14)
+        var raw = [SIMD4<Float>](), reference = [SIMD4<Float>]()
+        for y in 0..<48 {
+            for x in 0..<48 {
+                let value = Float(x+y)/150 + 0.05
+                let rgb = SIMD3(value, value*0.7, value*0.9)
+                let mapped = rgb + curve*rgb*(1-rgb)
+                raw.append(SIMD4(rgb,1))
+                reference.append(SIMD4(mapped,1))
+            }
+        }
+        XCTAssertLessThan(simd_length(AsShotMatch.fit(raw,reference)-curve), 0.07)
+        XCTAssertEqual(AsShotMatch.fit(raw, reference.reversed()), .zero)
+        XCTAssertNil(AsShotMatch.fujiMakerLook(Data("FUJIFILM".utf8)))
+    }
+
+    func testFujiFilmModeAndMonochromeOverride() {
+        var note = Data("FUJIFILM".utf8)
+        note.append(contentsOf: [12,0,0,0, 1,0, 1,20, 3,0, 1,0,0,0, 0,6,0,0])
+        XCTAssertEqual(AsShotMatch.fujiMakerLook(note)?.id, "fujifilm.classic-chrome")
+        note[12] = 2
+        note.append(contentsOf: [3,16, 3,0, 1,0,0,0, 1,5,0,0])
+        XCTAssertEqual(AsShotMatch.fujiMakerLook(note)?.id, "fujifilm.acros-r")
+        note.removeLast()
+        XCTAssertNil(AsShotMatch.fujiMakerLook(note))
+    }
+
+    func testAsShotPublicRAWReopensAndExports() async throws {
+        let sample = try MoreRAWTests.request("a7iii_12bit_compressed.ARW")
+        let pipeline = ImagePipeline()
+        var recipe = try await pipeline.baseline(sample)
+        let url = try MoreRAWTests.sample("a7iii_12bit_compressed.ARW")
+        let match = try AsShotMatch.resolve(url: url, decoder: recipe.decoderVersion,
+                                            library: .shared, context: linearContext)
+        XCTAssertEqual(match.base, CameraLookSelection(id: "sony.st", version: 1))
+        XCTAssertGreaterThan(simd_length(match.bend), 0.01, "The public reference should improve on ST alone")
+        recipe.setCameraLook(.asShot)
+        let saved = try JSONDecoder().decode(EditRecipe.self, from: JSONEncoder().encode(recipe))
+        XCTAssertEqual(saved.cameraLook, .asShot)
+        let job = ImageRequest(photo: sample.photo, root: sample.root, recipe: saved)
+        let frame = try await pipeline.render(job, longEdge: 256)
+        let cold = try await ImagePipeline().render(job, longEdge: 256)
+        XCTAssertEqual(try bytes(frame), try bytes(cold))
+        let png = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + ".png")
+        defer { try? FileManager.default.removeItem(at: png) }
+        _ = try await pipeline.export(job, staging: png, options: ExportOptions(format: .png, longEdge: 256))
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(png as CFURL, nil))
+        XCTAssertNotNil(CGImageSourceCreateImageAtIndex(source, 0, nil))
     }
 
     private let linearSpace = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!

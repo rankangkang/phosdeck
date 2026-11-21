@@ -80,6 +80,7 @@ actor ImagePipeline {
     private var previewRAW: (key: String, filter: CIRAWFilter, defaults: RAWDetailSettings, details: RAWDetailSettings)?
     private var previewDecoded: (key: String, image: CIImage)?
     private var maskBaselineCache: (key: String, image: CIImage)?
+    private var asShotCache: (digest: String, decoder: String, match: AsShotMatch)?
     private var previewSpatial: (key: String, image: CIImage)?
     private let maskCache = MaskPipeline.RasterCache()
     private var qualityDecoded: (key: String, image: CIImage)?
@@ -474,6 +475,22 @@ actor ImagePipeline {
         return Self.originZero(decoded)
     }
 
+    private func applyCameraLook(_ image: CIImage, recipe: EditRecipe, url: URL) throws -> CIImage {
+        guard recipe.cameraLook == .asShot else {
+            return try CameraLookPipeline.apply(image, selection: recipe.cameraLook, library: cameraLooks)
+        }
+        let match: AsShotMatch
+        if let cached = asShotCache, cached.digest == recipe.sourceDigest, cached.decoder == recipe.decoderVersion {
+            match = cached.match
+        } else {
+            match = try AsShotMatch.resolve(url: url, decoder: recipe.decoderVersion, library: cameraLooks, context: developContext)
+            try Task.checkCancellation()
+            asShotCache = (recipe.sourceDigest, recipe.decoderVersion, match)
+        }
+        let base = try CameraLookPipeline.apply(image, selection: match.base, library: cameraLooks)
+        return try match.apply(base)
+    }
+
     private func processDecoded(_ decoded: CIImage, request: ImageRequest, url: URL, recipe: EditRecipe, decodeKey: String,
                                 previewEdge: Int?, zoneReferenceOnly: Bool, pointReferenceOnly:Bool, decodeOnly: Bool,
                                 sourceSize: CGSize, nativeArea: NativePreviewArea?) throws -> CIImage {
@@ -486,7 +503,7 @@ actor ImagePipeline {
         let repaired = try repairedLinear(decoded, recipe: recipe, cacheKey: decodeKey, region: region)
         let denoised = try GeneralDetailPipeline.denoise(repaired,recipe.noiseReduction,sourceSize:sourceSize)
         let defringed = try ManualDefringePipeline.apply(denoised, recipe.manualDefringe, sourceSize: sourceSize)
-        let base = try CameraLookPipeline.apply(defringed, selection: recipe.cameraLook, library: cameraLooks)
+        let base = try applyCameraLook(defringed, recipe: recipe, url: url)
         if pointReferenceOnly {
             let spatial = try SpatialDevelopPipeline.apply(base,adjustments:recipe.develop,context:developContext)
             var contrastOnly = recipe; contrastOnly.saturation = 1
@@ -737,8 +754,7 @@ actor ImagePipeline {
                 let input: CIImage
                 if let cached = exposed[value.exposure] { input = cached }
                 else {
-                    let decoded = try CameraLookPipeline.apply(decode(current, exposure: value.exposure),
-                                                               selection: recipe.cameraLook, library: cameraLooks)
+                    let decoded = try applyCameraLook(decode(current, exposure: value.exposure), recipe: recipe, url: url)
                     guard let cg = developContext.createCGImage(decoded, from: decoded.extent, format: .RGBAf,
                         colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!, deferred: false) else { throw AutomaticAdjustmentPixels.insufficient }
                     input = CIImage(cgImage: cg); exposed[value.exposure] = input

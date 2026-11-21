@@ -80,6 +80,8 @@ Lightroom Classic 的 `.lrcat` 可通过“文件 → 从 Lightroom Classic 目�
 
 编辑 RAW 时，点击“基本调整 → 相机风格”打开画布右侧的浏览栏。默认显色和各品牌风格用当前照片生成双列缩略图。点击分组标题可独立折叠或展开，标题显示风格数量，并记住各组状态。悬停时画布临时试显，移开恢复。点击卡片应用并新增一条历史。用 Tab 或方向键浏览时，回车可切换分组的折叠状态或应用当前卡片。点“完成”或按 Esc 收起侧栏。各风格可以跨机身应用，保留曝光、白平衡和局部调整。
 
+“按拍摄风格”会读取当前 RAW 的拍摄档位，从已安装的对应基础风格开始显影。文件有可用的机内预览时，应用会对齐同帧画面并估算颜色和影调修正。预览太小、对齐不可靠或修正未改善保留样点时，使用基础风格。未识别或未安装该档位时，从默认显色开始。手选其他风格会结束逐张校准。将“按拍摄风格”复制到另一张 RAW 时，会根据目标照片重新计算。
+
 富士有 X‑S10 的 18 个固定胶片模拟（含 ACROS 和黑白的黄、红、绿滤镜变体），另有 Nostalgic Neg. 和 REALA ACE。索尼随包提供 ST 标准色彩。随包色表提供近似显色。[Redlamp 来源与授权](references/redlamp-LICENSE.txt) · [Fuji Recipe Converter 来源与授权](references/fuji-recipe-converter-LICENSE.txt) · [LightCraft 来源与授权](references/lightcraft-LICENSE.txt)
 
 安装 Sony Look Bridge v4.0.0 的 α7R V 本机色表后，“索尼（近似）”会增加 PT、NT、VV、VV2、FL、IN、SH、BW 和 SE。采用照片日光版色表，经色彩空间和基准影调适配。上游的 MIT 许可覆盖实现代码，色表中的第三方参数另有授权边界。[α7R V 色表发布包](https://github.com/751K/sony-look-bridge/releases/tag/v4.0.0) · [Sony Look Bridge 授权说明](https://github.com/751K/sony-look-bridge/blob/01a5085d28526dc627f755c74de60f26b70eff93/README.md#license)

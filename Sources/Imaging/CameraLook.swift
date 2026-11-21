@@ -40,6 +40,8 @@ struct CameraLookSelection: Codable, Equatable, Hashable, Sendable {
     var id: String
     var version: Int
 
+    static let asShot = Self(id: "phosdeck.as-shot", version: 1)
+
     func validateSyntax() throws {
         guard Self.isValidIdentifier(id), (1...9999).contains(version) else {
             throw LRCError(L10n.text("cameraLook.invalidSelection", defaultValue: "Invalid camera look identifier or version"))
@@ -321,6 +323,7 @@ final class CameraLookLibrary: @unchecked Sendable {
     }
 
     func title(for selection: CameraLookSelection, language: String = L10n.current.language) -> String {
+        if selection == .asShot { return L10n.text("cameraLook.asShot", defaultValue: "As Shot") }
         guard let state = try? catalog.get(), let item = state.entriesBySelection[selection] else {
             return "\(selection.id) (v\(selection.version))"
         }
@@ -335,7 +338,7 @@ final class CameraLookLibrary: @unchecked Sendable {
     }
 
     func validate(_ selection: CameraLookSelection) throws {
-        _ = try table(for: selection)
+        if selection != .asShot { _ = try table(for: selection) }
     }
 
     func table(for selection: CameraLookSelection) throws -> CameraLookTable {

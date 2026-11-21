@@ -1,6 +1,13 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "cameraLook.asShot": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "As Shot" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "按拍摄风格" } }
+      }
+    },
     "cameraLook.browse": {
       "extractionState": "manual",
       "localizations": {
