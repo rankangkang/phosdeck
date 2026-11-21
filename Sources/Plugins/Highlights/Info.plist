@@ -18,6 +18,11 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>EXAppExtensionAttributes</key>
+	<dict>
+		<key>EXExtensionPointIdentifier</key>
+		<string>dev.cmkk.oh-my-lrc.PhotoTool</string>
+	</dict>
 	<key>PhosdeckPluginHost</key>
 	<string>dev.cmkk.oh-my-lrc</string>
 </dict>

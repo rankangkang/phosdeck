@@ -1114,7 +1114,7 @@ actor ImagePipeline {
         }
     }
 
-    private func pluginPixels(_ image: CIImage) throws -> PluginImage {
+    func pluginPixels(_ image: CIImage) throws -> PluginImage {
         let bounds = image.extent.integral
         let frame = try PluginFrame(width: Int(bounds.width), height: Int(bounds.height))
         var data = Data(count: frame.byteCount)
@@ -1122,12 +1122,24 @@ actor ImagePipeline {
             let target = CIRenderDestination(bitmapData: buffer.baseAddress!, width: frame.width, height: frame.height,
                                              bytesPerRow: frame.rowBytes, format: .RGBAf)
             target.colorSpace = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
-            target.alphaMode = .unpremultiplied
+            // Core Image can copy opaque 8-bit pixels directly into a float destination
+            // in straight-alpha mode. Read premultiplied float and convert in place.
+            target.alphaMode = .premultiplied
             target.isFlipped = true
             target.isDithered = false
             _ = try developContext.startTask(toRender: image, from: bounds, to: target, at: .zero).waitUntilCompleted()
             let pixels = buffer.bindMemory(to: SIMD4<Float>.self)
-            for i in pixels.indices where pixels[i].w == 0 { pixels[i] = .zero }
+            for index in pixels.indices {
+                let pixel = pixels[index]
+                let alpha = pixel.w
+                guard alpha.isFinite, alpha != 1 else { continue }
+                if alpha <= 0 {
+                    pixels[index] = .zero
+                } else {
+                    // Use the original coverage to recover RGB before bounding alpha.
+                    pixels[index] = SIMD4(pixel.x / alpha, pixel.y / alpha, pixel.z / alpha, min(alpha, 1))
+                }
+            }
         }
         try Task.checkCancellation()
         return try PluginImage(frame: frame, pixels: data)

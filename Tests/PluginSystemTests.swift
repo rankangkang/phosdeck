@@ -36,6 +36,55 @@ final class PluginSystemTests: XCTestCase {
         }
     }
 
+    func testBundledToolsDeclareTheHostsExtensionPoint() throws {
+        let host = try XCTUnwrap(Bundle.main.bundleIdentifier)
+        let point = host + ".PhotoTool"
+        let extensions = Bundle.main.bundleURL.appending(path: "Contents/Extensions")
+        let declarations = try Data(contentsOf: extensions.appending(path: "Phosdeck.appexpt"))
+        let plist = try PropertyListSerialization.propertyList(from: declarations, format: nil)
+        let bindings = try XCTUnwrap(plist as? [String: Any])
+        XCTAssertEqual((bindings[point] as? [String: String])?["EXExtensionPointName"], "PhotoTool")
+
+        for (name, key) in [("PhosdeckSoftProof", "soft-proof"), ("PhosdeckHighlights", "select-highlights"),
+                            ("PhosdeckWarmPrint", "warm-print")] {
+            let bundle = try XCTUnwrap(Bundle(url: extensions.appending(path: name + ".appex")), name)
+            XCTAssertEqual(bundle.bundleIdentifier, host + "." + key, name)
+            XCTAssertEqual(bundle.object(forInfoDictionaryKey: "PhosdeckPluginHost") as? String, host, name)
+            let attributes = bundle.object(forInfoDictionaryKey: "EXAppExtensionAttributes") as? [String: Any]
+            XCTAssertEqual(attributes?["EXExtensionPointIdentifier"] as? String, point, name)
+        }
+    }
+
+    func testPluginPixelsNormalizeAlphaAndPreserveExtendedColor() async throws {
+        let colors: [SIMD4<Float>] = [SIMD4(-0.25, 1.5, 0.125, Float(1).nextUp),
+                                      SIMD4(1.25, 0.25, -0.125, 0.5), SIMD4(1, 0, 0, 0),
+                                      SIMD4(0.25, 0.5, 1, -Float.ulpOfOne)]
+        let frame = try PluginFrame(width: colors.count, height: 1)
+        let input = try PluginImage(frame: frame, pixels: colors.withUnsafeBytes { Data($0) })
+        let image = ImagePipeline.pluginImage(input)
+        let output = try await ImagePipeline().pluginPixels(image)
+        try output.frame.verify(output.pixels)
+        let actual = output.pixels.withUnsafeBytes { Array($0.bindMemory(to: SIMD4<Float>.self)) }
+        let expected: [SIMD4<Float>] = [SIMD4(-0.25, 1.5, 0.125, 1), colors[1], .zero, .zero]
+        XCTAssertEqual(output.frame, frame)
+        XCTAssertEqual(actual, expected)
+    }
+
+    func testPluginPixelsConvertOpaqueEightBitSRGBToTopDownFloat() async throws {
+        let bounds = CGRect(x: 0, y: 0, width: 64, height: 48)
+        let lower = CIImage(color: .black).cropped(to: bounds)
+        let upper = CIImage(color: .white).cropped(to: CGRect(x: 0, y: 24, width: 64, height: 24))
+        let bitmap = try XCTUnwrap(CIContext().createCGImage(upper.composited(over: lower), from: bounds,
+                                                            format: .RGBA8, colorSpace: ImagePipeline.outputSpace))
+        let output = try await ImagePipeline().pluginPixels(CIImage(cgImage: bitmap))
+        try output.frame.verify(output.pixels)
+        output.pixels.withUnsafeBytes { bytes in
+            let pixels = bytes.bindMemory(to: SIMD4<Float>.self)
+            XCTAssertEqual(pixels.first, SIMD4(1, 1, 1, 1))
+            XCTAssertEqual(pixels.last, SIMD4(0, 0, 0, 1))
+        }
+    }
+
     func testBundledToolsUseVerifiedWorkConnections() async throws {
         try requireDevelopmentSignature()
         let frame = try PluginFrame(width: 5, height: 1)

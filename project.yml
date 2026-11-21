@@ -156,6 +156,8 @@ targets:
         CFBundleDisplayName: Soft Proof
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        EXAppExtensionAttributes:
+          EXExtensionPointIdentifier: dev.cmkk.oh-my-lrc.PhotoTool
         PhosdeckPluginHost: dev.cmkk.oh-my-lrc
     dependencies:
       - package: PhosdeckPluginKit
@@ -179,6 +181,8 @@ targets:
         CFBundleDisplayName: Select Highlights
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        EXAppExtensionAttributes:
+          EXExtensionPointIdentifier: dev.cmkk.oh-my-lrc.PhotoTool
         PhosdeckPluginHost: dev.cmkk.oh-my-lrc
     dependencies:
       - package: PhosdeckPluginKit
@@ -202,6 +206,8 @@ targets:
         CFBundleDisplayName: Warm Print
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        EXAppExtensionAttributes:
+          EXExtensionPointIdentifier: dev.cmkk.oh-my-lrc.PhotoTool
         PhosdeckPluginHost: dev.cmkk.oh-my-lrc
     dependencies:
       - package: PhosdeckPluginKit

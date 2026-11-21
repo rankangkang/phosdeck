@@ -46,7 +46,7 @@
 
 | 调研依据 | 对 Phosdeck 的设计影响 |
 |---|---|
-| Apple 的扩展一次绑定一个扩展点，绑定包含宿主 bundle ID。扩展点默认仅限包内；macOS 可用 `Scope(restriction: .none)` 允许外部提供者。[定义扩展点](https://developer.apple.com/documentation/extensionfoundation/adding-support-for-app-extensions-to-your-app) · [扩展绑定](https://developer.apple.com/documentation/extensionfoundation/building-an-app-extension-to-support-a-host-app) | 一个扩展点内用工具描述区分三种结果。宿主与扩展目标生成定义与绑定；正式版和固定体验版各准备匹配自身 ID 的构建绑定，核对签名包中的实际内容。 |
+| Apple 的扩展一次绑定一个扩展点，绑定包含宿主 bundle ID。扩展点默认仅限包内；macOS 可用 `Scope(restriction: .none)` 允许外部提供者。[定义扩展点](https://developer.apple.com/documentation/extensionfoundation/adding-support-for-app-extensions-to-your-app) · [扩展绑定](https://developer.apple.com/documentation/extensionfoundation/building-an-app-extension-to-support-a-host-app) | 一个扩展点内用工具描述区分三种结果。宿主生成扩展点定义，三个插件在各自的 `Info.plist` 声明绑定。正式版和固定体验版使用各自的宿主 ID，核对签名包中的扩展点和工作连接身份。 |
 | Apple 的 Monitor 提供可用扩展身份和待批准、已停用数量；外部扩展默认需要用户批准。系统可以复用已有进程，断开一个连接后进程也可能继续存活。[发现与批准](https://developer.apple.com/documentation/extensionfoundation/discovering-app-extensions-from-your-app) · [进程管理](https://developer.apple.com/documentation/extensionfoundation/adding-support-for-app-extensions-to-your-app) | 系统批准与 Phosdeck 自己的启停偏好分别记录。系统进程、一次连接、一次编辑各有独立寿命。插件释放资源不能依赖下次一定启动新进程。 |
 | Apple 支持通过 Foundation XPC 传递 `FileHandle`，也提供连接和匿名监听器的对端签名约束。FxPlug 4 证明另一种选择是跨进程共享 IOSurface。[Apple DTS 的句柄说明](https://developer.apple.com/forums/thread/785735) · [连接签名校验](https://developer.apple.com/documentation/foundation/nsxpcconnection/setcodesigningrequirement%28_%3A%29) · [监听器签名校验](https://developer.apple.com/documentation/foundation/nsxpclistener/setconnectioncodesigningrequirement%28_%3A%29) · [FxPlug 跨进程渲染](https://developer.apple.com/documentation/professional-video-applications/using-out-of-process-fxplug-plug-ins) | 首版选普通沙箱中的 NSXPC，利用只读句柄移交完整图像，先取得可以逐像素比对的基准。系统连接只交换工作端点，像素经独立的已核验连接传递。GPU 共享的设备、同步与复用约定等实测表明需要时再加。 |
 | OpenFX 分开描述能力、创建实例、渲染和销毁实例。[OpenFX 动作定义](https://openfx.readthedocs.io/en/latest/Reference/ofxImageEffectActions.html) | 借用这个生命周期划分。Phosdeck 的实例绑定一张照片的一次操作；照片版本、原生草稿和图库提交由宿主定义。 |
@@ -102,7 +102,7 @@ protocol PhotoTool: Sendable {
 
 ### 图像通过什么交付
 
-图像描述包含阶段、全尺寸与实际像素尺寸、行跨度、像素格式、颜色空间、alpha、行方向和字节数。首版工作像素使用扩展线性 sRGB、RGBA32F、小端、直通 alpha 和自上而下的行，完全透明像素归零；宿主适配 Core Image 的预乘表示。软打样输入由宿主把送印源的 sRGB 编码值转换成协议的线性 RGBA32F，附描述这些实际字节的扩展线性 sRGB 配置。打印机与纸张的目标 ICC 单独传递。插件以实际输入配置为起点做印刷模拟，并给返回像素附上与其编码一致的 RGB 配置；宿主按该配置完成最终显示转换。高光取得与原生亮度范围工具一致的有向参考图，暖调取得暗角之后的阶段图。三个工具均无需原片路径、图库书签或数据库。[现有浮点读写](../Sources/Imaging/MultiFrameImage.swift) · [蒙版基准](../Sources/Imaging/ImagePipeline.swift)
+图像描述包含阶段、全尺寸与实际像素尺寸、行跨度、像素格式、颜色空间、alpha、行方向和字节数。首版工作像素使用扩展线性 sRGB、RGBA32F、小端、直通 alpha 和自上而下的行。宿主从 Core Image 读回预乘浮点像素，再转成直通 RGB 和 alpha，将有限覆盖率约束在 0～1，完全透明的像素归零。软打样输入由宿主把送印源的 sRGB 编码值转换成协议的线性 RGBA32F，附描述这些实际字节的扩展线性 sRGB 配置。打印机与纸张的目标 ICC 单独传递。插件以实际输入配置为起点做印刷模拟，并给返回像素附上与其编码一致的 RGB 配置；宿主按该配置完成最终显示转换。高光取得与原生亮度范围工具一致的有向参考图，暖调取得暗角之后的阶段图。三个工具均无需原片路径、图库书签或数据库。[现有浮点读写](../Sources/Imaging/MultiFrameImage.swift) · [蒙版基准](../Sources/Imaging/ImagePipeline.swift)
 
 内置和第三方扩展统一通过任务私有普通文件的只读 `FileHandle` 交接图像、色域覆盖图和自定义 ICC 数据。XPC 为这些载荷传递描述和句柄。生产方写完并关闭写端后移交读端。宿主在读取前检查声明的尺寸、行跨度、乘法溢出、文件类型和实际长度，并在复制时执行已预留的字节上限。结果有界复制到宿主独占的暂存区，再核验副本的有限像素、透明度、尺寸和摘要，供显示或保存。双方各关闭所持句柄，恢复时只清理可确认归属且无活跃引用的暂存。
 
@@ -136,7 +136,7 @@ protocol PhotoTool: Sendable {
 
    [探针工程](../scripts/plugin-probe/project.yml) 独立于正式 App。用 [构建脚本](../scripts/plugin-probe/build.sh) 指定宿主签名身份、宿主 Team ID 和独立容器签名身份。先打开产物 `ProbeVendor.app` 注册容器，再以 `--manage` 打开 `ProbeHost.app` 的系统扩展开关。宿主可执行文件支持 `--snapshot` 获取发现状态，默认核对随包扩展的签名、像素与故障恢复，`--vendor` 切换到独立容器，`--inline` 验证不符合图像消息类型的返回。用 `--measure` 复测 960 px 与 2400 px 预览及连续拖动，用 `--final` 复测 6000 万像素的阶段文件写入与校验。逐次结果输出为 JSON Lines，可保存在 `build/`。合成阶段探针计时到 MainActor 发布，成品验收还需要实际显影管线和实窗测量。
 
-   预览 App 暂存后，先用 [体验版绑定脚本](../scripts/bind-preview-photo-tools.py) 写入固定体验身份及对应的扩展绑定，再以原开发身份从扩展到宿主重新签名。可用 `PluginSystemTests` 核对三种有签名的工具调用、像素行序、源平面高光选区、保存衔接和阶段文件恢复。
+   用 [固定体验版更新脚本](../scripts/update-preview.sh) 更新已有开发签名的体验包。脚本在同卷暂存构建产物，用 [体验版绑定脚本](../scripts/bind-preview-photo-tools.py) 同步宿主、扩展点、扩展 bundle ID 和工作连接所用的宿主 ID，再沿用原开发身份从扩展到宿主签名并核验。`PluginSystemTests` 核对正式构建中的绑定、签名工作连接、像素行序、源平面高光选区、保存衔接和阶段文件恢复。
 
    - 分别模拟超时后迟到回复和计算始终不结束。跨窗口、新会话和重连反复请求时，核对未回收额度继续占用、无法确认回收的插件停止接单、迟到结果被拒收，其他照片仍可正常编辑。确认旧任务收尾或进程退出后，验证额度只归还一次且可以恢复派发。
    - 用测试扩展返回违反协议的内联图像数据，再返回实际长度超过预算的文件句柄。核对宿主拒收内联像素和超预算文件，后者在开始复制前即报告失败，并记录宿主内存峰值及正常编辑是否可继续。
