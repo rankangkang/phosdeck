@@ -94,6 +94,35 @@ final class CatalogFileTests: XCTestCase {
         XCTAssertEqual(try catalog.photo("p")?.rating, 4)
     }
 
+    #if DEBUG
+    @MainActor func testSyntheticStartupCanWaitForTheDocumentOpenEvent() async throws {
+        let file = try fixture("Requested.phoscat")
+        let lock = CatalogLock.url(for: file)
+        let other = try fixture("Unrelated.phoscat")
+        let model = AppModel()
+        model.recentCatalogs = [RecentCatalog(path: other.path, filename: other.lastPathComponent,
+            bookmark: try AccessLease.bookmark(other, readOnly: false))]
+
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: lock.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: lock.path) }
+        try model.openSyntheticCatalog(at: file)
+        XCTAssertNil(model.catalog)
+        XCTAssertNil(model.error)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: lock.path)
+        do {
+            let held = try CatalogStore(fileURL: file)
+            XCTAssertThrowsError(try model.openSyntheticCatalog(at: file))
+            withExtendedLifetime(held) {}
+        }
+        model.openCatalog(url: file)
+        await model.catalogTransfer?.value
+        await model.cacheConfigurationTask?.value
+        XCTAssertEqual(model.catalog?.fileURL, file.resolvingSymlinksInPath())
+        XCTAssertNil(model.error)
+    }
+    #endif
+
     @MainActor func testFinderOpenKeepsLatestFileWhileThePreviousCatalogConfiguresItsCache() async throws {
         let previous = try fixture("Previous.phoscat")
         let first = try fixture("First.phoscat")

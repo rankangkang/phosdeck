@@ -798,19 +798,17 @@ final class AppModel {
         }
         // XCTest exercises services explicitly, without opening the user's catalog.
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        recentCatalogs = (UserDefaults.standard.data(forKey: "recentCatalogs").flatMap { try? JSONDecoder().decode([RecentCatalog].self, from: $0) }) ?? []
         do {
             #if DEBUG
             // Explicit synthetic validation launch; failures never fall back to a recent/private catalog.
             if let path = ProcessInfo.processInfo.environment["PHOSDECK_SYNTHETIC_CATALOG"] {
-                catalog = try CatalogStore(fileURL:URL(fileURLWithPath:path))
-                try reload(); configureCache(); status = L10n.text("app.syntheticCatalogVerification", defaultValue: "Synthetic catalog verification · ") + catalogName
-                reportPluginStageWarnings()
+                try openSyntheticCatalog(at: URL(fileURLWithPath: path))
                 return
             }
             #endif
             let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appendingPathComponent("OhMyLRC", isDirectory: true)
-            recentCatalogs = (UserDefaults.standard.data(forKey: "recentCatalogs").flatMap { try? JSONDecoder().decode([RecentCatalog].self, from: $0) }) ?? []
             if let recent = recentCatalogs.first {
                 let request = try recent.openRequest(restoringWorkspace: true)
                 let archived = CatalogArchive.hasIndex(beside: request.url)
@@ -833,6 +831,28 @@ final class AppModel {
             try restoreCatalogWorkspace()
         } catch { self.error = error.localizedDescription; status = L10n.text("app.noCatalogIsOpen", defaultValue: "No catalog is open") }
     }
+
+    #if DEBUG
+    func openSyntheticCatalog(at url: URL) throws {
+        let file = url.standardizedFileURL
+        let recent = recentCatalogs.first { URL(fileURLWithPath: $0.path).standardizedFileURL.path == file.path }
+        let request = try? recent?.openRequest()
+        let access = request?.url.standardizedFileURL.path == file.path ? request?.access : nil
+        do {
+            catalog = try CatalogStore(fileURL: file, access: access)
+        } catch let failure as NSError where access?.scoped != true && failure.domain == NSPOSIXErrorDomain &&
+            (failure.code == Int(EPERM) || failure.code == Int(EACCES)) {
+            // A bare path carries no sandbox grant. The document open event can still supply one.
+            status = L10n.text("app.createOrOpenACatalogToBegin", defaultValue: "Create or open a catalog to begin")
+            return
+        }
+        try reload()
+        configureCache()
+        status = L10n.text("app.syntheticCatalogVerification", defaultValue: "Synthetic catalog verification · ") + catalogName
+        reportPluginStageWarnings()
+    }
+    #endif
+
     private func restoreCatalogWorkspace() throws {
         let storedZoom = UserDefaults.standard.double(forKey: "lastZoomScale")
         if Self.zoomScales.contains(storedZoom) { zoomScale = storedZoom }

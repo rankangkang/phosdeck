@@ -76,7 +76,9 @@ enum SafeFileWriter {
 
     static func posix(_ action: String) -> Error {
         let code = errno
-        return LRCError("\(action)：\(String(cString: strerror(code))) (\(code))")
+        return NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [
+            NSLocalizedDescriptionKey: "\(action)：\(String(cString: strerror(code))) (\(code))"
+        ])
     }
 }
 
