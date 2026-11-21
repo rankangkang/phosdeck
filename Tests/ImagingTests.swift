@@ -310,6 +310,24 @@ final class ImagingTests: XCTestCase {
         let restored = try CatalogStore.restore(from: backup, to: directory.appendingPathComponent("restored"))
         XCTAssertEqual(try restored.photos().count, 0)
     }
+    func testFitDecodeRetainsNativeOrientationAndEditedCrop() async throws {
+        let url = try fixture(orientation: 6)
+        let root = StorageRoot(id: "r", path: directory.path, bookmark: try AccessLease.bookmark(directory, readOnly: true), label: "test")
+        let photo = try ReferenceImporter.inspect(url: url, root: root, rootURL: directory)
+        let pipeline = ImagePipeline()
+        var recipe = try await pipeline.baseline(ImageRequest(photo: photo, root: root, recipe: nil))
+        let fit = try await pipeline.renderDisplay(ImageRequest(photo: photo, root: root, recipe: recipe), edge: 32)
+        XCTAssertEqual(fit.fullSize, CGSize(width: 40, height: 80))
+        XCTAssertEqual(fit.image.width, 16)
+        XCTAssertEqual(fit.image.height, 32)
+        recipe.crop.height = 0.5
+        let edited = ImageRequest(photo: photo, root: root, recipe: recipe)
+        let result = try await pipeline.renderDisplay(edited, edge: 32)
+        let reference = try await pipeline.render(edited, longEdge: 32)
+        XCTAssertEqual(result.fullSize, reference.fullSize)
+        XCTAssertEqual(result.image.dataProvider?.data, reference.image.dataProvider?.data)
+    }
+
     func testThumbnailSurvivesMetadataChangesAndServiceRestartOffline() async throws {
         let url = try fixture(orientation: 6)
         let root = StorageRoot(id: "r", path: directory.path, bookmark: try AccessLease.bookmark(directory, readOnly: true), label: "test")

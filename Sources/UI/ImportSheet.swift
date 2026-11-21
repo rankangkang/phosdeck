@@ -201,12 +201,20 @@ struct ImportSheet: View {
             Spacer()
             Button(L10n.text("app.cancel", defaultValue: "Cancel")) { dismiss() }.buttonStyle(.key).keyboardShortcut(.cancelAction)
             Button(L10n.text("app.import", defaultValue: "Import")) {
-                guard let source else { return }
-                if copy, let target {
-                    model.startCopy(source: source, target: target, selectedPaths: Set(selected.map(\.id)), includeSubfolders: recursive,
-                        layout: layout, dateOverride: dateOverride.isEmpty ? nil : dateOverride, includeSidecars: includeSidecars,
-                        collection: collection.isEmpty ? nil : collection, pairAfterImport:pairAfterImport)
-                } else { model.runReference(source: source, candidates: selected, collection: collection.isEmpty ? nil : collection, pairAfterImport:pairAfterImport) }
+                guard let source, let catalog = model.catalog else { return }
+                let items = selected
+                let sourceGrant = sourceLease, targetGrant = targetLease
+                model.pendingSheetImport = { [copy, target, recursive, layout, dateOverride, includeSidecars, collection, pairAfterImport, model] in
+                    defer { withExtendedLifetime((sourceGrant, targetGrant)) {} }
+                    guard model.catalog === catalog else { return }
+                    if copy, let target {
+                        model.startCopy(source: source, target: target, selectedPaths: Set(items.map(\.id)), includeSubfolders: recursive,
+                            layout: layout, dateOverride: dateOverride.isEmpty ? nil : dateOverride, includeSidecars: includeSidecars,
+                            collection: collection.isEmpty ? nil : collection, pairAfterImport: pairAfterImport)
+                    } else {
+                        model.runReference(source: source, candidates: items, collection: collection.isEmpty ? nil : collection, pairAfterImport: pairAfterImport)
+                    }
+                }
                 dismiss()
             }.buttonStyle(PrimaryKeyStyle()).keyboardShortcut(.defaultAction)
                 .disabled(scanning || selected.isEmpty || (copy && target == nil) || model.busy || invalidDate)

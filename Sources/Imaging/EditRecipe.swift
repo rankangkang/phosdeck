@@ -55,6 +55,11 @@ struct EditRecipe: Codable, Equatable {
         if !manualDefringe.isActive { neutral.defringe = defringe }
         return isRaster && !isLinearComposite && !grain.isActive && self == neutral
     }
+    var isUnadjustedRAW: Bool {
+        var neutral = baseline()
+        neutral.grain = grain
+        return !isRaster && !grain.isActive && self == neutral
+    }
     var schemaVersion = 2
     var pipelineVersion = 2
     var sourceDigest: String

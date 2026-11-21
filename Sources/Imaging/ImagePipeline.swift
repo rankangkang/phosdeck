@@ -14,6 +14,11 @@ struct ImageRequest: Codable {
     let photo: Photo
     let root: StorageRoot
     let recipe: EditRecipe?
+    var canDecodeAtDisplaySize: Bool {
+        if photo.isRAW { return recipe?.isUnadjustedRAW == true }
+        let ext = (photo.relativePath as NSString).pathExtension.lowercased()
+        return (ext == "jpg" || ext == "jpeg") && recipe?.isUnadjustedRaster == true
+    }
 }
 
 struct RenderedImage {
@@ -72,6 +77,9 @@ extension RAWDetailSettings {
 actor ImagePipeline {
     /// Shared serialized analysis lane, separate from interactive previews.
     static let automaticAnalysis = ImagePipeline()
+    // An untouched source shown in the grid and then in loupe shares one
+    // serial Core Image context instead of retaining two RAW working sets.
+    private static let fittedOriginals = ImagePipeline()
     /// Small browser thumbnails reuse a RAW decode without occupying the canvas lane.
     static let cameraLookThumbnails = ImagePipeline()
     private let context: CIContext
@@ -175,6 +183,7 @@ actor ImagePipeline {
                 return recipe
             }
             let raw = try PhotoFileType.rawFilter(url)
+            defer { PhotoFileType.releaseValidationCaches() }
             try PhotoFileType.validateRAWDecode(raw)
             guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: request.photo.identity) else { throw LRCError(L10n.text("app.theSourceChangedWhileCreatingItsBaseline", defaultValue: "The source changed while creating its baseline")) }
             var recipe = EditRecipe(sourceDigest: digest, decoderVersion: raw.decoderVersion.rawValue,
@@ -188,7 +197,25 @@ actor ImagePipeline {
     func renderThumbnail(_ request: ImageRequest, edge: Int) async throws -> CGImage {
         // Finish each RAW before the next request can enter this pipeline.
         let recipe = request.recipe == nil && request.photo.isRAW ? try baseline(request) : request.recipe
-        return try await render(ImageRequest(photo: request.photo, root: request.root, recipe: recipe), longEdge: edge).image
+        return try await renderDisplay(ImageRequest(photo: request.photo, root: request.root, recipe: recipe), edge: edge).image
+    }
+
+    /// Fit-to-window and thumbnail decodes for untouched originals. A committed edit
+    /// that depends on native pixel neighborhoods continues through the native graph.
+    func renderDisplay(_ request: ImageRequest, edge: Int?) async throws -> RenderedImage {
+        guard let edge, edge > 0, request.canDecodeAtDisplaySize else {
+            return try await render(request, longEdge: edge, reuseDecoded: true)
+        }
+        return try await Self.fittedOriginals.renderFittedOriginal(request, edge: edge)
+    }
+
+    private func renderFittedOriginal(_ request: ImageRequest, edge: Int) throws -> RenderedImage {
+        defer {
+            context.clearCaches()
+            developContext.clearCaches()
+        }
+        return try renderFrame(request, longEdge: edge, pixelFormat: .RGBA8, reuseDecoded: false,
+                               jpegMatte: nil, nativePixelRegion: nil, stage: nil, started: Date(), displayEdge: edge)
     }
 
     func rawDefaults(_ request: ImageRequest) throws -> RAWDetailSettings {
@@ -324,7 +351,7 @@ actor ImagePipeline {
 
     private func graph(_ request: ImageRequest, url: URL, orientedSourceSize: inout CGSize, previewEdge: Int? = nil,
                        zoneReferenceOnly: Bool = false, pointReferenceOnly: Bool = false, decodeOnly: Bool = false,
-                       reuseDecoded: Bool = false, nativeArea: ((CGSize) throws -> NativePreviewArea)? = nil) throws -> CIImage {
+                       reuseDecoded: Bool = false, displayEdge: Int? = nil, nativeArea: ((CGSize) throws -> NativePreviewArea)? = nil) throws -> CIImage {
         renderedSpotOffsets = [:]
         var image: CIImage
         if request.photo.isRAW {
@@ -355,7 +382,7 @@ actor ImagePipeline {
             let defaults = previewRAW?.key == sourceKey ? previewRAW!.defaults : RAWDetailSettings(raw: raw)
             if previewEdge != nil { previewRAW = (sourceKey, raw, defaults, recipe.rawDetails) }
             try recipe.rawDetails.apply(to: raw, defaults: defaults)
-            let scale: Float = previewEdge.map { Float(min(1, Double($0) / max(raw.nativeSize.width, raw.nativeSize.height))) } ?? 1
+            let scale: Float = (previewEdge ?? displayEdge).map { Float(min(1, Double($0) / max(raw.nativeSize.width, raw.nativeSize.height))) } ?? 1
             let temperature = Float(recipe.asShotWhiteBalance ? recipe.baselineTemperature : recipe.temperature)
             let tint = Float(recipe.asShotWhiteBalance ? recipe.baselineTint : recipe.tint)
             if raw.scaleFactor != scale { raw.scaleFactor = scale }
@@ -1273,7 +1300,7 @@ actor ImagePipeline {
 
     private func renderFrame(_ request: ImageRequest, longEdge: Int?, pixelFormat: CIFormat, reuseDecoded: Bool = false,
                              jpegMatte: JPEGMatte? = nil, nativePixelRegion: (@Sendable (CGSize) throws -> CGRect)? = nil,
-                             stage: PluginRenderStage?, started: Date = Date()) throws -> RenderedImage {
+                             stage: PluginRenderStage?, started: Date = Date(), displayEdge: Int? = nil) throws -> RenderedImage {
         return try autoreleasepool {
             try Task.checkCancellation()
             var completed = false
@@ -1316,9 +1343,23 @@ actor ImagePipeline {
                 renderedSpotOffsets = stage.offsets
                 graph = Self.pluginImage(stage.pixels)
                 _ = try nativeArea?(orientedSize)
+            } else if let displayEdge, !request.photo.isRAW {
+                let inspected = try PhotoFileType.inspectSource(url)
+                guard let bitmap = CGImageSourceCreateThumbnailAtIndex(inspected.source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: displayEdge
+                ] as CFDictionary) else { throw LRCError(L10n.text("app.noThumbnailAvailable", defaultValue: "No thumbnail available")) }
+                let properties = inspected.properties
+                let rotated = (5...8).contains(properties[kCGImagePropertyOrientation as String] as? Int ?? 1)
+                let width = properties[kCGImagePropertyPixelWidth as String] as? Int ?? request.photo.width
+                let height = properties[kCGImagePropertyPixelHeight as String] as? Int ?? request.photo.height
+                orientedSize = CGSize(width: rotated ? height : width, height: rotated ? width : height)
+                let untagged = properties[kCGImagePropertyProfileName as String] == nil
+                graph = CIImage(cgImage: bitmap, options: untagged ? [.colorSpace: Self.outputSpace] : [:])
+                renderedSpotOffsets = [:]
             } else {
                 graph = try self.graph(request, url: url, orientedSourceSize: &orientedSize, reuseDecoded: cacheDecoded,
-                                       nativeArea: nativeArea)
+                                       displayEdge: displayEdge, nativeArea: nativeArea)
             }
             var image = try Self.finish(Self.resized(graph, longEdge: longEdge), request: request)
             let finishedFrame = image
@@ -1367,7 +1408,8 @@ actor ImagePipeline {
             // High-depth export does not need a display histogram or an extra 16→8 bit readback.
             let histogram = pixelFormat == .RGBA8 ? ImageHistogram.calculate(result) : nil
             completed = true
-            let fullSize = try region?.canvas ?? (stage == nil ? graph.extent.size : Self.nativeOutputSize(orientedSize, recipe: request.recipe))
+            let nativeSize = try stage == nil ? orientedSize : Self.nativeOutputSize(orientedSize, recipe: request.recipe)
+            let fullSize = region?.canvas ?? (stage != nil || displayEdge != nil ? nativeSize : graph.extent.size)
             return RenderedImage(image: result, fullSize: fullSize, orientedSourceSize: orientedSize,
                                  histogram: histogram, elapsed: Date().timeIntervalSince(started),
                                  spotOffsets: renderedSpotOffsets, nativePixelRegion: region?.pixels)
@@ -1561,10 +1603,13 @@ actor ThumbnailService {
     }
     func usage() throws -> Int64 { try disk?.usage() ?? 0 }
     nonisolated static func key(photo: Photo, edge: Int) -> String {
-        sourceKey(photo: photo, edge: edge) + (photo.recipe != nil ? ":edit-geometry-v1:\(photo.recipeRevision)" : photo.isRAW ? ":apple-raw-source-v1" : ":source")
+        sourceKey(photo: photo, edge: edge) + (photo.recipe != nil ? ":edit-display-v2:\(photo.recipeRevision)" : photo.isRAW ? ":apple-raw-source-v2" : ":source")
     }
     nonisolated static func sourceKey(photo: Photo, edge: Int) -> String {
         "\(photo.id):\(photo.identity.base64EncodedString()):\(edge)"
+    }
+    func cachedGridImage(for photo: Photo) -> CGImage? {
+        cache.object(forKey: Self.key(photo: photo, edge: Self.gridEdge) as NSString)
     }
     func image(photo: Photo, root: StorageRoot, edge: Int = ThumbnailService.gridEdge, priority: Priority = .normal) async throws -> CGImage {
         try Task.checkCancellation()

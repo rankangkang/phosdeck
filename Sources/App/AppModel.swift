@@ -543,6 +543,12 @@ final class AppModel {
     var importConflict: ImportConflict?
     private var conflictContinuation: CheckedContinuation<ImportConflictDecision?, Never>?
     private var conflictToken: UUID?
+    @ObservationIgnored var pendingSheetImport: (() -> Void)?
+    func importSheetDismissed() {
+        let start = pendingSheetImport
+        pendingSheetImport = nil
+        start?()
+    }
     var showImport = false
     var folderReview: FolderReviewScope?
     var mergeSession: PhotoMergeSession?
@@ -565,6 +571,7 @@ final class AppModel {
     let pipeline: ImagePipeline
     private let renderPreview: (ImageRequest, Bool, Int?) async throws -> RenderedImage
     let thumbnails: ThumbnailService
+    @ObservationIgnored private var deferredImportWarmup: String?
     @ObservationIgnored private var importThumbnailWarmup: Task<Void, Never>?
     let importer = ReferenceImporter()
     @ObservationIgnored private(set) var catalogSessionID: String?
@@ -572,6 +579,7 @@ final class AppModel {
     var catalog: CatalogStore? {
         didSet {
             importThumbnailWarmup?.cancel()
+            deferredImportWarmup = nil
             catalogSessionID = catalog.map { _ in UUID().uuidString }
         }
     }
@@ -645,6 +653,11 @@ final class AppModel {
             editMode = true; singleView = true
         case .compare: beginComparison()
         case .survey: beginSurvey()
+        }
+        if mode == .grid, let scope = deferredImportWarmup {
+            warmImportedThumbnails(in: scope)
+        } else if mode != .grid {
+            importThumbnailWarmup?.cancel()
         }
         persistWorkspace()
     }
@@ -869,7 +882,7 @@ final class AppModel {
         -> (ImageRequest, Bool, Int?) async throws -> RenderedImage {
         { request, interactive, edge in
             if interactive { return try await draft.renderInteractive(request) }
-            return try await quality.render(request, longEdge: edge, reuseDecoded: true)
+            return try await quality.renderDisplay(request, edge: edge)
         }
     }
 
@@ -1668,11 +1681,12 @@ final class AppModel {
         guard !busy, let catalog else { return }
         busy = true
         let title = L10n.text("app.import", defaultValue: "Import")
+        let grant = AccessLease(url: source)
         browsingDuringImport = true
         status = title
         taskProgress = TaskProgress(title: title, done: 0, total: candidates.count)
         task = Task {
-            defer { busy = false; browsingDuringImport = false; taskProgress = nil }
+            defer { busy = false; browsingDuringImport = false; taskProgress = nil; withExtendedLifetime(grant) {} }
             _ = await performReferenceImport(source: source, candidates: candidates, collection: collection, catalog: catalog, pairAfterImport: pairAfterImport) { [self] done in
                 await MainActor.run { taskProgress = TaskProgress(title: title, done: done, total: candidates.count) }
                 if done < candidates.count { await publishImportPage(catalog) }
@@ -1765,12 +1779,14 @@ final class AppModel {
         lastImport = ImportBatch(snapshotID: snapshotID, photoIDs: imported, cancelled: cancelled)
         if let stored { importPreferences?.set(stored, forKey: workspaceKey("lastImport")) }
         showImportCompletion = true
-        if cancelled { importThumbnailWarmup?.cancel() }
+        if cancelled { importThumbnailWarmup?.cancel(); deferredImportWarmup = nil }
         else { warmImportedThumbnails(in: "import:" + snapshotID) }
     }
     private func warmImportedThumbnails(in scope: String) {
         guard let catalog else { return }
         importThumbnailWarmup?.cancel()
+        deferredImportWarmup = scope
+        guard workspaceMode == .grid else { return }
         let query = PhotoQuery(scope: scope, sort: photoSort, descending: sortDescending)
         let (predicate, arguments) = query.predicate
         let sql = "SELECT photo.* FROM \(query.relation) WHERE \(predicate) AND photo.availability='available' ORDER BY \(query.order) LIMIT ?"
@@ -1783,6 +1799,7 @@ final class AppModel {
                 try Photo.fetchAll(db, sql: sql, arguments: arguments + [ThumbnailService.prewarmLimit])
             }), !Task.isCancelled, self?.catalog === catalog else { return }
             await thumbnails.prewarm(batch, roots: roots)
+            if !Task.isCancelled, self?.catalog === catalog { self?.deferredImportWarmup = nil }
         }
     }
     func showLastImport(startCulling: Bool = false) {
@@ -2347,6 +2364,11 @@ final class AppModel {
         loadingPhoto = true
         previewTask = Task {
             do {
+                if singleView, !editMode, !fullResolution, photo.availability == "available",
+                   let thumbnail = await thumbnails.cachedGridImage(for: photo) {
+                    guard token == previewGeneration, !Task.isCancelled else { return }
+                    photoSwitchDisplay = PhotoSwitchDisplay(photoID: photo.id, image: thumbnail, histogram: nil, nativeSize: nil)
+                }
                 if photo.metadata == nil, let catalog {
                     try await importer.refreshMetadata(photo: photo, root: root, catalog: catalog)
                     guard token == previewGeneration, !Task.isCancelled else { return }
@@ -2362,7 +2384,8 @@ final class AppModel {
                     try reloadPhotos(); try reloadEditContext()
                 }
                 rawDefaults = defaults; recipe = value; savedRecipe = value; dirty = false
-                requestPreview(prepareInteractive: photo.supportsEditing)
+                let fittedOriginal = !editMode && !fullResolution && ImageRequest(photo: photo, root: root, recipe: value).canDecodeAtDisplaySize
+                requestPreview(prepareInteractive: photo.supportsEditing && !fittedOriginal)
             } catch { if token == previewGeneration { photoSwitchDisplay = nil; loadingPhoto = false; imageStatus = error.localizedDescription } }
         }
     }
@@ -3465,6 +3488,7 @@ final class AppModel {
         guard catalog != nil else { throw LRCError(L10n.text("app.openACatalogFirst", defaultValue: "Open a catalog first")) }
         guard !cacheMaintenance, !busy, !applyingAdjustments else { throw LRCError(L10n.text("app.waitForTheCurrentTaskToFinishBeforeClearing", defaultValue: "Wait for the current task to finish before clearing the cache")) }
         importThumbnailWarmup?.cancel()
+        deferredImportWarmup = nil
         cacheMaintenance = true
         defer { cacheMaintenance = false }
         let removed = try await thumbnails.clear()

@@ -269,7 +269,7 @@ struct WorkspaceView: View {
         .sheet(item: $model.importConflict) { conflict in
             ImportConflictSheet(model: model, conflict: conflict).id(conflict.id).interactiveDismissDisabled()
         }
-        .sheet(isPresented: $model.showImport) { ImportSheet(model: model) }
+        .sheet(isPresented: $model.showImport, onDismiss: model.importSheetDismissed) { ImportSheet(model: model) }
         .sheet(item: $model.folderReview) { scope in
             if let catalog = model.catalog { FolderReviewSheet(model: model, catalog: catalog, scope: scope) }
         }

@@ -197,6 +197,8 @@ enum PhotoFileType {
     }
 
     private static let validationContext = CIContext(options: [.cacheIntermediates: false])
+
+    static func releaseValidationCaches() { validationContext.clearCaches() }
     static func validateRAWDecode(_ raw: CIRAWFilter) throws {
         try Task.checkCancellation()
         try PhotoGeometry.checkSize(raw.nativeSize)

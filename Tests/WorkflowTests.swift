@@ -563,7 +563,11 @@ final class WorkflowTests: XCTestCase {
         model.scope = previous.id
         try model.reload()
         XCTAssertEqual(model.photos.map(\.id), ["previous"])
+        model.selectWorkspace(.single)
         try model.completeImport(ids: [imported.id], cancelled: false)
+        let bytesDuringLoupe = try await thumbnails.usage()
+        XCTAssertEqual(bytesDuringLoupe, 0)
+        model.selectWorkspace(.grid)
         let deadline = ContinuousClock.now.advanced(by: .seconds(4))
         var bytes = try await thumbnails.usage()
         while bytes == 0 && ContinuousClock.now < deadline {

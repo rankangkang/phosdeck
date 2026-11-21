@@ -74,6 +74,7 @@ actor ReferenceImporter {
 
     func preview(source: URL, includeSubfolders: Bool, catalog: CatalogStore,
                  onBatch: (@MainActor @Sendable ([ImportCandidate]) -> Void)? = nil) async throws -> [ImportCandidate] {
+        defer { PhotoFileType.releaseValidationCaches() }
         let lease = AccessLease(url: source)
         defer { withExtendedLifetime(lease) {} }
         let source = source.resolvingSymlinksInPath().standardizedFileURL
