@@ -241,6 +241,49 @@ final class CameraLookTests: XCTestCase {
         }
     }
 
+    func testLocalCameraLooksExtendTheSonyGroupWithoutShadowingBundledIDs() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let portrait = CameraLookSelection(id: "test-local.sony.pt", version: 1)
+        let standard = CameraLookSelection(id: "sony.st", version: 1)
+        let collision = CameraLookSelection(id: standard.id, version: 2)
+        let tableURL = directory.appending(path: "local.bin")
+        let gain = SIMD3<Float>(1.2, 0.8, 1)
+        let table = try CameraLookTable.serializedData(dimension: 17, upperBound: 4) { $0 * gain }
+        try table.write(to: tableURL)
+        let digest = try SafeFileWriter.sha256(tableURL)
+        let records: [[String: Any]] = [portrait, standard, collision].map { selection in
+            ["id": selection.id, "version": selection.version, "group": "sony", "title": "Local look",
+             "file": tableURL.lastPathComponent, "dimension": 17, "upperBound": 4, "sha256": digest]
+        }
+        let manifest = directory.appending(path: "manifest.json")
+        try JSONSerialization.data(withJSONObject: ["formatVersion": 1, "looks": records]).write(to: manifest)
+
+        let builtin = CameraLookLibrary(includesDiagnosticLooks: false)
+        let library = CameraLookLibrary(localDirectory: directory, includesDiagnosticLooks: false)
+        let sony = try XCTUnwrap(library.menuSections().first { $0.group.id == "sony" })
+        XCTAssertEqual(sony.entries.map(\.selection), [standard, portrait])
+        XCTAssertEqual(library.entry(for: standard), builtin.entry(for: standard))
+        XCTAssertNil(library.entry(for: collision))
+        XCTAssertNil(builtin.entry(for: portrait))
+        XCTAssertEqual(library.entry(for: portrait)?.resourceURL, tableURL)
+
+        let node = CameraLookTable.decode(0.5, upperBound: 4)
+        let image = makeLinearImage([node, node, node, 1], width: 1, height: 1)
+        let output = try CameraLookPipeline.apply(image, selection: portrait, library: library)
+        let values = renderLinearPixels(output)
+        for channel in 0..<3 {
+            XCTAssertEqual(values[channel], Float(Float16(node * gain[channel])), accuracy: 1e-5)
+        }
+
+        try Data("{}".utf8).write(to: manifest)
+        let fallback = CameraLookLibrary(localDirectory: directory, includesDiagnosticLooks: false)
+        XCTAssertEqual(fallback.menuSections().flatMap(\.entries), builtin.menuSections().flatMap(\.entries))
+        XCTAssertThrowsError(try fallback.validate(portrait))
+    }
+
     func testMonochromeAndSepiaKeepTheirTreatmentThroughExtendedHighlights() throws {
         let library = CameraLookLibrary(includesDiagnosticLooks: false)
         let samples: [SIMD3<Float>] = [SIMD3(0.25, 0.25, 0.25), SIMD3(0.99, 0.66, 0.41),

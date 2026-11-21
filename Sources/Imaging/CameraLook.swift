@@ -72,7 +72,7 @@ struct CameraLookEntry: Equatable, Identifiable, Sendable {
     let localizedTitles: [String: String]
     let diagnostic: Bool
     let selectable: Bool
-    let file: String
+    let resourceURL: URL
     let dimension: Int
     let upperBound: Float
     let sha256: String
@@ -240,10 +240,19 @@ final class CameraLookLibrary: @unchecked Sendable {
     }
 
     private struct CatalogData {
-        let directory: URL
         let groups: [CameraLookGroup]
         let orderedEntries: [CameraLookEntry]
         let entriesBySelection: [CameraLookSelection: CameraLookEntry]
+
+        func addingLocal(_ local: Self) -> Self {
+            let bundledIDs = Set(orderedEntries.map(\.selection.id))
+            let additions = local.orderedEntries.filter { !bundledIDs.contains($0.selection.id) }
+            let existingGroups = Set(groups.map(\.id) + orderedEntries.map(\.group))
+            let newGroups = local.groups.filter { !existingGroups.contains($0.id) }
+            let lookup = Dictionary(uniqueKeysWithValues: additions.map { ($0.selection, $0) })
+            return Self(groups: groups + newGroups, orderedEntries: orderedEntries + additions,
+                        entriesBySelection: entriesBySelection.merging(lookup) { bundled, _ in bundled })
+        }
     }
 
     static var defaultIncludesDiagnosticLooks: Bool {
@@ -254,7 +263,9 @@ final class CameraLookLibrary: @unchecked Sendable {
         #endif
     }
 
-    static let shared = CameraLookLibrary()
+    static let shared = CameraLookLibrary(
+        localDirectory: URL.applicationSupportDirectory.appending(path: "OhMyLRC/CameraLooks", directoryHint: .isDirectory)
+    )
 
     let includesDiagnosticLooks: Bool
     private let catalog: Result<CatalogData, Error>
@@ -263,7 +274,8 @@ final class CameraLookLibrary: @unchecked Sendable {
     private var recent: [CameraLookSelection] = []
     private let cacheLimit = 8
 
-    init(directory: URL? = nil, includesDiagnosticLooks: Bool = CameraLookLibrary.defaultIncludesDiagnosticLooks) {
+    init(directory: URL? = nil, localDirectory: URL? = nil,
+         includesDiagnosticLooks: Bool = CameraLookLibrary.defaultIncludesDiagnosticLooks) {
         self.includesDiagnosticLooks = includesDiagnosticLooks
         self.catalog = Result {
             let folder: URL
@@ -274,7 +286,11 @@ final class CameraLookLibrary: @unchecked Sendable {
             } else {
                 throw LRCError(L10n.text("cameraLook.missingManifest", defaultValue: "Camera look resources are missing from the app bundle"))
             }
-            return try Self.loadCatalog(at: folder)
+            let bundled = try Self.loadCatalog(at: folder)
+            if let localDirectory, let local = try? Self.loadCatalog(at: localDirectory) {
+                return bundled.addingLocal(local)
+            }
+            return bundled
         }
     }
 
@@ -326,7 +342,7 @@ final class CameraLookLibrary: @unchecked Sendable {
         try selection.validateSyntax()
         let state = try catalog.get()
         guard let item = state.entriesBySelection[selection] else {
-            throw LRCError(L10n.text("cameraLook.unavailableSelection", defaultValue: "Camera look “\(selection.id)” (v\(selection.version)) is unavailable in this build. Original data preserved"))
+            throw LRCError(L10n.text("cameraLook.unavailableSelection", defaultValue: "Camera look “\(selection.id)” (v\(selection.version)) is unavailable in this installation. Original data preserved"))
         }
         lock.lock()
         if let cached = cache[selection] {
@@ -337,7 +353,7 @@ final class CameraLookLibrary: @unchecked Sendable {
         }
         lock.unlock()
 
-        let loaded = try Self.loadTable(entry: item, in: state.directory)
+        let loaded = try Self.loadTable(entry: item)
         lock.lock()
         cache[selection] = loaded
         recent.removeAll { $0 == selection }
@@ -406,7 +422,7 @@ final class CameraLookLibrary: @unchecked Sendable {
                 localizedTitles: item.localizedTitles ?? [:],
                 diagnostic: item.diagnostic ?? false,
                 selectable: item.selectable ?? true,
-                file: item.file,
+                resourceURL: directory.appendingPathComponent(item.file, isDirectory: false),
                 dimension: item.dimension,
                 upperBound: item.upperBound,
                 sha256: item.sha256,
@@ -415,14 +431,13 @@ final class CameraLookLibrary: @unchecked Sendable {
             ordered.append(entry)
             bySelection[selection] = entry
         }
-        return CatalogData(directory: directory, groups: groups, orderedEntries: ordered, entriesBySelection: bySelection)
+        return CatalogData(groups: groups, orderedEntries: ordered, entriesBySelection: bySelection)
     }
 
-    private static func loadTable(entry: CameraLookEntry, in directory: URL) throws -> CameraLookTable {
-        let fileURL = directory.appendingPathComponent(entry.file, isDirectory: false)
+    private static func loadTable(entry: CameraLookEntry) throws -> CameraLookTable {
         let expectedPayloadBytes = entry.dimension * entry.dimension * entry.dimension * 6
         let expectedTotalBytes = 16 + expectedPayloadBytes
-        let data = try readRegularFile(fileURL, maxBytes: 16 * 1024 * 1024)
+        let data = try readRegularFile(entry.resourceURL, maxBytes: 16 * 1024 * 1024)
         guard data.count == expectedTotalBytes else {
             throw LRCError(L10n.text("cameraLook.corruptResource", defaultValue: "Camera look resource has unsupported table geometry"))
         }

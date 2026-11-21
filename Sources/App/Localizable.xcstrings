@@ -296,13 +296,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Camera look “%@” (v%lld) is unavailable in this build. Original data preserved"
+            "value": "Camera look “%@” (v%lld) is unavailable in this installation. Original data preserved"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "当前版本不包含相机风格“%@”（v%lld），原始数据已保留"
+            "value": "当前安装缺少相机风格“%@”（v%lld），原始数据已保留"
           }
         }
       }
