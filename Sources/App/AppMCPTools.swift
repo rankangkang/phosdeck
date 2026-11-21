@@ -725,7 +725,7 @@ enum AppMCPTool: String, CaseIterable {
             description = "Read photos without changing the workspace. Pass query with source_id (default all), filters and sort for an independent query, or pass photo_ids to review explicit versions in input order. Omit both to read the current view. listing=matches includes folded stack members and defaults for independent queries; listing=visible respects folding. Explicit IDs include all supplied versions. Continue with next_cursor and omit query and photo_ids. Set contact_sheet=true to receive a numbered PNG alongside the page (default 12, max \(MCPContactSheet.maximumCount) photos; requires photo preview sharing)."
             output = "items with number, photo_id, name, version_name, source_revision, recipe_revision, marks, source_status and stack. query_mode, source_id, page_offset, matched_count, visible_count and next_cursor. With contact_sheet, items also describe cell_pixels, image_pixels and thumbnail_status for the numbered PNG. Pass a candidate's ID and revisions to get_photo_preview with resolution=native for a 1:1 region."
         case .preview:
-            description = "Read an explicit photo version as an sRGB PNG when image sharing is on. Set preview_quality=interactive for faster visual feedback on a whole scaled photo draft, without overlays or alternate views. Request the default quality render to verify appearance or use canvas tools. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. The default scaled resolution accepts a normalized top-left region. Use resolution=native with region or an integer top-left region_pixels for an unscaled tile of the edited frame. Omit long_edge in native mode. Use plan_only=true to check the tile dimensions and limits without receiving pixels; omit the region to inspect the full frame. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
+            description = "Read an explicit photo version as an sRGB PNG when image sharing is on. Set preview_quality=interactive for faster visual feedback on a whole scaled photo draft, without overlays or alternate views. Interactive and quality requests can run concurrently. A draft revision change requests cancellation of its earlier previews. Request the default quality render to verify appearance or use canvas tools. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. The default scaled resolution accepts a normalized top-left region. Use resolution=native with region or an integer top-left region_pixels for an unscaled tile of the edited frame. Omit long_edge in native mode. Use plan_only=true to check the tile dimensions and limits without receiving pixels. Omit the region to inspect the full frame. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
             output = "Photo revisions, canvas dimensions, region, actual width and height. Native requests also report region_pixels, fits and limits, and suggest a smaller region when needed. Rendered previews include preview_id, preview_quality, reused, coordinate_space, editable_canvas, histogram, and a PNG content block. Interactive images are for visual review only. Multi-page TIFF previews report tiff_page_count and tiff_preview_page (1)."
         case .editPhotoDraft:
             description = "Begin an in-memory photo draft for exposure, color, preset strength, local masks and spot repairs with explicit photo_id, source_revision and recipe_revision. Poll get_job for draft_id and draft_revision. Pass them to draft-aware editing and preview tools. Commit with the current draft_id and draft_revision to create one saved edit and undo action, or cancel with the same fields to discard the draft. There is one active draft per catalog session."
@@ -837,7 +837,10 @@ extension Value {
 
 @MainActor
 final class AppMCPTools {
+    typealias ScaledQualityRenderer = @Sendable (ImagePipeline, ImageRequest, Int) async throws -> RenderedImage
+
     private enum Listing: String { case visible, matches, selection }
+    private enum PreviewQuality: String, Sendable { case quality, interactive }
     private enum PhotoListScope {
         case workspace(query: PhotoQuery, source: String, generation: UUID)
         case selection(query: PhotoQuery, source: String, generation: UUID, selection: UUID)
@@ -929,6 +932,10 @@ final class AppMCPTools {
         var cacheKey: QualityPreviewKey? = nil
         var trialPipeline: ImagePipeline? = nil
     }
+    private struct PreviewWorker {
+        let task: Task<Preview, Error>
+        let draft: MCPPhotoDraft.Reference?
+    }
     private struct UndoReceipt {
         let id = UUID().uuidString
         let verifiedData: (_ applied: Bool, _ catalog: CatalogStore) throws -> [String: Value]?
@@ -951,22 +958,34 @@ final class AppMCPTools {
     private var undoObservers: [AnyCancellable] = []
     private var activeLists = 0
     private var contactSheetWorker: Task<MCPContactSheet, Error>?
-    private var previewWorker: Task<Preview, Error>?
+    private var previewWorkers: [PreviewQuality: PreviewWorker] = [:]
     private var canvasPreviews: [MCPCanvasPreview] = []
     private var lastQualityPreview: (key: QualityPreviewKey, pixels: PreviewPixels)?
-    var photoDraft: MCPPhotoDraft?
+    var photoDraft: MCPPhotoDraft? {
+        didSet {
+            guard let previous = oldValue?.reference, previous != photoDraft?.reference else { return }
+            for worker in previewWorkers.values where worker.draft == previous {
+                worker.task.cancel()
+            }
+        }
+    }
     var mcpSmartSessionID: UUID?
-    private lazy var previewPipeline = ImagePipeline(qualityCacheLimit: 0)
+    private lazy var qualityPreviewPipeline = ImagePipeline(qualityCacheLimit: 0)
     private var interactivePreviewPipeline: ImagePipeline?
+    private let renderScaledQuality: ScaledQualityRenderer
     let workflows: AppMCPWorkflows
 
     init(model: AppModel, appName: String, version: String, bundleID: String, sharesImages: Bool,
-         chooseFile: AppMCPWorkflows.FilePicker? = nil) {
+         chooseFile: AppMCPWorkflows.FilePicker? = nil,
+         renderScaledQuality: ScaledQualityRenderer? = nil) {
         self.model = model
         self.appName = appName
         self.version = version
         self.bundleID = bundleID
         self.sharesImages = sharesImages
+        self.renderScaledQuality = renderScaledQuality ?? { pipeline, request, edge in
+            try await pipeline.render(request, longEdge: edge)
+        }
         workflows = AppMCPWorkflows(model: model, chooseFile: chooseFile)
         // Native activity can replace the stack top even when it produces the same values.
         for name in [Notification.Name.NSUndoManagerDidOpenUndoGroup, .NSUndoManagerWillUndoChange, .NSUndoManagerWillRedoChange] {
@@ -981,7 +1000,7 @@ final class AppMCPTools {
         if !value {
             imageAccessGeneration = UUID()
             contactSheetWorker?.cancel()
-            previewWorker?.cancel()
+            cancelPreviewWorkers()
             canvasPreviews.removeAll()
             lastQualityPreview = nil
             interactivePreviewPipeline = nil
@@ -992,7 +1011,7 @@ final class AppMCPTools {
         if let model, let id = mcpSmartSessionID, model.smartMaskSession?.id == id { model.cancelSmartMask() }
         mcpSmartSessionID = nil
         contactSheetWorker?.cancel()
-        previewWorker?.cancel()
+        cancelPreviewWorkers()
         canvasPreviews.removeAll()
         lastQualityPreview = nil
         interactivePreviewPipeline = nil
@@ -1030,6 +1049,7 @@ final class AppMCPTools {
             observedCatalog = catalogSession
             cursors.removeAll()
             contactSheetWorker?.cancel()
+            cancelPreviewWorkers()
             canvasPreviews.removeAll()
             lastQualityPreview = nil
             interactivePreviewPipeline = nil
@@ -1342,7 +1362,8 @@ final class AppMCPTools {
 
     private func preview(_ model: AppModel, catalog: CatalogStore, session: String, arguments: [String: Value]) async throws -> MCPToolResult {
         guard sharesImages else { throw MCPToolProblem.imageDisabled }
-        guard previewWorker == nil else {
+        let quality: PreviewQuality = arguments["preview_quality"] == "interactive" ? .interactive : .quality
+        guard previewWorkers[quality] == nil else {
             throw MCPToolProblem(code: "workspace_busy", summary: "A preview is rendering.", next: "Retry the preview after rendering finishes.")
         }
         let id = arguments["photo_id"]!.stringValue!
@@ -1363,7 +1384,7 @@ final class AppMCPTools {
         }
         let draft = try requestedDraft(arguments)
         let variant = arguments["preview_variant"]?.stringValue ?? "saved"
-        let interactive = arguments["preview_quality"] == "interactive"
+        let interactive = quality == .interactive
         if draft != nil {
             let alternatives = ["history_id", "snapshot_id", "preset_id", "preset_revision", "amount", "groups", "group", "smart_overlay"]
             guard ["saved", "crop_canvas"].contains(variant), !alternatives.contains(where: { arguments[$0] != nil }) else {
@@ -1381,8 +1402,8 @@ final class AppMCPTools {
         let smartGroup = try smartOverlay.map { try smartOverlayGroup($0, photo: MCPDevelopPhoto.current(arguments, catalog: catalog), model: model) }
         let accessGeneration = imageAccessGeneration
         let roots = model.roots
-        let pipeline = previewPipeline
-        let cachedTrialPipeline = interactivePreviewPipeline
+        let existingPipeline = interactive ? interactivePreviewPipeline : qualityPreviewPipeline
+        let renderScaledQuality = self.renderScaledQuality
         let cached = lastQualityPreview
         let worker = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
@@ -1390,6 +1411,7 @@ final class AppMCPTools {
             guard photo.revision == sourceRevision, photo.recipeRevision == recipeRevision else { throw MCPToolProblem.stalePhoto }
             if let draft, !draft.matches(photo) { throw MCPToolProblem.stalePhoto }
             guard photo.availability == "available", let root = roots.first(where: { $0.id == photo.rootID }) else { throw MCPToolProblem.fileAccess }
+            let pipeline = existingPipeline ?? ImagePipeline(cacheIntermediates: true, qualityCacheLimit: 0)
             let selection = try MCPDevelopPreview(arguments, photo: photo, catalog: catalog)
             let current: EditRecipe?
             if let draft { current = draft.recipe }
@@ -1425,7 +1447,7 @@ final class AppMCPTools {
             }
             let photoName = String(photo.displayName.prefix(256))
             let editable = !interactive && selection.editableCanvas && recipe != nil && overlay == nil && withoutMask == nil && smartOverlay == nil
-            data["preview_quality"] = interactive ? "interactive" : "quality"
+            data["preview_quality"] = .string(quality.rawValue)
             // Match the rendered content across draft and saved revisions. Plugin
             // stages have their own validation and may change outside the recipe.
             let cacheKey: QualityPreviewKey?
@@ -1434,17 +1456,17 @@ final class AppMCPTools {
             } else { cacheKey = nil }
             if let cacheKey, let cached, cached.key == cacheKey, let cachedCanvas = cached.pixels.canvas {
                 try pipeline.verifySource(request)
+                try Task.checkCancellation()
                 let canvas = MCPCanvasPreview(rebinding: cachedCanvas, to: photo, draft: draft?.reference)
                 let pixels = PreviewPixels(canvas: canvas, data: cached.pixels.data, png: cached.pixels.png)
                 data["reused"] = true
                 return Preview(data: data, selection: selection, image: (pixels, photoName), cacheKey: cacheKey)
             }
             let rendered: RenderedImage
-            let trialPipeline = interactive ? (cachedTrialPipeline ?? ImagePipeline(cacheIntermediates: true, qualityCacheLimit: 0)) : nil
-            if let trialPipeline {
-                try trialPipeline.verifySource(request)
-                rendered = try await trialPipeline.renderInteractive(request, longEdge: edge, matchQualitySize: true)
-                try trialPipeline.verifySource(request)
+            if interactive {
+                try pipeline.verifySource(request)
+                rendered = try await pipeline.renderInteractive(request, longEdge: edge, matchQualitySize: true)
+                try pipeline.verifySource(request)
             } else if native {
                 rendered = try await pipeline.render(request, longEdge: nil, nativePixelRegion: { canvas in
                     let plan = try MCPNativePreviewRegion.resolve(canvas: canvas, region: region, pixelRegion: pixelRegion)
@@ -1457,8 +1479,9 @@ final class AppMCPTools {
                 })
             } else {
                 let renderEdge = region.map { max(edge, Int(min(2048, Double(max(1, edge - 2)) / max($0.width, $0.height)))) } ?? edge
-                rendered = try await pipeline.render(request, longEdge: renderEdge)
+                rendered = try await renderScaledQuality(pipeline, request, renderEdge)
             }
+            try Task.checkCancellation()
             let full: CGImage
             if let overlay, let recipe {
                 let group = recipe.localAdjustments[try MCPMask.group(overlay.id, in: recipe)]
@@ -1498,10 +1521,12 @@ final class AppMCPTools {
             if let smartOverlay { data["smart_overlay"] = .object(smartOverlay.fields) }
             data["reused"] = false
             let pixels = PreviewPixels(canvas: canvas, data: pixelData, png: png)
-            return Preview(data: data, selection: selection, image: (pixels, photoName), cacheKey: cacheKey, trialPipeline: trialPipeline)
+            return Preview(data: data, selection: selection, image: (pixels, photoName),
+                           cacheKey: cacheKey, trialPipeline: interactive ? pipeline : nil)
         }
-        previewWorker = worker
-        defer { previewWorker = nil }
+        previewWorkers[quality] = PreviewWorker(task: worker, draft: draft?.reference)
+        // Keep the slot occupied while a cancelled render unwinds through Core Image.
+        defer { previewWorkers[quality] = nil }
         let result = await withTaskCancellationHandler { await worker.result } onCancel: { worker.cancel() }
         if interactive, case .failure = result { interactivePreviewPipeline = nil }
         guard !stopped, !Task.isCancelled else { throw MCPToolProblem.stopped }
@@ -1526,6 +1551,10 @@ final class AppMCPTools {
         let summary = data["reused"] == true ? "Reused the requested photo preview." : "Rendered the requested photo preview."
         return .init(summary, data: data,
                      artifacts: [["type": "photo_preview", "id": .string(previewID), "name": .string(image.name)]], image: pixels.png)
+    }
+
+    private func cancelPreviewWorkers() {
+        for worker in previewWorkers.values { worker.task.cancel() }
     }
 
     func clearPhotoDraft() {

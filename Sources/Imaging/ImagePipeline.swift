@@ -1295,6 +1295,7 @@ actor ImagePipeline {
     /// other processing and high-depth output retain the original graph.
     func render(_ request: ImageRequest, longEdge: Int?, pixelFormat: CIFormat = .RGBA8, reuseDecoded: Bool = false,
                 jpegMatte: JPEGMatte? = nil, nativePixelRegion: (@Sendable (CGSize) throws -> CGRect)? = nil) async throws -> RenderedImage {
+        try Task.checkCancellation()
         let started = Date()
         let stage = try await warmPrintStage(request, purpose: .quality, edge: longEdge)
         return try renderFrame(request, longEdge: longEdge, pixelFormat: pixelFormat, reuseDecoded: reuseDecoded,
@@ -1375,6 +1376,7 @@ actor ImagePipeline {
             let usesDevelop = (request.recipe?.pipelineVersion ?? 0) >= 2 && (request.photo.isRAW || request.recipe?.isUnadjustedRaster == false)
             let opaqueTile = region?.sourceIsOpaque == true && request.recipe?.straightenDegrees == 0 && request.recipe?.perspective.isNeutral == true
             var renderContext = pixelFormat == .RGBA16 || usesDevelop ? developContext : context
+            try Task.checkCancellation()
             if let jpegMatte, Self.hasTransparency(image, context: developContext) {
                 renderContext = developContext
                 guard jpegMatte != .unselected else { throw LRCError(L10n.text("app.thisOutputContainsTransparencyFromItsSourceOrGeometry", defaultValue: "This output contains transparency from its source or geometry. Choose a black or white JPEG matte")) }
@@ -1382,6 +1384,10 @@ actor ImagePipeline {
                 // Composite linear float pixels before the single 8-bit/JPEG quantization.
                 image = image.composited(over: mat)
             }
+            let needsStraightAlpha = pixelFormat == .RGBA8 && jpegMatte == nil && !opaqueTile &&
+                Self.mayHaveTransparency(request) && Self.hasTransparency(finishedFrame, context: developContext)
+            // Core Image may finish the reduction after the caller cancels.
+            try Task.checkCancellation()
             // Publish a materialized bitmap. A deferred CGImage can outlive the RAW graph
             // and be consumed concurrently by the navigator and the Metal canvas.
             let result: CGImage
@@ -1395,9 +1401,7 @@ actor ImagePipeline {
                         && (profile == nil || profile == "sRGB IEC61966-2.1")
                 }
                 result = try Self.materialize16(image, context: renderContext, preserveJPEG8: preserveJPEG8)
-            }
-            else if pixelFormat == .RGBA8, jpegMatte == nil, !opaqueTile, Self.mayHaveTransparency(request),
-                    Self.hasTransparency(finishedFrame, context: developContext) {
+            } else if needsStraightAlpha {
                 result = try Self.materialize8(image, context: developContext)
             } else {
                 guard let bitmap = renderContext.createCGImage(image, from: image.extent.integral, format: pixelFormat, colorSpace: Self.outputSpace, deferred: false) else { throw LRCError(L10n.text("app.renderingFailed", defaultValue: "Rendering failed")) }

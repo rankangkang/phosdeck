@@ -271,7 +271,7 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 用 `edit_photo_draft(action=begin)` 开启单张草稿。给 `set_global_adjustments`、`set_color_adjustments`、`set_tone_curve`、`set_zone_lighting`、`set_detail_adjustments` 或 `set_effects` 传入 `draft_id`、`draft_revision` 及保存版本的修订号，可在同一草稿试修。每次修改后从 `get_job` 取最新草稿修订，用草稿字段调用 `get_photo_recipe` 回读参数，或调用 `get_photo_preview` 取图。用 `long_edge` 且省略区域字段可预览整幅编辑画面。满意后用 `edit_photo_draft(action=commit)` 提交整份草稿，或用 `action=cancel` 丢弃。
 
-用 `preview_quality=interactive` 快速查看活动草稿的整幅效果，省略区域、叠加和对照字段。快速图使用交互显影，返回 `editable_canvas=false`，供目视试修。定稿核对、取样、落笔、叠加和 1:1 检查使用默认的 `preview_quality=quality`。在来源、配方和尺寸相同时，可复用最近一张质量整图，包括草稿提交后的回读。命中时返回 `reused=true`，预览 ID 和修订号仍按当前请求更新。
+用 `preview_quality=interactive` 快速查看活动草稿的整幅效果，省略区域、叠加和对照字段。快速图使用交互显影，返回 `editable_canvas=false`，供目视试修。快修与质量图各自同时处理一个请求。草稿更新时取消旧修订的预览请求，过期请求返回 `stale_draft`。旧质量渲染退出期间，可以用最新修订取快速图。定稿核对、取样、落笔、叠加和 1:1 检查使用默认的 `preview_quality=quality`。在来源、配方和尺寸相同时，可复用最近一张质量整图，包括草稿提交后的回读。命中时返回 `reused=true`，预览 ID 和修订号仍按当前请求更新。
 
 在草稿里试用预设时，调用 `transfer_adjustments(action=preset)`，传入草稿字段、`preset_id`、`preset_revision`、单个目标的 `photo_ids` 和对应的 `expected_revisions`。`amount` 范围为 0–2，`1` 对应 100%。连续调强度或换预设均从这轮试用前的草稿计算，`amount=0` 恢复该草稿状态。修改其他草稿参数后，下一次试用以修改后的配方为起点。任务结果、配方和预览中的 `preset_trial` 给出当前试用的预设、强度和参数组。用最新草稿修订取整图预览，确认后整份草稿只新增一条编辑历史。
 

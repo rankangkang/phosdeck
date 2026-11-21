@@ -13,13 +13,14 @@ final class AgentDevelopTests: XCTestCase {
         let session: Value
         let epoch: Value
 
-        @MainActor init(_ catalog: CatalogStore, picker: AppMCPWorkflows.FilePicker? = nil) async throws {
+        @MainActor init(_ catalog: CatalogStore, picker: AppMCPWorkflows.FilePicker? = nil,
+                        renderScaledQuality: AppMCPTools.ScaledQualityRenderer? = nil) async throws {
             self.catalog = catalog
             model = AppModel()
             model.catalog = catalog
             try model.reload()
             tools = AppMCPTools(model: model, appName: "Phosdeck Test", version: "1", bundleID: "test",
-                                sharesImages: false, chooseFile: picker)
+                                sharesImages: false, chooseFile: picker, renderScaledQuality: renderScaledQuality)
             let state = await tools.call(.init(name: AppMCPTool.workspace.rawValue))
             let data = state.structuredContent?.objectValue?["data"]?.objectValue
             session = try XCTUnwrap(data?["catalog_session_id"])
@@ -338,6 +339,72 @@ final class AgentDevelopTests: XCTestCase {
         ]))
         _ = try client.data(await client.call(.undo, ["operation_id": try XCTUnwrap(committed["operation_id"])]))
         XCTAssertEqual(try client.recipe("a"), original)
+    }
+
+    private actor QualityPreviewGate {
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var released = false
+
+        func wait() async {
+            if !released { await withCheckedContinuation { continuation = $0 } }
+        }
+
+        func release() {
+            released = true
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    @MainActor func testDraftUpdateCancelsQualityWithoutBlockingInteractivePreview() async throws {
+        let (catalog, _) = try await catalog(ids: ["a"])
+        let gate = QualityPreviewGate()
+        let rendering = expectation(description: "Quality render started")
+        let cancelled = expectation(description: "Draft update cancelled the render")
+        let client = try await Client(catalog, renderScaledQuality: { pipeline, request, edge in
+            let frame = try await pipeline.render(request, longEdge: edge)
+            if edge == 128 {
+                // Model a render that takes time to return even after cancellation.
+                await withTaskCancellationHandler {
+                    rendering.fulfill()
+                    await gate.wait()
+                } onCancel: {
+                    cancelled.fulfill()
+                }
+            }
+            return frame
+        })
+        client.tools.setSharesImages(true)
+        let opened = try await client.job(await client.call(.editPhotoDraft, client.edits("a", ["action": "begin"])))
+        var oldArgs = try client.edits("a", client.draftFields(opened))
+        oldArgs["long_edge"] = 128
+        let obsolete = Task { await client.call(.preview, oldArgs) }
+        addTeardownBlock {
+            await gate.release()
+            _ = await obsolete.value
+        }
+        await fulfillment(of: [rendering], timeout: 5)
+
+        let latest = try await client.adjustDraft(.globalAdjustments, photo: "a", draft: client.draftFields(opened),
+                                                  adjustments: ["exposure": 0.35])
+        await fulfillment(of: [cancelled], timeout: 5)
+        var qualityArgs = try client.edits("a", latest)
+        qualityArgs["long_edge"] = 64
+        client.error(await client.call(.preview, qualityArgs), "workspace_busy")
+        let quickArgs = qualityArgs.merging(["preview_quality": "interactive"]) { _, value in value }
+        let quick = await client.call(.preview, quickArgs)
+        let quickData = try client.data(quick)
+        XCTAssertEqual(quickData["preview_quality"], "interactive")
+        XCTAssertEqual(quickData["draft_revision"], latest["draft_revision"])
+        guard case .image = quick.content.last else { return XCTFail("The current draft should return an image") }
+
+        await gate.release()
+        let stale = await obsolete.value
+        client.error(stale, "stale_draft")
+        XCTAssertFalse(stale.content.contains { if case .image = $0 { true } else { false } })
+        let quality = try client.data(await client.call(.preview, qualityArgs))
+        XCTAssertEqual(quality["draft_revision"], latest["draft_revision"])
+        XCTAssertEqual(quality["preview_quality"], "quality")
     }
 
     @MainActor func testQualityPreviewReuseChecksSizeSharingAndSourceDigest() async throws {
