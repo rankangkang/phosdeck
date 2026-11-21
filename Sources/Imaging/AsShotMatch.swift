@@ -65,30 +65,56 @@ struct AsShotMatch {
         guard url.pathExtension.lowercased() == "arw", let file = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? file.close() }
         guard let data = try? file.read(upToCount: 1024 * 1024), data.count >= 8 else { return nil }
-        let little = data.starts(with: [73,73,42,0])
-        guard little || data.starts(with: [77,77,0,42]) else { return nil }
-        func number(_ i: Int, _ size: Int) -> Int {
-            (0..<size).reduce(0) { $0 | Int(data[i+$1]) << (8 * (little ? $1 : size-1-$1)) }
+        guard let tiff = TIFFDirectory(data), let maker = tiff.makerNote else { return nil }
+        let makerOffset = tiff.number(maker+8,4)
+        guard let style = tiff.entry(makerOffset,0xb020), tiff.number(style+2,2) == 2 else { return nil }
+        let size = tiff.number(style+4,4)
+        guard (1...64).contains(size) else { return nil }
+        let offset = size <= 4 ? style+8 : tiff.number(style+8,4)
+        guard offset <= data.count-size else { return nil }
+        return String(bytes: data[offset..<offset+size].prefix { $0 != 0 }, encoding: .ascii)
+    }
+
+    private struct TIFFDirectory {
+        let data: Data
+        let little: Bool
+
+        init?(_ data: Data) {
+            guard data.count >= 8 else { return nil }
+            little = data.starts(with: [73, 73, 42, 0])
+            guard little || data.starts(with: [77, 77, 0, 42]) else { return nil }
+            self.data = data
         }
-        func entry(_ ifd: Int, _ tag: Int) -> Int? {
-            guard ifd >= 8, ifd <= data.count-2 else { return nil }
-            let count = number(ifd,2)
-            guard count <= (data.count-ifd-2)/12 else { return nil }
+
+        func number(_ offset: Int, _ size: Int) -> Int {
+            (0..<size).reduce(0) { $0 | Int(data[offset + $1]) << (8 * (little ? $1 : size - 1 - $1)) }
+        }
+
+        func entry(_ directory: Int, _ tag: Int) -> Int? {
+            guard directory >= 8, directory <= data.count - 2 else { return nil }
+            let count = number(directory, 2)
+            guard count <= (data.count - directory - 2) / 12 else { return nil }
             for index in 0..<count {
-                let offset = ifd+2+index*12
-                if number(offset,2) == tag { return offset }
+                let offset = directory + 2 + index * 12
+                if number(offset, 2) == tag { return offset }
             }
             return nil
         }
-        guard let exif = entry(number(4,4),0x8769),
-              let maker = entry(number(exif+8,4),0x927c) else { return nil }
-        let makerOffset = number(maker+8,4)
-        guard let style = entry(makerOffset,0xb020), number(style+2,2) == 2 else { return nil }
-        let size = number(style+4,4)
-        guard (1...64).contains(size) else { return nil }
-        let offset = size <= 4 ? style+8 : number(style+8,4)
-        guard offset <= data.count-size else { return nil }
-        return String(bytes: data[offset..<offset+size].prefix { $0 != 0 }, encoding: .ascii)
+
+        var makerNote: Int? {
+            guard let exif = entry(number(4, 4), 0x8769),
+                  number(exif + 2, 2) == 4, number(exif + 4, 4) == 1 else { return nil }
+            return entry(number(exif + 8, 4), 0x927c)
+        }
+    }
+
+    static func fujiExifLook(_ data: Data) -> CameraLookSelection? {
+        guard let tiff = TIFFDirectory(data), let maker = tiff.makerNote,
+              tiff.number(maker + 2, 2) == 7 else { return nil }
+        let count = tiff.number(maker + 4, 4)
+        let offset = tiff.number(maker + 8, 4)
+        guard count >= 14, count <= data.count, offset <= data.count - count else { return nil }
+        return fujiMakerLook(Data(data[offset..<offset + count]))
     }
 
     // RAF locates its camera JPEG at offset 84. Read only its bounded header.
@@ -110,8 +136,8 @@ struct AsShotMatch {
             guard marker != 0xda, length >= 2, pos+2+length <= bytes.count else { return nil }
             let segment = bytes[(pos+4)..<(pos+2+length)]
             if marker == 0xe1, segment.starts(with: [69,120,105,102,0,0]),
-               let signature = segment.range(of: Data("FUJIFILM".utf8)) {
-                return fujiMakerLook(Data(segment.suffix(from: signature.lowerBound)))
+               let look = fujiExifLook(Data(segment.dropFirst(6))) {
+                return look
             }
             pos += 2 + length
         }

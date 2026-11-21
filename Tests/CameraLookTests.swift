@@ -53,6 +53,20 @@ final class CameraLookTests: XCTestCase {
         XCTAssertNil(AsShotMatch.fujiMakerLook(note))
     }
 
+    func testFujiExifUsesMakerNoteTagPastCameraMakeString() {
+        // IFD0 contains Make and ExifIFDPointer. Both Make and MakerNote begin with FUJIFILM.
+        var tiff = Data([73,73,42,0,8,0,0,0, 2,0,
+                         15,1,2,0,9,0,0,0,38,0,0,0,
+                         105,135,4,0,1,0,0,0,48,0,0,0, 0,0,0,0])
+        tiff.append(contentsOf: "FUJIFILM".utf8)
+        tiff.append(contentsOf: [0,0, 1,0, 124,146,7,0,26,0,0,0,66,0,0,0, 0,0,0,0])
+        tiff.append(contentsOf: "FUJIFILM".utf8)
+        tiff.append(contentsOf: [12,0,0,0,1,0, 1,20,3,0,1,0,0,0,0,8,0,0])
+        XCTAssertEqual(AsShotMatch.fujiExifLook(tiff)?.id, "fujifilm.classic-neg")
+        tiff.removeLast()
+        XCTAssertNil(AsShotMatch.fujiExifLook(tiff))
+    }
+
     func testAsShotPublicRAWReopensAndExports() async throws {
         let sample = try MoreRAWTests.request("a7iii_12bit_compressed.ARW")
         let pipeline = ImagePipeline()
