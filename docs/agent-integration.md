@@ -18,7 +18,7 @@
 | `create_catalog`、`open_catalog` | 名称与位置授权 ID 新建，或用近期图库 ID／位置授权 ID 打开。返回新图库会话 | `AppModel.createCatalog`／`finishCatalogOpen`、`CatalogExtensionChange`。核验位置与 schema，旧后缀沿用改名／保留／取消确认。新建与改名遵守无覆盖语义 |
 | `request_file_access` | 按操作用途打开原生文件或目录面板。返回等待用户的任务，选定后返回本次用途的位置 ID | `AppModel.directoryPanel`、`NSOpenPanel`、`AccessLease`。保留 App 沙箱权限与后续文件校验 |
 | `relocate_library_root`、`locate_photo_original` | 根目录 ID／照片版本 ID 与新位置，返回身份核验、不可用项和更新范围 | `AppModel.relocate`／`locateOriginal`、`RootRelocator.prepare`／`commit`。引用路径变化，身份核验及受影响版本保留 |
-| `plan_photo_import` | 引用／复制、来源、目标、包含子目录、跳过已入库及疑似重复、候选筛选、日期布局、附件映射、同名策略、集合和成对检测。候选的 `already_cataloged` 与 `suspected_duplicate` 分别标记已登记和疑似重复的来源 | `ImportSheet`、`ReferenceImporter.preview`、`ImportPlanner.plan`。计划只读业务数据，冻结候选与文件身份 |
+| `plan_photo_import` | 引用／复制、来源、目标、包含子目录、跳过已入库及疑似重复、候选筛选、日期布局、附件映射、同名策略、集合和成对检测。已知选片路径时传入源目录下的 `relative_paths`，只验证指定照片。候选的 `already_cataloged` 与 `suspected_duplicate` 分别标记已登记和疑似重复的来源 | `ImportSheet`、`ReferenceImporter.preview`、`ImportPlanner.plan`。计划只读业务数据，冻结候选与文件身份 |
 | `start_photo_import`、`resolve_import_conflict` | 计划 ID、候选 ID，按冲突 ID 选择独特命名／跳过／受限覆盖，显式指定是否应用到余项。返回任务和逐项结果 | `runReference`／`startCopy`／`runCopy`／`resolveImportConflict`。复制使用现有暂存、回读和旧文件保留 |
 | `show_recent_import` | 打开最近导入、开始筛选或返回原来浏览位置，回读选择和筛选 | `showLastImport`／`returnFromImport`。工作区状态变化 |
 | `scan_library_folder`、`plan_folder_review`、`apply_folder_review` | 根目录／子目录、包含子目录、已选差异及候选位置。返回直接扫描结果，或差异计划及应用报告 | `AppModel.scan`、`FolderReview.preview`／`selectionIssue`／`apply`。区分直接索引和只读预检，应用前重新核验 |
@@ -70,12 +70,12 @@
 | `sample_preview`、`adjust_from_preview` | 绑定预览的坐标读 RGB／剪切。白平衡中性取样、亮度分区定位、直方图分区调节、HSL／黑白／曲线目标调整、紫边／绿边取样 | `DisplayPixelSampler`、`ToneSampling`、`TargetedEditing`、`DirectAdjustments`。透明像素及数据不可用沿用原生判断 |
 | `edit_point_color` | 点颜色添加／取样／选中、调整色相／饱和／亮度和范围、显示影响范围、重置及删除。返回采样与更新 | `PointColorEditing`、`PointColorPanel`。采样绑定当前渲染，修改使用配方事务 |
 | `get_mask_state`、`edit_mask_group`、`edit_mask_component` | 查询选区，新增、选择、复制、重命名、组合／反转、启用／禁用和删除组或组件。返回实际 ID、顺序、操作和可撤销结果 | `MaskEditing`、`MaskPanel`、`LocalAdjustment`、`MaskComponent`。组与组件按版本隔离 |
-| `apply_mask_brush_stroke`、`set_mask_shape`、`set_mask_range` | 画笔路径、大小、羽化、流量、密度、自动蒙版与擦除。线性／径向几何与控制点。颜色取样／增减和亮度上下限 | `maskPointer`、`sampleMaskColor`、`MaskGeometry`、`MaskPanel`。图像坐标绑定当前预览，支持直接保存或先在草稿试画 |
+| `apply_mask_brush_stroke`、`set_mask_shape`、`set_mask_range` | 画笔路径、大小、羽化、流量、密度、自动蒙版与擦除。线性渐变在 `start` 处覆盖为零，在 `end` 处完全覆盖。支持径向形状、颜色取样／增减和亮度上下限 | `maskPointer`、`sampleMaskColor`、`MaskGeometry`、`MaskPanel`。图像坐标绑定当前预览，支持直接保存或先在草稿试画 |
 | `get_photo_preview`、`set_mask_display`、`set_local_adjustments` | 补齐局部放大和叠加预览，引导线、选区覆盖颜色和样式、查看有无局部效果。设置或重置蒙版强度与局部显影参数 | `PhotoCanvas`、`MaskPanel`、`beginMaskEffectPreview`／`endMaskEffectPreview`、`changeLocalDevelop`。查看与保存分开，局部参数重置保留选区 |
 | `transfer_local_adjustments`、`list_local_adjustment_presets`、`edit_local_adjustment_preset` | 复制／粘贴、列出／保存／应用／重命名／删除局部参数预设。返回参数或实际改动 | `MaskEditing`、`CatalogLocalPresets`。只改变局部参数，保留选区几何 |
 | `start_smart_mask`、`edit_smart_mask_selection`、`apply_smart_mask` | 对象点／框、增减提示及提示撤销、候选；人物单选／多选／全选、整人、部位、脸框与细化、拆分或合并。返回分析任务、当前候选、叠加预览及新增组件 | `SmartMaskEditing`、`SmartMaskEngine`。绑定候选代次、照片及配方，缺模型返回条件，取消复用任务接口 |
 | `get_spot_repairs`、`edit_spot_repair` | 查看和选中污点，点／路径、模式、半径／羽化／不透明度、移动、选择／重算来源、禁用和删除 | `SpotEditing`、`SpotRepair`。目标与采样源各自校验，回读实际 ID、来源和修订号 |
-| `edit_photo_draft` | 开始、提交或取消单张照片的试修。曝光、色彩、预设强度、普通蒙版、局部参数和污点可共用一个草稿 | 用同一显影管线渲染草稿。提交时核对保存版本，只写一条历史并注册一次原生撤销 |
+| `edit_photo_draft` | 开始、提交或取消单张照片的试修。全局参数、色彩、曲线、分区光线、细节、效果、裁剪和几何、预设强度、普通蒙版、局部参数和污点可共用一个草稿 | 用同一显影管线渲染草稿。提交时核对保存版本，只写一条历史并注册一次原生撤销 |
 | `set_canvas_guides` | 设置构图辅助线、裁剪引导及污点引导显示，返回当前显示状态 | `cycleCropGuide`、`PhotoCanvas`、`SpotPanel`。只改变显示 |
 
 对应回归包括 `PerspectiveTests`、`UprightTests`、`FlipTests`、`InspectionWorkflowTests`、`TargetedAdjustmentTests`、`DirectAdjustmentTests`、`PointColorTests`、`ManualDefringeTests`、`MaskingTests`、`SmartMaskTests`、`LocalParameterPresetTests` 和 `SpotRepairTests`。关键验收用有方向标记的合成图核对 Agent 输入的位置和原生结果。
@@ -267,7 +267,7 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 
 `get_photo_recipe` 按照片版本读取全局参数及修订号，也可用同版本的历史或快照 ID 读取保存值。各参数的范围随 `tools/list` 发布。参数工具只更新传入字段。曝光使用 EV，对比度和饱和度以 1 为中性，温度使用 K。RAW 细节参数可传 `null` 使用解码器默认值。`reset_adjustments` 可重置一组参数，`group=all` 复用原生完整重置，包含几何、蒙版与污点。
 
-用 `edit_photo_draft(action=begin)` 开启单张草稿。给 `set_global_adjustments` 和 `set_color_adjustments` 传入 `draft_id`、`draft_revision` 及保存版本的修订号，在同一草稿里调整曝光、白平衡、饱和度、HSL 和色彩分级。每次修改后从 `get_job` 取最新草稿修订，用草稿字段调用 `get_photo_recipe` 回读参数，或调用 `get_photo_preview` 取图。用 `long_edge` 且省略区域字段可预览整幅编辑画面。满意后用 `edit_photo_draft(action=commit)` 提交整份草稿，或用 `action=cancel` 丢弃。
+用 `edit_photo_draft(action=begin)` 开启单张草稿。给 `set_global_adjustments`、`set_color_adjustments`、`set_tone_curve`、`set_zone_lighting`、`set_detail_adjustments` 或 `set_effects` 传入 `draft_id`、`draft_revision` 及保存版本的修订号，可在同一草稿试修。每次修改后从 `get_job` 取最新草稿修订，用草稿字段调用 `get_photo_recipe` 回读参数，或调用 `get_photo_preview` 取图。用 `long_edge` 且省略区域字段可预览整幅编辑画面。满意后用 `edit_photo_draft(action=commit)` 提交整份草稿，或用 `action=cancel` 丢弃。
 
 在草稿里试用预设时，调用 `transfer_adjustments(action=preset)`，传入草稿字段、`preset_id`、`preset_revision`、单个目标的 `photo_ids` 和对应的 `expected_revisions`。`amount` 范围为 0–2，`1` 对应 100%。连续调强度或换预设均从这轮试用前的草稿计算，`amount=0` 恢复该草稿状态。修改其他草稿参数后，下一次试用以修改后的配方为起点。任务结果、配方和预览中的 `preset_trial` 给出当前试用的预设、强度和参数组。用最新草稿修订取整图预览，确认后整份草稿只新增一条编辑历史。
 
@@ -322,6 +322,8 @@ bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
 `get_mask_state` 按照片版本返回组，指定组和组件 ID 后读取细节。画笔、渐变和颜色／亮度范围可分别编辑。用 `get_photo_preview(mask_overlay={mask_id,style,color})` 读取覆盖图，或用 `without_mask_id` 对比临时隐藏的局部效果。`set_mask_display` 控制活动窗口的覆盖图和引导线。局部参数编辑、传递及应用局部预设保留目标选区，按实际保存修订返回原生撤销标识。
 
 用 `edit_photo_draft(action=begin)` 和明确的照片 ID、源和配方修订号开始试修。从 `get_job` 取回 `draft_id`、`draft_revision`，把它们与原保存版本的身份一起传给预览、蒙版或污点工具。每次试修后从任务结果取最新草稿修订；用同一 `region_pixels` 重取 1:1 PNG 对比，也可以叠加蒙版或临时隐藏其效果。目标和跨块采样源必须来自同一草稿修订的可编辑预览。修改笔划时传入上一次返回的 `stroke_index`，可用当前预览换路径，也可省略路径和预览只改笔刷大小等参数。省略草稿字段即可单独读取原保存版本。
+
+裁剪、拉直、旋转和透视也可以试修。给 `set_photo_geometry` 和 `set_crop` 传入当前草稿字段，设置裁剪框时使用同一草稿修订的 `crop_canvas` 预览。
 
 当前图库会话保留一个内存草稿；反复试修不会改变保存版本、原片、编辑历史或撤销栈。`action=commit` 使用当前草稿 ID 和修订保存，有变化时整份草稿只写一条编辑历史并返回原生撤销标识。`action=cancel` 丢弃草稿；切换图库或停止服务也会丢弃。期间若保存版本变化，提交会拒绝覆盖；可取消后从最新版本重新试修。
 

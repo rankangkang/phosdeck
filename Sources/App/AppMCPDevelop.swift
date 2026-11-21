@@ -13,15 +13,15 @@ extension AppMCPTool {
         case .resetAdjustments:
             return ("Reset one Develop group. group=all performs Phosdeck's full Reset, including geometry, masks and repairs, to the current pipeline. Poll get_job.", recipeJob)
         case .toneCurve:
-            return ("Edit one luminance or RGB curve. set takes 2–16 ordered points with normalized x/y, fixed first x=0 and last x=1. insert takes x/y, move takes a zero-based point_index and x/y, remove takes an interior point_index, and reset restores this channel.", recipeJob)
+            return ("Edit one luminance or RGB curve. set takes 2–16 ordered points with normalized x/y, fixed first x=0 and last x=1. insert takes x/y, move takes a zero-based point_index and x/y, remove takes an interior point_index, and reset restores this channel.", draftRecipeJob)
         case .zoneLighting:
-            return ("Set all five zone gains in EV, ordered deep shadows, shadows, midtones, lights, highlights. Each is between -1 and +1.", recipeJob)
+            return ("Set all five zone gains in EV, ordered deep shadows, shadows, midtones, lights, highlights. Each is between -1 and +1.", draftRecipeJob)
         case .colorAdjustments:
             return ("Patch HSL bands, black-and-white mixing or color grading. Omitted fields are preserved. Change color or monochrome mode with set_global_adjustments.", draftRecipeJob)
         case .detailAdjustments:
-            return ("Patch general sharpening, denoise, manual defringe or supported RAW decoder controls. For RAW controls null selects the decoder default. Purple and green hue endpoints need at least 10 degrees of spacing.", recipeJob)
+            return ("Patch general sharpening, denoise, manual defringe or supported RAW decoder controls. For RAW controls null selects the decoder default. Purple and green hue endpoints need at least 10 degrees of spacing.", draftRecipeJob)
         case .effects:
-            return ("Patch vignette or grain on the explicit photo version, using native ranges and vignette styles.", recipeJob)
+            return ("Patch vignette or grain on the explicit photo version, using native ranges and vignette styles.", draftRecipeJob)
         case .automaticAdjustment:
             return ("Run Phosdeck's automatic white balance or tone analysis on the current crop of the explicit photo version. Poll or cancel the job.", recipeJob)
         case .relativeExposure:

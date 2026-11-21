@@ -238,6 +238,69 @@ final class AgentDevelopTests: XCTestCase {
         XCTAssertEqual(try SafeFileWriter.sha256(url), try SafeFileWriter.sha256(sample))
     }
 
+    @MainActor func testDraftCropCurveDetailAndEffectsSaveAsOneEdit() async throws {
+        let (catalog, _) = try await catalog(ids: ["a"])
+        let client = try await Client(catalog)
+        client.tools.setSharesImages(true)
+        let original = try client.recipe("a")
+        let history = try catalog.editHistory(photoID: "a").count
+        let cropView = try client.edits("a", ["preview_variant": "crop_canvas", "long_edge": 128])
+        let savedCanvas = try client.data(await client.call(.preview, cropView))
+        let opened = try await client.job(await client.call(.editPhotoDraft, client.edits("a", ["action": "begin"])))
+        let initial = try client.draftFields(opened)
+        let turned = try await client.job(await client.call(.photoGeometry, client.edits("a", initial.merging([
+            "turns": 1, "flip_horizontal": true
+        ]) { _, new in new })))
+        XCTAssertEqual(turned["commit_state"], "not_committed")
+        let turn = try client.draftFields(turned)
+        let draftCanvas = try client.data(await client.call(.preview, cropView.merging(turn) { _, new in new }))
+        XCTAssertEqual(draftCanvas["width"], 96)
+        XCTAssertEqual(draftCanvas["height"], 128)
+        XCTAssertEqual(draftCanvas["editable_canvas"], true)
+
+        let setCrop = try client.edits("a", turn.merging([
+            "action": "set", "rect": ["x": 0.125, "y": 0.25, "width": 0.5, "height": 0.5]
+        ]) { _, new in new })
+        client.error(await client.call(.setCrop, setCrop.merging(["preview_id": try XCTUnwrap(savedCanvas["preview_id"])]) { _, new in new }),
+                     "stale_preview")
+        let cropArgs = setCrop.merging(["preview_id": try XCTUnwrap(draftCanvas["preview_id"])]) { _, new in new }
+        let cropped = try await client.job(await client.call(.setCrop, cropArgs))
+        XCTAssertEqual(cropped["commit_state"], "not_committed")
+        let crop = try client.draftFields(cropped)
+        client.error(await client.call(.setCrop, cropArgs.merging(crop) { _, new in new }), "stale_preview")
+
+        let curve = try await client.job(await client.call(.toneCurve, client.edits("a", crop.merging([
+            "action": "set", "channel": "luminance", "points": [["x": 0, "y": 0.03], ["x": 0.5, "y": 0.56], ["x": 1, "y": 1]]
+        ]) { _, new in new })))
+        let zones = try await client.job(await client.call(.zoneLighting, client.edits("a",
+            try client.draftFields(curve).merging(["gains": [0, 0.1, 0, 0, 0]]) { _, new in new })))
+        let detail = try await client.adjustDraft(.detailAdjustments, photo: "a", draft: client.draftFields(zones),
+                                                  adjustments: ["sharpening_amount": 35])
+        let final = try await client.adjustDraft(.effects, photo: "a", draft: detail,
+                                                 adjustments: ["grain_amount": 25])
+        let draftRead = try client.data(await client.call(.photoRecipe, final.merging(["photo_id": "a"]) { _, new in new }))
+        let preview = try client.edits("a", ["long_edge": 128])
+        let trial = await client.call(.preview, preview.merging(final) { _, new in new })
+        let trialData = try client.data(trial)
+        XCTAssertEqual(trialData["draft_revision"], 6)
+        XCTAssertEqual(trialData["width"], 48)
+        XCTAssertEqual(trialData["height"], 64)
+        XCTAssertEqual(try catalog.editHistory(photoID: "a").count, history)
+        XCTAssertEqual(try client.recipe("a"), original)
+        XCTAssertFalse(client.model.undo.canUndo)
+
+        let committed = try await client.job(await client.call(.editPhotoDraft, final.merging(["action": "commit"]) { _, new in new }))
+        XCTAssertEqual(committed["commit_state"], "committed")
+        XCTAssertEqual(try catalog.editHistory(photoID: "a").count, history + 1)
+        let saved = try client.data(await client.call(.photoRecipe, ["photo_id": "a"]))
+        XCTAssertEqual(saved["recipe"], draftRead["recipe"])
+        let savedPreview = await client.call(.preview, try client.edits("a", ["long_edge": 128]))
+        _ = try client.data(savedPreview)
+        XCTAssertEqual(savedPreview.content.last, trial.content.last)
+        _ = try client.data(await client.call(.undo, ["operation_id": try XCTUnwrap(committed["operation_id"])]))
+        XCTAssertEqual(try client.recipe("a"), original)
+    }
+
     @MainActor func testCanvasRegionSamplesTheSamePixelsAndInvalidatesOldCoordinates() async throws {
         let (catalog, _) = try await catalog(ids: ["a"])
         let client = try await Client(catalog)

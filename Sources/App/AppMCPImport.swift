@@ -82,6 +82,21 @@ extension AppMCPWorkflows {
         let ids = arguments["candidate_ids"]?.arrayValue.map { Set($0.compactMap(\.stringValue)) }
         let priorCandidates = base?.candidates.filter { ids?.contains($0.id) ?? true }
         if let ids, ids.count != priorCandidates?.count { throw MCPToolProblem.invalid("Select candidate IDs from the base plan.") }
+        let sourceRoot = source.url.resolvingSymlinksInPath().standardizedFileURL
+        let selectedPaths: Set<String>?
+        if let paths = arguments["relative_paths"]?.arrayValue {
+            guard base == nil else { throw MCPToolProblem.invalid("Use candidate_ids to select files from a base plan.") }
+            selectedPaths = try Set(paths.map { value in
+                guard let path = value.stringValue, recursive || !path.contains("/"),
+                      let file = try? ProjectCopy.child(path, of: sourceRoot),
+                      ImportPlanner.images.contains(file.pathExtension.lowercased()) else {
+                    throw MCPToolProblem.invalid("Use image paths relative to the authorized source folder.")
+                }
+                return file.path
+            })
+        } else {
+            selectedPaths = priorCandidates.map { Set($0.map(\.file.id)) }
+        }
         var choices = ImportChoices()
         for (attachmentID, groupID) in arguments["attachment_assignments"]?.objectValue ?? [:] {
             guard let attachment = base?.attachments[attachmentID],
@@ -93,7 +108,8 @@ extension AppMCPWorkflows {
 
         return start(.planImport) { job in
             self.running(job, phase: "inspecting_sources")
-            let read = try await self.model.importer.preview(source: source.url, includeSubfolders: recursive, catalog: catalog)
+            let read = try await self.model.importer.preview(source: source.url, includeSubfolders: recursive, catalog: catalog,
+                                                             selectedPaths: selectedPaths)
             let files: [ImportCandidate]
             if let priorCandidates {
                 let current = Dictionary(uniqueKeysWithValues: read.map { ($0.id, $0) })
@@ -101,7 +117,13 @@ extension AppMCPWorkflows {
                     guard let file = current[previous.file.id], file.identity == previous.file.identity else { throw Self.stalePlan }
                     return file
                 }
-            } else { files = read }
+            } else {
+                guard selectedPaths.map({ $0.count == read.count }) ?? true else {
+                    throw MCPToolProblem(code: "import_path_unavailable", summary: "An explicitly requested image is unavailable in the source folder.",
+                                         next: "Check the relative paths and subfolder option, then plan again.")
+                }
+                files = read
+            }
             let candidates = files.map { MCPImportPlan.Candidate(file: $0, eligible: $0.canCheck(skippingDuplicates: skipCataloged)) }
             let selected = candidates.filter(\.eligible)
             var copy: CopyPlan?
@@ -123,7 +145,6 @@ extension AppMCPWorkflows {
             job.data["mode"] = copying ? "copy" : "reference"
             job.data["candidate_count"] = .int(candidates.count)
             job.data["eligible_count"] = .int(selected.count)
-            let sourceRoot = source.url.resolvingSymlinksInPath().standardizedFileURL
             job.items = candidates.map { candidate in
                 ["kind": "candidate", "candidate_id": .string(candidate.id), "name": .string(Self.relative(candidate.file.url, in: sourceRoot)),
                  "eligible": .bool(candidate.eligible), "already_cataloged": .bool(candidate.file.alreadyImported),

@@ -290,11 +290,15 @@ extension AppMCPTools {
         }
         let photo = try MCPDevelopPhoto.current(args, catalog: catalog)
         switch tool {
-        case .setCrop: return try writeCrop(tool, args: args, photo: photo, model: model, catalog: catalog)
+        case .setCrop:
+            let draft = try requestedDraft(args, photo: photo)
+            return try writeCrop(tool, args: args, photo: photo, model: model, catalog: catalog, draft: draft)
         case .photoGeometry:
+            let draft = try requestedDraft(args, photo: photo)
             let keys = ["turns", "straighten", "flip_horizontal", "flip_vertical", "perspective"]
             guard keys.contains(where: { args[$0] != nil }) else { throw MCPToolProblem.invalid("Specify a geometry change.") }
-            return startCanvasEdit(tool, model: model, catalog: catalog, photo: photo, title: L10n.text("app.adjustPhoto", defaultValue: "Adjust Photo")) { request, original, pipeline in
+            return startCanvasEdit(tool, model: model, catalog: catalog, photo: photo,
+                                   title: L10n.text("app.adjustPhoto", defaultValue: "Adjust Photo"), draft: draft) { request, original, pipeline in
                 var value = original
                 if let turns = args["turns"]?.intValue { value.rotateCanvas(by: turns) }
                 if let straighten = args["straighten"]?.number { value.straightenDegrees = straighten }
@@ -329,15 +333,18 @@ extension AppMCPTools {
         }
     }
 
-    private func writeCrop(_ tool: AppMCPTool, args: [String: Value], photo: Photo, model: AppModel, catalog: CatalogStore) throws -> MCPToolResult {
+    private func writeCrop(_ tool: AppMCPTool, args: [String: Value], photo: Photo, model: AppModel, catalog: CatalogStore,
+                           draft: MCPPhotoDraft?) throws -> MCPToolResult {
         let action = args["action"]!.stringValue!
         let rect = args["rect"].flatMap(MCPCanvasFields.rect)
         let aspect = args["aspect_ratio"]?.number
         guard (action == "set") == (rect != nil), (action == "set_aspect") == (aspect != nil),
               (action == "set") == (args["preview_id"] != nil) else { throw MCPToolProblem.invalid("Supply the rectangle and crop preview, or the ratio, for this crop action.") }
-        let preview = try rect.map { _ in try canvasPreview(args["preview_id"], catalog: catalog, photo: photo, variant: "crop_canvas") }
+        let preview = try rect.map { _ in
+            try canvasPreview(args["preview_id"], catalog: catalog, photo: photo, variant: "crop_canvas", draft: draft?.reference)
+        }
         return startCanvasEdit(tool, model: model, catalog: catalog, photo: photo, title: L10n.text("app.cropAndStraighten", defaultValue: "Crop and Straighten"),
-                               preview: preview) { request, original, pipeline in
+                               preview: preview, draft: draft) { request, original, pipeline in
             let size = if let preview { preview.sourceSize } else { try await pipeline.geometrySourceSize(request) }
             var value = original
             let w = value.quarterTurns % 2 == 0 ? size.width : size.height

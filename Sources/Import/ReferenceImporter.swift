@@ -280,7 +280,7 @@ actor ReferenceImporter {
         return report
     }
 
-    func preview(source: URL, includeSubfolders: Bool, catalog: CatalogStore, mode: PreviewMode = .validated,
+    func preview(source: URL, includeSubfolders: Bool, catalog: CatalogStore, mode: PreviewMode = .validated, selectedPaths: Set<String>? = nil,
                  onBatch: (@MainActor @Sendable ([ImportCandidate]) -> Void)? = nil) async throws -> [ImportCandidate] {
         defer { if mode == .validated { PhotoFileType.releaseValidationCaches() } }
         let lease = AccessLease(url: source)
@@ -297,6 +297,7 @@ actor ReferenceImporter {
         var foundNew = false
         var lastUpdate = ContinuousClock.now
         while let url = try next() {
+            guard selectedPaths?.contains(url.path) ?? true else { continue }
             guard ImportPlanner.images.contains(url.pathExtension.lowercased()), !outputs.contains(url.path) else { continue }
             let identity = try FileIdentity.read(url)
             let cataloged = catalogMatches.isCataloged(url: url, identity: identity, protectedPaths: paths)

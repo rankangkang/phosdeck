@@ -154,6 +154,45 @@ final class AgentLibraryTests: XCTestCase {
         XCTAssertEqual(try files.catalog.photoCount(), 2)
     }
 
+    func testImportPlanCanInspectOnlyExplicitRelativePaths() async throws {
+        let (files, model) = try makeModel()
+        let picker = Picker()
+        let client = Client(model, picker: picker)
+        let nested = files.source.appendingPathComponent("Nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: false)
+        let selected = nested.appendingPathComponent("Selected.jpg")
+        try files.image(selected)
+        try files.image(files.source.appendingPathComponent("Other.jpg"))
+        let link = files.source.appendingPathComponent("Link.jpg")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: selected)
+        picker.urls = [files.source]
+        let access = try await client.access(.importSource)
+        let fields: [String: Value] = ["source_access_id": access, "mode": "reference"]
+        let traversal = await client.call(.planImport, fields.merging(["relative_paths": ["../Selected.jpg"]]) { _, new in new })
+        XCTAssertEqual(traversal["tool_error"], "invalid_arguments")
+        let shallow = await client.call(.planImport, fields.merging([
+            "relative_paths": ["Nested/Selected.jpg"], "include_subfolders": false
+        ]) { _, new in new })
+        XCTAssertEqual(shallow["tool_error"], "invalid_arguments")
+        let unavailable = try await client.job(await client.call(.planImport, fields.merging([
+            "relative_paths": ["Nested/Selected.jpg", "Link.jpg"]
+        ]) { _, new in new }))
+        XCTAssertEqual(unavailable["error_code"], "import_path_unavailable")
+        XCTAssertNil(unavailable["plan_id"])
+
+        let plan = try await client.job(await client.call(.planImport, fields.merging([
+            "relative_paths": ["Nested/Selected.jpg"]
+        ]) { _, new in new }))
+        XCTAssertEqual(plan["candidate_count"], 1)
+        XCTAssertEqual(items(plan).first?["name"], "Nested/Selected.jpg")
+        let imported = try await client.job(await client.call(.startImport, [
+            "plan_id": try XCTUnwrap(plan["plan_id"]), "select_all": true
+        ]))
+        XCTAssertEqual(imported["indexed_count"], 1)
+        let photos = try files.catalog.photos()
+        XCTAssertEqual(photos.map(\.relativePath), ["Nested/Selected.jpg"])
+    }
+
     func testCopyConflictCancelKeepsPublishedFilesAndFreshServiceResumesTheJournal() async throws {
         let (files, model) = try makeModel()
         let picker = Picker()

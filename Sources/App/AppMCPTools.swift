@@ -79,6 +79,7 @@ enum AppMCPTool: String, CaseIterable {
         case sourceAccess = "source_access_id", destinationAccess = "destination_access_id", mode, recursive = "include_subfolders"
         case skipCataloged = "skip_cataloged", layout = "date_layout", archiveDate = "archive_date", sidecars = "include_sidecars"
         case collection = "collection_id", pair = "detect_pairs", policy, basePlan = "base_plan_id", attachments = "attachment_assignments"
+        case relativePaths = "relative_paths"
         case plan = "plan_id", candidates = "candidate_ids", all = "select_all", job = "job_id", conflict = "conflict_id"
         case remaining = "apply_to_remaining", action, differences = "difference_ids", locations = "locations"
         case record = "record_id", member = "member_id"
@@ -310,6 +311,10 @@ enum AppMCPTool: String, CaseIterable {
             if self == .candidates || self == .differences {
                 return ["type": "array", "minItems": 1, "maxItems": 1000, "uniqueItems": true, "items": identifierSchema]
             }
+            if self == .relativePaths {
+                return ["type": "array", "minItems": 1, "maxItems": 128, "uniqueItems": true,
+                        "items": ["type": "string", "minLength": 1, "maxLength": 4096]]
+            }
             if self == .attachments || self == .locations {
                 return ["type": "object", "maxProperties": 1000, "propertyNames": identifierSchema, "additionalProperties": identifierSchema]
             }
@@ -323,6 +328,13 @@ enum AppMCPTool: String, CaseIterable {
                 guard let values = value.arrayValue, count.contains(values.count) else { return false }
                 let ids = values.compactMap(\.stringValue)
                 return Set(ids).count == values.count && ids.allSatisfy(Self.isID)
+            }
+            if self == .relativePaths {
+                guard let values = value.arrayValue, (1...128).contains(values.count) else { return false }
+                let paths = values.compactMap(\.stringValue)
+                return Set(paths).count == values.count && paths.allSatisfy {
+                    (1...4096).contains($0.utf8.count) && !$0.contains("\0")
+                }
             }
             if self == .attachments || self == .locations {
                 guard let values = value.objectValue, values.count <= 1000 else { return false }
@@ -576,7 +588,8 @@ enum AppMCPTool: String, CaseIterable {
     }
     var optional: [Field] {
         switch self {
-        case .preview, .photoRecipe, .globalAdjustments, .colorAdjustments, .transferAdjustments,
+        case .preview, .photoRecipe, .globalAdjustments, .colorAdjustments, .toneCurve, .zoneLighting,
+             .detailAdjustments, .effects, .transferAdjustments, .setCrop, .photoGeometry,
              .samplePreview, .spotRepairs, .editSpot, .maskState, .maskGroup, .maskComponent, .brushStroke,
              .maskShape, .maskRange, .localAdjustments:
             return optionalFields + [.draftID, .draftRevision]
@@ -676,7 +689,7 @@ enum AppMCPTool: String, CaseIterable {
         case .job, .librarySources, .importRecords: [.offset, .pageSize]
         case .fileAccess, .createCatalog: [.catalog]
         case .openCatalog: [.catalog, .access, .recent]
-        case .planImport: [.destinationAccess, .recursive, .skipCataloged, .layout, .archiveDate, .sidecars, .collection, .pair, .policy, .basePlan, .candidates, .attachments]
+        case .planImport: [.destinationAccess, .recursive, .skipCataloged, .layout, .archiveDate, .sidecars, .collection, .pair, .policy, .basePlan, .candidates, .attachments, .relativePaths]
         case .startImport: [.candidates, .all]
         case .scanFolder, .planFolder: [.folder, .recursive]
         case .applyFolder: [.locations]
@@ -1313,10 +1326,10 @@ final class AppMCPTools {
         }
         let draft = try requestedDraft(arguments)
         if draft != nil {
-            let saved = arguments["preview_variant"] == nil || arguments["preview_variant"] == "saved"
+            let variant = arguments["preview_variant"]?.stringValue ?? "saved"
             let alternatives = ["history_id", "snapshot_id", "preset_id", "preset_revision", "amount", "groups", "group", "smart_overlay"]
-            guard saved, !alternatives.contains(where: { arguments[$0] != nil }) else {
-                throw MCPToolProblem.invalid("Render the draft on its own. Omit draft fields to render a saved comparison or smart overlay.")
+            guard ["saved", "crop_canvas"].contains(variant), !alternatives.contains(where: { arguments[$0] != nil }) else {
+                throw MCPToolProblem.invalid("Choose the edited draft or its crop canvas. Omit draft fields to render a saved comparison or smart overlay.")
             }
         }
         let smartOverlay = try arguments["smart_overlay"].map(MCPSmartOverlay.init)
