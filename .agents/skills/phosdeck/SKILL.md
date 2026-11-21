@@ -22,4 +22,6 @@ If the server is off, have the user enable **Local MCP Server** in **Settings â†
 
 Check `structuredContent` for `status`, `data.commit_state` and `error.code`. The JSON text block carries the same result. Follow a returned `job_id` with `get_job` until it reaches a terminal state. If it asks for a choice in Phosdeck, tell the user what to select and then resume the same job. Read back the saved versions, output records, or files before reporting completion.
 
+For long imports and exports, poll every few seconds. If the HTTP session expires, initialize a new session, check the app and catalog with `get_capabilities` and `get_workspace`, then continue with the same `job_id`.
+
 If a connection drops before a write result arrives, reuse the same request ID and arguments within the same epoch. If the epoch expired, the saved state is uncertain, or a write returns a warning, read back the affected state before submitting another write. When a native edit or task blocks a write, refresh the workspace after it finishes.
