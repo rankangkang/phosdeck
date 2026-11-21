@@ -2369,6 +2369,14 @@ final class AppModel {
                     guard token == previewGeneration, !Task.isCancelled else { return }
                     photoSwitchDisplay = PhotoSwitchDisplay(photoID: photo.id, image: thumbnail, histogram: nil, nativeSize: nil)
                 }
+                if singleView, !editMode, !fullResolution,
+                   let camera = try? await thumbnails.cameraPreview(for: photo, root: root, edge: 1600) {
+                    guard token == previewGeneration, !Task.isCancelled else { return }
+                    photoSwitchDisplay = PhotoSwitchDisplay(photoID: photo.id, image: camera, histogram: nil, nativeSize: nil)
+                    // Allow rapid navigation to cancel before allocating a RAW decoder.
+                    try await Task.sleep(for: .milliseconds(150))
+                }
+                guard token == previewGeneration, !Task.isCancelled else { return }
                 if photo.metadata == nil, let catalog {
                     try await importer.refreshMetadata(photo: photo, root: root, catalog: catalog)
                     guard token == previewGeneration, !Task.isCancelled else { return }

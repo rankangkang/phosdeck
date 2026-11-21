@@ -1608,6 +1608,41 @@ actor ThumbnailService {
     nonisolated static func sourceKey(photo: Photo, edge: Int) -> String {
         "\(photo.id):\(photo.identity.base64EncodedString()):\(edge)"
     }
+    func cameraPreview(for photo: Photo, root: StorageRoot, edge: Int) throws -> CGImage? {
+        try Task.checkCancellation()
+        guard photo.availability == "available", (photo.relativePath as NSString).pathExtension.lowercased() == "raf" else { return nil }
+        if let data = photo.recipe {
+            let recipe = try JSONDecoder().decode(EditRecipe.self, from: data)
+            try recipe.validate(for: photo)
+            guard recipe.isUnadjustedRAW else { return nil }
+        }
+        let key = Self.key(photo: photo, edge: edge) + ":camera-jpeg"
+        if let cached = cache.object(forKey: key as NSString) { return cached }
+        if edge == Self.gridEdge, let bytes = try disk?.read(key: key),
+           let source = CGImageSourceCreateWithData(bytes as CFData, nil),
+           let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+            cache.setObject(image, forKey: key as NSString, cost: image.bytesPerRow * image.height)
+            return image
+        }
+        let access = try AccessLease(bookmark: root.bookmark)
+        defer { withExtendedLifetime(access) {} }
+        let url = access.url.appendingPathComponent(photo.relativePath)
+        let expected = try JSONDecoder().decode(FileIdentity.self, from: photo.identity)
+        guard try FileIdentity.read(url) == expected else { throw LRCError(L10n.text("app.sourceChanged", defaultValue: "Source changed")) }
+        guard let image = try PhotoFileType.cameraJPEG(url, edge: edge) else { return nil }
+        try Task.checkCancellation()
+        guard try FileIdentity.read(url) == expected else { throw LRCError(L10n.text("app.sourceChanged", defaultValue: "Source changed")) }
+        if edge == Self.gridEdge { return store(try Self.encode(image), key: key) }
+        cache.setObject(image, forKey: key as NSString, cost: image.bytesPerRow * image.height)
+        return image
+    }
+
+    func browseImage(photo: Photo, root: StorageRoot, priority: Priority) async throws -> CGImage {
+        if let cached = cachedGridImage(for: photo) { return cached }
+        if let image = try? cameraPreview(for: photo, root: root, edge: Self.gridEdge) { return image }
+        return try await image(photo: photo, root: root, priority: priority)
+    }
+
     func cachedGridImage(for photo: Photo) -> CGImage? {
         cache.object(forKey: Self.key(photo: photo, edge: Self.gridEdge) as NSString)
     }
@@ -1655,7 +1690,7 @@ actor ThumbnailService {
             guard photo.availability == "available", let root = rootsByID[photo.rootID] else { continue }
             let key = Self.key(photo: photo, edge: Self.gridEdge)
             if cache.object(forKey: key as NSString) != nil || disk?.contains(key: key) == true { continue }
-            _ = try? await image(photo: photo, root: root, priority: .prefetch)
+            _ = try? await browseImage(photo: photo, root: root, priority: .prefetch)
         }
     }
 

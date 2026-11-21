@@ -813,7 +813,7 @@ final class PhotoItem: NSCollectionViewItem {
         guard let root else { work = nil; return }
         work = Task { @MainActor in
             do {
-                let image = try await service.image(photo: photo, root: root, priority: .visible)
+                let image = try await service.browseImage(photo: photo, root: root, priority: .visible)
                 guard current == token, !Task.isCancelled else { return }
                 picture.image = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
             } catch { if current == token { view.toolTip = error.localizedDescription } }

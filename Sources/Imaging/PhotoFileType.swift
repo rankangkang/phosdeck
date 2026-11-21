@@ -119,6 +119,39 @@ enum PhotoFileType {
         return raw
     }
 
+    /// RAF stores the camera JPEG's big-endian offset and length at bytes 84–91.
+    /// Read only that range. Missing or unsuitable previews use the native renderer.
+    static func cameraJPEG(_ url: URL, edge: Int) throws -> CGImage? {
+        guard edge > 0, url.pathExtension.lowercased() == "raf" else { return nil }
+        let file = try FileHandle(forReadingFrom: url)
+        defer { try? file.close() }
+        let size = try file.seekToEnd()
+        try file.seek(toOffset: 0)
+        guard let header = try file.read(upToCount: 92), header.count == 92,
+              header.prefix(16) == Data("FUJIFILMCCD-RAW ".utf8) else { return nil }
+        func uint32(_ index: Int) -> UInt64 {
+            header[index..<(index + 4)].reduce(0) { ($0 << 8) | UInt64($1) }
+        }
+        let offset = uint32(84), length = uint32(88)
+        guard offset >= 92, offset <= size, length >= 4, length <= size - offset,
+              length <= 32 * 1024 * 1024 else { return nil }
+        try file.seek(toOffset: offset)
+        guard let jpeg = try file.read(upToCount: Int(length)), jpeg.count == Int(length),
+              jpeg.starts(with: [0xff, 0xd8]),
+              let source = CGImageSourceCreateWithData(jpeg as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              CGImageSourceGetType(source) as String? == UTType.jpeg.identifier,
+              CGImageSourceGetStatus(source) == .statusComplete,
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+              let width = props[kCGImagePropertyPixelWidth as String] as? Int,
+              let height = props[kCGImagePropertyPixelHeight as String] as? Int else { return nil }
+        try PhotoGeometry.checkSize(CGSize(width: width, height: height))
+        try Task.checkCancellation()
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: edge, kCGImageSourceShouldCacheImmediately: true
+        ] as CFDictionary)
+    }
+
     private static func validateRAFRanges(_ url: URL) throws {
         let data = try Data(contentsOf: url, options: .mappedIfSafe)
         guard data.count >= 108, data.prefix(16) == Data("FUJIFILMCCD-RAW ".utf8) else { throw LRCError(L10n.text("app.invalidRAFHeader", defaultValue: "Invalid RAF header")) }

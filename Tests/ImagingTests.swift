@@ -310,6 +310,33 @@ final class ImagingTests: XCTestCase {
         let restored = try CatalogStore.restore(from: backup, to: directory.appendingPathComponent("restored"))
         XCTAssertEqual(try restored.photos().count, 0)
     }
+    func testRAFCameraPreviewIsOrientedAndNeverUsedForEditedVersions() async throws {
+        let jpeg = try Data(contentsOf: fixture(orientation: 6))
+        let url = directory.appendingPathComponent("camera.raf")
+        var header = Data(repeating: 0, count: 108)
+        header.replaceSubrange(0..<16, with: Data("FUJIFILMCCD-RAW ".utf8))
+        header[87] = 108
+        var length = UInt32(jpeg.count).bigEndian
+        withUnsafeBytes(of: &length) { header.replaceSubrange(88..<92, with: $0) }
+        try (header + jpeg).write(to: url)
+        let root = StorageRoot(id: "r", path: directory.path, bookmark: try AccessLease.bookmark(directory, readOnly: true), label: "test")
+        let identity = try FileIdentity.read(url)
+        var photo = Photo(id: "p", rootID: root.id, relativePath: "camera.raf", identity: try JSONEncoder().encode(identity),
+                          identityKey: identity.key, width: 80, height: 40)
+        let service = ThumbnailService()
+        let grid = try await service.browseImage(photo: photo, root: root, priority: .visible)
+        XCTAssertEqual(grid.width, 40)
+        XCTAssertEqual(grid.height, 80)
+        var recipe = EditRecipe(sourceDigest: try SafeFileWriter.sha256(url), decoderVersion: "8",
+                                baselineExposure: 0, baselineTemperature: 5500, baselineTint: 0, temperature: 5500, tint: 0)
+        recipe.exposure = 1
+        photo.recipe = try JSONEncoder().encode(recipe)
+        let edited = try await service.cameraPreview(for: photo, root: root, edge: 320)
+        XCTAssertNil(edited)
+        try header.write(to: url)
+        XCTAssertNil(try PhotoFileType.cameraJPEG(url, edge: 320))
+    }
+
     func testFitDecodeRetainsNativeOrientationAndEditedCrop() async throws {
         let url = try fixture(orientation: 6)
         let root = StorageRoot(id: "r", path: directory.path, bookmark: try AccessLease.bookmark(directory, readOnly: true), label: "test")
