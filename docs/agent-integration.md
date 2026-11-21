@@ -18,7 +18,7 @@
 | `create_catalog`、`open_catalog` | 名称与位置授权 ID 新建，或用近期图库 ID／位置授权 ID 打开。返回新图库会话 | `AppModel.createCatalog`／`finishCatalogOpen`、`CatalogExtensionChange`。核验位置与 schema，旧后缀沿用改名／保留／取消确认。新建与改名遵守无覆盖语义 |
 | `request_file_access` | 按操作用途打开原生文件或目录面板。返回等待用户的任务，选定后返回本次用途的位置 ID | `AppModel.directoryPanel`、`NSOpenPanel`、`AccessLease`。保留 App 沙箱权限与后续文件校验 |
 | `relocate_library_root`、`locate_photo_original` | 根目录 ID／照片版本 ID 与新位置，返回身份核验、不可用项和更新范围 | `AppModel.relocate`／`locateOriginal`、`RootRelocator.prepare`／`commit`。引用路径变化，身份核验及受影响版本保留 |
-| `plan_photo_import` | 引用／复制、来源、目标、包含子目录、跳过已入库、候选筛选、日期布局、附件映射、同名策略、集合和成对检测。返回候选、阻塞问题及计划 ID | `ImportSheet`、`ReferenceImporter.preview`、`ImportPlanner.plan`。计划只读业务数据，冻结候选与文件身份 |
+| `plan_photo_import` | 引用／复制、来源、目标、包含子目录、跳过已入库及疑似重复、候选筛选、日期布局、附件映射、同名策略、集合和成对检测。候选的 `already_cataloged` 与 `suspected_duplicate` 分别标记已登记和疑似重复的来源 | `ImportSheet`、`ReferenceImporter.preview`、`ImportPlanner.plan`。计划只读业务数据，冻结候选与文件身份 |
 | `start_photo_import`、`resolve_import_conflict` | 计划 ID、候选 ID，按冲突 ID 选择独特命名／跳过／受限覆盖，显式指定是否应用到余项。返回任务和逐项结果 | `runReference`／`startCopy`／`runCopy`／`resolveImportConflict`。复制使用现有暂存、回读和旧文件保留 |
 | `show_recent_import` | 打开最近导入、开始筛选或返回原来浏览位置，回读选择和筛选 | `showLastImport`／`returnFromImport`。工作区状态变化 |
 | `scan_library_folder`、`plan_folder_review`、`apply_folder_review` | 根目录／子目录、包含子目录、已选差异及候选位置。返回直接扫描结果，或差异计划及应用报告 | `AppModel.scan`、`FolderReview.preview`／`selectionIssue`／`apply`。区分直接索引和只读预检，应用前重新核验 |

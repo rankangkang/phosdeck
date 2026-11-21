@@ -10,10 +10,9 @@ struct ImportSheet: View {
     @State private var targetLease: AccessLease?
     @State private var copy = false
     @State private var recursive = true
-    @State private var skipImported = true
     @State private var onlyNew = false
     @State private var candidates: [ImportCandidate] = []
-    @State private var selection: Set<String> = []
+    @State private var selection = ImportSelection()
     @State private var collection = ""
     @State private var scanning = false
     @State private var scanTask: Task<Void, Never>?
@@ -26,9 +25,7 @@ struct ImportSheet: View {
     @State private var pairAfterImport = false
     @State private var thumbnailSize = 150.0
 
-    private var shown: [ImportCandidate] { onlyNew ? candidates.filter { !$0.alreadyImported } : candidates }
-    private var selected: [ImportCandidate] { candidates.filter { selection.contains($0.id) && eligible($0) } }
-    private func eligible(_ item: ImportCandidate) -> Bool { item.problem == nil && (!skipImported || !item.alreadyImported) }
+    private var shown: [ImportCandidate] { onlyNew ? candidates.filter { !$0.isDuplicate } : candidates }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,7 +44,6 @@ struct ImportSheet: View {
         .instrumentForm()
         .frame(width: 1100, height: 700)
         .onChange(of: recursive) { scan() }
-        .onChange(of: skipImported) { selection = selection.intersection(Set(candidates.filter(eligible).map(\.id))) }
         .onDisappear { scanTask?.cancel() }
 
     }
@@ -77,6 +73,7 @@ struct ImportSheet: View {
             SubgroupLabel(L10n.text("app.source", defaultValue: "Source"))
             Button(L10n.text("app.choosePhotoFolder", defaultValue: "Choose Photo Folder…")) {
                 guard let url = model.chooseDirectory(title: L10n.text("app.chooseImportSource", defaultValue: "Choose Import Source")) else { return }
+                if source != url { selection.resetChoices() }
                 sourceLease = AccessLease(url: url); source = url
                 scan()
             }.buttonStyle(.key)
@@ -99,48 +96,39 @@ struct ImportSheet: View {
     }
 
     private var photoPanel: some View {
-        VStack(spacing: 0) {
+        let visible = shown
+        return VStack(spacing: 0) {
             KeyRow(title: L10n.text("app.showPhotos", defaultValue: "Show Photos"), options: [KeyOption(false, L10n.text("app.allPhotos", defaultValue: "All Photos")), KeyOption(true, L10n.text("app.newPhotos", defaultValue: "New Photos"))], selection: $onlyNew, expand: true, height: 24)
                 .frame(width: 190).frame(maxWidth: .infinity)
-                .overlay(alignment: .trailing) { Text(L10n.text("app.photos", defaultValue: "\(shown.count) photos")).foregroundStyle(Theme.textSecondary) }
+                .overlay(alignment: .trailing) { Text(L10n.text("app.photos", defaultValue: "\(visible.count) photos")).foregroundStyle(Theme.textSecondary) }
                 .padding(12).background(Theme.panel)
             if scanning {
                 HStack(spacing: 14) { ProgressView().controlSize(.small); Text(L10n.text("app.readingSourcePhotos", defaultValue: "Reading source photos…")); Button(L10n.text("app.cancelScan", defaultValue: "Cancel Scan")) { scanID = UUID(); scanTask?.cancel(); scanning = false }.buttonStyle(.key) }
                     .foregroundStyle(Color(nsColor: mat.text))
                     .padding(8)
             }
-            if shown.isEmpty && scanning {
+            if visible.isEmpty && scanning {
                 Spacer()
-            } else if shown.isEmpty {
+            } else if visible.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "photo.on.rectangle.angled").font(.system(size: 38)).foregroundStyle(Color(nsColor: mat.textSecondary))
-                    Text(source == nil ? L10n.text("app.chooseAPhotoSource", defaultValue: "Choose a Photo Source") : L10n.text("app.noPhotosToDisplay", defaultValue: "No photos to display")).font(.title3)
+                    Text(emptyTitle).font(.title3)
                     Text(source == nil ? L10n.text("app.chooseAPhotoFolderOnTheLeft", defaultValue: "Choose a photo folder on the left.") : L10n.text("app.tryIncludeSubfoldersOrAllPhotos", defaultValue: "Try Include Subfolders or All Photos."))
                         .foregroundStyle(Color(nsColor: mat.textSecondary))
                 }.foregroundStyle(Color(nsColor: mat.text)).multilineTextAlignment(.center).padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: thumbnailSize), spacing: 8)], spacing: 8) {
-                        ForEach(shown) { item in
-                            VStack(alignment: .leading, spacing: 7) {
-                                ImportThumbnail(url: item.url).frame(height: 116).frame(maxWidth: .infinity)
-                                Toggle(isOn: Binding(get: { selection.contains(item.id) }, set: { checked in
-                                    if checked { selection.insert(item.id) } else { selection.remove(item.id) }
-                                })) { Text(item.url.lastPathComponent).lineLimit(1) }
-                                    .foregroundStyle(Color(nsColor: mat.text)).disabled(!eligible(item))
-                                Text(item.problem ?? (item.alreadyImported ? L10n.text("app.alreadyInCatalog", defaultValue: "Already in Catalog") : ByteCountFormatter.string(fromByteCount: item.identity.size, countStyle: .file)))
-                                    .font(.caption11).foregroundStyle(Color(nsColor: mat.textSecondary)).lineLimit(1)
-                            }.padding(10)
-                                .overlay(Rectangle().strokeBorder(selection.contains(item.id) ? Color(nsColor: mat.selection) : .clear, lineWidth: 2))
-                                .help(item.problem ?? item.url.path)
-                        }
+                        ForEach(visible, content: photoTile)
                     }.padding(12)
                 }
             }
             Seam()
             HStack {
-                Button(L10n.text("app.selectAll", defaultValue: "Select All")) { selection.formUnion(shown.filter(eligible).map(\.id)) }.buttonStyle(.key)
-                Button(L10n.text("app.deselectAll", defaultValue: "Deselect All")) { selection.subtract(shown.map(\.id)) }.buttonStyle(.key)
+                Button(L10n.text("app.importCheckAll", defaultValue: "Check All")) { selection.setChecked(true, for: visible) }
+                    .buttonStyle(.key).disabled(!visible.contains { $0.canCheck(skippingDuplicates: selection.skipDuplicates) && !selection.isChecked($0) })
+                Button(L10n.text("app.importUncheckAll", defaultValue: "Uncheck All")) { selection.setChecked(false, for: visible) }
+                    .buttonStyle(.key).disabled(!visible.contains(where: selection.isChecked))
                 Spacer()
                 Image(systemName: "square.grid.2x2").foregroundStyle(Theme.textSecondary)
                 GradientAdjustmentSlider(value: thumbnailSize, range: 120...210, step: 1, neutral: 150, track: .tonal,
@@ -150,13 +138,38 @@ struct ImportSheet: View {
         }.background(mat.color)
     }
 
+    private var emptyTitle: String {
+        if source == nil { return L10n.text("app.chooseAPhotoSource", defaultValue: "Choose a Photo Source") }
+        if onlyNew && !candidates.isEmpty { return L10n.text("app.importNoNewPhotos", defaultValue: "No New Photos") }
+        return L10n.text("app.noPhotosToDisplay", defaultValue: "No photos to display")
+    }
+
+    private func photoTile(_ item: ImportCandidate) -> some View {
+        let checked = selection.isChecked(item)
+        let duplicate = item.alreadyImported ? L10n.text("app.alreadyInCatalog", defaultValue: "Already in Catalog") :
+            L10n.text("app.importSuspectedDuplicate", defaultValue: "Suspected Duplicate")
+        let status = item.problem ?? (item.isDuplicate ? duplicate : ByteCountFormatter.string(fromByteCount: item.identity.size, countStyle: .file))
+        return VStack(alignment: .leading, spacing: 7) {
+            ImportThumbnail(url: item.url).frame(height: 116).frame(maxWidth: .infinity)
+            Toggle(isOn: Binding(get: { selection.isChecked(item) }, set: { selection.setChecked($0, for: [item]) })) {
+                Text(item.url.lastPathComponent).lineLimit(1).truncationMode(.middle)
+            }
+            .toggleStyle(.importCheck)
+            .accessibilityHint(item.problem ?? (item.isDuplicate ? duplicate : ""))
+            .disabled(!item.canCheck(skippingDuplicates: selection.skipDuplicates))
+            Text(status).font(.caption11).foregroundStyle(Color(nsColor: mat.textSecondary)).lineLimit(1)
+        }.padding(10)
+            .overlay { Rectangle().strokeBorder(checked ? Color(nsColor: mat.selection) : .clear, lineWidth: 2).allowsHitTesting(false) }
+            .help(item.problem ?? item.url.path)
+    }
+
     private var optionsPanel: some View {
         ScrollView {
         VStack(alignment: .leading, spacing: 16) {
             SubgroupLabel(L10n.text("app.fileHandling", defaultValue: "File Handling"))
-            Toggle(L10n.text("app.skipCatalogedPhotos", defaultValue: "Skip Cataloged Photos"), isOn: $skipImported)
+            Toggle(L10n.text("app.skipCatalogedPhotos", defaultValue: "Skip Previously Imported and Suspected Duplicates"), isOn: $selection.skipDuplicates)
                 .toggleStyle(InstrumentToggleStyle(expand: true))
-                .help(L10n.text("app.skipPhotosAlreadyRegisteredInThisCatalogCopyImport", defaultValue: "Skip photos already registered in this catalog. Copy import reuses verified destination files with identical contents."))
+                .help(L10n.text("app.skipPhotosAlreadyRegisteredInThisCatalogCopyImport", defaultValue: "These photos stay visible and unchecked in All Photos. Turn this off to check them manually."))
             SubgroupLabel(copy ? L10n.text("app.destination_1386", defaultValue: "Destination") : L10n.text("app.photoLocation", defaultValue: "Photo Location"))
             if copy {
                 Button(L10n.text("app.chooseDestinationFolder", defaultValue: "Choose Destination Folder…")) {
@@ -192,17 +205,21 @@ struct ImportSheet: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 16) {
+        let visible = shown
+        let selected = visible.filter(selection.isChecked)
+        return HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(L10n.text("app.selectedPhotos_1404", defaultValue: "Selected \(selected.count) / \(candidates.count) photos · \(ByteCountFormatter.string(fromByteCount: selected.reduce(0) { $0 + $1.identity.size }, countStyle: .file))"))
+                Text(L10n.text("app.selectedPhotos_1404", defaultValue: "Checked \(selected.count) / \(visible.count) photos · \(ByteCountFormatter.string(fromByteCount: selected.reduce(0) { $0 + $1.identity.size }, countStyle: .file))"))
                 if let error { Text(error).foregroundStyle(Theme.warning).lineLimit(2) }
                 if invalidDate { Text(L10n.text("app.enterAValidArchiveDateYyyyMMDd", defaultValue: "Enter a valid archive date: yyyy-MM-dd")).foregroundStyle(Theme.warning) }
             }
             Spacer()
             Button(L10n.text("app.cancel", defaultValue: "Cancel")) { dismiss() }.buttonStyle(.key).keyboardShortcut(.cancelAction)
             Button(L10n.text("app.import", defaultValue: "Import")) {
-                guard let source, let catalog = model.catalog else { return }
-                let items = selected
+                guard !scanning, !model.busy, !invalidDate, !copy || target != nil,
+                      let source, let catalog = model.catalog else { return }
+                let items = shown.filter(selection.isChecked)
+                guard !items.isEmpty else { return }
                 let sourceGrant = sourceLease, targetGrant = targetLease
                 model.pendingSheetImport = { [copy, target, recursive, layout, dateOverride, includeSidecars, collection, pairAfterImport, model] in
                     defer { withExtendedLifetime((sourceGrant, targetGrant)) {} }
@@ -226,7 +243,7 @@ struct ImportSheet: View {
     }
     private func scan() {
         scanTask?.cancel(); scanID = UUID()
-        candidates = []; selection = []; error = nil
+        candidates = []; error = nil
         guard let source, let catalog = model.catalog else { return }
         let token = scanID, recursive = recursive
         scanning = true
@@ -235,13 +252,12 @@ struct ImportSheet: View {
                 let result = try await model.importer.preview(source: source, includeSubfolders: recursive, catalog: catalog) { batch in
                     guard token == scanID, !Task.isCancelled else { return }
                     candidates.append(contentsOf: batch)
-                    selection.formUnion(batch.filter(eligible).map(\.id))
                 }
                 guard token == scanID, !Task.isCancelled else { return }
                 candidates = result
             } catch {
                 guard token == scanID else { return }
-                candidates = []; selection = []
+                candidates = []
                 self.error = error.localizedDescription
             }
             scanning = false

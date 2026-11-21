@@ -17,11 +17,13 @@ final class ImportTests: XCTestCase {
         catalog = try CatalogStore(directory: directory.appendingPathComponent("catalog"))
     }
     override func tearDownWithError() throws { catalog = nil; try FileManager.default.removeItem(at: directory) }
-    func image(_ url: URL, color: CIColor = .red) throws {
+    func image(_ url: URL, color: CIColor = .red, captureDate: String? = nil) throws {
         let input = CIImage(color: color).cropped(to: CGRect(x: 0, y: 0, width: 20, height: 10))
         let cg = try XCTUnwrap(CIContext().createCGImage(input, from: input.extent))
         let output = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
-        CGImageDestinationAddImage(output, cg, nil); XCTAssertTrue(CGImageDestinationFinalize(output))
+        let properties = captureDate.map { [kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeOriginal: $0]] }
+        CGImageDestinationAddImage(output, cg, properties as CFDictionary?)
+        XCTAssertTrue(CGImageDestinationFinalize(output))
     }
     func plan(_ policy: ConflictPolicy = .uniqueName, skip: Bool = true, sidecars: Bool = false) async throws -> CopyPlan {
         try await ImportPlanner().plan(source: source, target: target, layout: .flat, policy: policy, skipIdentical: skip, dateOverride: nil, confirmSidecars: sidecars, catalog: catalog)
@@ -267,6 +269,86 @@ final class ImportTests: XCTestCase {
 }
 
 extension ImportTests {
+    func testPreviewRecognizesCatalogedAndByteIdenticalFilesAcrossFolders() async throws {
+        let sourcePhoto = source.appendingPathComponent("A.jpg")
+        let sourceUndated = source.appendingPathComponent("Undated.jpg")
+        let nested = source.appendingPathComponent("card")
+        let capture = "2026:05:01 09:00:00"
+        try image(sourcePhoto, captureDate: capture)
+        try image(sourceUndated)
+        let importer = ReferenceImporter()
+        let initial = try await importer.preview(source: source, includeSubfolders: true, catalog: catalog)
+        let imported = await importer.add(source: source, candidates: initial, collection: nil, catalog: catalog)
+        XCTAssertEqual(imported.indexed, 2)
+
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: sourcePhoto, to: nested.appendingPathComponent("A.jpg"))
+        try FileManager.default.copyItem(at: sourcePhoto, to: nested.appendingPathComponent("Renamed.jpg"))
+        try FileManager.default.copyItem(at: sourceUndated, to: nested.appendingPathComponent("Undated.jpg"))
+        try image(nested.appendingPathComponent("New.jpg"), color: .blue, captureDate: capture)
+        let later = nested.appendingPathComponent("same-name")
+        try FileManager.default.createDirectory(at: later, withIntermediateDirectories: true)
+        try image(later.appendingPathComponent("A.jpg"), captureDate: "2026:05:01 09:00:01")
+        let batch = try await importer.preview(source: source, includeSubfolders: true, catalog: catalog)
+        XCTAssertEqual(Set(batch.filter(\.alreadyImported).map(\.url)), [sourcePhoto, sourceUndated])
+        XCTAssertEqual(Set(batch.filter { $0.match == .suspectedDuplicate }.map(\.url)),
+                       Set(["A.jpg", "Renamed.jpg", "Undated.jpg"].map { nested.appendingPathComponent($0) }))
+        XCTAssertEqual(Set(batch.filter(ImportSelection().isChecked).map(\.url)),
+                       [nested.appendingPathComponent("New.jpg"), later.appendingPathComponent("A.jpg")])
+        XCTAssertEqual(try catalog.photoCount(), 2)
+    }
+
+    func testPreviewAfterCopyLeavesCardPhotosUncheckedWithDifferentDestination() async throws {
+        let original = source.appendingPathComponent("A.jpg")
+        let collision = target.appendingPathComponent("A.jpg")
+        try image(original)
+        try image(collision, color: .blue)
+        let copied = await CopyImporter().run(try await plan(), catalog: catalog) { _ in }
+        XCTAssertEqual(copied.groups.first?.state, "completed")
+        XCTAssertEqual(copied.groups.first?.members.first?.destination.lastPathComponent, "A-1.jpg")
+
+        let newPhoto = source.appendingPathComponent("B.jpg")
+        try image(newPhoto, color: .green)
+        let candidates = try await ReferenceImporter().preview(source: source, includeSubfolders: true, catalog: catalog)
+        XCTAssertEqual(candidates.first { $0.url == original }?.match, .suspectedDuplicate)
+        let selected = candidates.filter(ImportSelection().isChecked)
+        XCTAssertEqual(selected.map(\.url), [newPhoto])
+
+        let otherTarget = directory.appendingPathComponent("other-target")
+        try FileManager.default.createDirectory(at: otherTarget, withIntermediateDirectories: true)
+        let nextPlan = try await ImportPlanner().plan(source: source, target: otherTarget, layout: .flat, policy: .skip,
+            skipIdentical: true, dateOverride: nil, confirmSidecars: false, catalog: catalog, selectedPaths: Set(selected.map(\.id)))
+        let next = await CopyImporter().run(nextPlan, catalog: catalog) { _ in }
+        XCTAssertEqual(next.groups.flatMap(\.members).map(\.source), [newPhoto])
+        XCTAssertEqual(try catalog.photoCount(), 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: otherTarget.appendingPathComponent("A.jpg").path))
+    }
+
+    func testImportChecksPreserveChoicesAcrossViewsAndDuplicateProtection() {
+        let fresh = ImportCandidate(url: source.appendingPathComponent("Fresh.jpg"), identity: .unverified, match: nil, problem: nil)
+        let cataloged = ImportCandidate(url: source.appendingPathComponent("Cataloged.jpg"), identity: .unverified, match: .cataloged, problem: nil)
+        let duplicate = ImportCandidate(url: source.appendingPathComponent("Duplicate.jpg"), identity: .unverified, match: .suspectedDuplicate, problem: nil)
+        let broken = ImportCandidate(url: source.appendingPathComponent("Broken.jpg"), identity: .unverified, match: nil, problem: "broken")
+        let all = [fresh, cataloged, duplicate, broken]
+        var selection = ImportSelection()
+        XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [fresh.id])
+        selection.setChecked(false, for: [fresh])
+        XCTAssertFalse(selection.isChecked(fresh))
+        selection.setChecked(true, for: all)
+        XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [fresh.id])
+        selection.skipDuplicates = false
+        XCTAssertFalse(selection.isChecked(duplicate))
+        selection.setChecked(true, for: [duplicate, broken])
+        selection.setChecked(false, for: all.filter { !$0.isDuplicate })
+        XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [duplicate.id])
+        selection.skipDuplicates = true
+        XCTAssertTrue(all.filter(selection.isChecked).isEmpty)
+        selection.skipDuplicates = false
+        XCTAssertTrue(selection.isChecked(duplicate))
+        selection.resetChoices()
+        XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [fresh.id])
+    }
+
     func testImportPreviewSelectionSubfoldersAndChangedFiles() async throws {
         let a = source.appendingPathComponent("A.jpg")
         let b = source.appendingPathComponent("B.jpg")

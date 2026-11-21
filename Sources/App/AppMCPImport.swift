@@ -102,7 +102,7 @@ extension AppMCPWorkflows {
                     return file
                 }
             } else { files = read }
-            let candidates = files.map { MCPImportPlan.Candidate(file: $0, eligible: $0.problem == nil && (!skipCataloged || !$0.alreadyImported)) }
+            let candidates = files.map { MCPImportPlan.Candidate(file: $0, eligible: $0.canCheck(skippingDuplicates: skipCataloged)) }
             let selected = candidates.filter(\.eligible)
             var copy: CopyPlan?
             if let target {
@@ -127,6 +127,7 @@ extension AppMCPWorkflows {
             job.items = candidates.map { candidate in
                 ["kind": "candidate", "candidate_id": .string(candidate.id), "name": .string(Self.relative(candidate.file.url, in: sourceRoot)),
                  "eligible": .bool(candidate.eligible), "already_cataloged": .bool(candidate.file.alreadyImported),
+                 "suspected_duplicate": .bool(candidate.file.match == .suspectedDuplicate),
                  "error_code": candidate.file.problem == nil ? .null : "image_unreadable"]
             }
             if let copy {

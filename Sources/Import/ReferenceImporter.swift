@@ -20,12 +20,137 @@ struct ScanReport {
 }
 
 struct ImportCandidate: Identifiable, Sendable {
+    enum Match: Sendable { case cataloged, suspectedDuplicate }
+
     let url: URL
     let identity: FileIdentity
-    let alreadyImported: Bool
+    let match: Match?
     let problem: String?
     fileprivate(set) var inspectedPhoto: Photo? = nil
     var id: String { url.path }
+    var alreadyImported: Bool { match == .cataloged }
+    var isDuplicate: Bool { match != nil }
+
+    func canCheck(skippingDuplicates: Bool) -> Bool {
+        problem == nil && (!skippingDuplicates || !isDuplicate)
+    }
+}
+
+/// Browsing filters and rescans don't overwrite choices made on individual photos.
+struct ImportSelection {
+    var skipDuplicates = true
+    private var choices: [String: Bool] = [:]
+
+    func isChecked(_ item: ImportCandidate) -> Bool {
+        item.canCheck(skippingDuplicates: skipDuplicates) && (choices[item.id] ?? !item.isDuplicate)
+    }
+
+    mutating func setChecked(_ checked: Bool, for items: some Sequence<ImportCandidate>) {
+        for item in items where item.canCheck(skippingDuplicates: skipDuplicates) {
+            let checkedByDefault = !item.isDuplicate
+            choices[item.id] = checked == checkedByDefault ? nil : checked
+        }
+    }
+
+    mutating func resetChoices() { choices.removeAll() }
+}
+
+private struct ImportCatalogMatches: Sendable {
+    private struct Signature: Hashable {
+        let size: Int64
+        let captureDate: String?
+    }
+
+    private struct Original {
+        let name: String
+        let relativePath: String
+        let rootID: String
+        let identity: FileIdentity
+        let digest: String?
+    }
+
+    private var identities = Set<String>()
+    private var originals: [Signature: [Original]] = [:]
+    private var checkedDigests: [String: String?] = [:]
+    private let bookmarks: [String: Data]
+
+    init(_ db: Database) throws {
+        bookmarks = try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT id, bookmark FROM storageRoot").map {
+            ($0["id"], $0["bookmark"])
+        })
+        let rows = try Row.fetchCursor(db, sql: """
+            SELECT source.rootID, source.relativePath, source.identity, source.identityKey, source.captureDate,
+                   source.digest, origin.originKey
+            FROM photoSource source LEFT JOIN sourceCopyOrigin origin ON origin.sourceID = source.id
+            WHERE EXISTS (SELECT 1 FROM photo WHERE sourceID = source.id AND deleted = 0)
+            """)
+        let decoder = JSONDecoder()
+        while let row = try rows.next() {
+            identities.insert(row["identityKey"])
+            guard let identity = try? decoder.decode(FileIdentity.self, from: row["identity"]), identity.size > 0 else { continue }
+            let path: String = row["relativePath"]
+            let name = Self.originalName(path: path, origin: row["originKey"])
+            let key = Signature(size: identity.size, captureDate: row["captureDate"])
+            originals[key, default: []].append(Original(name: Self.filenameKey(name), relativePath: path,
+                rootID: row["rootID"], identity: identity, digest: row["digest"]))
+        }
+    }
+
+    mutating func match(url: URL, identity: FileIdentity, inspected: Photo?, protectedPaths: Set<String>) throws -> ImportCandidate.Match? {
+        if identities.contains(identity.key) || protectedPaths.contains(url.path) { return .cataloged }
+        guard let inspected else { return nil }
+        let key = Signature(size: identity.size, captureDate: inspected.captureDate)
+        guard let peers = originals[key] else { return nil }
+        let name = Self.filenameKey(url.lastPathComponent)
+        if key.captureDate != nil, peers.contains(where: { $0.name == name }) { return .suspectedDuplicate }
+
+        // Only compare bytes in a plausible group. Undated references require the same name;
+        // a saved copy digest can identify identical bytes even after a rename.
+        var digest: String?
+        for original in peers where key.captureDate != nil || original.digest != nil || original.name == name {
+            guard let existing = try originalDigest(original) else { continue }
+            if digest == nil { digest = try Self.verifiedDigest(url, identity: identity) }
+            guard let digest else { return nil }
+            if digest == existing { return .suspectedDuplicate }
+        }
+        return nil
+    }
+
+    private mutating func originalDigest(_ original: Original) throws -> String? {
+        if let digest = original.digest { return digest }
+        if let cached = checkedDigests[original.identity.key] { return cached }
+        let digest: String?
+        if let bookmark = bookmarks[original.rootID], let lease = try? AccessLease(bookmark: bookmark),
+           let url = try? ProjectCopy.child(original.relativePath, of: lease.url.resolvingSymlinksInPath().standardizedFileURL),
+           url.resolvingSymlinksInPath().path == url.path {
+            digest = try withExtendedLifetime(lease) { try Self.verifiedDigest(url, identity: original.identity) }
+        } else {
+            digest = nil
+        }
+        checkedDigests[original.identity.key] = .some(digest)
+        return digest
+    }
+
+    private static func verifiedDigest(_ url: URL, identity: FileIdentity) throws -> String? {
+        try Task.checkCancellation()
+        guard (try? FileIdentity.read(url)) == identity else { return nil }
+        let digest = try? SafeFileWriter.sha256(url)
+        try Task.checkCancellation()
+        return (try? FileIdentity.read(url)) == identity ? digest : nil
+    }
+
+    private static func filenameKey(_ name: String) -> String {
+        name.precomposedStringWithCanonicalMapping.lowercased()
+    }
+
+    private static func originalName(path: String, origin: String?) -> String {
+        let file = URL(fileURLWithPath: path)
+        // Copy provenance stores a volume and the pre-copy path without its extension.
+        // Conflict renames keep the original extension.
+        let parts = origin?.split(separator: ":", maxSplits: 1)
+        guard let parts, parts.count == 2, parts[1].hasPrefix("/") else { return file.lastPathComponent }
+        return URL(fileURLWithPath: String(parts[1])).lastPathComponent + "." + file.pathExtension
+    }
 }
 
 actor ReferenceImporter {
@@ -79,7 +204,7 @@ actor ReferenceImporter {
         defer { withExtendedLifetime(lease) {} }
         let source = source.resolvingSymlinksInPath().standardizedFileURL
         try SourceAvailability.check(root: source, file: source)
-        let identities = try await catalog.database.read { Set(try String.fetchAll($0, sql: "SELECT identityKey FROM photo WHERE deleted=0")) }
+        var catalogMatches = try await catalog.database.read { try ImportCatalogMatches($0) }
         let paths = try catalog.protectedPaths()
         let outputs = try await catalog.database.read { Set(try String.fetchAll($0, sql: "SELECT destination FROM exportItem")) }
         let root = StorageRoot(id: "preview", path: source.path, bookmark: Data(), label: "preview")
@@ -95,7 +220,8 @@ actor ReferenceImporter {
             do { inspected = try autoreleasepool { try Self.inspect(url: url, root: root, rootURL: source) } }
             catch is CancellationError { throw CancellationError() }
             catch { problem = error.localizedDescription }
-            var candidate = ImportCandidate(url: url, identity: identity, alreadyImported: identities.contains(identity.key) || paths.contains(url.path), problem: problem)
+            let match = try catalogMatches.match(url: url, identity: identity, inspected: inspected, protectedPaths: paths)
+            var candidate = ImportCandidate(url: url, identity: identity, match: match, problem: problem)
             candidate.inspectedPhoto = inspected
             result.append(candidate)
             if let onBatch {

@@ -6255,7 +6255,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已在目录中"
+            "value": "已在图库中"
           }
         }
       }
@@ -20294,6 +20294,24 @@
         }
       }
     },
+    "app.importCheckAll": {
+      "extractionState": "manual",
+      "comment": "Sources/UI/ImportSheet.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check All"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部勾选"
+          }
+        }
+      }
+    },
     "app.importComplete": {
       "extractionState": "manual",
       "comment": "Sources/App/AppModel.swift: 1275",
@@ -20416,6 +20434,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "导入方式"
+          }
+        }
+      }
+    },
+    "app.importNoNewPhotos": {
+      "extractionState": "manual",
+      "comment": "Sources/UI/ImportSheet.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No New Photos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有新照片"
           }
         }
       }
@@ -20546,6 +20582,24 @@
         }
       }
     },
+    "app.importSuspectedDuplicate": {
+      "extractionState": "manual",
+      "comment": "Sources/UI/ImportSheet.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suspected Duplicate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "疑似重复"
+          }
+        }
+      }
+    },
     "app.importThumbnailSize": {
       "extractionState": "manual",
       "comment": "Sources/UI/ImportSheet.swift: 144",
@@ -20560,6 +20614,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "导入缩略图大小"
+          }
+        }
+      }
+    },
+    "app.importUncheckAll": {
+      "extractionState": "manual",
+      "comment": "Sources/UI/ImportSheet.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uncheck All"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部取消勾选"
           }
         }
       }
@@ -35752,13 +35824,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Selected %lld / %lld photos · %@"
+            "value": "Checked %lld / %lld photos · %@"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已选 %1$lld / %2$lld 张 · %3$@"
+            "value": "已勾选 %1$lld / %2$lld 张 · %3$@"
           }
         }
       }
@@ -37065,13 +37137,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Skip Cataloged Photos"
+            "value": "Skip Previously Imported and Suspected Duplicates"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "跳过已入库照片"
+            "value": "跳过已入库和疑似重复的照片"
           }
         }
       }
@@ -37101,13 +37173,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Skip photos already registered in this catalog. Copy import reuses verified destination files with identical contents."
+            "value": "These photos stay visible and unchecked in All Photos. Turn this off to check them manually."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "跳过当前目录中已登记的照片；复制时会复用已核验且内容相同的目标文件。"
+            "value": "这些照片在“所有照片”中可见，默认不勾选。关闭后可手动勾选。"
           }
         }
       }

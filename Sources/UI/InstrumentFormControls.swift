@@ -121,6 +121,7 @@ private struct SwitchMechanism: View {
 /// Independent latched keys; unlike a KeyRow, selecting one never releases its neighbours.
 struct LatchingKeyToggleStyle: ToggleStyle {
     var vertical = false
+    var checkmark = false
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {
             Group {
@@ -128,8 +129,12 @@ struct LatchingKeyToggleStyle: ToggleStyle {
                     VStack(spacing: 7) { configuration.label; Lamp(on: configuration.isOn) }.frame(maxWidth: .infinity)
                 } else {
                     HStack(spacing: 8) {
+                        if checkmark {
+                            Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
+                                .accessibilityHidden(true)
+                        }
                         configuration.label.frame(maxWidth: .infinity, alignment: .leading)
-                        Lamp(on: configuration.isOn)
+                        if !checkmark { Lamp(on: configuration.isOn) }
                     }
                 }
             }.padding(.vertical, vertical ? 9 : 4)
@@ -144,6 +149,7 @@ struct LatchingKeyToggleStyle: ToggleStyle {
 extension ToggleStyle where Self == LatchingKeyToggleStyle {
     static var latchingKey: LatchingKeyToggleStyle { LatchingKeyToggleStyle() }
     static var namingComponent: LatchingKeyToggleStyle { LatchingKeyToggleStyle(vertical: true) }
+    static var importCheck: LatchingKeyToggleStyle { LatchingKeyToggleStyle(checkmark: true) }
 }
 
 /// Ordered fixed choices reuse the existing native fader's keyboard, AX, snapping and scroll behaviour.
