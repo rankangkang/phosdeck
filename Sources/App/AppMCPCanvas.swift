@@ -166,6 +166,20 @@ struct MCPCanvasPreview: Sendable {
         self.draft = draft
     }
 
+    init(rebinding preview: Self, to photo: Photo, draft: MCPPhotoDraft.Reference?) {
+        photoID = photo.id
+        sourceRevision = photo.revision
+        recipeRevision = photo.recipeRevision
+        sourceSize = preview.sourceSize
+        variant = preview.variant
+        region = preview.region
+        width = preview.width
+        height = preview.height
+        sampler = preview.sampler
+        spotOffsets = preview.spotOffsets
+        self.draft = draft
+    }
+
     func matches(_ photo: Photo) -> Bool {
         photo.id == photoID && photo.revision == sourceRevision && photo.recipeRevision == recipeRevision
     }

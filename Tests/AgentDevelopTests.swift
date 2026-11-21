@@ -1,3 +1,4 @@
+import Darwin
 import ImageIO
 import MCP
 import Observation
@@ -279,12 +280,38 @@ final class AgentDevelopTests: XCTestCase {
         let final = try await client.adjustDraft(.effects, photo: "a", draft: detail,
                                                  adjustments: ["grain_amount": 25])
         let draftRead = try client.data(await client.call(.photoRecipe, final.merging(["photo_id": "a"]) { _, new in new }))
-        let preview = try client.edits("a", ["long_edge": 128])
-        let trial = await client.call(.preview, preview.merging(final) { _, new in new })
+        let preview = try client.edits("a", ["long_edge": 50])
+        let qualityArgs = preview.merging(final) { _, new in new }
+        let trial = await client.call(.preview, qualityArgs)
         let trialData = try client.data(trial)
         XCTAssertEqual(trialData["draft_revision"], 6)
-        XCTAssertEqual(trialData["width"], 48)
-        XCTAssertEqual(trialData["height"], 64)
+        XCTAssertEqual(trialData["width"], 38)
+        XCTAssertEqual(trialData["height"], 50)
+        XCTAssertEqual(trialData["preview_quality"], "quality")
+        XCTAssertEqual(trialData["reused"], false)
+
+        let quickArgs = qualityArgs.merging(["preview_quality": "interactive"]) { _, new in new }
+        let quick = try client.data(await client.call(.preview, quickArgs))
+        XCTAssertEqual(quick["preview_quality"], "interactive")
+        XCTAssertEqual(quick["width"], trialData["width"])
+        XCTAssertEqual(quick["height"], trialData["height"])
+        XCTAssertEqual(quick["draft_revision"], trialData["draft_revision"])
+        XCTAssertEqual(quick["editable_canvas"], false)
+        XCTAssertEqual(quick["histogram"], .null)
+        client.error(await client.call(.samplePreview, final.merging([
+            "preview_id": try XCTUnwrap(quick["preview_id"]), "point": ["x": 0.5, "y": 0.5]
+        ]) { _, new in new }), "stale_preview")
+        client.error(await client.call(.preview, preview.merging(["preview_quality": "interactive"]) { _, new in new }), "invalid_arguments")
+        client.error(await client.call(.preview, quickArgs.merging(["preview_variant": "crop_canvas"]) { _, new in new }), "invalid_arguments")
+        client.error(await client.call(.preview, quickArgs.merging([
+            "region": ["x": 0, "y": 0, "width": 0.5, "height": 0.5]
+        ]) { _, new in new }), "invalid_arguments")
+
+        let repeated = await client.call(.preview, qualityArgs.merging(["preview_quality": "quality"]) { _, new in new })
+        let repeatedData = try client.data(repeated)
+        XCTAssertEqual(repeatedData["reused"], true)
+        XCTAssertNotEqual(repeatedData["preview_id"], trialData["preview_id"])
+        XCTAssertEqual(repeated.content.last, trial.content.last)
         XCTAssertEqual(try catalog.editHistory(photoID: "a").count, history)
         XCTAssertEqual(try client.recipe("a"), original)
         XCTAssertFalse(client.model.undo.canUndo)
@@ -294,11 +321,56 @@ final class AgentDevelopTests: XCTestCase {
         XCTAssertEqual(try catalog.editHistory(photoID: "a").count, history + 1)
         let saved = try client.data(await client.call(.photoRecipe, ["photo_id": "a"]))
         XCTAssertEqual(saved["recipe"], draftRead["recipe"])
-        let savedPreview = await client.call(.preview, try client.edits("a", ["long_edge": 128]))
-        _ = try client.data(savedPreview)
+        let savedPreview = await client.call(.preview, try client.edits("a", ["long_edge": 50]))
+        let savedData = try client.data(savedPreview)
+        XCTAssertEqual(savedData["reused"], true)
+        XCTAssertEqual(savedData["editable_canvas"], true)
+        XCTAssertNil(savedData["draft_id"])
+        XCTAssertEqual(savedData["recipe_revision"], try client.edits("a")["recipe_revision"])
+        XCTAssertNotEqual(savedData["preview_id"], repeatedData["preview_id"])
         XCTAssertEqual(savedPreview.content.last, trial.content.last)
+        let point: Value = ["x": 0.5, "y": 0.5]
+        client.error(await client.call(.samplePreview, [
+            "preview_id": try XCTUnwrap(repeatedData["preview_id"]), "point": point
+        ]), "stale_preview")
+        _ = try client.data(await client.call(.samplePreview, [
+            "preview_id": try XCTUnwrap(savedData["preview_id"]), "point": point
+        ]))
         _ = try client.data(await client.call(.undo, ["operation_id": try XCTUnwrap(committed["operation_id"])]))
         XCTAssertEqual(try client.recipe("a"), original)
+    }
+
+    @MainActor func testQualityPreviewReuseChecksSizeSharingAndSourceDigest() async throws {
+        let (catalog, folder) = try await catalog(ids: ["a"])
+        let client = try await Client(catalog)
+        client.tools.setSharesImages(true)
+        let large = try client.edits("a", ["long_edge": 128])
+        let small = try client.edits("a", ["long_edge": 64])
+        let initial = try client.data(await client.call(.preview, large))
+        XCTAssertEqual(initial["reused"], false)
+        let first = try client.data(await client.call(.preview, small))
+        XCTAssertEqual(first["height"], 64)
+        XCTAssertEqual(first["reused"], false)
+        let repeated = try client.data(await client.call(.preview, small))
+        XCTAssertEqual(repeated["reused"], true)
+
+        client.tools.setSharesImages(false)
+        client.error(await client.call(.preview, small), "image_access_disabled")
+        client.tools.setSharesImages(true)
+        let allowedAgain = try client.data(await client.call(.preview, small))
+        XCTAssertEqual(allowedAgain["reused"], false)
+
+        let url = folder.appendingPathComponent("a.png")
+        let identity = try FileIdentity.read(url)
+        var source = try Data(contentsOf: url)
+        source[source.count - 1] ^= 1
+        try source.write(to: url)
+        // Keep the source's file identity unchanged so only a digest check can reject it.
+        var times = [timespec(tv_sec: 0, tv_nsec: Int(UTIME_OMIT)),
+                     timespec(tv_sec: Int(identity.modifiedSeconds), tv_nsec: Int(identity.modifiedNanoseconds))]
+        XCTAssertEqual(utimensat(AT_FDCWD, url.path, &times, 0), 0)
+        XCTAssertEqual(try FileIdentity.read(url), identity)
+        client.error(await client.call(.preview, small), "operation_failed")
     }
 
     @MainActor func testCanvasRegionSamplesTheSamePixelsAndInvalidatesOldCoordinates() async throws {

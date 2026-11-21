@@ -1,6 +1,6 @@
 # Canvas and local editing
 
-Read the target photo ID and both revisions. For positions, render `get_photo_preview` and use coordinates normalized to the returned PNG's top-left origin. Convert pixel centers with `(pixel + 0.5) / dimension`. A `region` request returns its actual pixel-aligned bounds in the full preview. Coordinates for the next action are relative to the returned detail PNG. Use the new recipe revision and a fresh preview after a save.
+Read the target photo ID and both revisions. For positions and sampling, request the default quality with `get_photo_preview` and use coordinates normalized to the returned PNG's top-left origin. Convert pixel centers with `(pixel + 0.5) / dimension`. A `region` request returns its actual pixel-aligned bounds in the full preview. Coordinates for the next action are relative to the returned detail PNG. Use the new recipe revision and a fresh preview after a save.
 
 For fine detail, request `resolution=native` with one normalized `region` or integer `region_pixels` rectangle and omit `long_edge`. The rectangle is in the full-resolution edited frame, including crop and orientation. Use `plan_only=true` to check `canvas_width`, `canvas_height`, the actual pixel rectangle and `fits` before requesting a PNG. For an oversized region, use `suggested_region_pixels` or request adjacent tiles within the reported limits. Use the rendered tile's `preview_id` for placement, and use the shorter of `source_width` and `source_height` to convert a source-pixel radius to the brush or repair fraction.
 

@@ -1047,8 +1047,11 @@ actor ImagePipeline {
     }
     static func resized(_ image: CIImage, longEdge: Int?) -> CIImage {
         guard let edge = longEdge, edge > 0 else { return image }
-        let scale = min(1, Double(edge) / max(image.extent.width, image.extent.height))
-        return image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        return image.transformed(by: scaleToFit(image.extent.size, longEdge: edge))
+    }
+    private static func scaleToFit(_ size: CGSize, longEdge: Int) -> CGAffineTransform {
+        let scale = min(1, Double(longEdge) / max(size.width, size.height))
+        return CGAffineTransform(scaleX: scale, y: scale)
     }
     /// Grain is sized to this bitmap, after crop and any output resize, so a
     /// preview and an export of the same crop keep the same relative grain.
@@ -1418,7 +1421,7 @@ actor ImagePipeline {
 
     /// Low-resolution screen feedback only. The committed render/export always
     /// validates the complete source digest and uses the full-resolution graph.
-    func renderInteractive(_ request: ImageRequest, longEdge: Int = 960) async throws -> RenderedImage {
+    func renderInteractive(_ request: ImageRequest, longEdge: Int = 960, matchQualitySize: Bool = false) async throws -> RenderedImage {
         let started = Date()
         let stage = try await warmPrintStage(request, purpose: .draft, edge: longEdge)
         return try autoreleasepool {
@@ -1444,7 +1447,19 @@ actor ImagePipeline {
             } else {
                 graph = try self.graph(request, url: url, orientedSourceSize: &orientedSize, previewEdge: longEdge)
             }
-            let image = try Self.finish(Self.resized(graph, longEdge: longEdge), request: request)
+            let nativeSize = try request.recipe.map { try PhotoGeometry(size: orientedSize, recipe: $0).output } ?? orientedSize
+            let scaled: CIImage
+            if matchQualitySize {
+                // RAW is reduced before cropping. Fit the trial bitmap to the
+                // dimensions of the full-resolution crop at the requested edge.
+                let target = CGRect(origin: .zero, size: nativeSize).applying(Self.scaleToFit(nativeSize, longEdge: longEdge)).integral
+                scaled = Self.originZero(graph).transformed(by: CGAffineTransform(
+                    scaleX: target.width / graph.extent.width, y: target.height / graph.extent.height
+                )).cropped(to: target)
+            } else {
+                scaled = Self.resized(graph, longEdge: longEdge)
+            }
+            let image = try Self.finish(scaled, request: request)
             let result: CGImage
             if Self.mayHaveTransparency(request), Self.hasTransparency(image, context: developContext) {
                 result = try Self.materialize8(image, context: developContext)
@@ -1454,7 +1469,6 @@ actor ImagePipeline {
             }
             try Task.checkCancellation()
             guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: request.photo.identity) else { throw LRCError(L10n.text("app.theSourceChangedDuringRendering", defaultValue: "The source changed during rendering")) }
-            let nativeSize = try request.recipe.map { try PhotoGeometry(size: orientedSize, recipe: $0).output } ?? orientedSize
             completed = true
             PreviewLog.logger.debug("pipeline-draft-done ms=\(Date().timeIntervalSince(started) * 1000)")
             return RenderedImage(image: result, fullSize: nativeSize, orientedSourceSize: orientedSize,

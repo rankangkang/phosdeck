@@ -101,7 +101,7 @@ enum AppMCPTool: String, CaseIterable {
         case presetID = "preset_id", presetRevision = "preset_revision", snapshotRevision = "snapshot_revision"
         case presetGroup = "preset_group", favorite, favoritesOnly = "favorites_only", previewVariant = "preview_variant", beforeLayout = "before_layout"
         case previewID = "preview_id", region, point, rect, aspectRatio = "aspect_ratio", turns
-        case resolution, regionPixels = "region_pixels", planOnly = "plan_only"
+        case previewQuality = "preview_quality", resolution, regionPixels = "region_pixels", planOnly = "plan_only"
         case draftID = "draft_id", draftRevision = "draft_revision", strokeIndex = "stroke_index"
         case straighten, flipHorizontal = "flip_horizontal", flipVertical = "flip_vertical", perspective
         case cropGuide = "crop_guide", spotGuides = "spot_guides", guideMode = "guide_mode", endpoint
@@ -166,6 +166,7 @@ enum AppMCPTool: String, CaseIterable {
                     : MCPDevelopParameters.groups.map(\.rawValue) + (tool == .resetAdjustments ? ["all"] : [])
             case .channel: MCPDevelopParameters.channels
             case .previewVariant: ["saved", "original", "before", "crop_canvas"]
+            case .previewQuality: ["quality", "interactive"]
             case .resolution: ["scaled", "native"]
             case .beforeLayout: ["off", "original", "side_by_side", "split"]
             case .cropGuide: CropGuide.allCases.map(\.rawValue)
@@ -632,7 +633,7 @@ enum AppMCPTool: String, CaseIterable {
         case .planStacks: [.scope, .photoIDs, .queryRevision, .selectionRevision]
         case .listPairs: [.photo, .source, .listing, .offset, .pageSize]
         case .planPairs: [.plan, .candidates, .scope, .photoIDs, .queryRevision, .selectionRevision, .rawSource, .jpegSource, .sameCapture]
-        case .preview: [.longEdge, .previewVariant, .historyID, .snapshotID, .presetID, .presetRevision, .amount, .groups, .group,
+        case .preview: [.longEdge, .previewVariant, .previewQuality, .historyID, .snapshotID, .presetID, .presetRevision, .amount, .groups, .group,
                         .region, .resolution, .regionPixels, .planOnly,
                         .maskOverlay, .withoutMaskID, .smartOverlay]
         case .editPhotoDraft: [.photo, .sourceRevision, .recipeRevision, .draftID, .draftRevision]
@@ -724,8 +725,8 @@ enum AppMCPTool: String, CaseIterable {
             description = "Read photos without changing the workspace. Pass query with source_id (default all), filters and sort for an independent query, or pass photo_ids to review explicit versions in input order. Omit both to read the current view. listing=matches includes folded stack members and defaults for independent queries; listing=visible respects folding. Explicit IDs include all supplied versions. Continue with next_cursor and omit query and photo_ids. Set contact_sheet=true to receive a numbered PNG alongside the page (default 12, max \(MCPContactSheet.maximumCount) photos; requires photo preview sharing)."
             output = "items with number, photo_id, name, version_name, source_revision, recipe_revision, marks, source_status and stack. query_mode, source_id, page_offset, matched_count, visible_count and next_cursor. With contact_sheet, items also describe cell_pixels, image_pixels and thumbnail_status for the numbered PNG. Pass a candidate's ID and revisions to get_photo_preview with resolution=native for a 1:1 region."
         case .preview:
-            description = "Render an explicit photo version as an sRGB PNG when image sharing is on. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. The default scaled resolution accepts a normalized top-left region. Use resolution=native with region or an integer top-left region_pixels for an unscaled tile of the edited frame. Omit long_edge in native mode. Use plan_only=true to check the tile dimensions and limits without receiving pixels; omit the region to inspect the full frame. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
-            output = "Photo revisions, canvas dimensions, region, actual width and height. Native requests also report region_pixels, fits and limits, and suggest a smaller region when needed. Rendered previews include preview_id, coordinate_space, editable_canvas, histogram, and a PNG content block. Multi-page TIFF previews report tiff_page_count and tiff_preview_page (1)."
+            description = "Read an explicit photo version as an sRGB PNG when image sharing is on. Set preview_quality=interactive for faster visual feedback on a whole scaled photo draft, without overlays or alternate views. Request the default quality render to verify appearance or use canvas tools. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. The default scaled resolution accepts a normalized top-left region. Use resolution=native with region or an integer top-left region_pixels for an unscaled tile of the edited frame. Omit long_edge in native mode. Use plan_only=true to check the tile dimensions and limits without receiving pixels; omit the region to inspect the full frame. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
+            output = "Photo revisions, canvas dimensions, region, actual width and height. Native requests also report region_pixels, fits and limits, and suggest a smaller region when needed. Rendered previews include preview_id, preview_quality, reused, coordinate_space, editable_canvas, histogram, and a PNG content block. Interactive images are for visual review only. Multi-page TIFF previews report tiff_page_count and tiff_preview_page (1)."
         case .editPhotoDraft:
             description = "Begin an in-memory photo draft for exposure, color, preset strength, local masks and spot repairs with explicit photo_id, source_revision and recipe_revision. Poll get_job for draft_id and draft_revision. Pass them to draft-aware editing and preview tools. Commit with the current draft_id and draft_revision to create one saved edit and undo action, or cancel with the same fields to discard the draft. There is one active draft per catalog session."
             output = "job_id for begin and commit; draft identity, current revision and photo revisions on begin; saved revisions and operation_id on commit; discarded on cancel."
@@ -895,10 +896,38 @@ final class AppMCPTools {
         let arguments: [String: Value]
         let result: MCPToolResult
     }
+    private struct QualityPreviewKey: Equatable, Sendable {
+        let photoID: String
+        let sourceRevision: Int
+        let identity: Data
+        let bookmark: Data
+        let relativePath: String
+        let recipe: EditRecipe
+        let edge: Int
+
+        init(_ request: ImageRequest, recipe: EditRecipe, edge: Int) {
+            photoID = request.photo.id
+            sourceRevision = request.photo.revision
+            identity = request.photo.identity
+            bookmark = request.root.bookmark
+            relativePath = request.photo.relativePath
+            var pixelsRecipe = recipe
+            if !pixelsRecipe.grain.isActive { pixelsRecipe.grain = FilmGrain() }
+            self.recipe = pixelsRecipe
+            self.edge = edge
+        }
+    }
+    private struct PreviewPixels: Sendable {
+        let canvas: MCPCanvasPreview?
+        let data: [String: Value]
+        let png: String
+    }
     private struct Preview: Sendable {
         let data: [String: Value]
         let selection: MCPDevelopPreview
-        let image: (canvas: MCPCanvasPreview, name: String, png: String)?
+        let image: (pixels: PreviewPixels, name: String)?
+        var cacheKey: QualityPreviewKey? = nil
+        var trialPipeline: ImagePipeline? = nil
     }
     private struct UndoReceipt {
         let id = UUID().uuidString
@@ -924,9 +953,11 @@ final class AppMCPTools {
     private var contactSheetWorker: Task<MCPContactSheet, Error>?
     private var previewWorker: Task<Preview, Error>?
     private var canvasPreviews: [MCPCanvasPreview] = []
+    private var lastQualityPreview: (key: QualityPreviewKey, pixels: PreviewPixels)?
     var photoDraft: MCPPhotoDraft?
     var mcpSmartSessionID: UUID?
     private lazy var previewPipeline = ImagePipeline(qualityCacheLimit: 0)
+    private var interactivePreviewPipeline: ImagePipeline?
     let workflows: AppMCPWorkflows
 
     init(model: AppModel, appName: String, version: String, bundleID: String, sharesImages: Bool,
@@ -952,6 +983,8 @@ final class AppMCPTools {
             contactSheetWorker?.cancel()
             previewWorker?.cancel()
             canvasPreviews.removeAll()
+            lastQualityPreview = nil
+            interactivePreviewPipeline = nil
         }
     }
     @discardableResult func stop() -> Task<Void, Never>? {
@@ -961,6 +994,8 @@ final class AppMCPTools {
         contactSheetWorker?.cancel()
         previewWorker?.cancel()
         canvasPreviews.removeAll()
+        lastQualityPreview = nil
+        interactivePreviewPipeline = nil
         clearPhotoDraft()
         undoObservers.removeAll()
         currentUndo = nil
@@ -996,6 +1031,8 @@ final class AppMCPTools {
             cursors.removeAll()
             contactSheetWorker?.cancel()
             canvasPreviews.removeAll()
+            lastQualityPreview = nil
+            interactivePreviewPipeline = nil
             clearPhotoDraft()
             currentUndo = nil
             workflows.catalogChanged()
@@ -1325,11 +1362,19 @@ final class AppMCPTools {
             throw MCPToolProblem.invalid("region_pixels and plan_only require resolution=native.")
         }
         let draft = try requestedDraft(arguments)
+        let variant = arguments["preview_variant"]?.stringValue ?? "saved"
+        let interactive = arguments["preview_quality"] == "interactive"
         if draft != nil {
-            let variant = arguments["preview_variant"]?.stringValue ?? "saved"
             let alternatives = ["history_id", "snapshot_id", "preset_id", "preset_revision", "amount", "groups", "group", "smart_overlay"]
             guard ["saved", "crop_canvas"].contains(variant), !alternatives.contains(where: { arguments[$0] != nil }) else {
                 throw MCPToolProblem.invalid("Choose the edited draft or its crop canvas. Omit draft fields to render a saved comparison or smart overlay.")
+            }
+        }
+        if interactive {
+            let displayOptions = ["mask_overlay", "without_mask_id", "smart_overlay"]
+            guard draft != nil, variant == "saved", !native, region == nil,
+                  !displayOptions.contains(where: { arguments[$0] != nil }) else {
+                throw MCPToolProblem.invalid("Use interactive quality with an active draft and a whole scaled image without display overrides.")
             }
         }
         let smartOverlay = try arguments["smart_overlay"].map(MCPSmartOverlay.init)
@@ -1337,6 +1382,8 @@ final class AppMCPTools {
         let accessGeneration = imageAccessGeneration
         let roots = model.roots
         let pipeline = previewPipeline
+        let cachedTrialPipeline = interactivePreviewPipeline
+        let cached = lastQualityPreview
         let worker = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             guard let photo = try catalog.photo(id) else { throw MCPToolProblem.photoUnavailable }
@@ -1376,8 +1423,29 @@ final class AppMCPTools {
                 data.merge(plan.data) { _, value in value }
                 return Preview(data: data, selection: selection, image: nil)
             }
+            let photoName = String(photo.displayName.prefix(256))
+            let editable = !interactive && selection.editableCanvas && recipe != nil && overlay == nil && withoutMask == nil && smartOverlay == nil
+            data["preview_quality"] = interactive ? "interactive" : "quality"
+            // Match the rendered content across draft and saved revisions. Plugin
+            // stages have their own validation and may change outside the recipe.
+            let cacheKey: QualityPreviewKey?
+            if !native, region == nil, editable, selection.variant == "saved", let recipe, recipe.warmPrint == nil {
+                cacheKey = QualityPreviewKey(request, recipe: recipe, edge: edge)
+            } else { cacheKey = nil }
+            if let cacheKey, let cached, cached.key == cacheKey, let cachedCanvas = cached.pixels.canvas {
+                try pipeline.verifySource(request)
+                let canvas = MCPCanvasPreview(rebinding: cachedCanvas, to: photo, draft: draft?.reference)
+                let pixels = PreviewPixels(canvas: canvas, data: cached.pixels.data, png: cached.pixels.png)
+                data["reused"] = true
+                return Preview(data: data, selection: selection, image: (pixels, photoName), cacheKey: cacheKey)
+            }
             let rendered: RenderedImage
-            if native {
+            let trialPipeline = interactive ? (cachedTrialPipeline ?? ImagePipeline(cacheIntermediates: true, qualityCacheLimit: 0)) : nil
+            if let trialPipeline {
+                try trialPipeline.verifySource(request)
+                rendered = try await trialPipeline.renderInteractive(request, longEdge: edge, matchQualitySize: true)
+                try trialPipeline.verifySource(request)
+            } else if native {
                 rendered = try await pipeline.render(request, longEdge: nil, nativePixelRegion: { canvas in
                     let plan = try MCPNativePreviewRegion.resolve(canvas: canvas, region: region, pixelRegion: pixelRegion)
                     guard plan.fits else {
@@ -1401,39 +1469,41 @@ final class AppMCPTools {
             try Task.checkCancellation()
             let image: CGImage
             let actualRegion: CGRect
+            var pixelData: [String: Value]
             if let pixels = rendered.nativePixelRegion {
                 let tile = MCPNativePreviewRegion(canvas: rendered.fullSize, pixels: pixels)
                 image = full
                 actualRegion = tile.normalized
-                data.merge(tile.data) { _, value in value }
+                pixelData = tile.data
             } else {
                 (image, actualRegion) = try MCPCanvasPreview.detail(full, region: region)
-                data["resolution"] = "scaled"
-                data["canvas_width"] = .int(Int(rendered.fullSize.width.rounded(.up)))
-                data["canvas_height"] = .int(Int(rendered.fullSize.height.rounded(.up)))
+                pixelData = ["resolution": "scaled", "canvas_width": .int(Int(rendered.fullSize.width.rounded(.up))),
+                             "canvas_height": .int(Int(rendered.fullSize.height.rounded(.up)))]
             }
-            let editable = selection.editableCanvas && recipe != nil && overlay == nil && withoutMask == nil && smartOverlay == nil
-            let canvas = MCPCanvasPreview(photo: photo, image: image, region: actualRegion,
-                                          sourceSize: rendered.orientedSourceSize, variant: editable ? selection.variant : nil,
-                                          spotOffsets: rendered.spotOffsets, draft: draft?.reference)
+            let canvas = interactive ? nil : MCPCanvasPreview(
+                photo: photo, image: image, region: actualRegion, sourceSize: rendered.orientedSourceSize,
+                variant: editable ? selection.variant : nil, spotOffsets: rendered.spotOffsets, draft: draft?.reference)
             let png = try MCPOutputImage.png(image)
             let recalculateHistogram = native ? overlay != nil || smartOverlay != nil : region != nil
             let histogram = (recalculateHistogram ? ImageHistogram.calculate(image) : rendered.histogram)
                 .map { Value.array($0.channels.map { .array($0.map(Value.double)) }) } ?? .null
-            data.merge([
-                "preview_id": .string(canvas.id), "width": .int(image.width), "height": .int(image.height),
+            pixelData.merge([
+                "width": .int(image.width), "height": .int(image.height),
                 "source_width": .int(Int(rendered.orientedSourceSize.width)), "source_height": .int(Int(rendered.orientedSourceSize.height)),
                 "coordinate_space": "normalized_top_left", "histogram": histogram,
-                "region": MCPCanvasFields.rectValue(actualRegion), "editable_canvas": .bool(canvas.variant != nil)
+                "region": MCPCanvasFields.rectValue(actualRegion), "editable_canvas": .bool(editable)
             ]) { _, value in value }
             if let overlay { data["mask_overlay"] = overlay.description }
             if let withoutMask { data["without_mask_id"] = .string(withoutMask.uuidString) }
             if let smartOverlay { data["smart_overlay"] = .object(smartOverlay.fields) }
-            return Preview(data: data, selection: selection, image: (canvas, String(photo.displayName.prefix(256)), png))
+            data["reused"] = false
+            let pixels = PreviewPixels(canvas: canvas, data: pixelData, png: png)
+            return Preview(data: data, selection: selection, image: (pixels, photoName), cacheKey: cacheKey, trialPipeline: trialPipeline)
         }
         previewWorker = worker
         defer { previewWorker = nil }
         let result = await withTaskCancellationHandler { await worker.result } onCancel: { worker.cancel() }
+        if interactive, case .failure = result { interactivePreviewPipeline = nil }
         guard !stopped, !Task.isCancelled else { throw MCPToolProblem.stopped }
         guard sharesImages, imageAccessGeneration == accessGeneration else { throw MCPToolProblem.imageDisabled }
         guard model.catalogSessionID == session else { throw MCPToolProblem.catalogChanged }
@@ -1443,10 +1513,19 @@ final class AppMCPTools {
         try preview.selection.verify(arguments, catalog: catalog)
         if let smartOverlay { _ = try smartOverlayGroup(smartOverlay, photo: MCPDevelopPhoto.current(arguments, catalog: catalog), model: model) }
         guard let image = preview.image else { return .init("Checked the native preview region.", data: preview.data) }
-        if canvasPreviews.count >= 6 { canvasPreviews.removeFirst() }
-        canvasPreviews.append(image.canvas)
-        return .init("Rendered the requested photo preview.", data: preview.data,
-                     artifacts: [["type": "photo_preview", "id": .string(image.canvas.id), "name": .string(image.name)]], image: image.png)
+        let pixels = image.pixels
+        if let key = preview.cacheKey { lastQualityPreview = (key, pixels) }
+        if let trialPipeline = preview.trialPipeline { interactivePreviewPipeline = trialPipeline }
+        if let canvas = pixels.canvas {
+            if canvasPreviews.count >= 6 { canvasPreviews.removeFirst() }
+            canvasPreviews.append(canvas)
+        }
+        var data = preview.data.merging(pixels.data) { _, value in value }
+        let previewID = pixels.canvas?.id ?? UUID().uuidString
+        data["preview_id"] = .string(previewID)
+        let summary = data["reused"] == true ? "Reused the requested photo preview." : "Rendered the requested photo preview."
+        return .init(summary, data: data,
+                     artifacts: [["type": "photo_preview", "id": .string(previewID), "name": .string(image.name)]], image: pixels.png)
     }
 
     func clearPhotoDraft() {
