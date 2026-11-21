@@ -169,6 +169,7 @@ struct KeyButtonStyle: ButtonStyle {
     /// A key-face status lamp follows the key's latch and enabled pressure.
     var lampInside = false
     var expand = false
+    var underlineFocus = false
     func makeBody(configuration: Configuration) -> some View { KeyButtonBody(configuration: configuration, style: self) }
 }
 
@@ -303,6 +304,7 @@ private struct KeyButtonBody: View {
                 configuration.label
             }
         }
+            .underline(style.underlineFocus && focused && enabled)
             .frame(maxWidth: style.expand ? .infinity : nil)
             .offset(y: !reduceMotion ? travel.labelOffset(height: style.height) : 0)
             .font(.system(size: 12, weight: style.selected ? .semibold : .regular))
@@ -317,7 +319,7 @@ private struct KeyButtonBody: View {
                 if !enabled { LockedKeyFeedback(pressed: $lockedPressed).environment(\.isEnabled, true).accessibilityHidden(true) }
             }
             .overlay {
-                if focused && enabled { style.position.shape(radius: style.radius).stroke(Theme.focusRing, lineWidth: 2).padding(-2).allowsHitTesting(false) }
+                if focused && enabled && !style.underlineFocus { style.position.shape(radius: style.radius).stroke(Theme.focusRing, lineWidth: 2).padding(-2).allowsHitTesting(false) }
             }
             .contentShape(Rectangle())
             .onHover { hovering = $0 }

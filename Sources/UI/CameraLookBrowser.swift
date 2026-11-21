@@ -24,8 +24,9 @@ struct CameraLookRow: View {
                         Image(systemName: "square.grid.2x2").accessibilityHidden(true)
                     }
                 }
-                .buttonStyle(.key(selected: browsing, expand: true))
+                .buttonStyle(KeyButtonStyle(selected: browsing, expand: true, underlineFocus: true))
                 .focusable()
+                .focusEffectDisabled()
                 .focused($focused)
                 .onKeyPress(.return) { onBrowse(); return .handled }
                 .accessibilityIdentifier("camera-look-browser")
@@ -138,8 +139,9 @@ struct CameraLookBrowser: View {
                     .font(.section).accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
                 Button(L10n.text("app.done", defaultValue: "Done"), action: model.closeCameraLookBrowser)
-                    .buttonStyle(.key(height: 22))
+                    .buttonStyle(KeyButtonStyle(height: 22, underlineFocus: true))
                     .focusable()
+                    .focusEffectDisabled()
                     .focused($focus, equals: .done)
                     .onKeyPress(.return) { model.closeCameraLookBrowser(); return .handled }
                     .onKeyPress(.downArrow) { focus = layout.selectedTarget; return .handled }
