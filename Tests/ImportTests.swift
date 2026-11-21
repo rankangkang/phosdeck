@@ -34,6 +34,22 @@ final class ImportTests: XCTestCase {
         XCTAssertThrowsError(try DateLayout.full.directory(date: nil))
         XCTAssertEqual(try DateLayout.flat.directory(date: nil), "")
     }
+    @MainActor func testPreviewPublishesFirstCandidateAndImportReportsCommittedRows() async throws {
+        for name in ["B.jpg", "A.jpg", "C.jpg"] { try image(source.appendingPathComponent(name)) }
+        let importer = ReferenceImporter()
+        var batches = [[String]]()
+        let candidates = try await importer.preview(source: source, includeSubfolders: true, catalog: catalog) {
+            batches.append($0.map(\.id))
+        }
+        XCTAssertEqual(batches.first?.count, 1)
+        XCTAssertEqual(batches.flatMap { $0 }.sorted(), candidates.map(\.id))
+        let store = try XCTUnwrap(catalog)
+        let report = await importer.add(source: source, candidates: candidates, collection: nil, catalog: store) { done in
+            XCTAssertEqual(try? store.photoCount(), done)
+        }
+        XCTAssertEqual(report.indexed, 3)
+    }
+
     func testReferenceBatchTracksOnlyNewVersionsNotDuplicatesOrFailures() async throws {
         let a = source.appendingPathComponent("A.jpg"), b = source.appendingPathComponent("B.jpg")
         try image(a); try image(b, color: .blue)

@@ -24,6 +24,7 @@ struct ImportCandidate: Identifiable, Sendable {
     let identity: FileIdentity
     let alreadyImported: Bool
     let problem: String?
+    fileprivate(set) var inspectedPhoto: Photo? = nil
     var id: String { url.path }
 }
 
@@ -71,27 +72,42 @@ actor ReferenceImporter {
         return report
     }
 
-    func preview(source: URL, includeSubfolders: Bool, catalog: CatalogStore) throws -> [ImportCandidate] {
+    func preview(source: URL, includeSubfolders: Bool, catalog: CatalogStore,
+                 onBatch: (@MainActor @Sendable ([ImportCandidate]) -> Void)? = nil) async throws -> [ImportCandidate] {
         let lease = AccessLease(url: source)
         defer { withExtendedLifetime(lease) {} }
         let source = source.resolvingSymlinksInPath().standardizedFileURL
         try SourceAvailability.check(root: source, file: source)
-        let photos = try catalog.photos()
-        let identities = Set(photos.map(\.identityKey))
+        let identities = try await catalog.database.read { Set(try String.fetchAll($0, sql: "SELECT identityKey FROM photo WHERE deleted=0")) }
         let paths = try catalog.protectedPaths()
-        let outputs = try catalog.database.read { Set(try String.fetchAll($0, sql: "SELECT destination FROM exportItem")) }
+        let outputs = try await catalog.database.read { Set(try String.fetchAll($0, sql: "SELECT destination FROM exportItem")) }
         let root = StorageRoot(id: "preview", path: source.path, bookmark: Data(), label: "preview")
-        return try ImportPlanner.sourceFiles(source, includeSubfolders: includeSubfolders)
-            .filter { ImportPlanner.images.contains($0.pathExtension.lowercased()) && !outputs.contains($0.path) }
-            .map { url in
-                try Task.checkCancellation()
-                let identity = try FileIdentity.read(url)
-                var problem: String?
-                do { _ = try Self.inspect(url: url, root: root, rootURL: source) }
-                catch is CancellationError { throw CancellationError() }
-                catch { problem = error.localizedDescription }
-                return ImportCandidate(url: url, identity: identity, alreadyImported: identities.contains(identity.key) || paths.contains(url.path), problem: problem)
+        let next = try ImportPlanner.sourceFileIterator(source, includeSubfolders: includeSubfolders)
+        var result = [ImportCandidate]()
+        var batch = [ImportCandidate]()
+        var lastUpdate = ContinuousClock.now
+        while let url = try next() {
+            guard ImportPlanner.images.contains(url.pathExtension.lowercased()), !outputs.contains(url.path) else { continue }
+            let identity = try FileIdentity.read(url)
+            var problem: String?
+            var inspected: Photo?
+            do { inspected = try autoreleasepool { try Self.inspect(url: url, root: root, rootURL: source) } }
+            catch is CancellationError { throw CancellationError() }
+            catch { problem = error.localizedDescription }
+            var candidate = ImportCandidate(url: url, identity: identity, alreadyImported: identities.contains(identity.key) || paths.contains(url.path), problem: problem)
+            candidate.inspectedPhoto = inspected
+            result.append(candidate)
+            if let onBatch {
+                batch.append(candidate)
+                if result.count == 1 || lastUpdate.duration(to: .now) >= .milliseconds(150) {
+                    await onBatch(batch)
+                    batch.removeAll(keepingCapacity: true)
+                    lastUpdate = .now
+                }
             }
+        }
+        if !batch.isEmpty { await onBatch?(batch) }
+        return result.sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
     }
 
     func add(source: URL, candidates: [ImportCandidate], collection: String?, catalog: CatalogStore, recordItems: Bool = false,
@@ -112,9 +128,9 @@ actor ReferenceImporter {
                 report.wroteCatalog = true
             }
             let rootURL = URL(fileURLWithPath: root.path)
+            var lastProgress = ContinuousClock.now
             for (index, candidate) in candidates.enumerated() {
                 try Task.checkCancellation()
-                if recordItems && index % 16 == 0 { await progress(index) }
                 var item = ScanReport.Item(url: candidate.url, state: "pending")
                 var failure = "source_changed"
                 do {
@@ -122,7 +138,16 @@ actor ReferenceImporter {
                     guard candidate.url.resolvingSymlinksInPath().standardizedFileURL == candidate.url.standardizedFileURL,
                           try FileIdentity.read(candidate.url) == candidate.identity else { throw LRCError(L10n.text("app.theFileChangedAfterPreviewImportItAgain", defaultValue: "The file changed after preview. Import it again")) }
                     failure = "index_failed"
-                    let photo = try Self.inspect(url: candidate.url, root: root, rootURL: rootURL)
+                    let photo: Photo
+                    if var inspected = candidate.inspectedPhoto {
+                        let prefix = rootURL.standardizedFileURL.path + "/"
+                        guard candidate.url.path.hasPrefix(prefix) else { throw LRCError(L10n.text("app.theFileIsOutsideTheAuthorizedRootFolder", defaultValue: "The file is outside the authorized root folder")) }
+                        inspected.rootID = root.id
+                        inspected.relativePath = String(candidate.url.path.dropFirst(prefix.count))
+                        photo = inspected
+                    } else {
+                        photo = try Self.inspect(url: candidate.url, root: root, rootURL: rootURL)
+                    }
                     guard try JSONDecoder().decode(FileIdentity.self, from: photo.identity) == candidate.identity else {
                         failure = "source_changed"
                         throw LRCError(L10n.text("app.theFileChangedAfterPreviewImportItAgain", defaultValue: "The file changed after preview. Import it again"))
@@ -160,6 +185,10 @@ actor ReferenceImporter {
                     item.errorCode = failure
                 }
                 if recordItems { report.items.append(item) }
+                if index == 0 || index + 1 == candidates.count || lastProgress.duration(to: .now) >= .milliseconds(500) {
+                    await progress(index + 1)
+                    lastProgress = .now
+                }
             }
         } catch is CancellationError { report.cancelled = true }
         catch { report.errors.append(error.localizedDescription) }

@@ -1135,9 +1135,9 @@ struct WorkspaceView: View {
                 KeyOption(.grid, L10n.text("app.grid", defaultValue: "Grid"), help: L10n.text("app.gridG", defaultValue: "Grid (G)"), icon: "square.grid.2x2"),
                 KeyOption(.single, L10n.text("app.loupe", defaultValue: "Loupe"), help: L10n.text("app.loupeE", defaultValue: "Loupe (E)"), icon: "rectangle"),
                 KeyOption(.compare, L10n.text("app.comparePhotos", defaultValue: "Compare Photos"), help: L10n.text("app.comparePhotosCPinTheCurrentPhotoAndSwitch", defaultValue: "Compare photos (C): pin the current photo and switch candidates on the right"), icon: "rectangle.split.2x1",
-                          identifier: "comparison-start", enabled: model.active != nil || model.comparison != nil),
-                KeyOption(.survey, L10n.text("app.surveyPhotos_2150", defaultValue: "Survey Photos"), help: L10n.text("app.surveyPhotosNViewTheSelectedGroupRemovingCandidates", defaultValue: "Survey photos (N): view the selected group; removing candidates preserves originals"), icon: "square.grid.3x3", identifier: "survey-start", enabled: model.selection.count >= 2 || model.survey != nil),
-                ], selection: viewMode, lamps: false, height: Self.toolKey, padding: 7).fixedSize().disabled(!model.workspaceAvailable)
+                          identifier: "comparison-start", enabled: model.workspaceAvailable && (model.active != nil || model.comparison != nil)),
+                KeyOption(.survey, L10n.text("app.surveyPhotos_2150", defaultValue: "Survey Photos"), help: L10n.text("app.surveyPhotosNViewTheSelectedGroupRemovingCandidates", defaultValue: "Survey photos (N): view the selected group; removing candidates preserves originals"), icon: "square.grid.3x3", identifier: "survey-start", enabled: model.workspaceAvailable && (model.selection.count >= 2 || model.survey != nil)),
+                ], selection: viewMode, lamps: false, height: Self.toolKey, padding: 7).fixedSize().disabled(!model.canBrowseDuringTask)
             }
             if model.canCompareStack {
                 Button(L10n.text("app.compareThisStack", defaultValue: "Compare Stack"), action: model.beginStackComparison)

@@ -194,26 +194,34 @@ actor ImportPlanner {
                         groups: groups, omitted: omitted, attachmentCandidates: nonImages.sorted { $0.path < $1.path })
     }
     nonisolated static func sourceFiles(_ source: URL, includeSubfolders: Bool) throws -> [URL] {
+        let next = try sourceFileIterator(source, includeSubfolders: includeSubfolders)
+        var files = [URL]()
+        while let url = try next() { files.append(url) }
+        return files.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
+    nonisolated static func sourceFileIterator(_ source: URL, includeSubfolders: Bool) throws -> () throws -> URL? {
         var errors = [String]()
         var options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles, .skipsPackageDescendants]
         if !includeSubfolders { options.insert(.skipsSubdirectoryDescendants) }
         guard let enumerator = FileManager.default.enumerator(at: source, includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey], options: options, errorHandler: { url, error in
             errors.append("\(url.lastPathComponent)：\(error.localizedDescription)"); return true
         }) else { throw LRCError(L10n.text("app.cannotReadTheSource", defaultValue: "Cannot read the source")) }
-        var files = [URL]()
-        while let url = enumerator.nextObject() as? URL {
-            try Task.checkCancellation()
-            let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey])
-            if url.lastPathComponent == "ImportRecovery" || values.isSymbolicLink == true || values.isPackage == true || values.isUbiquitousItem == true {
-                // Calling skipDescendants on a leaf can skip the next directory
-                // on macOS. A linked file has no descendants to skip.
-                if values.isDirectory == true { enumerator.skipDescendants() }
-                continue
+        return {
+            while let url = enumerator.nextObject() as? URL {
+                try Task.checkCancellation()
+                let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .isPackageKey, .isUbiquitousItemKey])
+                if url.lastPathComponent == "ImportRecovery" || values.isSymbolicLink == true || values.isPackage == true || values.isUbiquitousItem == true {
+                    // Calling skipDescendants on a leaf can skip the next directory
+                    // on macOS. A linked file has no descendants to skip.
+                    if values.isDirectory == true { enumerator.skipDescendants() }
+                    continue
+                }
+                if values.isRegularFile == true { return url }
             }
-            if values.isRegularFile == true { files.append(url) }
+            guard errors.isEmpty else { throw LRCError(L10n.text("app.incompleteSourceRead", defaultValue: "Incomplete source read: ") + errors.joined(separator: "; ")) }
+            return nil
         }
-        guard errors.isEmpty else { throw LRCError(L10n.text("app.incompleteSourceRead", defaultValue: "Incomplete source read: ") + errors.joined(separator: "; ")) }
-        return files.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
     }
     nonisolated static func uniqueDestinations(members: [CopyMember], reserved: Set<String>) throws -> [URL] {
         guard let primary = members.first else { return [] }

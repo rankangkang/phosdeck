@@ -10,11 +10,25 @@ final class WorkspaceKeyboard {
         }
     }
     static func handle(_ event: NSEvent, model: AppModel) -> NSEvent? {
-        guard model.workspaceAvailable else { return event }
+        guard model.canBrowseDuringTask else { return event }
         guard let window = event.window, isWorkspaceWindow(window),
               window.attachedSheet == nil, !(window.firstResponder is NSTextView),
               !(window.firstResponder is NSControl) else { return event }
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if !model.workspaceAvailable {
+            guard modifiers.isEmpty else { return event }
+            switch event.keyCode {
+            case 123: model.move(-1)
+            case 124: model.move(1)
+            default:
+                switch event.charactersIgnoringModifiers?.lowercased() {
+                case "g": model.selectWorkspace(.grid)
+                case "e": model.selectWorkspace(.single)
+                default: return event
+                }
+            }
+            return nil
+        }
         if model.targetedAdjustment != nil {
             if let canvas = window.firstResponder as? PhotoMetalCanvas, canvas.targetedToolID != nil,
                [49, 53, 125, 126].contains(event.keyCode) || ["+", "=", "-"].contains(event.charactersIgnoringModifiers ?? "") {

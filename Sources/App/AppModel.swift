@@ -579,6 +579,10 @@ final class AppModel {
     /// Menu-bar commands stay reachable while a sheet is up, so they must not stack a second sheet.
     var presentingSheet: Bool { showCameraDiagnostics || showTaskResults || showImport || folderReview != nil || mergeSession != nil || showXMPPresetImport || showExport || showNewCatalog || showCatalogArchive || lightroomImportSource != nil || showOutputRecovery || showCopyRecovery || importConflict != nil || catalogUtilityOpen || showAutoStacks || showPairing || startupCatalogOpen != nil || photoRemoval != nil }
     var canSwitchCatalog: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
+    private(set) var browsingDuringImport = false
+    var canBrowseDuringTask: Bool {
+        workspaceAvailable || (browsingDuringImport && !presentingSheet && !applyingAdjustments && !cacheMaintenance)
+    }
     var workspaceAvailable: Bool { !busy && !applyingAdjustments && !cacheMaintenance && !presentingSheet }
     var canMarkPhotos: Bool { workspaceAvailable && (workspaceMode == .grid || photoSwitchDisplay == nil) }
     var canLocateOriginal: Bool { catalog != nil && active != nil && workspaceAvailable && comparison == nil && survey == nil }
@@ -622,7 +626,7 @@ final class AppModel {
         selectWorkspace(module == .develop ? .develop : librarySingleView ? .single : .grid)
     }
     func selectWorkspace(_ mode: WorkspaceMode) {
-        guard workspaceAvailable else { return }
+        guard workspaceAvailable || (canBrowseDuringTask && (mode == .grid || mode == .single)) else { return }
         if let origin = comparisonOrigin?.context {
             let previous: WorkspaceMode = origin.surveyIDs != nil ? .survey : origin.edit ? .develop : origin.single ? .single : .grid
             if mode == previous { finishComparison(); return }
@@ -1663,11 +1667,39 @@ final class AppModel {
     func runReference(source: URL, candidates: [ImportCandidate], collection: String?, pairAfterImport: Bool = false) {
         guard !busy, let catalog else { return }
         busy = true
+        let title = L10n.text("app.import", defaultValue: "Import")
+        browsingDuringImport = true
+        status = title
+        taskProgress = TaskProgress(title: title, done: 0, total: candidates.count)
         task = Task {
-            _ = await performReferenceImport(source: source, candidates: candidates, collection: collection, catalog: catalog, pairAfterImport: pairAfterImport)
-            busy = false
+            defer { busy = false; browsingDuringImport = false; taskProgress = nil }
+            _ = await performReferenceImport(source: source, candidates: candidates, collection: collection, catalog: catalog, pairAfterImport: pairAfterImport) { [self] done in
+                await MainActor.run { taskProgress = TaskProgress(title: title, done: done, total: candidates.count) }
+                if done < candidates.count { await publishImportPage(catalog) }
+            }
         }
     }
+    @ObservationIgnored private var lastCopyPageRefresh: ContinuousClock.Instant?
+
+    private func publishImportPage(_ catalog: CatalogStore) async {
+        let currentQuery = query, offset = pageOffset, limit = pageSize
+        do {
+            let (page, count, storageRoots, pairs) = try await Task.detached(priority: .utility) {
+                let page = try catalog.page(currentQuery, offset: offset, limit: limit)
+                let pairs = try catalog.pairedSources(within: Set(page.photos.map(\.sourceKey)))
+                return (page, try catalog.photoCount(), try catalog.roots(), pairs)
+            }.value
+            guard self.catalog === catalog, currentQuery == query, pageOffset == offset else { return }
+            totalCount = count
+            if storageRoots.map(\.id) != roots.map(\.id) { roots = storageRoots }
+            if photos != page.photos { photos = page.photos }
+            resultCount = page.total
+            visibleCount = page.visibleTotal
+            stackBadges = page.badges
+            pairedSourceIDs = pairs
+        } catch { self.error = error.localizedDescription }
+    }
+
     func performReferenceImport(source: URL, candidates: [ImportCandidate], collection: String?, catalog: CatalogStore,
                                 pairAfterImport: Bool, recordItems: Bool = false,
                                 progress: @escaping @Sendable (Int) async -> Void = { _ in }) async -> (ScanReport, Bool) {
@@ -3515,9 +3547,10 @@ final class AppModel {
         guard !busy, let catalog else { return }
         // Retain both grants after the import sheet closes and while planning runs.
         let sourceLease = AccessLease(url: source), targetLease = AccessLease(url: target)
+        browsingDuringImport = true
         busy = true; status = L10n.text("app.importingReadingPhotosAndDestinations", defaultValue: "Importing: reading photos and destinations…")
         task = Task {
-            defer { busy = false; withExtendedLifetime([sourceLease, targetLease]) {} }
+            defer { busy = false; browsingDuringImport = false; withExtendedLifetime([sourceLease, targetLease]) {} }
             do {
                 var plan = try await ImportPlanner().plan(source: source, target: target, layout: layout, policy: .skip,
                     skipIdentical: true, dateOverride: dateOverride, confirmSidecars: includeSidecars, catalog: catalog,
@@ -3542,13 +3575,17 @@ final class AppModel {
                            showError: Bool = true,
                            groupProgress: (@Sendable (Int, Int) async -> Void)? = nil) async -> (CopyPlan, Set<String>, Bool) {
         activeCopyPlanID = plan.id
-        defer { activeCopyPlanID = nil }
+        defer { activeCopyPlanID = nil; lastCopyPageRefresh = nil; taskProgress = nil }
         if usesPreferences { UserDefaults.standard.set(plan.targetBookmark, forKey: "lastCopyTarget") }
         importingPhotoIDs = []
         let result = await CopyImporter().run(plan, catalog: catalog, resolveConflict: { [weak self] conflict in
             await self?.requestImportConflict(conflict)
-        }, onImported: { [self] id in await MainActor.run { _ = importingPhotoIDs.insert(id) } },
-           groupProgress: groupProgress) { [self] text in await MainActor.run { status = text } }
+        }, onImported: { [self] id in
+            await recordCopyProgress(id, catalog: catalog)
+        }, groupProgress: { [self] done, total in
+            await MainActor.run { taskProgress = TaskProgress(title: L10n.text("app.import", defaultValue: "Import"), done: done, total: total) }
+            await groupProgress?(done, total)
+        }) { [self] text in await MainActor.run { status = text } }
         let imported = importingPhotoIDs
         let refreshed = refreshAfterImport(ids: imported, cancelled: result.state == "cancelled")
         importingPhotoIDs = []
@@ -3569,6 +3606,13 @@ final class AppModel {
         }
         return (result, imported, refreshed)
     }
+    private func recordCopyProgress(_ id: String, catalog: CatalogStore) async {
+        importingPhotoIDs.insert(id)
+        if let lastCopyPageRefresh, lastCopyPageRefresh.duration(to: .now) < .milliseconds(500) { return }
+        lastCopyPageRefresh = .now
+        await publishImportPage(catalog)
+    }
+
     private func requestImportConflict(_ conflict: ImportConflict) async -> ImportConflictDecision? {
         let token = UUID()
         return await withTaskCancellationHandler {

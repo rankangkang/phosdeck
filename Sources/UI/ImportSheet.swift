@@ -26,7 +26,7 @@ struct ImportSheet: View {
     @State private var pairAfterImport = false
     @State private var thumbnailSize = 150.0
 
-    private var shown: [ImportCandidate] { candidates.filter { !onlyNew || !$0.alreadyImported } }
+    private var shown: [ImportCandidate] { onlyNew ? candidates.filter { !$0.alreadyImported } : candidates }
     private var selected: [ImportCandidate] { candidates.filter { selection.contains($0.id) && eligible($0) } }
     private func eligible(_ item: ImportCandidate) -> Bool { item.problem == nil && (!skipImported || !item.alreadyImported) }
 
@@ -105,9 +105,12 @@ struct ImportSheet: View {
                 .overlay(alignment: .trailing) { Text(L10n.text("app.photos", defaultValue: "\(shown.count) photos")).foregroundStyle(Theme.textSecondary) }
                 .padding(12).background(Theme.panel)
             if scanning {
-                VStack(spacing: 14) { ProgressView(); Text(L10n.text("app.readingSourcePhotos", defaultValue: "Reading source photos…")); Button(L10n.text("app.cancelScan", defaultValue: "Cancel Scan")) { scanID = UUID(); scanTask?.cancel(); scanning = false }.buttonStyle(.key) }
+                HStack(spacing: 14) { ProgressView().controlSize(.small); Text(L10n.text("app.readingSourcePhotos", defaultValue: "Reading source photos…")); Button(L10n.text("app.cancelScan", defaultValue: "Cancel Scan")) { scanID = UUID(); scanTask?.cancel(); scanning = false }.buttonStyle(.key) }
                     .foregroundStyle(Color(nsColor: mat.text))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(8)
+            }
+            if shown.isEmpty && scanning {
+                Spacer()
             } else if shown.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "photo.on.rectangle.angled").font(.system(size: 38)).foregroundStyle(Color(nsColor: mat.textSecondary))
@@ -221,11 +224,16 @@ struct ImportSheet: View {
         scanning = true
         scanTask = Task {
             do {
-                let result = try await model.importer.preview(source: source, includeSubfolders: recursive, catalog: catalog)
+                let result = try await model.importer.preview(source: source, includeSubfolders: recursive, catalog: catalog) { batch in
+                    guard token == scanID, !Task.isCancelled else { return }
+                    candidates.append(contentsOf: batch)
+                    selection.formUnion(batch.filter(eligible).map(\.id))
+                }
                 guard token == scanID, !Task.isCancelled else { return }
-                candidates = result; selection = Set(result.filter(eligible).map(\.id))
+                candidates = result
             } catch {
                 guard token == scanID else { return }
+                candidates = []; selection = []
                 self.error = error.localizedDescription
             }
             scanning = false
@@ -240,13 +248,25 @@ struct ImportThumbnail: View {
         Group {
             if let image { Image(decorative: image, scale: 1).resizable().scaledToFit() }
             else { Image(systemName: "photo").font(.largeTitle).foregroundStyle(Theme.textSecondary) }
-        }.task(id: url) {
-            let work = Task.detached(priority: .utility) { () -> CGImage? in
-                guard !Task.isCancelled, let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
-                return CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 320] as CFDictionary)
-            }
-            let result = await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
+        }.task(id: url, priority: .utility) {
+            let result = await ImportThumbnailDecoder.shared.thumbnail(url)
             if !Task.isCancelled { image = result }
+        }.onDisappear { image = nil }
+    }
+}
+
+private actor ImportThumbnailDecoder {
+    static let shared = ImportThumbnailDecoder()
+
+    func thumbnail(_ url: URL) -> CGImage? {
+        guard !Task.isCancelled else { return nil }
+        return autoreleasepool {
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+            return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 320
+            ] as CFDictionary)
         }
     }
 }
