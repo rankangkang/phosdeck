@@ -726,7 +726,7 @@ enum AppMCPTool: String, CaseIterable {
             output = "items with number, photo_id, name, version_name, source_revision, recipe_revision, marks, source_status and stack. query_mode, source_id, page_offset, matched_count, visible_count and next_cursor. With contact_sheet, items also describe cell_pixels, image_pixels and thumbnail_status for the numbered PNG. Pass a candidate's ID and revisions to get_photo_preview with resolution=native for a 1:1 region."
         case .preview:
             description = "Read an explicit photo version as an sRGB PNG when image sharing is on. Set preview_quality=interactive for faster visual feedback on a whole scaled photo draft, without overlays or alternate views. Interactive and quality requests can run concurrently. A draft revision change requests cancellation of its earlier previews. Request the default quality render to verify appearance or use canvas tools. Use crop_canvas for crop and guide editing, original for the baseline, or before for an aligned comparison. The default scaled resolution accepts a normalized top-left region. Use resolution=native with region or an integer top-left region_pixels for an unscaled tile of the edited frame. Omit long_edge in native mode. Use plan_only=true to check the tile dimensions and limits without receiving pixels. Omit the region to inspect the full frame. Saved mode supports a history, snapshot, preset, hidden group, mask or smart selection overlay, or temporarily hidden local effect."
-            output = "Photo revisions, canvas dimensions, region, actual width and height. Native requests also report region_pixels, fits and limits, and suggest a smaller region when needed. Rendered previews include preview_id, preview_quality, reused, coordinate_space, editable_canvas, histogram, and a PNG content block. Interactive images are for visual review only. Multi-page TIFF previews report tiff_page_count and tiff_preview_page (1)."
+            output = "Photo revisions, canvas dimensions, region, actual width and height. Native requests also report region_pixels, fits and limits, and suggest a smaller region when needed. Rendered previews include preview_id, preview_quality, reused, coordinate_space, editable_canvas, histogram, and a PNG content block. Quality requests that exceed the render deadline return preview_timeout. Interactive images are for visual review only. Multi-page TIFF previews report tiff_page_count and tiff_preview_page (1)."
         case .editPhotoDraft:
             description = "Begin an in-memory photo draft for exposure, color, preset strength, local masks and spot repairs with explicit photo_id, source_revision and recipe_revision. Poll get_job for draft_id and draft_revision. Pass them to draft-aware editing and preview tools. Commit with the current draft_id and draft_revision to create one saved edit and undo action, or cancel with the same fields to discard the draft. There is one active draft per catalog session."
             output = "job_id for begin and commit; draft identity, current revision and photo revisions on begin; saved revisions and operation_id on commit; discarded on cancel."
@@ -973,16 +973,19 @@ final class AppMCPTools {
     private lazy var qualityPreviewPipeline = ImagePipeline(qualityCacheLimit: 0)
     private var interactivePreviewPipeline: ImagePipeline?
     private let renderScaledQuality: ScaledQualityRenderer
+    private let qualityPreviewDeadline: Duration
     let workflows: AppMCPWorkflows
 
     init(model: AppModel, appName: String, version: String, bundleID: String, sharesImages: Bool,
          chooseFile: AppMCPWorkflows.FilePicker? = nil,
-         renderScaledQuality: ScaledQualityRenderer? = nil) {
+         renderScaledQuality: ScaledQualityRenderer? = nil,
+         qualityPreviewDeadline: Duration = MCPQualityPreviewDeadline.render) {
         self.model = model
         self.appName = appName
         self.version = version
         self.bundleID = bundleID
         self.sharesImages = sharesImages
+        self.qualityPreviewDeadline = qualityPreviewDeadline
         self.renderScaledQuality = renderScaledQuality ?? { pipeline, request, edge in
             try await pipeline.render(request, longEdge: edge)
         }
@@ -1525,9 +1528,21 @@ final class AppMCPTools {
                            cacheKey: cacheKey, trialPipeline: interactive ? pipeline : nil)
         }
         previewWorkers[quality] = PreviewWorker(task: worker, draft: draft?.reference)
-        // Keep the slot occupied while a cancelled render unwinds through Core Image.
-        defer { previewWorkers[quality] = nil }
-        let result = await withTaskCancellationHandler { await worker.result } onCancel: { worker.cancel() }
+        let reply: Result<Preview, Error>? = await withTaskCancellationHandler {
+            if interactive { return await worker.result }
+            return await waitForQualityPreview(worker)
+        } onCancel: { worker.cancel() }
+        if reply == nil {
+            worker.cancel()
+            // The client can receive its timeout while Core Image still owns this lane.
+            Task {
+                _ = await worker.result
+                previewWorkers[quality] = nil
+            }
+        }
+        defer { if reply != nil { previewWorkers[quality] = nil } }
+        let result = reply ?? .failure(MCPToolProblem(code: "preview_timeout", summary: "The quality preview did not finish in time.",
+                                                       next: "Retry the preview once rendering has stopped."))
         if interactive, case .failure = result { interactivePreviewPipeline = nil }
         guard !stopped, !Task.isCancelled else { throw MCPToolProblem.stopped }
         guard sharesImages, imageAccessGeneration == accessGeneration else { throw MCPToolProblem.imageDisabled }
@@ -1551,6 +1566,21 @@ final class AppMCPTools {
         let summary = data["reused"] == true ? "Reused the requested photo preview." : "Rendered the requested photo preview."
         return .init(summary, data: data,
                      artifacts: [["type": "photo_preview", "id": .string(previewID), "name": .string(image.name)]], image: pixels.png)
+    }
+
+    private func waitForQualityPreview(_ worker: Task<Preview, Error>) async -> Result<Preview, Error>? {
+        let (stream, completion) = AsyncStream<Result<Preview, Error>>.makeStream(bufferingPolicy: .bufferingOldest(1))
+        Task {
+            completion.yield(await worker.result)
+            completion.finish()
+        }
+        let timeout = Task {
+            do { try await Task.sleep(for: qualityPreviewDeadline) } catch { return }
+            completion.finish()
+        }
+        defer { timeout.cancel() }
+        var iterator = stream.makeAsyncIterator()
+        return await iterator.next()
     }
 
     private func cancelPreviewWorkers() {

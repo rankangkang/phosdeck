@@ -964,6 +964,43 @@ final class AgentMCPTests: XCTestCase {
         XCTAssertEqual(oversizedStatus, 413)
     }
 
+    @MainActor func testQualityPreviewUsesItsOwnResponseDeadline() async throws {
+        let (_, model, tools) = try fixture()
+        let sessions = MCPHTTPSessions(name: "phosdeck-test", version: "1", tools: tools)
+        addTeardownBlock { await sessions.stop() }
+        var headers = ["Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+                       "MCP-Protocol-Version": "2025-11-25"]
+        func post(_ rpc: Value, preview: Bool = false) async throws -> ReceivedResponse {
+            let body = try JSONEncoder().encode(rpc)
+            let received = ReceivedResponse()
+            await sessions.respond(to: HTTPRequest(method: "POST", headers: headers, body: body), sendQualityPreview: { reply in
+                XCTAssertTrue(preview)
+                return try await received.collect(reply)
+            }) { reply in
+                XCTAssertFalse(preview)
+                return try await received.collect(reply)
+            }
+            return received
+        }
+        let initialized = try await post(["jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                          "params": ["protocolVersion": "2025-11-25", "capabilities": [:],
+                                                     "clientInfo": ["name": "test", "version": "1"]]])
+        let receivedHeaders = await initialized.headers
+        headers["MCP-Session-Id"] = try XCTUnwrap(receivedHeaders["MCP-Session-Id"])
+        _ = try await post(["jsonrpc": "2.0", "method": "notifications/initialized"])
+        let catalog = try XCTUnwrap(model.catalogSessionID)
+        let qualityArgs: [String: Value] = ["catalog_session_id": .string(catalog), "photo_id": "a", "source_revision": 1, "recipe_revision": 0]
+        let interactiveArgs = qualityArgs.merging(["preview_quality": "interactive"]) { _, requested in requested }
+        let cases: [(AppMCPTool, [String: Value], Bool)] = [(.preview, qualityArgs, true), (.preview, interactiveArgs, false), (.workspace, [:], false)]
+        for (index, item) in cases.enumerated() {
+            let (tool, arguments, shouldUsePreviewDeadline) = item
+            let result = try await post(["jsonrpc": "2.0", "id": .int(index + 2), "method": "tools/call",
+                                         "params": ["name": .string(tool.rawValue), "arguments": .object(arguments)]], preview: shouldUsePreviewDeadline)
+            let status = await result.statusCode
+            XCTAssertEqual(status, 200)
+        }
+    }
+
     @MainActor func testClosedNotificationConnectionKeepsProtocolSession() async throws {
         let (catalog, model, tools) = try fixture()
         try catalog.collection(name: "Review set", id: "review")

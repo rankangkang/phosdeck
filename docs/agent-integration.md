@@ -178,6 +178,8 @@
 
 HTTP 响应流随 POST 请求返回。独立 GET 流返回 `405`。每次连接处理一个请求。`plan_photo_merge` 和 `edit_merge_retouch` 的请求体上限为 1 MiB，以容纳长序列的来源修订和长笔画。其余方法与工具的上限为 64 KiB，超过上限返回 HTTP `413`。传输会话空闲 15 分钟或达到消息及响应大小上限时需要重新初始化，业务请求代次在监听运行期间继续有效。图库会话仍有效时，重连后可继续使用有效的分页游标。
 
+`get_photo_preview` 的质量预览最多等待渲染 150 秒，连接最多保留 180 秒。达到渲染时限时返回 `preview_timeout`。旧渲染结束前，同质量的新请求返回 `workspace_busy`，之后可在同一会话重试。
+
 导入和导出等较长的任务可间隔数秒轮询。传输会话到期后重新初始化，核对服务实例和图库会话，并用原 `job_id` 继续查询。
 
 “复制 JSON 配置”适用于接受 `mcpServers` 的 Streamable HTTP 客户端。复制的内容包含 `type: "http"`、当前 `url` 和 `Authorization` 请求头。Claude Code 可通过 `--mcp-config` 加载这份 JSON。令牌随服务重启更新，请将配置保存在本机。[Claude Code MCP 配置](https://code.claude.com/docs/en/mcp)

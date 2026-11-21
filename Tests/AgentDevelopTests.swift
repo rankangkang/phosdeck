@@ -14,13 +14,15 @@ final class AgentDevelopTests: XCTestCase {
         let epoch: Value
 
         @MainActor init(_ catalog: CatalogStore, picker: AppMCPWorkflows.FilePicker? = nil,
-                        renderScaledQuality: AppMCPTools.ScaledQualityRenderer? = nil) async throws {
+                        renderScaledQuality: AppMCPTools.ScaledQualityRenderer? = nil,
+                        qualityPreviewDeadline: Duration = MCPQualityPreviewDeadline.render) async throws {
             self.catalog = catalog
             model = AppModel()
             model.catalog = catalog
             try model.reload()
             tools = AppMCPTools(model: model, appName: "Phosdeck Test", version: "1", bundleID: "test",
-                                sharesImages: false, chooseFile: picker, renderScaledQuality: renderScaledQuality)
+                                sharesImages: false, chooseFile: picker, renderScaledQuality: renderScaledQuality,
+                                qualityPreviewDeadline: qualityPreviewDeadline)
             let state = await tools.call(.init(name: AppMCPTool.workspace.rawValue))
             let data = state.structuredContent?.objectValue?["data"]?.objectValue
             session = try XCTUnwrap(data?["catalog_session_id"])
@@ -343,7 +345,7 @@ final class AgentDevelopTests: XCTestCase {
 
     private actor QualityPreviewGate {
         private var continuation: CheckedContinuation<Void, Never>?
-        private var released = false
+        private(set) var released = false
 
         func wait() async {
             if !released { await withCheckedContinuation { continuation = $0 } }
@@ -405,6 +407,61 @@ final class AgentDevelopTests: XCTestCase {
         let quality = try client.data(await client.call(.preview, qualityArgs))
         XCTAssertEqual(quality["draft_revision"], latest["draft_revision"])
         XCTAssertEqual(quality["preview_quality"], "quality")
+    }
+
+    @MainActor func testMaskPreviewTimeoutRepliesBeforeTheRenderLaneDrains() async throws {
+        let (catalog, _) = try await catalog(ids: ["a"])
+        let mask = LocalAdjustment(components: [MaskComponent(tool: .luminance)])
+        let baseline = try await Client(catalog)
+        var recipe = try baseline.recipe("a")
+        recipe.localAdjustments = [mask]
+        recipe.schemaVersion = 3
+        recipe.maskVersion = 2
+        try catalog.saveRecipe(id: "a", recipe: recipe)
+        let arguments = try baseline.edits("a", ["long_edge": 128, "mask_overlay": ["mask_id": .string(mask.id.uuidString), "style": "monochrome"]])
+        baseline.tools.setSharesImages(true)
+        let reference = await baseline.call(.preview, arguments)
+        XCTAssertFalse(reference.isError == true)
+        guard case .image = reference.content.last else { return XCTFail("Expected a reference mask PNG") }
+
+        let gate = QualityPreviewGate()
+        let cancellation = expectation(description: "The timed-out renderer was cancelled")
+        let response = expectation(description: "MCP replied while the renderer was still waiting")
+        let client = try await Client(catalog, renderScaledQuality: { pipeline, request, edge in
+            let image = try await pipeline.render(request, longEdge: edge)
+            if !(await gate.released) {
+                await withTaskCancellationHandler { await gate.wait() } onCancel: { cancellation.fulfill() }
+            }
+            return image
+        }, qualityPreviewDeadline: .seconds(1))
+        client.tools.setSharesImages(true)
+        var earlyResult: CallTool.Result?
+        let pending = Task {
+            earlyResult = await client.call(.preview, arguments)
+            response.fulfill()
+        }
+        addTeardownBlock {
+            await gate.release()
+            await pending.value
+        }
+        await fulfillment(of: [cancellation, response], timeout: 5)
+        guard let earlyResult else { return XCTFail("The preview never returned a timeout") }
+        client.error(earlyResult, "preview_timeout")
+        XCTAssertEqual(earlyResult.content.count, 1)
+        client.error(await client.call(.preview, arguments), "workspace_busy")
+
+        await gate.release()
+        let deadline = ContinuousClock.now + .seconds(3)
+        repeat {
+            let retry = await client.call(.preview, arguments)
+            if retry.structuredContent?.objectValue?["error"]?.objectValue?["code"] != "workspace_busy" {
+                XCTAssertFalse(retry.isError == true)
+                XCTAssertEqual(retry.content.last, reference.content.last)
+                return
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        } while ContinuousClock.now < deadline
+        XCTFail("The renderer completed but the preview lane was not released")
     }
 
     @MainActor func testQualityPreviewReuseChecksSizeSharingAndSourceDigest() async throws {

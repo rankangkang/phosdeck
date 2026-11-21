@@ -5,6 +5,12 @@ import NIOHTTP1
 import NIOPosix
 import Security
 
+enum MCPQualityPreviewDeadline {
+    static let render = Duration.seconds(150)
+    // Allow the render deadline's terminal result to be serialized and flushed.
+    static let response = TimeAmount.seconds(180)
+}
+
 struct MCPHTTPListener: Sendable {
     static let host = "127.0.0.1"
     static let path = "/mcp"
@@ -137,8 +143,16 @@ private final class MCPHTTPHandler: ChannelInboundHandler {
             body = Data()
             finishedReading = true
             setDeadline(channel, seconds: 90)
+            let ordinaryDeadline = deadline
             task = Task { [sessions] in
-                await sessions.respond(to: request) { try await Self.write($0, to: channel) }
+                await sessions.respond(to: request, sendQualityPreview: { response in
+                    let extended = channel.eventLoop.scheduleTask(in: MCPQualityPreviewDeadline.response) {
+                        channel.close(promise: nil)
+                    }
+                    ordinaryDeadline?.cancel()
+                    defer { extended.cancel() }
+                    return try await Self.write(response, to: channel)
+                }) { try await Self.write($0, to: channel) }
                 channel.close(promise: nil)
             }
         }
@@ -213,6 +227,8 @@ private final class MCPHTTPHandler: ChannelInboundHandler {
 }
 
 actor MCPHTTPSessions {
+    typealias ResponseWriter = @Sendable (HTTPResponse) async throws -> Int
+
     private struct SessionID: SessionIDGenerator {
         let value: String
         func generateSessionID() -> String { value }
@@ -246,22 +262,24 @@ actor MCPHTTPSessions {
         self.tools = tools
     }
 
-    func respond(to request: HTTPRequest, send: @Sendable (HTTPResponse) async throws -> Int) async {
+    func respond(to request: HTTPRequest, sendQualityPreview: ResponseWriter? = nil, send: ResponseWriter) async {
         guard !stopping, !Task.isCancelled else { return }
         let sessionID = request.header(HTTPHeaderName.sessionID)
         var rpcID: String?
         var initializing = false
+        var waitsForQualityPreview = false
         if request.method == "POST" {
             guard let data = request.body, let json = try? JSONDecoder().decode([String: Value].self, from: data),
                   json["jsonrpc"] == "2.0" else {
                 _ = try? await send(.error(statusCode: 400, .parseError("Expected a JSON-RPC 2.0 message")))
                 return
             }
+            let params = json["params"]?.objectValue
+            let tool = json["method"] == "tools/call" ? params?["name"]?.stringValue.flatMap(AppMCPTool.init(rawValue:)) : nil
             if data.count > MCPHTTPListener.standardBodyBytes {
                 // Only merge plans and retouch strokes need the larger envelope. The
                 // tool schemas still validate every source, revision and path point.
-                let tool = json["params"]?.objectValue?["name"]?.stringValue.flatMap(AppMCPTool.init(rawValue:))
-                guard json["method"] == "tools/call", tool == .planMerge || tool == .editMergeRetouch else {
+                guard tool == .planMerge || tool == .editMergeRetouch else {
                     _ = try? await send(.error(statusCode: 413, .invalidRequest("Request body exceeds 64 KiB for this MCP method or tool")))
                     return
                 }
@@ -275,6 +293,7 @@ actor MCPHTTPSessions {
                 rpcID = value
             }
             initializing = rpcID != nil && json["method"] == "initialize"
+            waitsForQualityPreview = rpcID != nil && tool == .preview && params?["arguments"]?.objectValue?["preview_quality"] != "interactive"
         }
 
         let session: Session
@@ -334,7 +353,11 @@ actor MCPHTTPSessions {
         defer { session.inFlight -= 1; session.lastAccess = .now }
         let response = await session.transport.handleRequest(request)
         do {
-            session.responseBytes += try await send(response)
+            if waitsForQualityPreview, case .stream = response, let sendQualityPreview {
+                session.responseBytes += try await sendQualityPreview(response)
+            } else {
+                session.responseBytes += try await send(response)
+            }
         } catch {
             // The peer may close an individual HTTP connection as soon as it has a reply.
             // Charge an interrupted stream for the largest preview the SDK can retain.
