@@ -444,7 +444,7 @@ float4 rasterExposureColour(sampler photo, sampler base, sampler low, sampler hi
 float4 asShotCurve(sample_t input, float3 bend) {
     float4 pixel = straightColor(input);
     float3 v = clamp(pixel.rgb, 0.0f, 1.0f);
-    return premultiply(float4(pixel.rgb + bend * v * (1.0f - v), pixel.a));
+    return premultiply(float4(pixel.rgb + bend * v * (1.0f - v) / (1.0f + max(bend - 0.8f, 0.0f) * v), pixel.a));
 }
 float4 cameraLook(sampler source, sampler table, float dimension, float upperBound, float4 headroomWeights) {
     float4 pixel = straightColor(source.sample(source.coord()));

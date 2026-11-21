@@ -215,6 +215,7 @@ struct AsShotMatch {
         }
         guard let (scale,dx,dy) = alignment else { return .zero }
         var numerator = SIMD3<Float>.zero, denominator = SIMD3<Float>.zero
+        var liftNumerator = SIMD3<Float>.zero, liftDenominator = SIMD3<Float>.zero
         var validation: [(SIMD3<Float>, SIMD3<Float>)] = []
         var count = 0
         for y in 5..<side-5 {
@@ -228,17 +229,34 @@ struct AsShotMatch {
                 let basis = v * (1-v)
                 if (x/4 + y/4).isMultiple(of: 3) { validation.append((v,w)); continue }
                 numerator += basis * (w-v); denominator += basis*basis
+                // Solve the highlight-preserving branch of corrected(_:bend:)
+                // for bend by least squares, using only the training blocks.
+                let liftBasis = v * (1-w)
+                liftNumerator += liftBasis * (w-v) * (1-0.8*v)
+                liftDenominator += liftBasis * liftBasis
                 count += 1
             }
         }
         guard count >= 64, validation.count >= 32, denominator.min() > 0.1 else { return .zero }
         let curve = simd_clamp(numerator/denominator, SIMD3(repeating: -0.8), SIMD3(repeating: 0.8))
-        var before: Float = 0, after: Float = 0
-        for (v,w) in validation {
-            before += simd_length(v-w)
-            after += simd_length(v + curve*v*(1-v) - w)
+        var lifted = curve
+        for channel in 0..<3 where curve[channel] >= 0.8 && liftDenominator[channel] > 0.1 {
+            lifted[channel] = min(3, max(0.8, liftNumerator[channel] / liftDenominator[channel]))
         }
-        return after < before * 0.97 ? curve : .zero
+        func error(_ bend: SIMD3<Float>) -> Float {
+            validation.reduce(0) { total, pair in total + simd_length(corrected(pair.0, bend: bend) - pair.1) }
+        }
+        let baselineError = error(.zero)
+        let curveError = error(curve)
+        if lifted != curve, error(lifted) < 0.97 * min(curveError, baselineError) { return lifted }
+        return curveError < baselineError * 0.97 ? curve : .zero
+    }
+
+    /// Above the quadratic's positive limit, roll the additional lift off
+    /// toward white. Black and white stay fixed and the slope stays positive.
+    static func corrected(_ rgb: SIMD3<Float>, bend: SIMD3<Float>) -> SIMD3<Float> {
+        let v = simd_clamp(rgb, .zero, SIMD3(repeating: 1))
+        return rgb + bend*v*(1-v) / (1 + simd_max(bend - 0.8, .zero)*v)
     }
 
     func apply(_ image: CIImage) throws -> CIImage {

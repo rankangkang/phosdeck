@@ -42,6 +42,30 @@ final class CameraLookTests: XCTestCase {
         XCTAssertNil(AsShotMatch.fujiMakerLook(Data("FUJIFILM".utf8)))
     }
 
+    func testStrongAsShotShadowLiftPreservesWhiteAndFitsHeldOutPatches() {
+        let bend = SIMD3<Float>(repeating: 2)
+        func target(_ x: Float) -> Float { x + 2*x*(1-x)/(1+1.2*x) }
+        var source = [SIMD4<Float>](), reference = [SIMD4<Float>]()
+        for y in 0..<48 {
+            for x in 0..<48 {
+                let v = Float(x+y)/250 + 0.02
+                source.append(SIMD4(v,v,v,1))
+                let w = target(v)
+                reference.append(SIMD4(w,w,w,1))
+            }
+        }
+        XCTAssertLessThan(simd_length(AsShotMatch.fit(source, reference)-bend), 0.12)
+        var previous: Float = -1
+        for i in 0...100 {
+            let v = Float(i)/100
+            let actual = AsShotMatch.corrected(SIMD3(repeating: v), bend: bend).x
+            XCTAssertEqual(actual, target(v), accuracy: 1e-6)
+            XCTAssertGreaterThan(actual, previous)
+            previous = actual
+        }
+        XCTAssertEqual(AsShotMatch.corrected(SIMD3(-0.1,1,2), bend: bend), SIMD3(-0.1,1,2))
+    }
+
     func testFujiFilmModeAndMonochromeOverride() {
         var note = Data("FUJIFILM".utf8)
         note.append(contentsOf: [12,0,0,0, 1,0, 1,20, 3,0, 1,0,0,0, 0,6,0,0])
