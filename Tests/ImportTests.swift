@@ -309,7 +309,7 @@ extension ImportTests {
 
         let newPhoto = source.appendingPathComponent("B.jpg")
         try image(newPhoto, color: .green)
-        let candidates = try await ReferenceImporter().preview(source: source, includeSubfolders: true, catalog: catalog)
+        let candidates = try await ReferenceImporter().preview(source: source, includeSubfolders: true, catalog: catalog, mode: .browsing)
         XCTAssertEqual(candidates.first { $0.url == original }?.match, .suspectedDuplicate)
         let selected = candidates.filter(ImportSelection().isChecked)
         XCTAssertEqual(selected.map(\.url), [newPhoto])
@@ -347,6 +347,62 @@ extension ImportTests {
         XCTAssertTrue(selection.isChecked(duplicate))
         selection.resetChoices()
         XCTAssertEqual(all.filter(selection.isChecked).map(\.id), [fresh.id])
+    }
+
+    func testGridSelectionRangeAndGroupChecksUseVisibleEligiblePhotos() {
+        let a = ImportCandidate(url: source.appendingPathComponent("A.jpg"), identity: .unverified, match: nil, problem: nil)
+        let b = ImportCandidate(url: source.appendingPathComponent("B.jpg"), identity: .unverified, match: .cataloged, problem: nil)
+        let c = ImportCandidate(url: source.appendingPathComponent("C.jpg"), identity: .unverified, match: nil, problem: nil)
+        let d = ImportCandidate(url: source.appendingPathComponent("D.jpg"), identity: .unverified, match: nil, problem: nil)
+        let photos = [a, b, c, d]
+        var selection = ImportSelection()
+
+        selection.select(a, in: photos)
+        selection.select(c, in: photos, extending: true)
+        XCTAssertEqual(selection.selectedIDs, [a.id, c.id])
+        XCTAssertEqual(photos.filter(selection.isChecked).map(\.id), [a.id, c.id, d.id])
+        selection.setChecked(false, for: c, in: photos)
+        XCTAssertEqual(photos.filter(selection.isChecked).map(\.id), [d.id])
+
+        selection.select(d, in: photos, toggling: true)
+        selection.select(c, in: photos, toggling: true)
+        XCTAssertEqual(selection.selectedIDs, [a.id, d.id])
+        selection.selectAll(photos)
+        XCTAssertEqual(selection.selectedIDs, [a.id, c.id, d.id])
+        selection.move(-1, in: photos, extending: false)
+        XCTAssertEqual(selection.activeID, a.id)
+        selection.move(1, in: photos, extending: true)
+        XCTAssertEqual(selection.selectedIDs, [a.id, c.id])
+        selection.toggleSelectedChecks(in: photos)
+        XCTAssertEqual(photos.filter(selection.isChecked).map(\.id), [a.id, c.id, d.id])
+
+        selection.retainSelection(in: [d])
+        XCTAssertTrue(selection.selectedIDs.isEmpty)
+        XCTAssertTrue(selection.isChecked(c))
+    }
+
+    func testBrowsingReportsKnownPhotosBeforePixelValidationAndAddStillChecksThem() async throws {
+        let damaged = source.appendingPathComponent("Cataloged.ARW")
+        let fresh = source.appendingPathComponent("New.jpg")
+        try Data("not a RAW image".utf8).write(to: damaged)
+        try image(fresh)
+        let root = try catalog.addRoot(url: source, bookmark: AccessLease.bookmark(source, readOnly: true))
+        let identity = try FileIdentity.read(damaged)
+        let known = Photo(id: UUID().uuidString, rootID: root.id, relativePath: damaged.lastPathComponent,
+                          identity: try JSONEncoder().encode(identity), identityKey: identity.key, width: 20, height: 10)
+        XCTAssertTrue(try catalog.index(known))
+
+        let importer = ReferenceImporter()
+        let browsing = try await importer.preview(source: source, includeSubfolders: true, catalog: catalog, mode: .browsing)
+        let candidate = try XCTUnwrap(browsing.first { $0.match == .cataloged })
+        XCTAssertNil(candidate.problem)
+        XCTAssertEqual(browsing.filter(ImportSelection().isChecked).map(\.url), [fresh])
+        let validated = try await importer.preview(source: source, includeSubfolders: true, catalog: catalog)
+        XCTAssertNotNil(validated.first { $0.match == .cataloged }?.problem)
+        let report = await importer.add(source: source, candidates: browsing, collection: nil, catalog: catalog)
+        XCTAssertEqual(report.indexed, 1)
+        XCTAssertEqual(report.errors.count, 1)
+        XCTAssertEqual(try catalog.photoCount(), 2)
     }
 
     func testImportPreviewSelectionSubfoldersAndChangedFiles() async throws {

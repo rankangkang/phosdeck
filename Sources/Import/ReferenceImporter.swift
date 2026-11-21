@@ -36,23 +36,94 @@ struct ImportCandidate: Identifiable, Sendable {
     }
 }
 
-/// Browsing filters and rescans don't overwrite choices made on individual photos.
+/// Stores explicit import checks and the current selection in the photo grid.
 struct ImportSelection {
     var skipDuplicates = true
     private var choices: [String: Bool] = [:]
+    private(set) var selectedIDs: Set<String> = []
+    private(set) var activeID: String?
+    private var anchorID: String?
+
+    func canSelect(_ item: ImportCandidate) -> Bool { item.canCheck(skippingDuplicates: skipDuplicates) }
+
+    mutating func selectAll(_ candidates: [ImportCandidate]) {
+        let available = candidates.filter(canSelect)
+        selectedIDs = Set(available.map(\.id))
+        if activeID.map(selectedIDs.contains) != true { activeID = available.first?.id }
+        anchorID = activeID
+    }
+
+    mutating func select(_ item: ImportCandidate, in candidates: [ImportCandidate], extending: Bool = false, toggling: Bool = false) {
+        guard canSelect(item) else { return }
+        if extending, let anchorID, let anchor = candidates.firstIndex(where: { $0.id == anchorID }),
+           let end = candidates.firstIndex(where: { $0.id == item.id }) {
+            let range = Set(candidates[min(anchor, end)...max(anchor, end)].filter(canSelect).map(\.id))
+            selectedIDs = toggling ? selectedIDs.union(range) : range
+        } else {
+            if toggling { selectedIDs.formSymmetricDifference([item.id]) }
+            else { selectedIDs = [item.id] }
+            anchorID = item.id
+        }
+        activeID = item.id
+    }
+
+    @discardableResult mutating func move(_ offset: Int, in candidates: [ImportCandidate], extending: Bool) -> String? {
+        guard let activeID, let index = candidates.firstIndex(where: { $0.id == activeID }) else {
+            let item = offset > 0 ? candidates.first(where: canSelect) : candidates.last(where: canSelect)
+            if let item { select(item, in: candidates) }
+            return item?.id
+        }
+        var next = index + offset
+        while candidates.indices.contains(next) {
+            let item = candidates[next]
+            if canSelect(item) {
+                select(item, in: candidates, extending: extending)
+                return item.id
+            }
+            next += offset
+        }
+        return nil
+    }
+
+    mutating func retainSelection(in candidates: [ImportCandidate]) {
+        let available = Set(candidates.filter(canSelect).map(\.id))
+        selectedIDs.formIntersection(available)
+        if activeID.map(available.contains) != true { activeID = nil }
+        if anchorID.map(available.contains) != true { anchorID = activeID }
+    }
 
     func isChecked(_ item: ImportCandidate) -> Bool {
-        item.canCheck(skippingDuplicates: skipDuplicates) && (choices[item.id] ?? !item.isDuplicate)
+        canSelect(item) && (choices[item.id] ?? !item.isDuplicate)
     }
 
     mutating func setChecked(_ checked: Bool, for items: some Sequence<ImportCandidate>) {
-        for item in items where item.canCheck(skippingDuplicates: skipDuplicates) {
+        for item in items where canSelect(item) {
             let checkedByDefault = !item.isDuplicate
             choices[item.id] = checked == checkedByDefault ? nil : checked
         }
     }
 
-    mutating func resetChoices() { choices.removeAll() }
+    mutating func setChecked(_ checked: Bool, for item: ImportCandidate, in candidates: [ImportCandidate]) {
+        if selectedIDs.contains(item.id) { setChecked(checked, for: candidates.filter { selectedIDs.contains($0.id) }) }
+        else { setChecked(checked, for: [item]) }
+    }
+
+    mutating func toggleSelectedChecks(in candidates: [ImportCandidate]) {
+        let selected = candidates.filter { selectedIDs.contains($0.id) && canSelect($0) }
+        guard let active = selected.first(where: { $0.id == activeID }) ?? selected.first else { return }
+        setChecked(!isChecked(active), for: selected)
+    }
+
+    mutating func clearSelection() {
+        selectedIDs.removeAll()
+        activeID = nil
+        anchorID = nil
+    }
+
+    mutating func resetChoices() {
+        choices.removeAll()
+        clearSelection()
+    }
 }
 
 private struct ImportCatalogMatches: Sendable {
@@ -96,10 +167,12 @@ private struct ImportCatalogMatches: Sendable {
         }
     }
 
-    mutating func match(url: URL, identity: FileIdentity, inspected: Photo?, protectedPaths: Set<String>) throws -> ImportCandidate.Match? {
-        if identities.contains(identity.key) || protectedPaths.contains(url.path) { return .cataloged }
-        guard let inspected else { return nil }
-        let key = Signature(size: identity.size, captureDate: inspected.captureDate)
+    func isCataloged(url: URL, identity: FileIdentity, protectedPaths: Set<String>) -> Bool {
+        identities.contains(identity.key) || protectedPaths.contains(url.path)
+    }
+
+    mutating func suspectedDuplicate(url: URL, identity: FileIdentity, captureDate: String?) throws -> ImportCandidate.Match? {
+        let key = Signature(size: identity.size, captureDate: captureDate)
         guard let peers = originals[key] else { return nil }
         let name = Self.filenameKey(url.lastPathComponent)
         if key.captureDate != nil, peers.contains(where: { $0.name == name }) { return .suspectedDuplicate }
@@ -154,6 +227,8 @@ private struct ImportCatalogMatches: Sendable {
 }
 
 actor ReferenceImporter {
+    enum PreviewMode { case browsing, validated }
+
     func scan(root: StorageRoot, catalog: CatalogStore, directory: String = "", includeSubfolders: Bool = true,
               recordItems: Bool = false, progress: @escaping @Sendable (Int) async -> Void) async -> ScanReport {
         var report = ScanReport()
@@ -197,9 +272,9 @@ actor ReferenceImporter {
         return report
     }
 
-    func preview(source: URL, includeSubfolders: Bool, catalog: CatalogStore,
+    func preview(source: URL, includeSubfolders: Bool, catalog: CatalogStore, mode: PreviewMode = .validated,
                  onBatch: (@MainActor @Sendable ([ImportCandidate]) -> Void)? = nil) async throws -> [ImportCandidate] {
-        defer { PhotoFileType.releaseValidationCaches() }
+        defer { if mode == .validated { PhotoFileType.releaseValidationCaches() } }
         let lease = AccessLease(url: source)
         defer { withExtendedLifetime(lease) {} }
         let source = source.resolvingSymlinksInPath().standardizedFileURL
@@ -211,22 +286,36 @@ actor ReferenceImporter {
         let next = try ImportPlanner.sourceFileIterator(source, includeSubfolders: includeSubfolders)
         var result = [ImportCandidate]()
         var batch = [ImportCandidate]()
+        var foundNew = false
         var lastUpdate = ContinuousClock.now
         while let url = try next() {
             guard ImportPlanner.images.contains(url.pathExtension.lowercased()), !outputs.contains(url.path) else { continue }
             let identity = try FileIdentity.read(url)
+            let cataloged = catalogMatches.isCataloged(url: url, identity: identity, protectedPaths: paths)
             var problem: String?
             var inspected: Photo?
-            do { inspected = try autoreleasepool { try Self.inspect(url: url, root: root, rootURL: source) } }
-            catch is CancellationError { throw CancellationError() }
+            var captureDate: String?
+            do {
+                if mode == .validated {
+                    inspected = try autoreleasepool { try Self.inspect(url: url, root: root, rootURL: source) }
+                    captureDate = inspected?.captureDate
+                } else if !cataloged {
+                    // Report candidates from their file information. Add and Copy validate selected pixels before writing.
+                    captureDate = try autoreleasepool { Self.captureDate(in: try PhotoFileType.inspectSource(url).properties) }
+                    guard try FileIdentity.read(url) == identity else { throw LRCError(L10n.text("app.theSourceChangedDuringImportVerification", defaultValue: "The source changed during import verification")) }
+                }
+            } catch is CancellationError { throw CancellationError() }
             catch { problem = error.localizedDescription }
-            let match = try catalogMatches.match(url: url, identity: identity, inspected: inspected, protectedPaths: paths)
+            let match: ImportCandidate.Match? = cataloged ? .cataloged : problem == nil
+                ? try catalogMatches.suspectedDuplicate(url: url, identity: identity, captureDate: captureDate) : nil
             var candidate = ImportCandidate(url: url, identity: identity, match: match, problem: problem)
             candidate.inspectedPhoto = inspected
             result.append(candidate)
             if let onBatch {
                 batch.append(candidate)
-                if result.count == 1 || lastUpdate.duration(to: .now) >= .milliseconds(150) {
+                let firstNew = !foundNew && !candidate.isDuplicate && candidate.problem == nil
+                if firstNew { foundNew = true }
+                if result.count == 1 || firstNew || lastUpdate.duration(to: .now) >= .milliseconds(150) {
                     await onBatch(batch)
                     batch.removeAll(keepingCapacity: true)
                     lastUpdate = .now
@@ -239,6 +328,7 @@ actor ReferenceImporter {
 
     func add(source: URL, candidates: [ImportCandidate], collection: String?, catalog: CatalogStore, recordItems: Bool = false,
              progress: @escaping @Sendable (Int) async -> Void = { _ in }) async -> ScanReport {
+        defer { PhotoFileType.releaseValidationCaches() }
         var report = ScanReport()
         do {
             let lease = AccessLease(url: source)
@@ -357,18 +447,19 @@ actor ReferenceImporter {
             profile: inspected.composite != nil ? "sRGB IEC61966-2.1 Linear" : inspected.pngICC == false ? nil : props[kCGImagePropertyProfileName as String] as? String,
             focal35mm: (exif?[kCGImagePropertyExifFocalLenIn35mmFilm as String] as? NSNumber)?.doubleValue,
             composite: inspected.composite?.catalogSummary, tiffPageCount: inspected.tiffPageCount)
-        var captured = exif?[kCGImagePropertyExifDateTimeOriginal as String] as? String
-        if let original = captured {
-            var precise = original
-            if let sub = exif?[kCGImagePropertyExifSubsecTimeOriginal as String] as? String, !sub.isEmpty { precise += "." + sub }
-            if let zone = exif?["OffsetTimeOriginal"] as? String, !zone.isEmpty { precise += zone }
-            captured = precise
-        }
         return Photo(id: UUID().uuidString, rootID: root.id, relativePath: String(url.standardizedFileURL.path.dropFirst(prefix.count)),
                      identity: try JSONEncoder().encode(identity), identityKey: identity.key,
-                     captureDate: captured,
+                     captureDate: captureDate(in: props),
                      width: props[kCGImagePropertyPixelWidth as String] as? Int ?? 0,
                      height: props[kCGImagePropertyPixelHeight as String] as? Int ?? 0,
                      camera: tiff?[kCGImagePropertyTIFFModel as String] as? String, metadata: try JSONEncoder().encode(details))
+    }
+
+    private static func captureDate(in properties: [String: Any]) -> String? {
+        let exif = properties[kCGImagePropertyExifDictionary as String] as? [String: Any]
+        guard var captured = exif?[kCGImagePropertyExifDateTimeOriginal as String] as? String else { return nil }
+        if let sub = exif?[kCGImagePropertyExifSubsecTimeOriginal as String] as? String, !sub.isEmpty { captured += "." + sub }
+        if let zone = exif?["OffsetTimeOriginal"] as? String, !zone.isEmpty { captured += zone }
+        return captured
     }
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import ImageIO
+import AppKit
 
 struct ImportSheet: View {
     @Bindable var model: AppModel
@@ -24,6 +25,8 @@ struct ImportSheet: View {
     @State private var includeSidecars = true
     @State private var pairAfterImport = false
     @State private var thumbnailSize = 150.0
+    @State private var gridColumns = 1
+    @FocusState private var gridFocused: Bool
 
     private var shown: [ImportCandidate] { onlyNew ? candidates.filter { !$0.isDuplicate } : candidates }
 
@@ -44,6 +47,8 @@ struct ImportSheet: View {
         .instrumentForm()
         .frame(width: 1100, height: 700)
         .onChange(of: recursive) { scan() }
+        .onChange(of: onlyNew) { selection.retainSelection(in: shown) }
+        .onChange(of: selection.skipDuplicates) { selection.retainSelection(in: shown) }
         .onDisappear { scanTask?.cancel() }
 
     }
@@ -97,13 +102,23 @@ struct ImportSheet: View {
 
     private var photoPanel: some View {
         let visible = shown
+        let selectedCount = selection.selectedIDs.isEmpty ? 0 : visible.count { selection.selectedIDs.contains($0.id) }
         return VStack(spacing: 0) {
             KeyRow(title: L10n.text("app.showPhotos", defaultValue: "Show Photos"), options: [KeyOption(false, L10n.text("app.allPhotos", defaultValue: "All Photos")), KeyOption(true, L10n.text("app.newPhotos", defaultValue: "New Photos"))], selection: $onlyNew, expand: true, height: 24)
                 .frame(width: 190).frame(maxWidth: .infinity)
                 .overlay(alignment: .trailing) { Text(L10n.text("app.photos", defaultValue: "\(visible.count) photos")).foregroundStyle(Theme.textSecondary) }
                 .padding(12).background(Theme.panel)
             if scanning {
-                HStack(spacing: 14) { ProgressView().controlSize(.small); Text(L10n.text("app.readingSourcePhotos", defaultValue: "Reading source photos…")); Button(L10n.text("app.cancelScan", defaultValue: "Cancel Scan")) { scanID = UUID(); scanTask?.cancel(); scanning = false }.buttonStyle(.key) }
+                HStack(spacing: 14) {
+                    ProgressView().controlSize(.small)
+                    Text(L10n.text("app.readingSourcePhotos", defaultValue: "Reading source photos…"))
+                    Button(L10n.text("app.cancelScan", defaultValue: "Cancel Scan")) {
+                        scanID = UUID()
+                        scanTask?.cancel()
+                        scanning = false
+                        selection.retainSelection(in: shown)
+                    }.buttonStyle(.key)
+                }
                     .foregroundStyle(Color(nsColor: mat.text))
                     .padding(8)
             }
@@ -117,25 +132,77 @@ struct ImportSheet: View {
                         .foregroundStyle(Color(nsColor: mat.textSecondary))
                 }.foregroundStyle(Color(nsColor: mat.text)).multilineTextAlignment(.center).padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: thumbnailSize), spacing: 8)], spacing: 8) {
-                        ForEach(visible, content: photoTile)
-                    }.padding(12)
-                }
+                photoGrid(visible)
             }
             Seam()
             HStack {
                 Button(L10n.text("app.importCheckAll", defaultValue: "Check All")) { selection.setChecked(true, for: visible) }
-                    .buttonStyle(.key).disabled(!visible.contains { $0.canCheck(skippingDuplicates: selection.skipDuplicates) && !selection.isChecked($0) })
+                    .buttonStyle(.key).disabled(scanning || !visible.contains { selection.canSelect($0) && !selection.isChecked($0) })
                 Button(L10n.text("app.importUncheckAll", defaultValue: "Uncheck All")) { selection.setChecked(false, for: visible) }
-                    .buttonStyle(.key).disabled(!visible.contains(where: selection.isChecked))
+                    .buttonStyle(.key).disabled(scanning || !visible.contains(where: selection.isChecked))
                 Spacer()
+                if selectedCount > 0 {
+                    Text(L10n.text("app.importSelectedCount", defaultValue: "\(selectedCount) selected"))
+                        .font(.caption11).foregroundStyle(Theme.textSecondary)
+                }
                 Image(systemName: "square.grid.2x2").foregroundStyle(Theme.textSecondary)
                 GradientAdjustmentSlider(value: thumbnailSize, range: 120...210, step: 1, neutral: 150, track: .tonal,
                                          label: L10n.text("app.importThumbnailSize", defaultValue: "Import Thumbnail Size"), change: { thumbnailSize = $0 }, commit: {})
                     .frame(width: 90, height: 28)
-            }.padding(12).background(Theme.panel).disabled(scanning)
+            }.padding(12).background(Theme.panel)
         }.background(mat.color)
+    }
+
+    private func photoGrid(_ visible: [ImportCandidate]) -> some View {
+        ScrollViewReader { scroll in
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: thumbnailSize), spacing: 8)], spacing: 8) {
+                    ForEach(visible, content: photoTile)
+                }.padding(12)
+            }
+            .onGeometryChange(for: Int.self) { proxy in
+                max(1, Int((proxy.size.width - 24 + 8) / (thumbnailSize + 8)))
+            } action: { gridColumns = $0 }
+            .background {
+                Color.clear.focusable().focusEffectDisabled().focused($gridFocused)
+                    .accessibilityLabel(L10n.text("app.showPhotos", defaultValue: "Show Photos"))
+                    .allowsHitTesting(false)
+            }
+            .background {
+                ImportGridCommands { event in handleGridKey(event, scroll: scroll) }
+                    .accessibilityHidden(true).allowsHitTesting(false)
+            }
+        }
+    }
+
+    private func handleGridKey(_ event: NSEvent, scroll: ScrollViewProxy) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if modifiers == .command {
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "a":
+                selection.selectAll(shown)
+                gridFocused = true
+                return true
+            case "d":
+                selection.clearSelection()
+                return true
+            default: break
+            }
+        }
+        guard gridFocused, modifiers.isEmpty || modifiers == .shift else { return false }
+        let offset: Int
+        switch event.keyCode {
+        case 49 where modifiers.isEmpty:
+            if !event.isARepeat { selection.toggleSelectedChecks(in: shown) }
+            return true
+        case 123: offset = -1
+        case 124: offset = 1
+        case 125: offset = gridColumns
+        case 126: offset = -gridColumns
+        default: return false
+        }
+        if let id = selection.move(offset, in: shown, extending: modifiers.contains(.shift)) { scroll.scrollTo(id) }
+        return true
     }
 
     private var emptyTitle: String {
@@ -145,21 +212,38 @@ struct ImportSheet: View {
     }
 
     private func photoTile(_ item: ImportCandidate) -> some View {
-        let checked = selection.isChecked(item)
+        let selected = selection.selectedIDs.contains(item.id)
         let duplicate = item.alreadyImported ? L10n.text("app.alreadyInCatalog", defaultValue: "Already in Catalog") :
             L10n.text("app.importSuspectedDuplicate", defaultValue: "Suspected Duplicate")
         let status = item.problem ?? (item.isDuplicate ? duplicate : ByteCountFormatter.string(fromByteCount: item.identity.size, countStyle: .file))
         return VStack(alignment: .leading, spacing: 7) {
-            ImportThumbnail(url: item.url).frame(height: 116).frame(maxWidth: .infinity)
-            Toggle(isOn: Binding(get: { selection.isChecked(item) }, set: { selection.setChecked($0, for: [item]) })) {
+            Button {
+                let flags = NSApp.currentEvent?.modifierFlags ?? []
+                if flags.contains(.option) {
+                    selection.setChecked(!selection.isChecked(item), for: item, in: shown)
+                } else {
+                    selection.select(item, in: shown, extending: flags.contains(.shift), toggling: flags.contains(.command))
+                }
+                gridFocused = true
+            } label: {
+                ImportThumbnail(url: item.url, dimmed: item.isDuplicate && selection.skipDuplicates)
+                    .frame(height: 116).frame(maxWidth: .infinity).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!selection.canSelect(item))
+            .accessibilityLabel(L10n.text("app.importSelectPhoto", defaultValue: "Select \(item.url.lastPathComponent)"))
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            Toggle(isOn: Binding(get: { selection.isChecked(item) }, set: { selection.setChecked($0, for: item, in: shown) })) {
                 Text(item.url.lastPathComponent).lineLimit(1).truncationMode(.middle)
             }
             .toggleStyle(.importCheck)
             .accessibilityHint(item.problem ?? (item.isDuplicate ? duplicate : ""))
-            .disabled(!item.canCheck(skippingDuplicates: selection.skipDuplicates))
+            .disabled(!selection.canSelect(item))
             Text(status).font(.caption11).foregroundStyle(Color(nsColor: mat.textSecondary)).lineLimit(1)
         }.padding(10)
-            .overlay { Rectangle().strokeBorder(checked ? Color(nsColor: mat.selection) : .clear, lineWidth: 2).allowsHitTesting(false) }
+            .background(selected ? Color(nsColor: mat.selection).opacity(Metrics.thumbnailCellFill.selected) : .clear)
+            .overlay { Rectangle().strokeBorder(selected ? Color(nsColor: mat.selection) : .clear, lineWidth: 2).allowsHitTesting(false) }
+            .instrumentFocusMark(gridFocused && selection.activeID == item.id, color: Color(nsColor: mat.focus))
             .help(item.problem ?? item.url.path)
     }
 
@@ -249,15 +333,17 @@ struct ImportSheet: View {
         scanning = true
         scanTask = Task {
             do {
-                let result = try await model.importer.preview(source: source, includeSubfolders: recursive, catalog: catalog) { batch in
+                let result = try await model.importer.preview(source: source, includeSubfolders: recursive, catalog: catalog, mode: .browsing) { batch in
                     guard token == scanID, !Task.isCancelled else { return }
                     candidates.append(contentsOf: batch)
                 }
                 guard token == scanID, !Task.isCancelled else { return }
                 candidates = result
+                selection.retainSelection(in: shown)
             } catch {
                 guard token == scanID else { return }
                 candidates = []
+                selection.clearSelection()
                 self.error = error.localizedDescription
             }
             scanning = false
@@ -265,12 +351,45 @@ struct ImportSheet: View {
     }
 }
 
-struct ImportThumbnail: View {
+private struct ImportGridCommands: NSViewRepresentable {
+    let handle: (NSEvent) -> Bool
+
+    func makeNSView(context: Context) -> Receiver { Receiver() }
+    func updateNSView(_ view: Receiver, context: Context) { view.handle = handle }
+    static func dismantleNSView(_ view: Receiver, coordinator: ()) { view.removeMonitor() }
+
+    final class Receiver: NSView {
+        var handle: ((NSEvent) -> Bool)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            removeMonitor()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, let window = self.window, event.window === window,
+                      !(window.firstResponder is NSTextView) else { return event }
+                return self.handle?(event) == true ? nil : event
+            }
+        }
+
+        func removeMonitor() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
+    }
+}
+
+private struct ImportThumbnail: View {
     let url: URL
+    let dimmed: Bool
     @State private var image: CGImage?
     var body: some View {
         Group {
-            if let image { Image(decorative: image, scale: 1).resizable().scaledToFit() }
+            if let image {
+                Image(decorative: image, scale: 1).resizable().scaledToFit()
+                    .overlay { if dimmed { Color.black.opacity(Metrics.importDuplicateShade).allowsHitTesting(false).accessibilityHidden(true) } }
+            }
             else { Image(systemName: "photo").font(.largeTitle).foregroundStyle(Theme.textSecondary) }
         }.task(id: url, priority: .utility) {
             let result = await ImportThumbnailDecoder.shared.thumbnail(url)
@@ -285,6 +404,7 @@ private actor ImportThumbnailDecoder {
     func thumbnail(_ url: URL) -> CGImage? {
         guard !Task.isCancelled else { return nil }
         return autoreleasepool {
+            if let embedded = try? PhotoFileType.cameraJPEG(url, edge: 320) { return embedded }
             guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
             return CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageIfAbsent: true,

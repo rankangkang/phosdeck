@@ -387,6 +387,7 @@
     },
     "thumbnail": {
       "selectedOutlineWidth": 2,
+      "importDuplicateShadeOpacity": 0.45,
       "outlineMustStayOutsidePhoto": true,
       "preservePhotoAspectRatio": true,
       "sharedSeamWidthPt": 1,

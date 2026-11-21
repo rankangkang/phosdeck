@@ -20582,6 +20582,42 @@
         }
       }
     },
+    "app.importSelectPhoto": {
+      "extractionState": "manual",
+      "comment": "Sources/UI/ImportSheet.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 %@"
+          }
+        }
+      }
+    },
+    "app.importSelectedCount": {
+      "extractionState": "manual",
+      "comment": "Sources/UI/ImportSheet.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld selected"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已选中 %lld 张"
+          }
+        }
+      }
+    },
     "app.importSuspectedDuplicate": {
       "extractionState": "manual",
       "comment": "Sources/UI/ImportSheet.swift",
