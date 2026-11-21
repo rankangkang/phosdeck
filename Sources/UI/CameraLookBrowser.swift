@@ -248,6 +248,20 @@ struct CameraLookBrowser: View {
         let apply = { model.selectCameraLook(choice.selection) }
         return Button(action: apply) {
             VStack(alignment: .leading, spacing: 2) {
+                Color.clear.aspectRatio(4.0 / 3, contentMode: .fit)
+                    .overlay(alignment: .bottom) {
+                        switch thumbnail {
+                        case let .image(image):
+                            Image(decorative: image, scale: 1).resizable().scaledToFit()
+                        case .unavailable:
+                            Image(systemName: "exclamationmark.triangle").frame(maxHeight: .infinity)
+                        case nil:
+                            Image(systemName: "photo").frame(maxHeight: .infinity)
+                        }
+                    }
+                    .foregroundStyle(Theme.textSecondary)
+                    .accessibilityHidden(true)
+
                 HStack(spacing: 3) {
                     Text(title)
                         .font(.caption11.weight(selected ? .semibold : .medium))
@@ -260,24 +274,8 @@ struct CameraLookBrowser: View {
                     }
                 }
                 .foregroundStyle(selected ? Color(nsColor: Palette.textPrimary) : Theme.textSecondary)
-                .frame(height: Metrics.key)
-
-                Color.clear.aspectRatio(4.0 / 3, contentMode: .fit)
-                    .overlay {
-                        switch thumbnail {
-                        case let .image(image):
-                            Image(decorative: image, scale: 1).resizable().scaledToFit()
-                        case .unavailable:
-                            Image(systemName: "exclamationmark.triangle")
-                        case nil:
-                            Image(systemName: "photo")
-                        }
-                    }
-                    .foregroundStyle(Theme.textSecondary)
-                    .accessibilityHidden(true)
             }
-            .padding(.horizontal, Metrics.thumbnailCell.inset)
-            .padding(.bottom, Metrics.thumbnailCell.inset)
+            .padding(Metrics.thumbnailCell.inset)
             .background(selected ? Theme.selected : hovered == id ? Theme.raised : Color.clear)
             .contentShape(Rectangle())
             .overlay {
