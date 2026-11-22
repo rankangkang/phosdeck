@@ -196,21 +196,83 @@ final class SpotRepairTests: XCTestCase {
         try assertPixels(local.image, match: full.image, at: rect)
     }
 
+    func testNativeDehazeOverlappingTilesMatchFullRender() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("dehaze.png")
+        try PNGFixture.data(width: 512, height: 384, transparency: false).write(to: url)
+        let source = try PNGFixture.request(url)
+        let pipeline = ImagePipeline(qualityCacheLimit: 0)
+        var recipe = try await pipeline.baseline(source)
+        recipe.develop.dehaze = 52
+        recipe.quarterTurns = 1
+        recipe.crop = Crop(x: 0.06, y: 0.1, width: 0.84, height: 0.8)
+        let request = ImageRequest(photo: source.photo, root: source.root, recipe: recipe)
+
+        let full = try await pipeline.render(request, longEdge: nil)
+        let corner = CGRect(x: 0, y: 0, width: 146, height: 121)
+        let inner = CGRect(x: 64, y: 47, width: 160, height: 130)
+        let cornerImage = try await pipeline.render(request, longEdge: nil, nativePixelRegion: { _ in corner }).image
+        let innerImage = try await pipeline.render(request, longEdge: nil, nativePixelRegion: { _ in inner }).image
+
+        try assertPixels(cornerImage, match: full.image, at: corner)
+        try assertPixels(innerImage, match: full.image, at: inner)
+        try assertPixels((cornerImage, corner), match: (innerImage, inner), in: corner.intersection(inner))
+    }
+
+    private typealias PixelTile = (image: CGImage, rect: CGRect)
+
     private func assertPixels(_ tile: CGImage, match image: CGImage, at rect: CGRect,
                               file: StaticString = #filePath, line: UInt = #line) throws {
-        let crop = try XCTUnwrap(image.cropping(to: rect), file: file, line: line)
-        XCTAssertEqual(tile.width, crop.width, file: file, line: line)
-        XCTAssertEqual(tile.height, crop.height, file: file, line: line)
-        let actual = DisplayPixelSampler(image: tile), reference = DisplayPixelSampler(image: crop)
-        for y in 0..<tile.height { for x in 0..<tile.width {
-            let u = (Double(x) + 0.5) / Double(tile.width), v = (Double(y) + 0.5) / Double(tile.height)
-            let a = try XCTUnwrap(actual.sample(topLeftX: u, y: v), file: file, line: line)
-            let b = try XCTUnwrap(reference.sample(topLeftX: u, y: v), file: file, line: line)
-            guard [a.red, a.green, a.blue, a.alpha] == [b.red, b.green, b.blue, b.alpha] else {
-                return XCTFail("Native tile differs from the full render at (\(x), \(y)) in \(rect)",
-                               file: file, line: line)
+        let full = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        try assertPixels((tile, rect), match: (image, full), in: rect, file: file, line: line)
+    }
+
+    private func assertPixels(_ tile: PixelTile, match reference: PixelTile, in region: CGRect,
+                              file: StaticString = #filePath, line: UInt = #line) throws {
+        func sampler(_ tile: PixelTile) throws -> DisplayPixelSampler {
+            XCTAssertEqual(CGSize(width: tile.image.width, height: tile.image.height), tile.rect.size, file: file, line: line)
+            let rect = region.offsetBy(dx: -tile.rect.minX, dy: -tile.rect.minY)
+            let image = rect.size == tile.rect.size ? tile.image : tile.image.cropping(to: rect)
+            return DisplayPixelSampler(image: try XCTUnwrap(image, file: file, line: line))
+        }
+        func edgeDistance(_ x: Int, _ y: Int, _ rect: CGRect) -> Int {
+            min(x - Int(rect.minX), Int(rect.maxX) - x - 1, y - Int(rect.minY), Int(rect.maxY) - y - 1)
+        }
+
+        XCTAssertFalse(region.isEmpty, file: file, line: line)
+        XCTAssertTrue(tile.rect.contains(region) && reference.rect.contains(region), file: file, line: line)
+        let actual = try sampler(tile), expected = try sampler(reference)
+        let width = Int(region.width), height = Int(region.height)
+        var changed = 0
+        var maxDelta = [0, 0, 0, 0]
+        var nearestEdge = Int.max, farthestEdge = 0
+        var worst = (delta: 0, x: 0, y: 0)
+        for y in 0..<height {
+            for x in 0..<width {
+                let u = (Double(x) + 0.5) / Double(width), v = (Double(y) + 0.5) / Double(height)
+                let a = try XCTUnwrap(actual.sample(topLeftX: u, y: v), file: file, line: line)
+                let b = try XCTUnwrap(expected.sample(topLeftX: u, y: v), file: file, line: line)
+                let lhs = [a.red, a.green, a.blue, a.alpha], rhs = [b.red, b.green, b.blue, b.alpha]
+                guard lhs != rhs else { continue }
+                changed += 1
+                let px = Int(region.minX) + x, py = Int(region.minY) + y
+                let distance = min(edgeDistance(px, py, tile.rect), edgeDistance(px, py, reference.rect))
+                nearestEdge = min(nearestEdge, distance)
+                farthestEdge = max(farthestEdge, distance)
+                for channel in lhs.indices {
+                    let delta = abs(Int(lhs[channel]) - Int(rhs[channel]))
+                    maxDelta[channel] = max(maxDelta[channel], delta)
+                    if delta > worst.delta { worst = (delta, px, py) }
+                }
             }
-        } }
+        }
+        XCTAssertEqual(changed, 0, """
+            Found \(changed) differing pixels out of \(width * height) in \(region) between tiles \(tile.rect) and \(reference.rect).
+            Max RGBA deltas \(maxDelta) code values. Worst pixel at (\(worst.x), \(worst.y)).
+            Differing pixels are \(nearestEdge)–\(farthestEdge) pixels from the nearest tile edge.
+            """, file: file, line: line)
     }
 
     func testRepairSurvivesCropAndQuarterTurn() throws {
