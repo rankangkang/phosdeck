@@ -4,6 +4,7 @@ import ImageIO
 import AppKit
 import SwiftUI
 import GRDB
+import os
 @testable import Phosdeck
 
 final class WorkflowTests: XCTestCase {
@@ -515,9 +516,69 @@ final class WorkflowTests: XCTestCase {
         XCTAssertEqual(completed, 1)
     }
 
+    func testThumbnailPrewarmingWaitsDuringLowPowerAndHeatAndResumes() async throws {
+        let state = OSAllocatedUnfairLock(initialState: (lowPower: true, thermal: ProcessInfo.ThermalState.nominal, reads: 0))
+        let renders = RenderCounter(), pixels = try bitmap()
+        let service = ThumbnailService(deviceConditions: {
+            state.withLock { conditions in
+                conditions.reads += 1
+                return (conditions.lowPower, conditions.thermal)
+            }
+        }) { _, _ in
+            await renders.increment()
+            return pixels
+        }
+        let cacheID = UUID().uuidString
+        let base = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        defer { try? FileManager.default.removeItem(at: base.appendingPathComponent("OhMyLRC/\(cacheID)")) }
+        try await service.configure(catalogID: cacheID, gigabytes: 1)
+        let root = StorageRoot(id: "r", path: "/unavailable", bookmark: Data(), label: "synthetic")
+        func photo(_ id: String) -> Photo {
+            Photo(id: id, rootID: root.id, relativePath: id + ".ARW", identity: Data(), identityKey: id, width: 80, height: 40)
+        }
+        func waitForReads(_ minimum: Int) async throws {
+            let deadline = ContinuousClock.now + .seconds(6)
+            while state.withLock({ $0.reads }) < minimum, .now < deadline {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTAssertGreaterThanOrEqual(state.withLock { $0.reads }, minimum)
+        }
+
+        let warming = Task { await service.prewarm([photo("adjacent")], roots: [root]) }
+        let queued = Task { try await service.image(photo: photo("queued"), root: root, priority: .prefetch) }
+        defer { warming.cancel(); queued.cancel() }
+        try await waitForReads(2)
+        let rendersOnLowPower = await renders.count
+        XCTAssertEqual(rendersOnLowPower, 0)
+
+        let visible = try await service.image(photo: photo("visible"), root: root, priority: .visible)
+        XCTAssertEqual(visible.width, 80)
+        let priorReads = state.withLock { conditions in
+            conditions.lowPower = false
+            conditions.thermal = .serious
+            return conditions.reads
+        }
+        try await waitForReads(priorReads + 2)
+        let rendersWhileHot = await renders.count
+        XCTAssertEqual(rendersWhileHot, 1)
+
+        state.withLock { $0.thermal = .fair }
+        let deadline = ContinuousClock.now + .seconds(6)
+        while await renders.count < 3, .now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        let resumed = await renders.count
+        XCTAssertEqual(resumed, 3)
+        if resumed == 3 {
+            let prefetched = try await queued.value
+            await warming.value
+            let warmed = await service.cachedGridImage(for: photo("adjacent"))
+            XCTAssertEqual(prefetched.width, 80)
+            XCTAssertEqual(warmed?.width, 80)
+        }
+    }
+
     func testVisibleThumbnailPreemptsSpeculativeRenderWithoutOverlappingSerialDecodes() async throws {
         let gate = ThumbnailRenderGate(), image = try bitmap()
-        let service = ThumbnailService { _, _ in try await gate.render(image) }
+        let service = ThumbnailService(deviceConditions: { (false, .nominal) }) { _, _ in try await gate.render(image) }
         let root = StorageRoot(id: "r", path: "/unavailable", bookmark: Data(), label: "synthetic")
         let adjacent = Photo(id: "adjacent", rootID: root.id, relativePath: "adjacent.ARW", identity: Data(), identityKey: "a", width: 80, height: 40)
         let onscreen = Photo(id: "actual", rootID: root.id, relativePath: "actual.ARW", identity: Data(), identityKey: "b", width: 80, height: 40)
@@ -552,7 +613,7 @@ final class WorkflowTests: XCTestCase {
             try Photo(id: "previous", rootID: previous.id, relativePath: "other.ARW", identity: Data(), identityKey: "old", width: 80, height: 40).insert(db)
         }
         let image = try bitmap()
-        let thumbnails = ThumbnailService { request, _ in
+        let thumbnails = ThumbnailService(deviceConditions: { (false, .nominal) }) { request, _ in
             guard request.photo.id == imported.id else { throw LRCError("Unexpected warmup photo") }
             return image
         }

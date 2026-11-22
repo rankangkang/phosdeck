@@ -1447,7 +1447,7 @@ final class ImagingTests: XCTestCase {
         let source = try XCTUnwrap(CGImageSourceCreateWithURL(file as CFURL, nil))
         let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
         let probe = ThumbnailWarmupProbe()
-        let service = ThumbnailService { request, _ in
+        let service = ThumbnailService(deviceConditions: { (false, .nominal) }) { request, _ in
             await probe.record(request.photo.id)
             return image
         }

@@ -1578,6 +1578,7 @@ actor ThumbnailService {
     static let quotaOptions = [1, 5, 10]
     static let gridEdge = 320
     static let prewarmLimit = 24
+    private static let prewarmRecheckDelay: Duration = .seconds(2)
 
     enum Priority: Int {
         case prefetch, normal, visible
@@ -1616,7 +1617,14 @@ actor ThumbnailService {
     // A cancelled decoder still occupies its slot until it returns.
     private var running: [UInt64: Lane] = [:]
     private let render: @Sendable (ImageRequest, Int) async throws -> CGImage
-    init(renderer: (@Sendable (ImageRequest, Int) async throws -> CGImage)? = nil) {
+    private let deviceConditions: @Sendable () -> (lowPower: Bool, thermal: ProcessInfo.ThermalState)
+    private var prewarmRecheck: Task<Void, Never>?
+
+    init(deviceConditions: @escaping @Sendable () -> (lowPower: Bool, thermal: ProcessInfo.ThermalState) = {
+        let info = ProcessInfo.processInfo
+        return (info.isLowPowerModeEnabled, info.thermalState)
+    }, renderer: (@Sendable (ImageRequest, Int) async throws -> CGImage)? = nil) {
+        self.deviceConditions = deviceConditions
         let pipeline = ImagePipeline()
         render = renderer ?? { request, edge in
             try await pipeline.renderThumbnail(request, edge: edge)
@@ -1720,13 +1728,42 @@ actor ThumbnailService {
             guard photo.availability == "available", let root = rootsByID[photo.rootID] else { continue }
             let key = Self.key(photo: photo, edge: Self.gridEdge)
             if cache.object(forKey: key as NSString) != nil || disk?.contains(key: key) == true { continue }
+            // An in-camera JPEG can load before browseImage reaches the queued decoder.
+            while !deviceAllowsPrewarming {
+                do { try await Task.sleep(for: Self.prewarmRecheckDelay) }
+                catch { return }
+                guard generation == self.generation else { return }
+            }
             _ = try? await browseImage(photo: photo, root: root, priority: .prefetch)
         }
     }
 
+    private var deviceAllowsPrewarming: Bool {
+        let conditions = deviceConditions()
+        return !conditions.lowPower && (conditions.thermal == .nominal || conditions.thermal == .fair)
+    }
+
+    private func recheckPrewarming() {
+        guard !Task.isCancelled else { return }
+        prewarmRecheck = nil
+        startQueuedLoads()
+    }
+
     private func startQueuedLoads() {
         while true {
-            let canPrefetch = running.isEmpty && !pending.values.contains { $0.priority != .prefetch }
+            let canPrefetch = running.isEmpty && !pending.isEmpty && pending.values.allSatisfy { $0.priority == .prefetch }
+            if canPrefetch && !deviceAllowsPrewarming {
+                if prewarmRecheck == nil {
+                    prewarmRecheck = Task { [weak self] in
+                        do { try await Task.sleep(for: Self.prewarmRecheckDelay) }
+                        catch { return }
+                        await self?.recheckPrewarming()
+                    }
+                }
+                return
+            }
+            prewarmRecheck?.cancel()
+            prewarmRecheck = nil
             let queued = pending.filter { _, load in
                 load.worker == nil && (load.priority != .prefetch || canPrefetch)
                     && running.values.count(where: { $0 == load.lane }) < load.lane.limit
@@ -1796,6 +1833,8 @@ actor ThumbnailService {
     }
     private func cancelPending() {
         generation = UUID()
+        prewarmRecheck?.cancel()
+        prewarmRecheck = nil
         for load in pending.values { cancel(load) }
         pending.removeAll()
     }
