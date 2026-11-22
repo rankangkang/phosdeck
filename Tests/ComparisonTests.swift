@@ -4,6 +4,33 @@ import CoreImage
 @testable import Phosdeck
 
 final class ComparisonTests: XCTestCase {
+    @MainActor func testSurveyLayoutFitsPhotoAspectsBeforePreviewsArrive() throws {
+        let wide = CGSize(width: 1200, height: 560)
+        XCTAssertEqual(PhotoSurveyView.columns(aspectRatios: Array(repeating: 2.0 / 3, count: 4), size: wide), 4)
+        XCTAssertEqual(PhotoSurveyView.columns(aspectRatios: Array(repeating: 1.5, count: 4), size: wide), 2)
+        let mixed: [CGFloat] = [2.0 / 3, 1.5, 2.0 / 3, 1.5]
+        XCTAssertEqual(PhotoSurveyView.columns(aspectRatios: mixed, size: CGSize(width: 500, height: 550)), 2)
+        XCTAssertEqual(PhotoSurveyView.columns(aspectRatios: [.nan, 0], size: wide),
+                       PhotoSurveyView.columns(aspectRatios: [1, 1], size: wide))
+
+        var portrait = Photo(id: "portrait", rootID: "r", relativePath: "portrait.jpg",
+                             identity: Data(), identityKey: "portrait", width: 1200, height: 800)
+        portrait.metadata = try JSONEncoder().encode(PhotoMetadata(orientation: 6))
+        var crop = Photo(id: "cropped", rootID: "r", relativePath: "cropped.jpg",
+                         identity: Data(), identityKey: "cropped", width: 1200, height: 800)
+        var recipe = EditRecipe(sourceDigest: "", decoderVersion: EditRecipe.rasterDecoderVersion,
+                                baselineExposure: 0, baselineTemperature: 5500, baselineTint: 0, temperature: 5500, tint: 0)
+        recipe.quarterTurns = 1
+        recipe.crop = Crop(x: 0.25, y: 0.1, width: 0.5, height: 0.75)
+        crop.recipe = try JSONEncoder().encode(recipe)
+
+        let survey = PhotoSurvey(ids: [portrait.id, crop.id], renderer: PhotoComparison { _, _ in throw CocoaError(.fileNoSuchFile) })
+        survey.update(photos: [portrait, crop], roots: [])
+        XCTAssertTrue(survey.tiles.allSatisfy { $0.image == nil })
+        XCTAssertEqual(survey.tiles[0].surveyAspectRatio, 2.0 / 3, accuracy: 0.0001)
+        XCTAssertEqual(survey.tiles[1].surveyAspectRatio, 400.0 / 900, accuracy: 0.0001)
+    }
+
     @MainActor func testSurveyNineVisibleTilesFitBothThemesAtThreeWindowSizes() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -249,7 +276,13 @@ final class ComparisonTests: XCTestCase {
         XCTAssertTrue(oldTiles.allSatisfy { $0.image == nil }, "A page releases all previous preview pixels")
         model.activateSurveyPhoto("202")
         XCTAssertEqual(model.pageOffset, 200); XCTAssertEqual(survey.offset, 198); XCTAssertEqual(survey.tiles.count, 5)
+        try await waitUntil { survey.tiles.allSatisfy { $0.image != nil } }
+        let rendered = survey.tiles.dropLast().map { ($0, $0.image) }
         model.removeFromSurvey("202")
+        for (index, item) in rendered.enumerated() {
+            XCTAssertTrue(survey.tiles[index] === item.0)
+            XCTAssertTrue(survey.tiles[index].image === item.1)
+        }
         XCTAssertEqual(survey.ids.count, 202); XCTAssertNotNil(try model.catalog?.photo("202"))
         XCTAssertEqual(try model.catalog?.photoCount(), 203)
         XCTAssertEqual(model.activeID, "201")

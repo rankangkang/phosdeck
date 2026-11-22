@@ -208,3 +208,9 @@ workflows were reviewed in crates/engine/src/cmd/{cull,similar}.rs and the
 similar.rs worker tests. Phosdeck uses its own color and alpha sampling,
 source decoding and verification, group boundaries, candidate report and
 MCP job lifecycle. MIT option.
+
+The Survey column scoring in PhotoComparison.swift follows the fitted-area
+criterion in crates/ui-egui/src/panels/compare/survey.rs at
+368855cd1ec386da72c542932229997c3a1519f3 (2026-11-20). Phosdeck computes the
+score with its SwiftUI grid spacing and saved geometry, and reuses preview
+panes by photo ID. MIT option.

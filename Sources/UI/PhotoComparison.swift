@@ -35,7 +35,7 @@ final class PhotoComparison: ObservableObject {
         linked = value
         if value { selectZoom(candidate.zoom, in: candidate) }
     }
-    func update(_ pane: ComparisonPhoto, photo: Photo?, roots: [StorageRoot]) {
+    func update(_ pane: ComparisonPhoto, photo: Photo?, roots: [StorageRoot], decodedRecipe: EditRecipe? = nil) {
         let old = pane.photo
         let root = roots.first { $0.id == photo?.rootID }
         let changed = old?.id != photo?.id || old?.identity != photo?.identity || old?.digest != photo?.digest ||
@@ -46,7 +46,7 @@ final class PhotoComparison: ObservableObject {
             pane.cancel()
             if linked { pane.viewport.focusOnNextGeometry((pane === candidate ? reference : candidate).viewport.center) }
             else { pane.viewport.reset() }
-            pane.load(render: render)
+            pane.load(render: render, decodedRecipe: decodedRecipe)
         }
     }
     func cancel() { reference.cancel(); candidate.cancel() }
@@ -69,10 +69,26 @@ final class PhotoSurvey: ObservableObject {
         for (id,tile) in old where !shown.contains(id) { tile.cancel() }
         tiles = photos.map { photo in
             let pane = old[photo.id] ?? ComparisonPhoto()
-            renderer.update(pane, photo: photo, roots: roots)
+            let previous = pane.photo
+            var decodedRecipe: EditRecipe?
+            if previous?.width != photo.width || previous?.height != photo.height ||
+                previous?.metadata != photo.metadata || previous?.recipe != photo.recipe {
+                decodedRecipe = photo.recipe.flatMap { try? JSONDecoder().decode(EditRecipe.self, from: $0) }
+                pane.surveyAspectRatio = Self.aspectRatio(for: photo, recipe: decodedRecipe)
+            }
+            renderer.update(pane, photo: photo, roots: roots, decodedRecipe: decodedRecipe)
             return pane
         }
     }
+
+    private static func aspectRatio(for photo: Photo, recipe: EditRecipe?) -> CGFloat {
+        guard photo.width > 0, photo.height > 0 else { return 1 }
+        let rotated = (5...8).contains(photo.details?.orientation ?? 1)
+        let source = CGSize(width: rotated ? photo.height : photo.width, height: rotated ? photo.width : photo.height)
+        let displayed = recipe.flatMap { try? PhotoGeometry(size: source, recipe: $0).output } ?? source
+        return displayed.width / displayed.height
+    }
+
     func cancel() { tiles.forEach { $0.cancel() }; tiles = [] }
 }
 
@@ -80,11 +96,36 @@ struct PhotoSurveyView: View {
     @Bindable var model: AppModel
     @ObservedObject var survey: PhotoSurvey
     @AppStorage("photoMat") private var mat = PhotoMat.dark
-    static func columns(count: Int, size: CGSize) -> Int {
-        (1...max(1,count)).max { a,b in
-            min(size.width / Double(a), size.height / ceil(Double(count) / Double(a)) * 1.5) <
-            min(size.width / Double(b), size.height / ceil(Double(count) / Double(b)) * 1.5)
-        } ?? 1
+    private static let spacing: CGFloat = 6
+    private static let minimumTileHeight: CGFloat = 80
+
+    // Compare the sum of fitted photo areas, using the same dimensions as the grid below.
+    static func columns(aspectRatios: [CGFloat], size: CGSize) -> Int {
+        guard !aspectRatios.isEmpty else { return 1 }
+        let ratios = aspectRatios.map { $0.isFinite && $0 > 0 ? $0 : 1 }
+        var best = 1
+        var bestArea: CGFloat = -1
+        for columns in 1...ratios.count {
+            let rows = (ratios.count + columns - 1) / columns
+            let tileHeight = trackLength(size.height, tracks: rows)
+            guard rows == 1 || tileHeight >= minimumTileHeight else { continue }
+            let width = trackLength(size.width, tracks: columns) - 2 * SurveyTile.imagePadding
+            let height = tileHeight - SurveyTile.captionHeight - 2 * SurveyTile.imagePadding
+            guard width > 0, height > 0 else { continue }
+            let area = ratios.reduce(CGFloat.zero) { sum, ratio in
+                let fittedHeight = min(height, width / ratio)
+                return sum + fittedHeight * min(width, fittedHeight * ratio)
+            }
+            if area > bestArea {
+                best = columns
+                bestArea = area
+            }
+        }
+        return best
+    }
+
+    private static func trackLength(_ length: CGFloat, tracks: Int) -> CGFloat {
+        (length - spacing * CGFloat(tracks + 1)) / CGFloat(tracks)
     }
     var body: some View {
         GeometryReader { geometry in
@@ -94,20 +135,23 @@ struct PhotoSurveyView: View {
                     Button(L10n.text("app.returnToGrid", defaultValue: "Return to Grid")) { model.selectWorkspace(.grid) }.buttonStyle(.key)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                let columns = Self.columns(count: survey.tiles.count, size: geometry.size)
-                let rows = Int(ceil(Double(survey.tiles.count) / Double(columns)))
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: columns), spacing: 6) {
+                let columns = Self.columns(aspectRatios: survey.tiles.map(\.surveyAspectRatio), size: geometry.size)
+                let rows = (survey.tiles.count + columns - 1) / columns
+                let height = max(Self.minimumTileHeight, Self.trackLength(geometry.size.height, tracks: rows))
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Self.spacing), count: columns), spacing: Self.spacing) {
                     ForEach(survey.tiles, id: \.photo?.id) { pane in
-                        SurveyTile(model: model, pane: pane, mat: mat)
-                            .frame(height: max(80, (geometry.size.height - 12 - CGFloat(rows - 1) * 6) / CGFloat(rows)))
+                        SurveyTile(model: model, pane: pane, mat: mat).frame(height: height)
                     }
-                }.padding(6)
+                }.padding(Self.spacing)
             }
         }.background(mat.color)
     }
 }
 
 private struct SurveyTile: View {
+    static let imagePadding: CGFloat = 4
+    static let captionHeight: CGFloat = 26
+
     @Bindable var model: AppModel
     @ObservedObject var pane: ComparisonPhoto
     let mat: PhotoMat
@@ -118,7 +162,7 @@ private struct SurveyTile: View {
                     nativeSize: pane.nativeSize, backdrop: mat.gray,
                     onClick: { _ in if let id = pane.photo?.id { model.activateSurveyPhoto(id) } }, accessibilityName: L10n.text("app.survey", defaultValue: "Survey: ") + (pane.photo?.displayName ?? L10n.text("app.photo", defaultValue: "Photo")))
                 if !pane.status.isEmpty { Text(pane.status).font(.caption11).foregroundStyle(Color(nsColor: mat.text)).padding().allowsHitTesting(false) }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity).padding(4)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity).padding(Self.imagePadding)
             HStack(spacing: 4) {
                 Button { if let id = pane.photo?.id { model.activateSurveyPhoto(id) } } label: {
                     Text(pane.photo?.displayName ?? L10n.text("app.photo", defaultValue: "Photo")).lineLimit(1).truncationMode(.middle)
@@ -131,7 +175,7 @@ private struct SurveyTile: View {
                         .buttonStyle(.key(height: 18, padding: 4)).accessibilityLabel(L10n.text("app.removeFromSurvey", defaultValue: "Remove from Survey ") + photo.displayName)
                         .help(L10n.text("app.removeFromCandidatesWhilePreservingThePhotoAndOriginal", defaultValue: "Remove from candidates while preserving the photo and original"))
                 }
-            }.font(.caption11).padding(.horizontal, 6).frame(height: 26)
+            }.font(.caption11).padding(.horizontal, 6).frame(height: Self.captionHeight)
         }.foregroundStyle(Color(nsColor: mat.text)).background(mat.color)
             .overlay(Rectangle().strokeBorder(Color(nsColor: mat.text).opacity(model.activeID == pane.photo?.id ? 0.9 : 0.2), lineWidth: model.activeID == pane.photo?.id ? 2 : 0.5))
     }
@@ -142,6 +186,8 @@ final class ComparisonPhoto: ObservableObject {
     @Published var photo: Photo?
     @Published var image: CGImage?
     @Published var nativeSize: CGSize?
+    // Set with the catalog snapshot so arriving previews do not reflow other tiles.
+    var surveyAspectRatio: CGFloat = 1
     @Published var zoom: Double?
     @Published var status = L10n.text("app.noPhotosToCompare", defaultValue: "No photos to compare")
     let viewport = PhotoViewport()
@@ -153,7 +199,7 @@ final class ComparisonPhoto: ObservableObject {
         task?.cancel(); task = nil; generation = UUID()
         image = nil; nativeSize = nil
     }
-    func load(render: @escaping (ImageRequest, Int?) async throws -> RenderedImage) {
+    func load(render: @escaping (ImageRequest, Int?) async throws -> RenderedImage, decodedRecipe: EditRecipe? = nil) {
         task?.cancel(); generation = UUID()
         guard let photo else { status = L10n.text("app.noPhotosToCompare", defaultValue: "No photos to compare"); return }
         guard let root else { status = L10n.text("app.cannotFindThePhotoSource", defaultValue: "Cannot find the photo source"); return }
@@ -161,7 +207,7 @@ final class ComparisonPhoto: ObservableObject {
         status = edge == nil ? L10n.text("app.loadingFullSize", defaultValue: "Loading full size…") : L10n.text("app.loadingPhoto", defaultValue: "Loading photo…")
         task = Task { [weak self] in
             do {
-                let recipe = try photo.recipe.map { try JSONDecoder().decode(EditRecipe.self, from: $0) }
+                let recipe = try decodedRecipe ?? photo.recipe.map { try JSONDecoder().decode(EditRecipe.self, from: $0) }
                 try recipe?.validate()
                 let result = try await render(ImageRequest(photo: photo, root: root, recipe: recipe), edge)
                 guard let self, token == self.generation, !Task.isCancelled else { return }
