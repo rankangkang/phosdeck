@@ -35,7 +35,7 @@ struct InstrumentPlate: View {
     }
 }
 
-/// Engraved seam between plate regions: a separator line followed by a light line, one physical pixel each.
+/// Engraved seam between major plate regions: a separator line followed by a light line, one physical pixel each.
 struct Seam: View {
     var axis: Axis = .horizontal
     @Environment(\.displayScale) private var scale
@@ -48,6 +48,19 @@ struct Seam: View {
             HStack(spacing: 0) { Theme.separator.frame(width: pixel); Theme.seamLight.frame(width: pixel) }
                 .accessibilityHidden(true)
         }
+    }
+}
+
+/// Subtle single-pixel divider for subgroups and quiet toolbar breaks.
+struct Hairline: View {
+    var axis: Axis = .horizontal
+    var opacity: Double = 0.55
+    @Environment(\.displayScale) private var scale
+    var body: some View {
+        let pixel = 1 / max(1, scale)
+        Theme.separator.opacity(opacity)
+            .frame(width: axis == .vertical ? pixel : nil, height: axis == .horizontal ? pixel : nil)
+            .accessibilityHidden(true)
     }
 }
 
@@ -143,8 +156,13 @@ struct KeySurface: View {
         case .raised, .limited(selected: false):
             shape.fill(LinearGradient(colors: hovering && enabled ? [Theme.raised, Theme.keyTop] : [Theme.keyTop, Theme.keyBottom],
                                       startPoint: .top, endPoint: .bottom))
-                .overlay(alignment: .top) {
-                    Rectangle().fill(Theme.keyHighlight).frame(height: 0.5).padding(.horizontal, radius)
+                .overlay {
+                    shape.strokeBorder(
+                        LinearGradient(colors: [Theme.keyHighlight, .clear], startPoint: .top, endPoint: .center),
+                        lineWidth: 0.75
+                    )
+                    .padding(0.5)
+                    .allowsHitTesting(false)
                 }
         case .latched, .limited(selected: true):
             shape.fill(LinearGradient(colors: [Theme.selected, Theme.keyBottom], startPoint: .top, endPoint: .bottom)
@@ -347,6 +365,60 @@ extension ButtonStyle where Self == KeyButtonStyle {
     static var iconKey: KeyButtonStyle { KeyButtonStyle(padding: 0) }
 }
 
+/// Lightweight frameless button for secondary toolbar actions (flags, ratings, popovers).
+/// Keeps hover feedback, latched selection cue and keyboard focus mark without heavy key walls.
+struct GhostToolButtonStyle: ButtonStyle {
+    var selected = false
+    var height: CGFloat = 22
+    var minWidth: CGFloat? = nil
+    var padding: CGFloat = 5
+    var accentWhenSelected = false
+    func makeBody(configuration: Configuration) -> some View {
+        GhostToolButtonBody(configuration: configuration, style: self)
+    }
+}
+
+private struct GhostToolButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let style: GhostToolButtonStyle
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.preservesControlAppearance) private var preservesAppearance
+    @Environment(\.isFocused) private var focused
+    @State private var hovering = false
+    private var lit: Bool { enabled || preservesAppearance }
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Metrics.keyRadius)
+        let active = style.selected || (enabled && configuration.isPressed)
+        configuration.label
+            .font(.system(size: 11, weight: style.selected ? .semibold : .regular))
+            .foregroundStyle(
+                !lit ? Theme.textDisabled
+                : (style.selected && style.accentWhenSelected) ? Theme.accentText
+                : style.selected || hovering ? Theme.text
+                : Theme.textSecondary
+            )
+            .padding(.horizontal, style.padding)
+            .frame(minWidth: style.minWidth ?? style.height, minHeight: style.height, maxHeight: style.height)
+            .background {
+                if active {
+                    shape.fill(Theme.selected)
+                        .overlay(shape.strokeBorder(Theme.materialEdge.opacity(0.65), lineWidth: 0.5))
+                } else if hovering && enabled {
+                    shape.fill(Theme.text.opacity(0.065))
+                }
+            }
+            .instrumentFocusMark(focused && enabled)
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+    }
+}
+
+extension ButtonStyle where Self == GhostToolButtonStyle {
+    static func ghostTool(selected: Bool = false, height: CGFloat = 22, minWidth: CGFloat? = nil, padding: CGFloat = 5, accentWhenSelected: Bool = false) -> GhostToolButtonStyle {
+        GhostToolButtonStyle(selected: selected, height: height, minWidth: minWidth, padding: padding, accentWhenSelected: accentWhenSelected)
+    }
+}
+
 /// The single signal-orange primary key of a view.
 struct PrimaryKeyStyle: ButtonStyle {
     var height: CGFloat = Metrics.key
@@ -380,8 +452,13 @@ private struct PrimaryKeyBody: View {
                                     shape.fill(Theme.keyPrimaryBottom.shadow(.inner(color: .black.opacity(0.3), radius: 2, y: 1.5)))
                                 } else {
                                     shape.fill(LinearGradient(colors: [Theme.keyPrimaryTop, Theme.keyPrimaryBottom], startPoint: .top, endPoint: .bottom))
-                                        .overlay(alignment: .top) {
-                                            Rectangle().fill(.white.opacity(0.55)).frame(height: 0.5).padding(.horizontal, Metrics.keyRadius)
+                                        .overlay {
+                                            shape.strokeBorder(
+                                                LinearGradient(colors: [.white.opacity(0.45), .clear], startPoint: .top, endPoint: .center),
+                                                lineWidth: 0.75
+                                            )
+                                            .padding(0.5)
+                                            .allowsHitTesting(false)
                                         }
                                 }
                             }.padding(.bottom, lip)
@@ -409,18 +486,48 @@ struct Lamp: View {
     var on: Bool
     var onScope = false
     var body: some View {
-        Circle().fill(onScope ? Theme.scopeBezel : Theme.inset)
+        Circle().fill(onScope ? Theme.scopeBezel : Theme.inset.opacity(on ? 1 : 0.75))
             .overlay {
                 Circle().fill(on ? AnyShapeStyle(RadialGradient(colors: [Theme.lampSpecular, Theme.lampOn], center: .top,
                                                                  startRadius: 0, endRadius: 4))
-                                : AnyShapeStyle(onScope ? Theme.scopeLampOff : Theme.lampOff))
-                    .overlay(Circle().strokeBorder(Theme.lampSocket.opacity(0.45), lineWidth: 0.5))
+                                : AnyShapeStyle(onScope ? Theme.scopeLampOff : Theme.lampOff.opacity(0.45)))
+                    .overlay(Circle().strokeBorder(Theme.lampSocket.opacity(on ? 0.45 : 0.25), lineWidth: 0.5))
                     .padding(1)
             }
-            .overlay(Circle().strokeBorder(onScope ? Theme.scopeBezel : Theme.keyHighlight, lineWidth: 0.6))
-            .shadow(color: onScope ? .clear : Theme.insetShadow, radius: 0.6, y: -0.5)
+            .overlay(Circle().strokeBorder(onScope ? Theme.scopeBezel : Theme.keyHighlight.opacity(on ? 0.9 : 0.55), lineWidth: 0.5))
+            .shadow(color: on ? Theme.lampOn.opacity(0.42) : .clear, radius: 1.8)
+            .shadow(color: onScope ? .clear : Theme.insetShadow.opacity(on ? 0.8 : 0.4), radius: 0.5, y: -0.4)
             .frame(width: Metrics.lamp, height: Metrics.lamp)
             .accessibilityHidden(true)
+    }
+}
+
+/// Quiet `?` help button for tucking long reference explanations out of the primary slider stack.
+struct InfoHintButton: View {
+    let title: String
+    let text: String
+    @State private var open = false
+    @State private var hovering = false
+    var body: some View {
+        Button { open.toggle() } label: {
+            Image(systemName: "questionmark.circle")
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(open || hovering ? Theme.text : Theme.textSecondary.opacity(0.8))
+                .frame(width: 16, height: 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(text)
+        .accessibilityLabel(L10n.text("app.aboutSection", defaultValue: "About \(title)"))
+        .popover(isPresented: $open, arrowEdge: .leading) {
+            Text(text)
+                .font(.caption11)
+                .foregroundStyle(Theme.text)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(12)
+                .frame(width: 260, alignment: .leading)
+        }
     }
 }
 
@@ -630,6 +737,7 @@ struct PanelSection<Accessory: View, Content: View>: View {
     var group: DevelopGroup?
     @Binding var isExpanded: Bool
     var reset: (() -> Void)?
+    var info: String?
     var modified = false
     var previewing = false
     var preview: ((Bool) -> Void)?
@@ -652,10 +760,11 @@ struct PanelSection<Accessory: View, Content: View>: View {
         preview(false)
     }
     init(_ title: String, group: DevelopGroup? = nil, isExpanded: Binding<Bool>, reset: (() -> Void)? = nil,
-         modified: Bool = false, previewing: Bool = false, preview: ((Bool) -> Void)? = nil,
+         info: String? = nil, modified: Bool = false, previewing: Bool = false, preview: ((Bool) -> Void)? = nil,
          previewPulse: (() -> Void)? = nil,
          @ViewBuilder accessory: () -> Accessory, @ViewBuilder content: @escaping () -> Content) {
         self.title = title; self.group = group; self._isExpanded = isExpanded; self.reset = reset
+        self.info = info
         self.modified = modified; self.previewing = previewing; self.preview = preview; self.previewPulse = previewPulse
         self.accessory = accessory(); self.content = content
     }
@@ -664,28 +773,34 @@ struct PanelSection<Accessory: View, Content: View>: View {
             if let group {
                 Color.clear.frame(width: 0, height: 0).id("develop-group-\(group.rawValue)")
             }
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button {
                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { isExpanded.toggle() }
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                        Image(systemName: "chevron.right").font(.system(size: 8.5, weight: .semibold))
                             .rotationEffect(.degrees(isExpanded ? 90 : 0)).foregroundStyle(Theme.textSecondary)
                             .frame(width: 10)
-                        Text(title).font(.section).foregroundStyle(Theme.textSecondary).fixedSize()
-                        Seam().frame(maxWidth: .infinity)
+                        Text(title).font(.section)
+                            .foregroundStyle(isExpanded ? Theme.text : Theme.textSecondary)
+                            .fixedSize()
+                        Spacer(minLength: 4)
                     }.frame(maxHeight: .infinity).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .environment(\.isEnabled, enabled || preservesAppearance)
                 .accessibilityLabel(title).accessibilityValue(isExpanded ? L10n.text("app.expanded", defaultValue: "Expanded") : L10n.text("app.collapsed", defaultValue: "Collapsed"))
+                if let info {
+                    InfoHintButton(title: title, text: info)
+                        .environment(\.isEnabled, enabled || preservesAppearance)
+                }
                 if modified {
                     Lamp(on: true).accessibilityLabel(L10n.text("app.modified", defaultValue: "Modified"))
                 }
                 if let preview {
                     MomentaryPreviewKey(title: L10n.text("app.preview", defaultValue: "Preview \(title)"),
                                         systemImage: previewing ? "eye.slash" : "eye",
-                                        selected: previewing, height: 22,
+                                        selected: previewing, height: 20,
                                         onPress: preview,
                                         onPulse: { pulsePreview(preview) })
                 }
@@ -708,16 +823,16 @@ struct PanelSection<Accessory: View, Content: View>: View {
 
 extension PanelSection where Accessory == EmptyView {
     init(_ title: String, group: DevelopGroup? = nil, isExpanded: Binding<Bool>, reset: (() -> Void)? = nil,
-         modified: Bool = false, previewing: Bool = false, preview: ((Bool) -> Void)? = nil,
+         info: String? = nil, modified: Bool = false, previewing: Bool = false, preview: ((Bool) -> Void)? = nil,
          previewPulse: (() -> Void)? = nil,
          @ViewBuilder content: @escaping () -> Content) {
-        self.init(title, group: group, isExpanded: isExpanded, reset: reset, modified: modified,
+        self.init(title, group: group, isExpanded: isExpanded, reset: reset, info: info, modified: modified,
                   previewing: previewing, preview: preview, previewPulse: previewPulse,
                   accessory: { EmptyView() }, content: content)
     }
 }
 
-/// Panel title (no disclosure) with the same silk line and room for long labels.
+/// Panel title (no disclosure) with quiet spacing and room for long labels.
 struct PanelTitle<Accessory: View>: View {
     let title: String
     let accessory: Accessory
@@ -728,17 +843,17 @@ struct PanelTitle<Accessory: View>: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
                 heading.fixedSize()
-                Seam().frame(minWidth: 8, maxWidth: .infinity)
+                Spacer(minLength: 8)
                 accessory.fixedSize()
             }
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) { heading; Seam() }
+                HStack(spacing: 8) { heading; Spacer(minLength: 4) }
                 HStack(spacing: 8) { Spacer(minLength: 0); accessory }
             }.padding(.vertical, 6)
         }.padding(.horizontal, 12).frame(minHeight: Metrics.sectionHeader)
     }
     private var heading: some View {
-        Text(title).font(.section).foregroundStyle(Theme.textSecondary)
+        Text(title).font(.section).foregroundStyle(Theme.text)
             .fixedSize(horizontal: false, vertical: true).help(title)
     }
 }
@@ -750,7 +865,7 @@ struct SubgroupLabel: View {
     var body: some View {
         HStack(spacing: 8) {
             SilkText(title).foregroundStyle(Theme.textSecondary).fixedSize()
-            Seam()
+            Hairline(opacity: 0.45)
         }.frame(height: 24).accessibilityAddTraits(.isHeader)
     }
 }

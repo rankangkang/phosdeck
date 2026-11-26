@@ -369,19 +369,35 @@ struct WorkspaceView: View {
         })
     }
     private var topBar: some View {
-        HStack(alignment: .keyCenter, spacing: 12) {
+        let moduleRow = KeyRow(title: L10n.text("app.module", defaultValue: "Module"), options: [KeyOption(.library, L10n.text("app.library", defaultValue: "Library"), help: L10n.text("app.returnToLibraryAndRestoreItsViewGGrid", defaultValue: "Return to Library and restore its view; G: Grid / E: Loupe")), KeyOption(.develop, L10n.text("app.develop", defaultValue: "Develop"), help: L10n.text("app.developD", defaultValue: "Develop (D)"))],
+                               selection: module, lampsInside: true, height: Self.topKey, padding: 10)
+            .disabled(!model.workspaceAvailable)
+        let exportKey = Button(L10n.text("app.export_1997", defaultValue: "Export")) { model.requestExport() }
+            .buttonStyle(PrimaryKeyStyle(height: Self.topKey))
+            .disabled(!model.canExportPhotos)
+            .help(L10n.text("app.exportSelectedPhotosE", defaultValue: "Export selected photos (⇧⌘E)"))
+        let leadingBrand = HStack(spacing: 10) {
             if !fullScreen { Color.clear.frame(width: 64, height: 1).accessibilityHidden(true) }
             Wordmark()
             Text(model.catalogName).font(.caption11).foregroundStyle(Theme.textSecondary).lineLimit(1).truncationMode(.middle)
                 .help(model.catalog?.fileURL.path ?? L10n.text("app.noCatalogOpenFileNewCatalogOpenCatalog", defaultValue: "No catalog open (File › New Catalog / Open Catalog)"))
-            Spacer(minLength: 8)
-            KeyRow(title: L10n.text("app.module", defaultValue: "Module"), options: [KeyOption(.library, L10n.text("app.library", defaultValue: "Library"), help: L10n.text("app.returnToLibraryAndRestoreItsViewGGrid", defaultValue: "Return to Library and restore its view; G: Grid / E: Loupe")), KeyOption(.develop, L10n.text("app.develop", defaultValue: "Develop"), help: L10n.text("app.developD", defaultValue: "Develop (D)"))],
-                   selection: module, lampsInside: true, height: Self.topKey, padding: 8)
-                .disabled(!model.workspaceAvailable)
-            Button(L10n.text("app.export_1997", defaultValue: "Export")) { model.requestExport() }
-                .buttonStyle(PrimaryKeyStyle(height: Self.topKey))
-                .disabled(!model.canExportPhotos)
-                .help(L10n.text("app.exportSelectedPhotosE", defaultValue: "Export selected photos (⇧⌘E)"))
+        }
+        return ViewThatFits(in: .horizontal) {
+            ZStack {
+                HStack(alignment: .keyCenter, spacing: 12) {
+                    leadingBrand
+                    Spacer(minLength: 160)
+                    exportKey
+                }
+                moduleRow
+            }
+            .frame(minWidth: 720)
+            HStack(alignment: .keyCenter, spacing: 12) {
+                leadingBrand
+                Spacer(minLength: 8)
+                moduleRow
+                exportKey
+            }
         }
         .padding(.top, Metrics.topBarKeyLine - Self.topKey / 2)
         .padding(.horizontal, 12).frame(height: Metrics.topBar, alignment: .top)
@@ -1039,48 +1055,53 @@ struct WorkspaceView: View {
         return L10n.text("app.flagSelectionHelp", defaultValue: "\(flag.title) (\(flag.shortcut))\(clear). Selection: \(count)")
     }
     private var organizationControls: some View {
-        HStack(alignment: .keyCenter, spacing: 8) {
-            HStack(spacing: -1) {
-                ForEach(Array(PhotoFlag.allCases.enumerated()), id: \.element.id) { index, flag in
+        HStack(alignment: .keyCenter, spacing: 6) {
+            HStack(spacing: 1) {
+                ForEach(Array(PhotoFlag.allCases.enumerated()), id: \.element.id) { _, flag in
                     let selected = model.selectedFlag == flag.rawValue
                     Button { model.toggleFlag(flag.rawValue) } label: {
-                        LampLabel(on: selected) { Image(systemName: flag.icon).frame(width: 13) }
-                    }.buttonStyle(.key(selected: selected, position: KeyPosition(index: index, count: 3), height: Self.toolKey, padding: 5))
+                        Image(systemName: flag.icon).font(.system(size: 11)).frame(width: 13)
+                    }.buttonStyle(.ghostTool(selected: selected, height: Self.toolKey, padding: 4, accentWhenSelected: flag != .unflagged))
                         .accessibilityLabel(flag.title).accessibilityValue(model.selectedFlag == nil ? L10n.text("app.mixedState", defaultValue: "Mixed State") : selected ? L10n.text("app.selected", defaultValue: "Selected") : L10n.text("app.notSelected", defaultValue: "Not selected"))
                         .accessibilityAddTraits(selected ? .isSelected : []).accessibilityIdentifier("set-flag-\(flag.rawValue)")
                         .help(flagHelp(flag))
                 }
             }.fixedSize()
-            HStack(spacing: 1) {
+            Hairline(axis: .vertical, opacity: 0.65).frame(height: 13)
+            HStack(spacing: 0) {
                 Button { model.organize(rating: 0) } label: {
-                    Text("0").font(.value).frame(width: 16)
-                }.buttonStyle(.key(selected: model.selectedRating == 0, height: Self.toolKey, padding: 4))
+                    Text("0").font(.value).frame(width: 14)
+                }.buttonStyle(.ghostTool(selected: model.selectedRating == 0, height: Self.toolKey, padding: 3))
                     .help(L10n.text("app.unrated0", defaultValue: "Unrated (0)"))
                     .accessibilityLabel(L10n.text("app.clearRating", defaultValue: "Clear Rating"))
                     .accessibilityValue(model.selectedRating == nil ? L10n.text("app.mixedState", defaultValue: "Mixed State") : model.selectedRating == 0 ? L10n.text("app.selected", defaultValue: "Selected") : L10n.text("app.notSelected", defaultValue: "Not selected"))
                     .accessibilityAddTraits(model.selectedRating == 0 ? .isSelected : [])
                     .accessibilityIdentifier("set-rating-0")
                 ForEach(1...5, id: \.self) { n in
+                    let filled = (model.selectedRating ?? 0) >= n
                     Button { model.toggleRating(n) } label: {
-                        Image(systemName: (model.selectedRating ?? 0) >= n ? "star.fill" : "star").font(.system(size: 11))
-                            .frame(width: 16, height: Self.toolKey).contentShape(Rectangle())
+                        Image(systemName: filled ? "star.fill" : "star").font(.system(size: 10.5))
+                            .foregroundStyle(filled ? Theme.text : Theme.textSecondary.opacity(0.5))
+                            .frame(width: 15, height: Self.toolKey).contentShape(Rectangle())
                     }.buttonStyle(.plain)
                         .help(L10n.text("app.setToStarsClickTheCurrentRatingAgainTo", defaultValue: "Set \(model.survey == nil ? L10n.text("app.selectedPhotos_2133", defaultValue: "Selected Photos") : L10n.text("app.currentPhoto", defaultValue: "Current Photo")) to rating \(n); click the current rating again to clear (0)")).accessibilityLabel(L10n.text("app.ratingStars", defaultValue: "Rating \(n) Stars"))
                         .accessibilityIdentifier("set-rating-\(n)")
                 }
             }.foregroundStyle(Theme.text).accessibilityElement(children: .contain)
                 .accessibilityLabel(L10n.text("app.rating", defaultValue: "Rating")).accessibilityValue(model.selectedRating.map { $0 == 0 ? L10n.text("app.unrated", defaultValue: "Unrated") : L10n.text("app.stars_1722", defaultValue: "\($0) Stars") } ?? L10n.text("app.mixedState", defaultValue: "Mixed State"))
+            Hairline(axis: .vertical, opacity: 0.65).frame(height: 13)
             ColorLabelPicker(model: model)
+            Hairline(axis: .vertical, opacity: 0.65).frame(height: 13)
             quickCollectionControls
         }.disabled(model.selection.isEmpty || !model.canMarkPhotos)
     }
     private var quickCollectionControls: some View {
-        HStack(spacing: -1) {
+        HStack(spacing: 1) {
             Button { model.toggleQuickCollection() } label: {
                 LampLabel(on: model.quickCollectMembership == true) {
                     Image(systemName: model.quickCollectMembership == nil ? "tray.and.arrow.down" : "tray")
                 }
-            }.buttonStyle(.key(selected: model.quickCollectMembership == true, position: .leading, height: Self.toolKey, padding: 5))
+            }.buttonStyle(.ghostTool(selected: model.quickCollectMembership == true, height: Self.toolKey, padding: 5))
                 .accessibilityLabel(L10n.text("app.quickCollection", defaultValue: "Quick Collection")).accessibilityIdentifier("quick-collect")
                 .accessibilityValue(model.quickCollectMembership == nil ? L10n.text("app.someAdded", defaultValue: "Some Added") : model.quickCollectMembership == true ? L10n.text("app.added_2136", defaultValue: "Added") : L10n.text("app.notAdded", defaultValue: "Not Added"))
                 .help(model.quickCollectMembership == true
@@ -1097,23 +1118,23 @@ struct WorkspaceView: View {
                         else { Text(collection.name) }
                     }
                 }
-            } label: { Image(systemName: "ellipsis").font(.system(size: 10)).frame(width: 12) }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).tint(Theme.text).fixedSize()
-                .keySurface(position: .trailing, height: Self.toolKey)
+            } label: { Image(systemName: "ellipsis").font(.system(size: 10)).frame(width: 14, height: Self.toolKey) }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).tint(Theme.textSecondary).fixedSize()
                 .accessibilityLabel(L10n.text("app.quickCollectionTarget_2141", defaultValue: "Quick Collection Target")).help(L10n.text("app.chooseARegularCollectionForQuickCollectionTheCurrent", defaultValue: "Choose a regular collection for Quick Collection. The current target is marked with + in the sidebar"))
         }.fixedSize()
     }
     private var advanceControl: some View {
         Button { model.autoAdvance.toggle() } label: {
             LampLabel(on: model.autoAdvance) { Image(systemName: "arrow.right.to.line") }
-        }.buttonStyle(.key(selected: model.autoAdvance, height: Self.toolKey, padding: 5))
+        }.buttonStyle(.ghostTool(selected: model.autoAdvance, height: Self.toolKey, padding: 5))
             .accessibilityLabel(L10n.text("app.autoAdvance", defaultValue: "Auto Advance")).accessibilityValue(model.autoAdvance ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off"))
             .help(L10n.text("app.autoAdvanceSelectTheNextPhotoAfterFlaggingOr", defaultValue: "Auto Advance: select the next photo after flagging or rating. Shift temporarily reverses it; Caps Lock also enables keyboard culling"))
             .disabled(!model.workspaceAvailable)
     }
     private var centerToolbar: some View {
         ViewThatFits(in: .horizontal) {
-            centerToolbarContent(compact: false, narrow: false).frame(minWidth: 840).frame(height: Metrics.toolbar)
+            centerToolbarContent(compact: false, narrow: false).frame(height: Metrics.toolbar)
+            centerToolbarContent(compact: true, narrow: false).frame(height: Metrics.toolbar)
             VStack(spacing: 0) {
                 HStack(alignment: .keyCenter, spacing: 8) { organizationControls; Spacer(minLength: 4); advanceControl }
                     .padding(.horizontal, 12).frame(height: Metrics.toolbar)
@@ -1126,7 +1147,7 @@ struct WorkspaceView: View {
         HStack(alignment: .keyCenter, spacing: compact ? 5 : 8) {
             if model.editMode {
                 Button { model.selectModule(.library) } label: {
-                    if narrow { Image(systemName: "square.grid.2x2") }
+                    if compact || narrow { Image(systemName: "square.grid.2x2") }
                     else { Label(L10n.text("app.returnToLibrary", defaultValue: "Return to Library"), systemImage: "square.grid.2x2") }
                 }.buttonStyle(.key(height: Self.toolKey, padding: 6)).fixedSize()
                     .help(L10n.text("app.returnToLibraryAndRestoreItsPreviousView", defaultValue: "Return to Library and restore its previous view")).accessibilityLabel(L10n.text("app.returnToLibrary", defaultValue: "Return to Library"))
@@ -1149,7 +1170,7 @@ struct WorkspaceView: View {
                 adjustmentsMenu.menuStyle(.borderlessButton).tint(Theme.text).menuIndicator(.hidden).fixedSize().keySurface(height: Self.toolKey, enabled: !model.busy)
             }
             Button { keywordPopover.toggle() } label: { Image(systemName: "tag") }
-                .buttonStyle(.key(selected: keywordPopover, height: Self.toolKey, padding: 6))
+                .buttonStyle(.ghostTool(selected: keywordPopover, height: Self.toolKey, padding: 5))
                 .help(L10n.text("app.manageSelectedPhotosKeywordsAndCaptions", defaultValue: "Manage selected photos' keywords and captions")).accessibilityLabel(L10n.text("app.keywordsAndCaption", defaultValue: "Keywords and Caption")).accessibilityIdentifier("keyword-editor")
                 .disabled(model.catalog == nil || !model.workspaceAvailable)
                 .popover(isPresented: $keywordPopover) { KeywordEditor(model: model) }
@@ -1162,30 +1183,36 @@ struct WorkspaceView: View {
             } else if let comparison = model.comparison {
                 ComparisonToolbarControls(model: model, comparison: comparison, compact: narrow)
             } else if model.singleView || model.editMode {
-                ViewThatFits(in: .horizontal) {
-                    previewIndicator(compact: false)
+                if compact && !narrow {
                     previewIndicator(compact: true)
-                    Color.clear.frame(width: 0, height: 0)
+                } else {
+                    ViewThatFits(in: .horizontal) {
+                        previewIndicator(compact: false)
+                        previewIndicator(compact: true)
+                        Color.clear.frame(width: 0, height: 0)
+                    }
                 }
                 if compact {
-                    Button("1:1") { model.selectZoom(1) }
-                        .buttonStyle(.key(selected: model.fullResolution && model.zoomScale == 1, height: Self.toolKey, padding: 6))
-                        .editingDisabled(model.cropMode || model.image == nil, temporarilyLocked: model.editorUsesPreviousPhoto && !model.cropMode)
-                        .accessibilityLabel(L10n.text("app.inspectAt100", defaultValue: "Inspect at 100%")).help(L10n.text("app.inspectAt1000", defaultValue: "Inspect at 100% (⌥⌘0)"))
-                    Menu {
-                        Button(L10n.text("app.fit_1691", defaultValue: "Fit")) { model.selectZoom(nil) }; Button(L10n.text("app.fill", defaultValue: "Fill")) { model.selectZoom(nil,fill:true) }
-                        Divider()
-                        ForEach(AppModel.zoomScales,id:\.self) { factor in Button(AppModel.zoomLabel(factor)) { model.selectZoom(factor) } }
-                        Divider()
-                        Toggle(L10n.text("app.lockViewPosition", defaultValue: "Lock View Position"), isOn: $model.lockViewPosition)
-                    } label:{ Text(model.fullResolution ? model.zoomLabel : model.fillView ? L10n.text("app.fill", defaultValue: "Fill") : L10n.text("app.fit_1691", defaultValue: "Fit")) }
-                        .menuStyle(.borderlessButton).fixedSize()
-                        .keySurface(height:Self.toolKey, selected:model.fullResolution || model.fillView, enabled:!model.cropMode && model.image != nil, preservesAppearance: model.editorUsesPreviousPhoto && !model.cropMode)
-                        .editingDisabled(model.cropMode || model.image == nil, temporarilyLocked: model.editorUsesPreviousPhoto && !model.cropMode)
-                        .accessibilityLabel(L10n.text("app.zoom", defaultValue: "Zoom")).accessibilityValue(model.fullResolution ? model.zoomLabel : model.fillView ? L10n.text("app.fill", defaultValue: "Fill") : L10n.text("app.fit_1691", defaultValue: "Fit"))
+                    HStack(spacing: -1) {
+                        Button("1:1") { model.selectZoom(1) }
+                            .buttonStyle(.key(selected: model.fullResolution && model.zoomScale == 1, position: .leading, height: Self.toolKey, padding: 6))
+                            .editingDisabled(model.cropMode || model.image == nil, temporarilyLocked: model.editorUsesPreviousPhoto && !model.cropMode)
+                            .accessibilityLabel(L10n.text("app.inspectAt100", defaultValue: "Inspect at 100%")).help(L10n.text("app.inspectAt1000", defaultValue: "Inspect at 100% (⌥⌘0)"))
+                        Menu {
+                            Button(L10n.text("app.fit_1691", defaultValue: "Fit")) { model.selectZoom(nil) }; Button(L10n.text("app.fill", defaultValue: "Fill")) { model.selectZoom(nil,fill:true) }
+                            Divider()
+                            ForEach(AppModel.zoomScales,id:\.self) { factor in Button(AppModel.zoomLabel(factor)) { model.selectZoom(factor) } }
+                            Divider()
+                            Toggle(L10n.text("app.lockViewPosition", defaultValue: "Lock View Position"), isOn: $model.lockViewPosition)
+                        } label:{ Text(model.fullResolution ? model.zoomLabel : model.fillView ? L10n.text("app.fill", defaultValue: "Fill") : L10n.text("app.fit_1691", defaultValue: "Fit")) }
+                            .menuStyle(.borderlessButton).fixedSize()
+                            .keySurface(position: .trailing, height:Self.toolKey, selected:model.fullResolution || model.fillView, enabled:!model.cropMode && model.image != nil, preservesAppearance: model.editorUsesPreviousPhoto && !model.cropMode)
+                            .editingDisabled(model.cropMode || model.image == nil, temporarilyLocked: model.editorUsesPreviousPhoto && !model.cropMode)
+                            .accessibilityLabel(L10n.text("app.zoom", defaultValue: "Zoom")).accessibilityValue(model.fullResolution ? model.zoomLabel : model.fillView ? L10n.text("app.fill", defaultValue: "Fill") : L10n.text("app.fit_1691", defaultValue: "Fit"))
+                    }.fixedSize()
                 } else { zoomControls.fixedSize() }
                 if !narrow { Button { matPopover.toggle() } label: { Image(systemName: "circle.lefthalf.filled") }
-                    .buttonStyle(.key(selected: matPopover, height: Self.toolKey, padding: 6))
+                    .buttonStyle(.ghostTool(selected: matPopover, height: Self.toolKey, padding: 5))
                     .help(L10n.text("app.viewingMat_2154", defaultValue: "Viewing mat: \(mat.title)")).accessibilityLabel(L10n.text("app.viewingMat", defaultValue: "Viewing Mat")).accessibilityValue(mat.title)
                     .popover(isPresented: $matPopover, arrowEdge: .top) {
                         VStack(alignment: .leading, spacing: 10) {
@@ -1247,8 +1274,8 @@ struct WorkspaceView: View {
                 if model.editMode {
                     Seam()
                     KeyRow(title: L10n.text("app.tools", defaultValue: "Tools"), options: [KeyOption(.adjust, L10n.text("app.adjustTool", defaultValue: "Adjust")), KeyOption(.crop, L10n.text("app.crop", defaultValue: "Crop"), help: L10n.text("app.cropR", defaultValue: "Crop (R)")), KeyOption(.spot, L10n.text("app.spots", defaultValue: "Spots"), help: L10n.text("app.spotRemovalQ", defaultValue: "Spot Removal (Q)")), KeyOption(.mask, L10n.text("app.masks", defaultValue: "Masks"), help: L10n.text("app.masksW", defaultValue: "Masks (⇧W)"))],
-                           selection: tool, expand: true)
-                        .editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto).padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
+                           selection: tool, lampsInside: true, expand: true, padding: 6)
+                        .editingDisabled(!model.canEdit, temporarilyLocked: model.editorUsesPreviousPhoto).padding(.horizontal, 12).padding(.vertical, 8)
                     Seam()
                     if model.developTool != .adjust {
                         HStack {
@@ -1565,7 +1592,7 @@ struct PhotoViewingInfo: View {
                         Text(items.joined(separator: " · ")).fixedSize()
                     }
                     .font(.caption11).monospacedDigit().foregroundStyle(Color(nsColor: mat.textSecondary))
-                    .padding(.horizontal, Metrics.padding).frame(height: Metrics.topBar).background(mat.color)
+                    .padding(.horizontal, Metrics.padding).frame(height: Metrics.photoInfoBar).background(mat.color)
                     .accessibilityElement(children: .combine).accessibilityIdentifier("develop-photo-capture")
                 }
             } else {
@@ -1577,7 +1604,7 @@ struct PhotoViewingInfo: View {
                         .font(.caption11).foregroundStyle(Color(nsColor: mat.textSecondary))
                 }
                 .font(.section).foregroundStyle(Color(nsColor: mat.text))
-                .padding(.horizontal, Metrics.padding).frame(height: Metrics.topBar).background(mat.color)
+                .padding(.horizontal, Metrics.padding).frame(height: Metrics.photoInfoBar).background(mat.color)
                 .accessibilityElement(children: .combine).accessibilityIdentifier("develop-photo-title")
             }
         }

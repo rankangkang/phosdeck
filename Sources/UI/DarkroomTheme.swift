@@ -141,9 +141,11 @@ enum Theme {
 
 enum Metrics {
     static let focusMark = CGSize(width: 10, height: 2)
-    static let topBar: CGFloat = 32
-    /// Centre line of the system window buttons inside the hidden title bar.
-    static let topBarKeyLine: CGFloat = 16
+    static let topBar: CGFloat = 36
+    /// Centre line of the top bar controls inside the hidden title bar.
+    static let topBarKeyLine: CGFloat = 18
+    /// Thin metadata strip above and below the photo canvas.
+    static let photoInfoBar: CGFloat = 30
     /// Chassis rim around the side panels and filmstrip; the status bar serves as its bottom edge.
     static let rim: CGFloat = 8
     static let toolbar: CGFloat = 30

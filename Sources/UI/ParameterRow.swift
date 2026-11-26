@@ -31,6 +31,7 @@ struct AdjustmentRow: View {
     @State private var draft: String?
     @State private var draftPhotoID: String?
     @State private var invalid = false
+    @State private var hovering = false
     private var bipolar: Bool { range.lowerBound < 0 && range.upperBound > 0 }
     private var modified: Bool { abs(value - reset) >= max(step, 1e-9) / 2 }
     private func bounded(_ v: Double) -> Double { v.isFinite ? min(range.upperBound, max(range.lowerBound, v)) : value }
@@ -40,7 +41,17 @@ struct AdjustmentRow: View {
                 labelView.frame(width: Metrics.rowLabel, alignment: .leading)
                 if showsSlider { slider.frame(height: 28) } else { Spacer(minLength: 0) }
                 valueField.frame(width: Metrics.rowValue, alignment: .trailing)
-            }.frame(minHeight: Metrics.row)
+            }
+            .frame(minHeight: Metrics.row)
+            .background {
+                if hovering && enabled {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Theme.text.opacity(0.035))
+                        .padding(.horizontal, -4)
+                        .allowsHitTesting(false)
+                }
+            }
+            .onHover { hovering = $0 }
             if invalid {
                 Label(errorMessage, systemImage: "exclamationmark.circle")
                     .font(.caption11).foregroundStyle(Theme.error)
@@ -56,7 +67,9 @@ struct AdjustmentRow: View {
             .foregroundStyle(enabled || preservesAppearance ? Theme.text : Theme.textDisabled)
             .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             .overlay(alignment: .trailing) {
-                if modified { Circle().fill(Theme.accentSignal).frame(width: 4, height: 4).offset(x: 8).accessibilityHidden(true) }
+                if modified && !showsSlider {
+                    Circle().fill(Theme.accentSignal).frame(width: 4, height: 4).offset(x: 8).accessibilityHidden(true)
+                }
             }
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: resetValue)
@@ -256,8 +269,8 @@ private struct NativeAdjustmentSlider: NSViewRepresentable {
         if slider.minValue != range.lowerBound { slider.minValue = range.lowerBound }
         if slider.maxValue != range.upperBound { slider.maxValue = range.upperBound }
         slider.synchronizeValue(configuration.value)
-        slider.step = configuration.step
-        slider.resetValue = configuration.neutral
+        if slider.step != configuration.step { slider.step = configuration.step; slider.needsDisplay = true }
+        if slider.resetValue != configuration.neutral { slider.resetValue = configuration.neutral; slider.needsDisplay = true }
         slider.change = configuration.change; slider.commit = configuration.commit
         if slider.tickCount != configuration.tickCount { slider.tickCount = configuration.tickCount; slider.needsDisplay = true }
         slider.setAccessibilityValueDescription(configuration.valueDescription)
@@ -316,6 +329,7 @@ class AdjustmentNSSlider: NSSlider {
     func x(at fraction: Double) -> CGFloat { travel.lowerBound + CGFloat(fraction) * (travel.upperBound - travel.lowerBound) }
     var capRect: NSRect { NSRect(x: x(at: fraction).rounded() + lockedOffset - 4.5, y: trackY - 8, width: 9, height: 16) }
     private var focused: Bool { window?.firstResponder === self && window?.isKeyWindow == true }
+    var isModified: Bool { abs(doubleValue - resetValue) >= max(step, 1e-9) / 2 }
 
     override func draw(_ dirtyRect: NSRect) {
         let enabled = isEnabled || preservesAppearance
@@ -337,23 +351,26 @@ class AdjustmentNSSlider: NSSlider {
         Palette.materialEdge.setStroke()
         well.lineWidth = 0.5; well.stroke()
 
-        let ticks = NSBezierPath()
+        let minorTicks = NSBezierPath()
         for index in 0..<max(2, tickCount) {
             let f = Double(index) / Double(max(2, tickCount) - 1)
             if bipolar && abs(f - neutral) < 0.001 { continue }
-            ticks.move(to: NSPoint(x: x(at: f), y: y + 4)); ticks.line(to: NSPoint(x: x(at: f), y: y + 7))
+            minorTicks.move(to: NSPoint(x: x(at: f), y: y + 4.5)); minorTicks.line(to: NSPoint(x: x(at: f), y: y + 7))
         }
+        (enabled ? Palette.textSecondary.withAlphaComponent(0.32) : Palette.textDisabled.withAlphaComponent(0.22)).setStroke()
+        minorTicks.lineWidth = 0.75; minorTicks.stroke()
+
         if bipolar && (0...1).contains(neutral) {
-            ticks.move(to: NSPoint(x: x(at: neutral), y: y + 4)); ticks.line(to: NSPoint(x: x(at: neutral), y: y + 9))
+            let centerTick = NSBezierPath()
+            centerTick.move(to: NSPoint(x: x(at: neutral), y: y + 4)); centerTick.line(to: NSPoint(x: x(at: neutral), y: y + 8.5))
+            (enabled ? Palette.textSecondary.withAlphaComponent(0.75) : Palette.textDisabled.withAlphaComponent(0.45)).setStroke()
+            centerTick.lineWidth = 1; centerTick.stroke()
         }
-        (enabled ? Palette.textSecondary : Palette.textDisabled).setStroke()
-        ticks.lineWidth = 1; ticks.stroke()
     }
     private func drawCap(enabled: Bool) {
-        let y = trackY
         let cap = capRect
         let capPath = NSBezierPath(roundedRect: cap.insetBy(dx: 0.5, dy: 0.5), xRadius: 2, yRadius: 2)
-        for (color, offset, blur) in [(Palette.keyAmbientShadow, 4.0, 4.0), (Palette.keyContactShadow, 1.5, 1.0)] {
+        for (color, offset, blur) in [(Palette.keyAmbientShadow, 3.5, 3.5), (Palette.keyContactShadow, 1.4, 0.9)] {
             NSGraphicsContext.saveGraphicsState()
             let shadow = NSShadow()
             shadow.shadowColor = color.withAlphaComponent(color.alphaComponent * (enabled ? 1 : 0.45))
@@ -366,13 +383,30 @@ class AdjustmentNSSlider: NSSlider {
         let face = NSBezierPath(roundedRect: cap.insetBy(dx: 0.75, dy: 0.5).offsetBy(dx: 0, dy: -0.5), xRadius: 2, yRadius: 2)
         NSGradient(starting: Palette.capTop, ending: Palette.capBottom)?.draw(in: face, angle: 90)
         Palette.keyHighlight.setFill()
-        NSRect(x: cap.minX + 2, y: cap.minY + 1.5, width: cap.width - 4, height: 1).fill(using: .sourceOver)
+        NSRect(x: cap.minX + 1.5, y: cap.minY + 1.25, width: cap.width - 3, height: 0.75).fill(using: .sourceOver)
         if !enabled { Palette.surfacePanel.withAlphaComponent(0.45).setFill(); face.fill() }
         (NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? Palette.controlBorder : Palette.materialEdge).setStroke()
         capPath.lineWidth = 0.75; capPath.stroke()
+
+        // Vertical centre index line: quiet neutral at rest, signal orange when modified or active.
         let active = isEnabled && (trackingMouse || focused)
-        (active ? Palette.accentSignal : enabled ? Palette.textSecondary : Palette.textDisabled).setFill()
-        NSRect(x: cap.minX + 2, y: y - (active ? 1 : 0.5), width: cap.width - 4, height: active ? 2 : 1).fill()
+        let pointerWidth: CGFloat = active ? 2.0 : 1.5
+        let pointerHeight: CGFloat = 9.0
+        let pointerRect = NSRect(x: cap.midX - pointerWidth / 2, y: cap.midY - pointerHeight / 2 - 0.5,
+                                 width: pointerWidth, height: pointerHeight)
+        let pointer = NSBezierPath(roundedRect: pointerRect, xRadius: pointerWidth / 2, yRadius: pointerWidth / 2)
+        let pointerColor: NSColor
+        if !enabled {
+            pointerColor = Palette.textDisabled.withAlphaComponent(0.55)
+        } else if active {
+            pointerColor = Palette.lampOn
+        } else if isModified {
+            pointerColor = Palette.accentSignal
+        } else {
+            pointerColor = Palette.textSecondary.withAlphaComponent(0.45)
+        }
+        pointerColor.setFill()
+        pointer.fill()
     }
 
     override func becomeFirstResponder() -> Bool {

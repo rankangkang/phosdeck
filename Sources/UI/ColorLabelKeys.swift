@@ -18,12 +18,13 @@ extension PhotoColorLabel {
 struct ColorLabelKeys: View {
     let selected: Set<Int>
     var prefix = "set-color-label"
+    var compact = false
     let action: (Int) -> Void
 
     var body: some View {
-        HStack(spacing: -1) {
+        HStack(spacing: compact ? 1 : -1) {
             ForEach(PhotoColorLabel.allCases) { label in
-                ColorLabelKey(label: label, selected: selected.contains(label.rawValue), prefix: prefix) { action(label.rawValue) }
+                ColorLabelKey(label: label, selected: selected.contains(label.rawValue), prefix: prefix, compact: compact) { action(label.rawValue) }
             }
         }.fixedSize().accessibilityElement(children: .contain).accessibilityLabel(L10n.text("app.colorLabel", defaultValue: "Color Label"))
     }
@@ -33,6 +34,7 @@ private struct ColorLabelKey: View {
     let label: PhotoColorLabel
     let selected: Bool
     let prefix: String
+    var compact = false
     let action: () -> Void
     private var title: String {
         let context = prefix == "color-filter" ? L10n.text("app.filterColor", defaultValue: "Filter Color: ") : prefix == "smart-color" ? L10n.text("app.conditionColor", defaultValue: "Condition Color: ") : L10n.text("app.colorLabel_1049", defaultValue: "Color Label: ")
@@ -45,23 +47,32 @@ private struct ColorLabelKey: View {
         return label.titleWithShortcut + L10n.text("app.clickAgainToClear", defaultValue: "; click again to clear")
     }
     var body: some View {
-        Button(action: action) {
-            ZStack {
-                if label == .none {
-                    Image(systemName: "nosign").font(.system(size: 10))
-                } else {
-                    RoundedRectangle(cornerRadius: 1).fill(Color(nsColor: label.nsColor)).frame(width: 10, height: 10)
-                        .overlay(RoundedRectangle(cornerRadius: 1).strokeBorder(Theme.text.opacity(0.3), lineWidth: 0.5))
-                }
-                if selected && label != .none {
-                    Image(systemName: "checkmark").font(.system(size: 7, weight: .bold)).foregroundStyle(.white)
-                }
-            }.frame(width: 12)
-        }.buttonStyle(.key(selected: selected, position: KeyPosition(index: label.rawValue, count: 6), height: 22, padding: 4))
-            .accessibilityLabel(title).accessibilityValue(selected ? L10n.text("app.selected", defaultValue: "Selected") : L10n.text("app.notSelected", defaultValue: "Not selected"))
-            .accessibilityAddTraits(selected ? .isSelected : [])
-            .accessibilityIdentifier(prefix + "-" + String(label.rawValue))
-            .help(help)
+        let content = ZStack {
+            if label == .none {
+                Image(systemName: "nosign").font(.system(size: compact ? 9.5 : 10))
+            } else {
+                RoundedRectangle(cornerRadius: compact ? 2 : 1).fill(Color(nsColor: label.nsColor))
+                    .frame(width: compact ? 9 : 10, height: compact ? 9 : 10)
+                    .overlay(RoundedRectangle(cornerRadius: compact ? 2 : 1).strokeBorder(Theme.text.opacity(0.28), lineWidth: 0.5))
+            }
+            if selected && label != .none {
+                Image(systemName: "checkmark").font(.system(size: 7, weight: .bold)).foregroundStyle(.white)
+            }
+        }.frame(width: compact ? 11 : 12)
+
+        Group {
+            if compact {
+                Button(action: action) { content }
+                    .buttonStyle(.ghostTool(selected: selected, height: 20, minWidth: 16, padding: 2.5))
+            } else {
+                Button(action: action) { content }
+                    .buttonStyle(.key(selected: selected, position: KeyPosition(index: label.rawValue, count: 6), height: 22, padding: 4))
+            }
+        }
+        .accessibilityLabel(title).accessibilityValue(selected ? L10n.text("app.selected", defaultValue: "Selected") : L10n.text("app.notSelected", defaultValue: "Not selected"))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier(prefix + "-" + String(label.rawValue))
+        .help(help)
     }
 }
 
@@ -71,7 +82,7 @@ struct ColorLabelPicker: View {
     @Bindable var model: AppModel
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            ColorLabelKeys(selected: Set(model.selectedColorLabel.map { [$0] } ?? []), action: { model.toggleColorLabel($0) })
+            ColorLabelKeys(selected: Set(model.selectedColorLabel.map { [$0] } ?? []), compact: true, action: { model.toggleColorLabel($0) })
             Menu {
                 ForEach(PhotoColorLabel.allCases) { label in
                     Toggle(label.titleWithShortcut, isOn: Binding(
@@ -83,6 +94,6 @@ struct ColorLabelPicker: View {
             }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().keySurface(height: 22)
                 .accessibilityLabel(L10n.text("app.setColorLabel", defaultValue: "Set Color Label"))
                 .accessibilityValue(model.selectedColorLabel.flatMap(PhotoColorLabel.init(rawValue:))?.title ?? L10n.text("app.mixedState", defaultValue: "Mixed State"))
-        }.frame(minWidth: 24, idealWidth: 128, maxWidth: 128)
+        }.fixedSize()
     }
 }

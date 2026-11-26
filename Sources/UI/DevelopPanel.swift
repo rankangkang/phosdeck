@@ -87,12 +87,12 @@ struct DevelopPanel: View {
                         $0.crop = Crop(); $0.quarterTurns = 0; $0.straightenDegrees = 0; $0.straightenAtSourceScale = nil
                         $0.cropAspectRatio = nil; $0.flipHorizontal = false; $0.flipVertical = false
                     }
-                }, modified: isModified(.crop), previewing: previewingGroup == .crop, preview: previewHandler(.crop), previewPulse: previewPulseHandler(.crop)) { crop.sectionContent() } }
-                if isVisible(.perspective) { PanelSection(L10n.text("geometry.title", defaultValue: "Perspective"), group: .perspective, isExpanded: $perspectiveOpen, reset: { change { $0.perspective = PerspectiveSettings() } }, modified: isModified(.perspective), previewing: previewingGroup == .perspective, preview: previewHandler(.perspective), previewPulse: previewPulseHandler(.perspective)) {
+                }, info: L10n.text("app.dragThePhotoBorderToCropThenReturnTo", defaultValue: "Drag the photo border to crop, then return to Adjustments.") + "\n\n" + L10n.text("app.flipTheCurrentCropWhileRetainingTheSelectedContent", defaultValue: "Flip the current crop while retaining the selected content. The crop stays level during rotation and straightening."), modified: isModified(.crop), previewing: previewingGroup == .crop, preview: previewHandler(.crop), previewPulse: previewPulseHandler(.crop)) { crop.sectionContent() } }
+                if isVisible(.perspective) { PanelSection(L10n.text("geometry.title", defaultValue: "Perspective"), group: .perspective, isExpanded: $perspectiveOpen, reset: { change { $0.perspective = PerspectiveSettings() } }, info: L10n.text("app.negativeVerticalExpandsTheTopNegativeHorizontalExpandsThe", defaultValue: "Negative Vertical expands the top; negative Horizontal expands the left. Positive Aspect stretches vertically and narrows horizontally. Constrain Crop removes blank edges; otherwise transparency is retained and JPEG needs a black or white matte."), modified: isModified(.perspective), previewing: previewingGroup == .perspective, preview: previewHandler(.perspective), previewPulse: previewPulseHandler(.perspective)) {
                     perspective.sectionContent()
                 } }
             } else {
-            if isVisible(.basic) { PanelSection(L10n.text("app.basicAdjustments", defaultValue: "Basic Adjustments"), group: .basic, isExpanded: expansion(0), reset: resetBasic, modified: isModified(.basic), previewing: previewingGroup == .basic, preview: previewHandler(.basic), previewPulse: previewPulseHandler(.basic)) { basic.sectionContent() } }
+            if isVisible(.basic) { PanelSection(L10n.text("app.basicAdjustments", defaultValue: "Basic Adjustments"), group: .basic, isExpanded: expansion(0), reset: resetBasic, info: (local || recipe?.isRaster == true) ? L10n.text("app.5500K0IsNeutralAdjustmentsApplyOverThe", defaultValue: "5500 K / 0 is neutral. Adjustments apply over the current photo colors.") : nil, modified: isModified(.basic), previewing: previewingGroup == .basic, preview: previewHandler(.basic), previewPulse: previewPulseHandler(.basic)) { basic.sectionContent() } }
             if isVisible(.curves) { PanelSection(L10n.text("app.curves", defaultValue: "Curves"), group: .curves, isExpanded: expansion(4), reset: { change { $0.pipelineVersion = 2; $0.develop.curves = nil } }, modified: isModified(.curves), previewing: previewingGroup == .curves, preview: previewHandler(.curves), previewPulse: previewPulseHandler(.curves)) {
                 ToneCurvePanel(curves: recipe?.develop.curves ?? ToneCurves(), change: { value, save in
                     change({ $0.pipelineVersion = 2; $0.develop.curves = value }, commit: save)
@@ -100,7 +100,7 @@ struct DevelopPanel: View {
                 onTarget: local ? nil : { model.toggleTargetedAdjustment(.curve($0)) },
                 targetedChannel: { if case .curve(let channel) = model.targetedAdjustment { return channel }; return nil }(), onTargetExit: { model.cancelTargetedAdjustment() }, targetingAvailable: recipe?.pipelineVersion == 2).sectionContent()
             } }
-            if isVisible(.zones) { PanelSection(L10n.text("app.zoneLighting", defaultValue: "Zone Lighting"), group: .zones, isExpanded: expansion(5), reset: { change { $0.develop.zones = nil } }, modified: isModified(.zones), previewing: previewingGroup == .zones, preview: previewHandler(.zones), previewPulse: previewPulseHandler(.zones)) { zones.sectionContent() } }
+            if isVisible(.zones) { PanelSection(L10n.text("app.zoneLighting", defaultValue: "Zone Lighting"), group: .zones, isExpanded: expansion(5), reset: { change { $0.develop.zones = nil } }, info: L10n.text("app.evUnitsSmoothlyAdjustFiveTonalZonesWhilePreserving", defaultValue: "EV units · Smoothly adjust five tonal zones while preserving texture and edges."), modified: isModified(.zones), previewing: previewingGroup == .zones, preview: previewHandler(.zones), previewPulse: previewPulseHandler(.zones)) { zones.sectionContent() } }
             if isVisible(.mixer) { PanelSection(L10n.text("app.hslMixer", defaultValue: "HSL Mixer"), group: .mixer, isExpanded: expansion(1), reset: { change { $0.develop.mixer = Array(repeating: HSLBand(), count: 8) } }, modified: isModified(.mixer), previewing: previewingGroup == .mixer, preview: previewHandler(.mixer), previewPulse: previewPulseHandler(.mixer)) {
                 mixer.sectionContent()
             } }
@@ -111,24 +111,24 @@ struct DevelopPanel: View {
             }
             if isVisible(.blackWhite) { PanelSection(L10n.text("app.blackWhiteMixer", defaultValue: "Black & White Mixer"), group: .blackWhite, isExpanded: expansion(8), reset: {
                 change { $0.develop.blackWhiteMixer = Array(repeating: 0, count: 8) }
-            }, modified: isModified(.blackWhite), previewing: previewingGroup == .blackWhite, preview: previewHandler(.blackWhite), previewPulse: previewPulseHandler(.blackWhite)) { blackWhiteMixer.sectionContent() } }
+            }, info: L10n.text("app.selectColorsAfterHSLVibranceAndSaturationToSmoothly", defaultValue: "Select colors after HSL, Vibrance, and Saturation to smoothly change black-and-white tones. Color Grading follows. Zero values preserve the original black-and-white appearance."), modified: isModified(.blackWhite), previewing: previewingGroup == .blackWhite, preview: previewHandler(.blackWhite), previewPulse: previewPulseHandler(.blackWhite)) { blackWhiteMixer.sectionContent() } }
             if isVisible(.grading) { PanelSection(L10n.text("app.colorGrading", defaultValue: "Color Grading"), group: .grading, isExpanded: expansion(2), reset: { change { $0.develop.grading = ColorGrading() } }, modified: isModified(.grading), previewing: previewingGroup == .grading, preview: previewHandler(.grading), previewPulse: previewPulseHandler(.grading)) { grading.sectionContent() } }
             if !local {
-                if isVisible(.noiseReduction) { PanelSection(L10n.text("app.noiseReduction", defaultValue: "Noise Reduction"), group: .noiseReduction, isExpanded: expansion(10), reset: { change { $0.noiseReduction = GeneralNoiseReduction() } }, modified: isModified(.noiseReduction), previewing: previewingGroup == .noiseReduction, preview: previewHandler(.noiseReduction), previewPulse: previewPulseHandler(.noiseReduction)) {
+                if isVisible(.noiseReduction) { PanelSection(L10n.text("app.noiseReduction", defaultValue: "Noise Reduction"), group: .noiseReduction, isExpanded: expansion(10), reset: { change { $0.noiseReduction = GeneralNoiseReduction() } }, info: L10n.text("app.0DisablesReductionNoiseReductionPrecedesSharpeningCheckTexture", defaultValue: "0 disables reduction. Noise reduction precedes sharpening. Check texture and color edges at 100%."), modified: isModified(.noiseReduction), previewing: previewingGroup == .noiseReduction, preview: previewHandler(.noiseReduction), previewPulse: previewPulseHandler(.noiseReduction)) {
                     noiseReduction.sectionContent()
                 } }
-                if isVisible(.sharpening) { PanelSection(L10n.text("app.sharpening", defaultValue: "Sharpening"), group: .sharpening, isExpanded: expansion(9), reset: { change { $0.sharpening = GeneralSharpening() } }, modified: isModified(.sharpening), previewing: previewingGroup == .sharpening, preview: previewHandler(.sharpening), previewPulse: previewPulseHandler(.sharpening)) {
+                if isVisible(.sharpening) { PanelSection(L10n.text("app.sharpening", defaultValue: "Sharpening"), group: .sharpening, isExpanded: expansion(9), reset: { change { $0.sharpening = GeneralSharpening() } }, info: L10n.text("app.radiusUsesOriginalImagePixelsAmount0DisablesSharpening", defaultValue: "Radius uses original image pixels; amount 0 disables sharpening. Check fine lines and noise at 100%."), modified: isModified(.sharpening), previewing: previewingGroup == .sharpening, preview: previewHandler(.sharpening), previewPulse: previewPulseHandler(.sharpening)) {
                     sharpening.sectionContent()
                 } }
                 if recipe?.isRaster != true {
-                    if isVisible(.rawDetails) { PanelSection(L10n.text("app.rawDetailAndLens", defaultValue: "RAW Detail and Lens"), group: .rawDetails, isExpanded: expansion(3), reset: { change { $0.rawDetails = RAWDetailSettings() } }, modified: isModified(.rawDetails), previewing: previewingGroup == .rawDetails, preview: previewHandler(.rawDetails), previewPulse: previewPulseHandler(.rawDetails)) {
+                    if isVisible(.rawDetails) { PanelSection(L10n.text("app.rawDetailAndLens", defaultValue: "RAW Detail and Lens"), group: .rawDetails, isExpanded: expansion(3), reset: { change { $0.rawDetails = RAWDetailSettings() } }, info: L10n.text("app.reducedPreviewsAreApproximateReleaseThenInspectNoiseReduction", defaultValue: "Reduced previews are approximate. Release, then inspect noise reduction and sharpening at 100%. Reset restores system defaults."), modified: isModified(.rawDetails), previewing: previewingGroup == .rawDetails, preview: previewHandler(.rawDetails), previewPulse: previewPulseHandler(.rawDetails)) {
                         details.sectionContent()
                     } }
                 }
-                if isVisible(.defringe) { PanelSection(L10n.text("defringe.title", defaultValue: "Manual Defringe"), group: .defringe, isExpanded: expansion(12), reset: { change { $0.defringe = nil } }, modified: isModified(.defringe), previewing: previewingGroup == .defringe, preview: previewHandler(.defringe), previewPulse: previewPulseHandler(.defringe)) {
+                if isVisible(.defringe) { PanelSection(L10n.text("defringe.title", defaultValue: "Manual Defringe"), group: .defringe, isExpanded: expansion(12), reset: { change { $0.defringe = nil } }, info: L10n.text("defringe.help", defaultValue: "Targets thin fringes near neutral edges. Real purple or green edges can also change; narrow the hue range and inspect at 100%. Amount 0 bypasses this correction. Sampling uses the decoded image before tone and color adjustments."), modified: isModified(.defringe), previewing: previewingGroup == .defringe, preview: previewHandler(.defringe), previewPulse: previewPulseHandler(.defringe)) {
                     defringe.sectionContent().controlUnavailable(recipe?.pipelineVersion != 2)
                 } }
-                if isVisible(.vignette) { PanelSection(L10n.text("app.creativeVignette", defaultValue: "Creative Vignette"), group: .vignette, isExpanded: expansion(6), reset: { change { $0.vignette = CreativeVignette() } }, modified: isModified(.vignette), previewing: previewingGroup == .vignette, preview: previewHandler(.vignette), previewPulse: previewPulseHandler(.vignette)) {
+                if isVisible(.vignette) { PanelSection(L10n.text("app.creativeVignette", defaultValue: "Creative Vignette"), group: .vignette, isExpanded: expansion(6), reset: { change { $0.vignette = CreativeVignette() } }, info: L10n.text("app.calculatedAfterCroppingIndependentlyOfLensCorrectionHighlightProtection", defaultValue: "Calculated after cropping, independently of lens correction. Highlight protection applies to Highlight Priority only."), modified: isModified(.vignette), previewing: previewingGroup == .vignette, preview: previewHandler(.vignette), previewPulse: previewPulseHandler(.vignette)) {
                     vignette.sectionContent()
                 } }
                 if !showOnlyModified || recipe?.warmPrint != nil || model.hasWarmPrintDraft {
@@ -137,7 +137,7 @@ struct DevelopPanel: View {
                         warmPrint.sectionContent()
                     }
                 }
-                if isVisible(.grain) { PanelSection(L10n.text("app.grain", defaultValue: "Grain"), group: .grain, isExpanded: expansion(7), reset: { change { $0.grain = FilmGrain() } }, modified: isModified(.grain), previewing: previewingGroup == .grain, preview: previewHandler(.grain), previewPulse: previewPulseHandler(.grain)) {
+                if isVisible(.grain) { PanelSection(L10n.text("app.grain", defaultValue: "Grain"), group: .grain, isExpanded: expansion(7), reset: { change { $0.grain = FilmGrain() } }, info: L10n.text("app.calculatedAfterCroppingTheSamePhotoRetainsItsAppearance", defaultValue: "Calculated after cropping. The same photo retains its appearance when reopened."), modified: isModified(.grain), previewing: previewingGroup == .grain, preview: previewHandler(.grain), previewPulse: previewPulseHandler(.grain)) {
                     grain.sectionContent()
                 } }
             }
@@ -165,7 +165,7 @@ struct DevelopPanel: View {
         HStack(spacing: 8) {
             Text(L10n.text("app.adjustments", defaultValue: "Adjustments"))
                 .font(.section).foregroundStyle(Theme.textSecondary).fixedSize()
-            Seam().frame(maxWidth: .infinity)
+            Spacer(minLength: 4)
             EditorLoadFailure(visible: model.editorUsesPreviousPhoto && !model.loadingPhoto, detail: model.imageStatus,
                               retry: model.retryPhotoLoad)
                 .environment(\.isEnabled, model.workspaceAvailable)
@@ -270,15 +270,13 @@ struct DevelopPanel: View {
                     }, commit: { model.commitRecipe() })
                     .controlUnavailable(recipe?.develop.blackAndWhite != true)
             }
-            note(L10n.text("app.selectColorsAfterHSLVibranceAndSaturationToSmoothly", defaultValue: "Select colors after HSL, Vibrance, and Saturation to smoothly change black-and-white tones. Color Grading follows. Zero values preserve the original black-and-white appearance."))
-                .padding(.top, 6)
         }
     }
     /// A labelled key row aligned with the parameter rows' label column.
     private func keyField<Value: Hashable>(_ title: String, _ options: [KeyOption<Value>], _ selection: Binding<Value>) -> some View {
         HStack(alignment: .top, spacing: Metrics.gap) {
             Text(title).frame(width: Metrics.rowLabel, height: Metrics.key, alignment: .leading)
-            KeyRow(title: title, options: options, selection: selection, expand: true, wrappingColumns: 1)
+            KeyRow(title: title, options: options, selection: selection, lampsInside: true, expand: true, wrappingColumns: 1)
         }.padding(.vertical, 2)
     }
     private var zones: some View {
@@ -309,7 +307,6 @@ struct DevelopPanel: View {
                     .padding(.horizontal, -6)
                     .help(L10n.text("app.tonesNearEVAdjustableByUpTo1EV", defaultValue: "Tones near \(Int(ToneZones.stops[i])) EV, adjustable by up to 1 EV"))
             }
-            note(L10n.text("app.evUnitsSmoothlyAdjustFiveTonalZonesWhilePreserving", defaultValue: "EV units · Smoothly adjust five tonal zones while preserving texture and edges.")).padding(.top, 4)
         }
     }
     private var noiseReduction: some View {
@@ -317,7 +314,6 @@ struct DevelopPanel: View {
             detailZoom
             noiseRow(L10n.text("app.luminanceNoiseReduction", defaultValue: "Luminance Noise Reduction"), \.luminance)
             noiseRow(L10n.text("app.colorNoiseReduction", defaultValue: "Color Noise Reduction"), \.color)
-            note(L10n.text("app.0DisablesReductionNoiseReductionPrecedesSharpeningCheckTexture", defaultValue: "0 disables reduction. Noise reduction precedes sharpening. Check texture and color edges at 100%.")).padding(.top, 6)
         }.controlUnavailable(model.applyingAdjustments)
     }
     private func noiseRow(_ name: String, _ key: WritableKeyPath<GeneralNoiseReduction,Double>) -> some View {
@@ -330,7 +326,6 @@ struct DevelopPanel: View {
             sharpenRow(L10n.text("app.sharpeningAmount", defaultValue: "Sharpening Amount"), \.amount, range: 0...150, reset: 0)
             sharpenRow(L10n.text("app.sharpeningRadius", defaultValue: "Sharpening Radius"), \.radius, range: 0.5...3, reset: 1, step: 0.1, unit: "px")
             sharpenRow(L10n.text("app.edgeProtection", defaultValue: "Edge Protection"), \.protection, range: 0...100, reset: 25)
-            note(L10n.text("app.radiusUsesOriginalImagePixelsAmount0DisablesSharpening", defaultValue: "Radius uses original image pixels; amount 0 disables sharpening. Check fine lines and noise at 100%.")).padding(.top, 6)
         }.controlUnavailable(model.applyingAdjustments)
     }
     private func sharpenRow(_ name: String, _ key: WritableKeyPath<GeneralSharpening,Double>, range: ClosedRange<Double>, reset: Double, step: Double = 1, unit: String = "") -> some View {
@@ -354,7 +349,6 @@ struct DevelopPanel: View {
                 range: 40...(values.greenUpper - 10), reset: min(80, values.greenUpper - 10), unit: "°")
             row(L10n.text("defringe.greenHigh", defaultValue: "Green Hue High"), \.manualDefringe.greenUpper,
                 range: (values.greenLower + 10)...200, reset: max(160, values.greenLower + 10), unit: "°")
-            note(L10n.text("defringe.help", defaultValue: "Targets thin fringes near neutral edges. Real purple or green edges can also change; narrow the hue range and inspect at 100%. Amount 0 bypasses this correction. Sampling uses the decoded image before tone and color adjustments."))
         }
     }
     private var details: some View {
@@ -381,7 +375,6 @@ struct DevelopPanel: View {
                         note(L10n.text("app.lensCorrectionMovesImageContentCheckMaskAndSpot", defaultValue: "Lens correction moves image content. Check mask and spot targets and sources afterward. Coordinates remain in the current corrected canvas."))
                     }
                 } else { note(L10n.text("app.thisRAWDoesNotSupportSystemLensCorrection", defaultValue: "This RAW does not support system lens correction")) }
-                note(L10n.text("app.reducedPreviewsAreApproximateReleaseThenInspectNoiseReduction", defaultValue: "Reduced previews are approximate. Release, then inspect noise reduction and sharpening at 100%. Reset restores system defaults.")).padding(.top, 6)
             }
         }.controlUnavailable(model.applyingAdjustments)
     }
@@ -407,7 +400,6 @@ struct DevelopPanel: View {
             vignetteRow(L10n.text("app.roundness", defaultValue: "Roundness"), \.roundness, range: -100...100)
             vignetteRow(L10n.text("app.feather", defaultValue: "Feather"), \.feather, range: 0...100, reset: 50)
             vignetteRow(L10n.text("app.highlightProtection", defaultValue: "Highlight Protection"), \.highlights, range: 0...100)
-            note(L10n.text("app.calculatedAfterCroppingIndependentlyOfLensCorrectionHighlightProtection", defaultValue: "Calculated after cropping, independently of lens correction. Highlight protection applies to Highlight Priority only.")).padding(.top, 6)
         }
     }
     private func vignetteRow(_ name: String, _ key: WritableKeyPath<CreativeVignette, Double>, range: ClosedRange<Double>, reset: Double = 0) -> some View {
@@ -442,7 +434,6 @@ struct DevelopPanel: View {
             grainRow(L10n.text("app.amount", defaultValue: "Amount"), \.amount)
             grainRow(L10n.text("app.size", defaultValue: "Size"), \.size, reset: 25)
             grainRow(L10n.text("app.roughness", defaultValue: "Roughness"), \.roughness, reset: 50)
-            note(L10n.text("app.calculatedAfterCroppingTheSamePhotoRetainsItsAppearance", defaultValue: "Calculated after cropping. The same photo retains its appearance when reopened.")).padding(.top, 6)
         }
     }
     private func grainRow(_ name: String, _ key: WritableKeyPath<FilmGrain, Double>, reset: Double = 0) -> some View {
@@ -493,11 +484,10 @@ struct DevelopPanel: View {
                      selection: Binding(get: { recipe?.asShotWhiteBalance ?? true }, set: { v in change { r in
                         r.asShotWhiteBalance = v
                         if v { r.temperature = r.baselineTemperature; r.tint = r.baselineTint }
-                     } }), expand: true, wrappingColumns: 1)
-                .padding(.leading, Metrics.rowLabel + Metrics.gap).padding(.top, Metrics.gap).padding(.bottom, 4)
+                     } }), lampsInside: true, expand: true, wrappingColumns: 1)
+                .padding(.leading, Metrics.rowLabel + Metrics.gap).padding(.top, 4).padding(.bottom, 4)
             row(L10n.text("app.temperature", defaultValue: "Temperature"), \.temperature, range: 2000...50000, step: 50, reset: recipe?.baselineTemperature ?? 5500, unit: "K")
             row(L10n.text("app.tint", defaultValue: "Tint"), \.tint, range: -150...150, reset: recipe?.baselineTint ?? 0)
-            if local || recipe?.isRaster == true { note(L10n.text("app.5500K0IsNeutralAdjustmentsApplyOverThe", defaultValue: "5500 K / 0 is neutral. Adjustments apply over the current photo colors.")) }
             HStack(spacing: Metrics.gap) {
                 SubgroupLabel(L10n.text("app.tone", defaultValue: "Tone"))
                 if !local { automaticButton(.tone) }
@@ -536,7 +526,6 @@ struct DevelopPanel: View {
     }
     private var crop: some View {
         VStack(alignment: .leading, spacing: 8) {
-            note(L10n.text("app.dragThePhotoBorderToCropThenReturnTo", defaultValue: "Drag the photo border to crop, then return to Adjustments."))
             HStack(spacing: Metrics.gap) {
                 Text(L10n.text("app.aspect", defaultValue: "Aspect")).frame(width: Metrics.rowLabel, alignment: .leading)
                 HStack(spacing: -1) {
@@ -591,7 +580,6 @@ struct DevelopPanel: View {
                 }
                 Spacer(minLength: 0)
             }
-            note(L10n.text("app.flipTheCurrentCropWhileRetainingTheSelectedContent", defaultValue: "Flip the current crop while retaining the selected content. The crop stays level during rotation and straightening."))
         }
     }
     private var perspective: some View {
@@ -630,7 +618,6 @@ struct DevelopPanel: View {
             Toggle(L10n.text("app.constrainCrop", defaultValue: "Constrain Crop"), isOn: Binding(get: { recipe?.perspective.constrainCrop ?? true }, set: { value in change { $0.perspective.constrainCrop = value } }))
                 .toggleStyle(.instrument).padding(.vertical, 8)
                 .help(L10n.text("app.shrinkInwardAroundTheCropCenterAtTheSelected", defaultValue: "Shrink inward around the crop center at the selected aspect to remove blank areas. Neutral perspective preserves the original crop."))
-            note(L10n.text("app.negativeVerticalExpandsTheTopNegativeHorizontalExpandsThe", defaultValue: "Negative Vertical expands the top; negative Horizontal expands the left. Positive Aspect stretches vertically and narrows horizontally. Constrain Crop removes blank edges; otherwise transparency is retained and JPEG needs a black or white matte."))
         }
     }
     private var ratioLabel: String { recipe?.cropAspectRatio.map(Self.ratioName) ?? L10n.text("app.free", defaultValue: "Free") }

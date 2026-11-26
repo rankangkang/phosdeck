@@ -2861,4 +2861,33 @@ extension ImagingTests {
         canvas.applyMagnification(0.8, phase: .began, at: pointer, backingScale: 2)
         XCTAssertEqual(zoomEvents.count, countBeforeCrop)
     }
+
+    @MainActor
+    func testInstrumentPolishFaderModificationIndicatorAndKeyLampModes() throws {
+        // 1. Fader vertical orange index follows deviation from neutral value.
+        let slider = AdjustmentNSSlider(frame: NSRect(x: 0, y: 0, width: 200, height: 28))
+        slider.minValue = -5; slider.maxValue = 5; slider.step = 0.05; slider.resetValue = 0
+        slider.doubleValue = 0
+        XCTAssertFalse(slider.isModified)
+        slider.doubleValue = 0.01 // within half-step tolerance
+        XCTAssertFalse(slider.isModified)
+        slider.doubleValue = 0.45
+        XCTAssertTrue(slider.isModified)
+        slider.doubleValue = 0
+        XCTAssertFalse(slider.isModified)
+
+        // 2. Both external-lamp and in-cap-lamp KeyRow modes remain supported.
+        let options = [KeyOption(0, "调整"), KeyOption(1, "裁剪"), KeyOption(2, "污点"), KeyOption(3, "蒙版")]
+        let external = NSHostingController(rootView: KeyRow(title: "Tools", options: options, selection: .constant(0), lampsInside: false, expand: true))
+        let inside = NSHostingController(rootView: KeyRow(title: "Tools", options: options, selection: .constant(0), lampsInside: true, expand: true))
+        let extSize = external.sizeThatFits(in: CGSize(width: 312, height: 200))
+        let inSize = inside.sizeThatFits(in: CGSize(width: 312, height: 200))
+        XCTAssertEqual(extSize.height - inSize.height, Metrics.lampDrop, accuracy: 1.0)
+
+        // 3. Compact color label swatches are narrower than full key-cap color labels.
+        let fullColors = NSHostingController(rootView: ColorLabelKeys(selected: [1], compact: false, action: { _ in }))
+        let compactColors = NSHostingController(rootView: ColorLabelKeys(selected: [1], compact: true, action: { _ in }))
+        XCTAssertLessThan(compactColors.sizeThatFits(in: CGSize(width: 300, height: 40)).width,
+                          fullColors.sizeThatFits(in: CGSize(width: 300, height: 40)).width)
+    }
 }

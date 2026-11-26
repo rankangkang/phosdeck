@@ -240,22 +240,29 @@ struct HistogramScope: View {
         let highlightShown = highlightClippingShown ?? clippingShown
         VStack(spacing: 6) {
             if !compact {
-                HStack(spacing: 12) {
+                HStack(spacing: 8) {
                     Text(L10n.text("app.histogram_1659", defaultValue: "Histogram"))
-                        .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize()
-                    clippingControls(clip: clip, shadowShown: shadowShown, highlightShown: highlightShown)
+                        .font(.section).foregroundStyle(Theme.textSecondary).fixedSize()
+                    Spacer(minLength: 8)
+                    clippingControls(clip: clip, shadowShown: shadowShown, highlightShown: highlightShown, spread: false)
                 }
             }
             ScopeDisplay {
                 VStack(spacing: 0) {
                     ZStack(alignment: .top) {
                         Canvas { context, size in
-                            var grid = Path()
-                            for i in 1..<4 {
-                                let x = (size.width * Double(i) / 4).rounded() + 0.5
-                                grid.move(to: CGPoint(x: x, y: 0)); grid.addLine(to: CGPoint(x: x, y: size.height))
+                            var vGrid = Path()
+                            for i in 1..<5 {
+                                let x = (size.width * Double(i) / 5).rounded() + 0.5
+                                vGrid.move(to: CGPoint(x: x, y: 0)); vGrid.addLine(to: CGPoint(x: x, y: size.height))
                             }
-                            context.stroke(grid, with: .color(Theme.scopeGrid), lineWidth: 1)
+                            context.stroke(vGrid, with: .color(Theme.scopeGrid.opacity(0.85)), lineWidth: 0.75)
+                            var hGrid = Path()
+                            for i in 1..<3 {
+                                let y = (size.height * Double(i) / 3).rounded() + 0.5
+                                hGrid.move(to: CGPoint(x: 0, y: y)); hGrid.addLine(to: CGPoint(x: size.width, y: y))
+                            }
+                            context.stroke(hGrid, with: .color(Theme.scopeGrid.opacity(0.45)), lineWidth: 0.5)
                             guard let histogram else { return }
                             let maximum = max(1, histogram.channels.flatMap { $0 }.max() ?? 1)
                             context.blendMode = .screen
@@ -274,7 +281,7 @@ struct HistogramScope: View {
                                 .help(L10n.text("app.histogramDragHelp", defaultValue: "Drag left or right to adjust Blacks, Shadows, Exposure, Highlights, or Whites. Shift fine-tunes; Escape cancels. Arrow keys select a region and adjust it."))
                         }
                         if compact {
-                            clippingControls(clip: clip, shadowShown: shadowShown, highlightShown: highlightShown).padding(6)
+                            clippingControls(clip: clip, shadowShown: shadowShown, highlightShown: highlightShown, spread: true).padding(6)
                         }
                         if histogram == nil {
                             Text(placeholder).font(.caption11).foregroundStyle(Theme.scopeText).frame(maxHeight: .infinity)
@@ -318,11 +325,11 @@ struct HistogramScope: View {
             }
         }
     }
-    private func clippingControls(clip: (shadows: Bool, highlights: Bool), shadowShown: Bool, highlightShown: Bool) -> some View {
-        HStack(spacing: 4) {
+    private func clippingControls(clip: (shadows: Bool, highlights: Bool), shadowShown: Bool, highlightShown: Bool, spread: Bool = true) -> some View {
+        HStack(spacing: 6) {
             clipLamp(L10n.text("app.shadows_1650", defaultValue: "Shadows"), shadows: true,
                      on: clip.shadows, shown: shadowShown, toggle: toggleShadowClipping ?? toggleClipping)
-            Spacer(minLength: 0)
+            if spread { Spacer(minLength: 0) }
             clipLamp(L10n.text("app.highlights", defaultValue: "Highlights"), shadows: false,
                      on: clip.highlights, shown: highlightShown, toggle: toggleHighlightClipping ?? toggleClipping)
         }
