@@ -35,10 +35,11 @@ macOS 版本和芯片信息可在“关于本机”查看；源码检出可用 `
 ./scripts/check.sh
 ```
 
-完整检查会先运行文档检查。只改文档时，运行：
+完整检查会先运行文档检查与架构基建检查。只改文档时，运行：
 
 ```sh
 python3 scripts/check-docs.py
+python3 scripts/check-harness.py
 git diff --check
 ```
 
@@ -62,7 +63,7 @@ xcodebuild -project Phosdeck.xcodeproj -scheme Phosdeck -derivedDataPath build -
 
 GitHub Actions 使用只读仓库权限执行以下检查；Pages 部署单独授予发布权限：
 
-- `Check repository`：PR、`master` 推送及手动运行时检查文档、差异空白、Python／Shell 语法和工作流语法。
+- `Check repository`：PR、`master` 推送及手动运行时检查文档、架构与 AI 基建边界、差异空白、Python／Shell 语法和工作流语法。
 - `Check native app`：原生源码、测试、工程及相关资源变更时，用 macOS 26 和 Xcode 26.6 构建全部测试代码并运行选定的核心回归；Actions 手动运行时可勾选 `full_suite` 执行完整 XCTest。CI 的临时签名测试关闭 hardened runtime；正式发行签名不受此设置影响。
 - `Check website and deploy GitHub Pages`：相关 PR 和手动运行执行官网检查、构建及静态测试；自动部署条件见[官网开发](#官网开发)。
 - `Verify release package`：Release 发布后自动复核，也可手动输入已有标签（如 `v0.1.0-alpha.1`）。下载 ZIP 与 SHA-256 文件，检查版本、双架构、签名、公证票据、Gatekeeper 和随包内容；使用当前 `master` 上的验证规则。

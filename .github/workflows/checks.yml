@@ -24,6 +24,8 @@ jobs:
           fetch-depth: 0
       - name: Check documentation
         run: python3 scripts/check-docs.py
+      - name: Check AI harness and architecture boundaries
+        run: python3 scripts/check-harness.py
       - name: Check GitHub Actions workflows
         run: |
           archive="$RUNNER_TEMP/actionlint.tar.gz"
@@ -41,6 +43,7 @@ jobs:
         run: |
           bash -n scripts/package-release.sh
           bash -n scripts/verify-release.sh
+          bash -n scripts/update-preview.sh
           sh -n scripts/copy-smart-mask-models.sh
           python3 - <<'PY'
           from pathlib import Path

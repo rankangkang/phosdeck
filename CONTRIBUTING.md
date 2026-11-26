@@ -35,10 +35,11 @@ Run the full checks from the repository root:
 ./scripts/check.sh
 ```
 
-The full checks run documentation validation first. For documentation-only changes, run:
+The full checks run documentation and architecture-harness validation first. For documentation-only changes, run:
 
 ```sh
 python3 scripts/check-docs.py
+python3 scripts/check-harness.py
 git diff --check
 ```
 
@@ -62,7 +63,7 @@ Register new Swift files in both `Phosdeck.xcodeproj/project.pbxproj` and `proje
 
 GitHub Actions uses read-only repository permissions for checks, with separate deployment permissions for Pages:
 
-- `Check repository`: validates documentation, changed whitespace, Python/shell syntax, and workflow syntax on PRs, pushes to `master`, and manual runs.
+- `Check repository`: validates documentation, architecture and AI harness boundaries, changed whitespace, Python/shell syntax, and workflow syntax on PRs, pushes to `master`, and manual runs.
 - `Check native app`: builds all test code and runs selected core regressions on macOS 26 with Xcode 26.6 when native code, tests, project files, or related resources change. Select `full_suite` in a manual run for the complete XCTest suite. Ad hoc CI tests disable hardened runtime; distribution signing retains it.
 - `Check website and deploy GitHub Pages`: checks, builds, and tests the website for relevant PRs and manual runs. See [website development](#website-development) for automatic deployment conditions.
 - `Verify release package`: runs after a Release is published, or manually with an existing tag such as `v0.1.0-alpha.1`. It downloads the ZIP and SHA-256 file and checks the version, universal binary, signature, notarization ticket, Gatekeeper, and bundle contents using the current verification rules on `master`.

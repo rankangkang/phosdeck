@@ -8,13 +8,15 @@
 | [贡献与反馈：English](../CONTRIBUTING.md) · [中文](../CONTRIBUTING.zh.md) | 问题反馈、测试、提交与隐私边界 |
 | [STATUS.md](STATUS.md) | 当前状态、待用户验收、已知问题与候选下一步（唯一交接） |
 | [已定决策](decisions.md) | 不做／暂缓事项及原因、数据与图库约定 |
+| [架构地图](architecture.md) | 目录全景、分层 import 边界、核心不变量、超大文件速查与定向测试映射 |
+| [工程手册](engineering.md) | 高频交互与性能调优准则、常驻体验目录与固定体验 App 构建签名流程 |
 | [差距与演进清单](roadmap.md) | 对标 Lightroom 的问题排查、功能缺口与分阶段优化路线 |
 | [上手指南](getting-started.md) | 创建图库、导入、编辑、导出及备份恢复 |
 | [国际化](localization.md) | 中英文案维护与社区语言包 |
 | [智能蒙版模型](smart-mask-models.md) | 模型来源、许可、可用组合与打包 |
 | [Agent 接入方案](agent-integration.md) | MCP 全功能覆盖目标、操作契约、分步实施与 Skill 验证 |
 | [插件系统方案](plugin-system.md) | 三种接入口与内置插件、开发接口、调用生命周期、保存恢复及后续扩展 |
-| [第三方声明与对照数据](references/) | 随包许可、历史归属声明与普通图像曝光对照数据 |
+| [第三方声明与对照数据](references/) | 随包许可声明与普通图像曝光对照数据 |
 | [README 封面](assets/readme/) | 石墨与米白 SVG；来源见[设计说明](../design/README.md) |
 | [设计](../design/README.md) | 暗房仪表 v3.1 规范、Token 与 Logo |
 

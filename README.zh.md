@@ -160,4 +160,4 @@ Phosdeck 参考了 Lightroom Classic 的工作流，也使用了以下开源项�
 - [SmartMaskRuntime／LiteRT 的 Apache-2.0 许可](Packages/SmartMaskRuntime/LICENSE)与[固定运行时依赖声明](docs/references/litert-NOTICES.txt)。
 - [智能蒙版研究模型的来源、许可及限制](docs/references/smart-mask-research-NOTICE.txt)。
 
-模型权重和样片不随源码提供，其许可不由本项目的 AGPLv3 代替。模型版本、来源与打包限制见[智能蒙版说明](docs/smart-mask-models.md)。已移除的 Rust 实验所用声明保存在[历史归属档案](docs/references/legacy-rust/README.md)。
+模型权重和样片不随源码提供，其许可不由本项目的 AGPLv3 代替。模型版本、来源与打包限制见[智能蒙版说明](docs/smart-mask-models.md)。

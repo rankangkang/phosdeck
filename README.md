@@ -161,4 +161,4 @@ Project code is licensed under [AGPL-3.0-only](LICENSE). Third-party code, depen
 - [SmartMaskRuntime/LiteRT Apache-2.0 license](Packages/SmartMaskRuntime/LICENSE) and [pinned runtime dependency notices](docs/references/litert-NOTICES.txt).
 - [Smart-mask research model sources, licenses, and restrictions](docs/references/smart-mask-research-NOTICE.txt).
 
-Model weights and sample photos are not included with the source, and their licenses are not replaced by this project's AGPLv3 license. See the [model guide (Chinese)](docs/smart-mask-models.md) for versions, sources, and packaging limits. Notices from the removed Rust experiments remain in the [legacy attribution files](docs/references/legacy-rust/README.md).
+Model weights and sample photos are not included with the source, and their licenses are not replaced by this project's AGPLv3 license. See the [model guide (Chinese)](docs/smart-mask-models.md) for versions, sources, and packaging limits.

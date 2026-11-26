@@ -1,460 +1,96 @@
 # Phosdeck Agent 接入方案
 
-目标是让 Agent 通过 MCP 完成 Phosdeck 已支持的几乎全部用户工作流，包括读取状态、查看图像、执行操作、核验结果，以及取消和恢复任务。用户从设置开启本地服务，Agent 客户端加载配套 Skill 后，可以连续完成已授权的操作，并在 Phosdeck 窗口中呈现进度和结果。
+Phosdeck 通过本地 MCP 服务和随包 Skill 开放几乎全部用户工作流，涵盖状态读取、图像预览、编辑执行、结果核验及任务恢复。工具详细入参以服务端 `tools/list` 和随包 [Phosdeck Skill](../.agents/skills/phosdeck/SKILL.md) 为准；验收状态见 [STATUS](STATUS.md)，产品范围见 [已定决策](decisions.md)。
 
-本方案规定实施顺序、接口要求和验证方法。各步骤可以继续拆成小批次提交。当前实施位置与待用户验收事项统一记录在 [STATUS](STATUS.md)，产品范围依据 [已定决策](decisions.md) 和 [上手指南](getting-started.md)。
+## 架构与系统边界
 
-## 功能覆盖
+- **共享原生真源**：调用链为 `Agent 客户端 → MCP 适配（Sources/App/AppMCP*.swift）→ 原生操作入口 → 图库／显影／文件服务`。UI 与 MCP 复用同一套校验、事务与撤销逻辑。
+- **原生保留边界**：MCP 开关、图像共享开关、连接凭据、原生系统文件授权面板（`NSOpenPanel`）、窗口管理、文本编辑器撤销、系统剪贴板与连续堆叠比较流程保留在原生 App 内。[已定决策](decisions.md#界面与交互)
+- **撤销边界**：`undo_operation`／`redo_operation` 仅匹配本服务返回且仍在原生撤销栈顶的 `operation_id`；手动编辑由原生菜单撤销。
 
-以用户动作计覆盖。同一动作的菜单、快捷键、上下文菜单和手势共用一个入口。表中的每个分支都要有对应的调用与验证，`tools/list` 只发布已实现的分支。参数默认沿用原生模型的枚举、单位、范围和可用条件。用户决定最终覆盖范围及例外。
+## 协议与状态契约
 
-原生系统选择面板由用户授予文件访问。MCP 开关、图像共享和连接凭据由本机用户管理。系统窗口管理、文字编辑器撤销及系统剪贴板走原生交互。App 专用的工作区布局、照片撤销和调整传递纳入工具。第二步的六个工具见[首批接口](#首批接口)。
+### 工具结果与错误码
 
-### 第三步 图库 导入和恢复
+`structuredContent` 始终包含 `status`（`success`／`warning`／`error`）、`summary`、`next_actions` 与 `artifacts`，文本块携带同一 JSON，预览另附 `image/png`。业务失败设置 `isError: true` 并返回 `error.code`：[MCP 工具规范](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 
-| 工具 | 操作、输入及结果 | 原生入口和边界 |
-|---|---|---|
-| `list_library_sources`、`list_recent_catalogs` | 列出根目录、子目录、集合、特殊来源、近期图库及可用状态。返回 ID、名称和数量 | `AppModel.reload`、`CatalogStore.roots`／`folderPaths`、`recentCatalogs`。只读 |
-| `create_catalog`、`open_catalog` | 名称与位置授权 ID 新建，或用近期图库 ID／位置授权 ID 打开。返回新图库会话 | `AppModel.createCatalog`／`finishCatalogOpen`、`CatalogExtensionChange`。核验位置与 schema，旧后缀沿用改名／保留／取消确认。新建与改名遵守无覆盖语义 |
-| `request_file_access` | 按操作用途打开原生文件或目录面板。返回等待用户的任务，选定后返回本次用途的位置 ID | `AppModel.directoryPanel`、`NSOpenPanel`、`AccessLease`。保留 App 沙箱权限与后续文件校验 |
-| `relocate_library_root`、`locate_photo_original` | 根目录 ID／照片版本 ID 与新位置，返回身份核验、不可用项和更新范围 | `AppModel.relocate`／`locateOriginal`、`RootRelocator.prepare`／`commit`。引用路径变化，身份核验及受影响版本保留 |
-| `plan_photo_import` | 引用／复制、来源、目标、包含子目录、跳过已入库及疑似重复、候选筛选、日期布局、附件映射、同名策略、集合和成对检测。已知选片路径时传入源目录下的 `relative_paths`，只验证指定照片。候选的 `already_cataloged` 与 `suspected_duplicate` 分别标记已登记和疑似重复的来源 | `ImportSheet`、`ReferenceImporter.preview`、`ImportPlanner.plan`。计划只读业务数据，冻结候选与文件身份 |
-| `start_photo_import`、`resolve_import_conflict` | 计划 ID、候选 ID，按冲突 ID 选择独特命名／跳过／受限覆盖，显式指定是否应用到余项。返回任务和逐项结果 | `runReference`／`startCopy`／`runCopy`／`resolveImportConflict`。复制使用现有暂存、回读和旧文件保留 |
-| `show_recent_import` | 打开最近导入、开始筛选或返回原来浏览位置，回读选择和筛选 | `showLastImport`／`returnFromImport`。工作区状态变化 |
-| `scan_library_folder`、`plan_folder_review`、`apply_folder_review` | 根目录／子目录、包含子目录、已选差异及候选位置。返回直接扫描结果，或差异计划及应用报告 | `AppModel.scan`、`FolderReview.preview`／`selectionIssue`／`apply`。区分直接索引和只读预检，应用前重新核验 |
-| `list_import_records`、`resume_photo_import` | 查看复制计划、已完成项、失败项和旧文件恢复状态，核验后继续未完成项 | `CopyImporter.savedPlans`／`run`、`ImportRecoverySheet`。沿用原计划、冻结身份与恢复日志 |
-| `restore_import_backup`、`clean_import_backup` | 计划及成员 ID，恢复到新的授权位置，或按现有确认删除指定的旧文件备份 | `CopyImporter.restoreOld`／`cleanupOld`、`ImportRecoverySheet`。恢复无覆盖，清理沿用原生不可逆确认 |
-| `get_job`、`cancel_job` | 任务 ID，查询阶段、进度、逐项结果和产物，或请求取消后继续查询 | `AppModel.taskProgress`、各服务自己的执行状态和记录。保留已发布结果及失败原因 |
-
-对应回归入口为 `AgentLibraryTests`、`CatalogFileTests`、`ImportTests`、`FolderReviewTests`、`RecoveryTests` 与 `WorkflowTests`。MCP 场景覆盖等待授权、计划失效、重连和单独报告发布与入库结果。
-
-### 第四步 浏览 整理和全局编辑
-
-| 工具 | 操作、输入及结果 | 原生入口和边界 |
-|---|---|---|
-| `set_library_query`、`refresh_library_query` | 切换来源、筛选分区和开关，设置文件名、星级比较、旗标、色标、关键词、相机／镜头／ISO／日期、排序方向、手工顺序及冻结结果。返回新的查询状态 | `setScope`、`filterChanged`、`clearFilters`、`refreshResults`、`CatalogStore.holdResults`。复用冻结范围和排序 |
-| `list_photos`、`list_selected_photos`、`select_photos` | 对当前视图或独立来源和筛选分页，可返回带编号的缩略图拼图。读取当前选择，显式选择、取消或打开指定版本 | `CatalogStore.page`、`ThumbnailService`、`choose`、`selectAllResults`／`selectStackMembers`、`openVersion`。全选包含跨页和折叠的匹配成员 |
-| `analyze_photo_culling` | 从指定范围找相似连拍并按清晰度排序，或围绕一张参考照查相似画面。报告含照片版本与剪切比例 | 后台分析原片缩略图，沿用独立筛选、文件身份检查与可取消的分页任务 |
-| `navigate_library` | 前后照片、页、浏览前进／后退及已有位置 ID。返回新位置、可见范围与活动照片 | `move`、`changePage`、`navigateBrowse`、`recentBrowseLocations`。保留原有浏览历史 |
-| `set_workspace_view`、`set_viewport` | 网格／单图／编辑／比较／调查视图、编辑工具、适合／填满／倍率、平移中心、锁定位置及比较联动。返回当前视图及实际倍率 | `selectWorkspace`／`selectDevelopTool`／`selectZoom`、`PhotoViewport`、`PhotoComparison.setLinked`。只改变工作区 |
-| `set_compare_photos`、`set_survey_photos` | 指定比较对象、交换、候选转参考、限定当前组／全部结果、比较相关版本。调查选择、移除、翻页及打开单张 | `beginComparison`／`swapComparison`／`promoteComparisonCandidate`／`restrictComparisonToGroup`／`compareRelatedVersions`、`beginSurvey`／`updateSurveySelection`／`removeFromSurvey`／`changeSurveyPage` |
-| `set_develop_reference`、`set_before_after` | 固定／清除参考照片、参考视口、前后对比布局、指定或清除历史／快照参考。返回两侧实际照片和修订号 | `pinActiveAsDevelopReference`／`clearDevelopReference`／`toggleDevelopReference`／`selectDevelopReferenceZoom`、`showBeforeAfter`／`setBeforeReference`／`resetBeforeReference` |
-| `set_clipping_display`、`retry_photo_preview` | 显示高光和阴影剪切、查看状态或重试预览 | `ClippingVisibility`、`showShadowClipping`／`showHighlightClipping`、`retryPhotoLoad`。图像观察沿用同一显影管线 |
-| `set_photo_ratings`、`set_photo_marks` | 批量设置或步进星级、设置选中／拒绝／无旗标、颜色标签，可显式前进。返回每张前后值及撤销 ID | `updateOrganization`／`stepRating`、`CatalogStore.setOrganization`／`setRatings`。图库写入，批次核对目标 |
-| `list_keywords`、`edit_photo_keywords`、`rename_keyword`、`set_photo_caption` | 查看关键词、建议与计数，添加／移除词项、全局重命名、设置题注。返回实际影响的版本和可撤销结果 | `CatalogKeywords`、`changeKeywords`／`renameKeyword`／`changeCaption`。沿用版本作用域及冲突校验 |
-| `get_collection`、`save_collection`、`delete_collection`、`set_collection_members` | 分页读成员与规则，创建／改名／移除普通集合、增减明确成员、将查询结果加入既有或新集合。返回集合及实际成员变化 | `CatalogStore`、`saveRegularCollection`／`setCollectionPresence`／`saveCollectionMembership`／`collectResults`。移除集合保留照片 |
-| `set_target_collection`、`edit_quick_collection`、`reorder_collection` | 指定／清除目标集合、快速集合添加和移除、切换手工排序和移动成员。返回目标与实际顺序 | `setTargetCollection`／`toggleQuickCollection`／`setManualCollectionOrder`、`CollectionOrdering` |
-| `save_smart_collection`、`delete_smart_collection` | 新建／改名、编辑规则来源、字段、操作符、值和组合方式，或用当前筛选新建。返回集合 ID 和匹配数量 | `SmartCollectionSheet`、`SmartRules.from`、`saveSmartCollection`／`deleteSmartCollection`。校验规则与名称 |
-| `list_photo_versions`、`create_virtual_copies`、`rename_photo_version`、`remove_photo_versions` | 查看同原片版本，从当前或指定历史／快照建立版本，改名或移除明确版本。返回版本 ID 和撤销能力 | `CatalogStore.versions`、`saveVirtualCopies`／`renamePhotoVersion`／`removePhotoVersions`。移除编辑版本保留原片 |
-| `list_photo_stacks`、`edit_photo_stack`、`plan_auto_stacks`、`apply_auto_stacks` | 查看组与有序成员，分组／合并、移出、拆分、解散、移动、设封面、折叠／展开指定组或查询范围。按拍摄时间自动分组先预览再应用 | `StackAction`、`saveStackAction`／`saveAutoStacks`、`AutoStackSheet`。回读实际成员及范围 |
-| `list_raw_jpeg_pairs`、`plan_raw_jpeg_pairs`、`apply_raw_jpeg_pairs`、`unlink_raw_jpeg_pair` | 查来源和关系，范围内检测、核验候选、手动指定配对及解绑。配对版本定位、比较和入组复用选片、比较和堆叠工具 | `PairingSheet`、`RawJpegPairing`、`savePairs`／`removePair`。保留两侧来源及版本 |
-| `get_photo_recipe`、`set_global_adjustments`、`reset_adjustments` | 读原生参数及有效范围，按字段设置或按原生重置范围恢复。覆盖白平衡／原样、曝光、对比、饱和、四段明暗、纹理、清晰度、去雾、鲜艳度、彩色／黑白 | `DevelopPanel`、`EditRecipe`、`DevelopAdjustments`、`changeRecipe`／`commitRecipe`。使用保存配方版本，限制文件格式及 RAW 解码能力 |
-| `set_tone_curve`、`set_zone_lighting`、`set_color_adjustments` | 曲线通道及点增删改、通道重置、五区 EV、HSL 八色、黑白混色、阴影／中间调／高光／全局色彩分级与混合平衡 | `ToneCurvePanel`、`ToneZones`、`ColorGrading`、`DevelopPanel`。点颜色与画布取样见第五步 |
-| `set_detail_adjustments`、`set_effects` | 通用锐化／降噪、RAW 锐化／降噪／镜头校正、紫边／绿边数量及范围、暗角样式和形状、颗粒大小和粗糙度。返回实际接受的参数 | `GeneralDetail`、`RAWDetailSettings`、`ManualDefringe`、`CreativeVignette`、`FilmGrain`。沿用渲染顺序与支持范围 |
-| `run_automatic_adjustment`、`apply_relative_exposure`、`match_total_exposures` | 自动白平衡／色调、按 EV 调整目标、以明确源照片匹配总曝光。返回任务及跳过原因 | `AutomaticAdjustmentEditing`、`applyRelativeExposure`／`matchTotalExposures`。按现有批次事务保存与撤销 |
-| `plan_adjustment_batch`、`apply_adjustment_batch` | 为每个显式照片版本安排不同的显影调整，先查看逐张参数变化，再一次提交整批 | 共用单张显影参数校验和 `CatalogStore.saveRecipes`。提交前核对所有版本和原片，整批对应一条原生撤销 |
-| `transfer_adjustments` | 复制、粘贴、同步、沿用上一张、应用预设，显式传源、目标和 `RecipePasteOptions` 组。预设强度可在单张草稿里反复试用 | `copyAdjustments`／`applyAdjustments`、`AdjustmentPreview`。只改所选参数组，批量结果逐项回读 |
-| `list_adjustment_presets`、`edit_adjustment_preset` | 搜索、筛选收藏／分组、保存／更新／改名／删除、收藏与分组。返回预设及是否可撤销 | `PresetBrowser`、`PresetManagement`、`savePreset`。按原生能力报告撤销 |
-| `plan_xmp_preset_import`、`import_xmp_presets` | 从授权 XMP 读取支持字段、预检诊断、选择记录后批量导入。返回导入及跳过项 | `XMPPresetReader`、`XMPPresetImportSheet`、`importXMPPresets`。保留支持的 XMP 子集 |
-| `list_edit_records`、`preview_adjustment`、`apply_edit_record` | 分页历史和快照，预览历史／快照／预设／参数组或切换到已保存状态。返回预览或保存后的修订号 | `editHistory`／`loadMoreHistory`、`previewSavedEdit`／`previewPreset`／`beginDevelopGroupPreview`／`selectHistoryStep`／`applySavedEdit`。预览只改工作区 |
-| `save_edit_snapshot`、`delete_edit_snapshot`、`redo_operation` | 建立／改名／移除快照，或对已由 MCP 撤销的动作重做。返回快照及实际撤销语义 | `saveSnapshot`／`deleteSnapshot`、`AppModel.undo`。重做只匹配明确的操作 ID 与栈顶 |
-
-对应回归包括 `CatalogQueryTests`、`BrowseHistoryTests`、`ComparisonTests`、`KeywordTests`、`CollectionOrderingTests`、`SmartCollectionTests`、`VirtualCopyTests`、`StackTests`、`RawJpegPairTests`、`DevelopV2Tests`、`AutomaticAdjustmentTests`、`PresetManagementTests`、`AdjustmentPreviewTests` 和 `XMPPresetImportTests`。测试按实际工具分支选择，补 UI 与 Agent 交替写入、版本冲突和同批重发。
-
-### 第五步 画布 局部与修复
-
-| 工具 | 操作、输入及结果 | 原生入口和边界 |
-|---|---|---|
-| `set_crop`、`set_photo_geometry` | 裁剪矩形、比例／锁定／横竖切换、拉直、九十度旋转、横纵翻转、透视滑块与约束裁剪。返回实际裁剪和保存版本 | `PhotoCanvas`、`CropInteraction`、`EditRecipe.cropFromDisplay`／`rotateCanvas`、`PhotoGeometry`。核对预览版本及几何可行性 |
-| `solve_perspective`、`edit_perspective_guides` | 自动透视、参考线新增／选中／端点移动／删除／清除、完成及取消。返回求解状态、有效线和已应用参数 | `applyUpright`、`PerspectiveEditing`、`UprightCorrection`。复用计算及失效检查 |
-| `sample_preview`、`adjust_from_preview` | 绑定预览的坐标读 RGB／剪切。白平衡中性取样、亮度分区定位、直方图分区调节、HSL／黑白／曲线目标调整、紫边／绿边取样 | `DisplayPixelSampler`、`ToneSampling`、`TargetedEditing`、`DirectAdjustments`。透明像素及数据不可用沿用原生判断 |
-| `edit_point_color` | 点颜色添加／取样／选中、调整色相／饱和／亮度和范围、显示影响范围、重置及删除。返回采样与更新 | `PointColorEditing`、`PointColorPanel`。采样绑定当前渲染，修改使用配方事务 |
-| `get_mask_state`、`edit_mask_group`、`edit_mask_component` | 查询选区，新增、选择、复制、重命名、组合／反转、启用／禁用和删除组或组件。返回实际 ID、顺序、操作和可撤销结果 | `MaskEditing`、`MaskPanel`、`LocalAdjustment`、`MaskComponent`。组与组件按版本隔离 |
-| `apply_mask_brush_stroke`、`set_mask_shape`、`set_mask_range` | 画笔路径、大小、羽化、流量、密度、自动蒙版与擦除。线性渐变在 `start` 处覆盖为零，在 `end` 处完全覆盖。支持径向形状、颜色取样／增减和亮度上下限 | `maskPointer`、`sampleMaskColor`、`MaskGeometry`、`MaskPanel`。图像坐标绑定当前预览，支持直接保存或先在草稿试画 |
-| `get_photo_preview`、`set_mask_display`、`set_local_adjustments` | 补齐局部放大和叠加预览，引导线、选区覆盖颜色和样式、查看有无局部效果。设置或重置蒙版强度与局部显影参数 | `PhotoCanvas`、`MaskPanel`、`beginMaskEffectPreview`／`endMaskEffectPreview`、`changeLocalDevelop`。查看与保存分开，局部参数重置保留选区 |
-| `transfer_local_adjustments`、`list_local_adjustment_presets`、`edit_local_adjustment_preset` | 复制／粘贴、列出／保存／应用／重命名／删除局部参数预设。返回参数或实际改动 | `MaskEditing`、`CatalogLocalPresets`。只改变局部参数，保留选区几何 |
-| `start_smart_mask`、`edit_smart_mask_selection`、`apply_smart_mask` | 对象点／框、增减提示及提示撤销、候选；人物单选／多选／全选、整人、部位、脸框与细化、拆分或合并。返回分析任务、当前候选、叠加预览及新增组件 | `SmartMaskEditing`、`SmartMaskEngine`。绑定候选代次、照片及配方，缺模型返回条件，取消复用任务接口 |
-| `get_spot_repairs`、`edit_spot_repair` | 查看和选中污点，点／路径、模式、半径／羽化／不透明度、移动、选择／重算来源、禁用和删除 | `SpotEditing`、`SpotRepair`。目标与采样源各自校验，回读实际 ID、来源和修订号 |
-| `edit_photo_draft` | 开始、提交或取消单张照片的试修。全局参数、色彩、曲线、分区光线、细节、效果、裁剪和几何、预设强度、普通蒙版、局部参数和污点可共用一个草稿 | 用同一显影管线渲染草稿。提交时核对保存版本，只写一条历史并注册一次原生撤销 |
-| `set_canvas_guides` | 设置构图辅助线、裁剪引导及污点引导显示，返回当前显示状态 | `cycleCropGuide`、`PhotoCanvas`、`SpotPanel`。只改变显示 |
-
-对应回归包括 `PerspectiveTests`、`UprightTests`、`FlipTests`、`InspectionWorkflowTests`、`TargetedAdjustmentTests`、`DirectAdjustmentTests`、`PointColorTests`、`ManualDefringeTests`、`MaskingTests`、`SmartMaskTests`、`LocalParameterPresetTests` 和 `SpotRepairTests`。关键验收用有方向标记的合成图核对 Agent 输入的位置和原生结果。
-
-### 第六步 合成和输出
-
-| 工具 | 操作、输入及结果 | 原生入口和边界 |
-|---|---|---|
-| `plan_photo_merge` | 明确源照片版本及顺序，选择全景、HDR、HDR 全景、对焦、平均、稳健均值、中值、加法、变亮、变暗或滤色。校验对齐、去鬼影、投影、裁剪、收边、包围组和源尺寸，可标记暗场 | `PhotoMergeOptions.validate`、`PhotoMergeEngine`。计划绑定原片身份与集合范围 |
-| `render_merge_preview`、`get_merge_preview` | 用计划 ID 生成预览，按 `preview_id`、显示 EV 和长边回读对应图像 | `PhotoMergeEngine.prepare`／`display`。复用原生引擎的取消和失效语义 |
-| `save_photo_merge` | 预览 ID、TIFF32／DNG、授权位置和文件名，设置与来源堆叠。返回文件 ID、入库版本 ID、普通集合 ID 和堆叠结果 | `PhotoMergeEngine.save`、`completePhotoMerge`。分别报告发布、核验和入库，可撤销堆叠时返回撤销 ID |
-| `export_star_trail_sequence` | 用当前星轨预览和精修修订写出累计 PNG | 共用星轨渲染，整组无覆盖发布，返回文件夹 ID 和逐帧摘要 |
-| `edit_merge_retouch` | 从合成预览开始精修，或按已存母版版本重开；追加／移除来源笔画、整帧排除、断点填补和彗星拖尾、撤销／重做／复原／取消 | 共用 `PhotoMergeEngine`；草稿 ID 与修订隔离，失败或取消不改变可保存设置 |
-| `get_merge_retouch` | 分页回读笔画或来源身份与检查点覆盖，读取来源／结果／覆盖／约束图，支持缩放整图与原生像素区域 | 预收边画布、左上原点；图像须共享许可；缩略分析覆盖与完整尺寸覆盖分别说明 |
-| `list_export_presets`、`edit_export_preset` | 列出内置／自定义预设，另存、改名、删除和恢复默认。返回导出选项 | `ExportPreferences`、`ExportSheet`。沿用内置预设限制 |
-| `plan_export`、`get_export_preview` | 明确照片、授权位置、单／多规格、预设、JPEG／PNG／TIFF16、质量、长边、铺底、命名组件、序列、子目录、元数据。返回命名／同名检查和铺底预览 | `ExportBatchPlanner`、`ImagePipeline`。预览沿用已保存的显影，输出冻结配方 |
-| `run_export` | 计划 ID，返回任务及每个版本／规格的实际输出 | `ImagePipeline.freezeExport`、`ExportService.run`。同卷暂存、无覆盖发布并回读，原片受保护 |
-| `list_export_records`、`verify_or_retry_export`、`reauthorize_export_location` | 过滤未完成记录、单项／整批校验并重试、重授原始目标。返回冻结名称、结果与错误 | `ExportRecoverySheet`、`retryExports`、`ExportService.history`／`reauthorizeTarget`。保持原目标和方案，核验已发布文件 |
-| `reveal_file_in_finder` | 按当前图库、导入旧文件备份或输出 ID 在 Finder 显示已解析文件 | `WorkspaceCommands`、`ImportRecoverySheet`、`revealExports`。通过已有对象与访问权限解析位置 |
-
-`AgentOutputTests` 覆盖 MCP 合成、入库、导出、核验和恢复。原生回归包括 `PhotoMergeTests`、`PhotoMergeFinishTests`、`FocusStackRegressionTests`、`ExportTests`、`MultiExportTests`、`ExportNamingTests`、`ExportMetadataTests` 和 `RecoveryTests`。
-
-### 第七步 设置 诊断和维护
-
-| 工具 | 操作、输入及结果 | 原生入口和边界 |
-|---|---|---|
-| `get_preferences`、`set_preferences` | 外观、观片底、左右栏／胶片带及大小、导航器、筛选条、集合／预设／历史／快照／蒙版面板展开、单分组和已修改筛选、缩略图大小及自动前进 | `SettingsSheet`、`WorkspaceView`、`DevelopPanel`、`AppModel.persistWorkspace`。按现有控件约束及作用域更新 |
-| `show_app_panel` | 打开指定的设置页、快捷键、任务结果、导入或输出恢复、相机诊断面板。返回实际显示状态 | `SettingsPane`、`WorkspaceView`。沿用当前窗口与模态约束 |
-| `list_language_packs`、`edit_language_pack`、`select_language` | 查看、从授权文件导入、选择或移除语言包。返回选择及重启生效提示 | `LanguagePackSettings`、`LanguagePackStore`。沿用解析和文件写入约定 |
-| `get_storage_usage`、`set_cache_quota`、`clear_thumbnail_cache` | 度量图库、缓存、任务暂存和恢复文件，设置原生容量档位或清理当前图库缩略图。返回实际值、不可访问项数与完成状态 | `StorageInspector`、`updateCacheQuota`／`clearThumbnailCache`。跟随缓存维护锁 |
-| `back_up_catalog`、`restore_catalog_backup`、`export_catalog_manifest` | 选择授权目标，备份当前图库，或从授权备份恢复为新图库，或导出 JSON 管理清单。回读目标及新图库会话 | `CatalogStore`、`AppModel.activateCreatedCatalog`。新建及发布无覆盖 |
-| `run_camera_diagnostics`、`get_camera_diagnostic_preview`、`save_camera_diagnostics_report` | 授权目录、本地相机诊断、取消及保存报告。返回每张检查、可用预览及报告 ID | `CameraDiagnosticsView`、`CameraDiagnostics.files`／`inspect`／`save`。沿用本地处理和样本范围 |
-
-`AgentMaintenanceTests` 覆盖偏好、语言包、缓存并发、备份恢复与诊断报告。原生回归包括 `LocalizationTests`、`FoundationTests`、`WorkflowTests`、`CameraDiagnosticsTests` 与 `CatalogFileTests`，设置与报告另在固定体验 App 实窗核对。
-
-## 接口设计
-
-首批注册项按下方接口实现。后续工具沿用相同的状态、任务和结果语义，具体字段以各批注册的 schema 为准。
-
-### 共享原生操作
-
-调用链为 Agent 客户端 → MCP 协议适配 → 原生操作入口 → 现有图库、显影及文件服务。UI 与 MCP 共同使用业务校验、提交、刷新和撤销逻辑。按功能逐步提取当前混在手势或表单中的逻辑，操作返回结构化结果。
-
-工具按稳定的业务动作组织，支持参数化查询和批量操作。注册项同时描述输入和输出 schema、枚举、单位和范围，并标注只读或实际写入行为。字段校验复用现有模型，写入只接受已声明的操作和字段。原生调用从结构化业务结果生成界面状态和提示，MCP 从同一结果生成响应。
-
-### 工具结果
-
-`structuredContent` 始终含 `status`（`success`、`warning` 或 `error`）、`summary`、`next_actions` 和 `artifacts`。`data` 按工具返回业务数据。`artifacts` 含对象类型、ID 和必要的显示名称，文件位置由 App 依据授权和已有记录解析。文本块携带同一 JSON，预览另带 `image/png` 图像块。业务失败使用 `isError: true`，并返回 `error.code` 和恢复条件。协议消息的错误由 MCP 层返回。[MCP 工具规范](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
-
-| 错误代码 | 调用方下一步 |
+| 错误代码 | 调用方处理 |
 |---|---|
-| `invalid_arguments`、`unsupported_operation` | 读取 schema 或可用条件，修正请求。 |
-| `no_catalog`、`catalog_changed`、`stale_cursor` | 读取工作区，取得当前图库会话和查询。切库后重新定位对象。 |
-| `photo_unavailable`、`stale_photo`、`stale_preview` | 回读照片、来源和配方，必要时重新取图。未能确认目标时结束当前修改。 |
-| `workspace_busy`、`native_interaction_active` | 查询当前状态。等待任务结束或用户完成原生编辑，再核对目标。 |
-| `image_access_disabled`、`file_access_required` | 等待用户开启图像共享，或按任务要求完成原生文件授权。 |
-| `rating_conflict`、`undo_conflict` | 回读实际评级和工作区状态。只有用户意图仍匹配时才提交新的修改。 |
-| `collection_unavailable`、`stale_collection`、`stale_stack`、`pair_unavailable` | 回读集合、堆叠或配对及其成员，核对当前 ID 与顺序。 |
-| `mask_unavailable`、`spot_unavailable`、`stale_smart_selection` | 回读当前版本的蒙版、污点或智能选区，核对对象 ID 和选择修订。 |
-| `smart_model_unavailable`、`smart_mask_analysis_failed` | 从能力和选区状态查看模型与失败原因，再决定是否更换识别方式。 |
-| `request_id_conflict`、`request_expired` | 核对上次调用结果，回读后以新请求标识提交当前动作。 |
-| `stale_plan`、`stale_conflict` | 重新查看计划或任务，依据当前候选或冲突选项提交。 |
-| `job_unavailable`、`import_record_unavailable` | 核对图库及复制记录，确认是否可以继续。 |
-| `service_stopped` | 在设置重新取得连接配置和令牌，再读工作区。 |
-| `operation_failed` | 按结果中的提交状态恢复。保存状态不确定时先回读记录或文件。 |
+| `invalid_arguments`、`unsupported_operation` | 按 `tools/list` 核对参数与可用条件后重试 |
+| `no_catalog`、`catalog_changed`、`stale_cursor` | 重读 `get_workspace` 获取新图库会话与查询 |
+| `photo_unavailable`、`stale_photo`、`stale_preview` | 回读照片与修订号，必要时重新取图 |
+| `workspace_busy`、`native_interaction_active` | 等待在途任务或原生编辑结束，再核对状态 |
+| `image_access_disabled`、`file_access_required` | 提示用户开启预览共享或完成原生文件授权 |
+| `rating_conflict`、`marks_conflict`、`caption_conflict`、`undo_conflict` | 回读实际值与撤销栈，确认意图后再提交 |
+| `collection_unavailable`、`stale_collection`、`stale_stack`、`pair_unavailable` | 回读对应集合、堆叠或配对的当前 ID 与顺序 |
+| `mask_unavailable`、`spot_unavailable`、`stale_smart_selection` | 回读当前版本的蒙版、污点或智能选区修订 |
+| `smart_model_unavailable`、`smart_mask_analysis_failed` | 从 `get_capabilities` 查看可用模型或切换方式 |
+| `request_id_conflict`、`request_expired`、`stale_plan`、`stale_conflict` | 回读上次结果或重新生成计划后再提交 |
+| `job_unavailable`、`import_record_unavailable`、`service_stopped` | 核对任务／复制记录，或重启后重新获取连接配置 |
+| `operation_failed` | 按 `commit_state`（`not_committed`／`committed`／`unknown`）先回读再决定恢复 |
 
-### 状态与图像
+### 会话、修订、坐标与去重
 
-当前打开的图库使用 `catalog_session_id`，每次切库或重开时重新生成。`photo_id` 对应版本 `Photo.id`。`source_revision`、`recipe_revision` 分别使用 `Photo.revision`、`Photo.recipeRevision`。虚拟副本独立定位并沿用原片身份校验。MCP 传输会话、服务实例和图库会话各有独立生命周期。
+- **会话与修订**：切库或重开会生成新的 `catalog_session_id`。`photo_id` 对应版本 `Photo.id`，`source_revision`／`recipe_revision` 分别绑定原片与配方修订；多页 TIFF 的 `editable_canvas` 为 `false`。
+- **坐标约定**：对外坐标采用返回图像左上原点归一化 `[0,1]`；`preview_id` 绑定渲染几何用于逆映射回原生坐标，蒙版／污点回读标注 `oriented_source_normalized_top_left`。
+- **写入幂等与并发**：多客户端写入串行化并在事务中复核期望版本；同一 `request_epoch` 内复用 `(request_id, arguments)` 返回既有结果或任务 ID，同 ID 不同参数报冲突。
+- **多步任务**：导入、智能蒙版、合成与导出返回 `job_id`，通过 `get_job` 轮询状态（`queued`／`running`／`waiting_for_user`／`succeeded`／`partially_succeeded`／`failed`／`cancelled`），通过 `cancel_job` 取消。复制导入与导出记录随图库持久化，重启后可继续查询与恢复。
 
-查询沿用 `PhotoQuery` 和 `CatalogStore.page`。`matched_count` 是完整命中数，`visible_count` 是按折叠规则呈现的总数，堆叠行带本次命中组员数及整组数。游标绑定图库会话、查询、列表类型、已提交的图库数据修订和页大小。原生列表还绑定工作区查询代次，选择列表同时绑定选择代次。独立查询游标可在用户浏览其他范围时续页。照片、来源或组织数据变动后以相同条件从首屏重读。页内数据由同一数据库读取得出。
+## 本地连接
 
-预览绑定图库会话、照片 ID、来源与配方修订号、渲染方式、实际尺寸和 `preview_id`。首批按已保存配方显影，未建立配方的照片在内存中使用原生基线。来源文件身份检查沿用 `ImagePipeline`。工作区显示上张照片、处于临时对比或存在草稿时，仍按请求中的明确版本读取。预览查询不触发 `loadActive` 的保存和元数据刷新。发布前复查图库和修订号，过期结果返回错误。
+在“设置 → Agent”开启本地 MCP 服务（默认关闭，预览共享独立开关且默认关闭）。监听绑定 `127.0.0.1:0`（系统分配端口，正式版与 Preview 可并行，`get_capabilities` 返回 bundle ID 与 `instance_id`），每次启动生成新 Bearer 令牌。
 
-对外坐标采用已返回图像的左上原点，横向向右、纵向向下，以图像边界归一化到 `[0,1]`。像素中心按实际宽高换算，局部图像返回其在完整预览中的实际像素对齐范围。画笔、取样和参考线请求携带 `preview_id`，从同一渲染几何转换至原生坐标。蒙版和污点位置回读标明 `oriented_source_normalized_top_left`，用于查看其原生保存位置。
+- **传输基线**：MCP `2025-11-25` Streamable HTTP（POST 返回响应流，独立 GET 返回 `405`），基于官方 Swift SDK `0.12.1` + SwiftNIO `2.105.0`。聚合请求体前校验回环 `Host`、`Origin` 与 `Authorization: Bearer`（无效返回 `401`／`403`）。[MCP 传输规范](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
+- **限额与时限**：普通工具请求体上限 `64 KiB`，`plan_photo_merge`／`edit_merge_retouch` 上限 `1 MiB`（超限 `413`）。传输会话空闲 15 分钟需重新初始化；质量预览等待上限 150 秒（连接 180 秒），超时返回 `preview_timeout`。
+- **客户端配置**：设置页提供“复制 JSON 配置”（适用于 `mcpServers` 客户端，如 Claude Code `--mcp-config`）与“复制 Codex 配置”（TOML 片段，令牌通过环境变量如 `PHOSDECK_MCP_TOKEN` 注入）。服务重启后须重新复制配置与令牌。
 
-设置说明图像共享及数据去向，初次开启服务时默认关闭图像共享，用户可在本机开启。使用云端模型的客户端可能向模型服务发送工具返回的图像。普通查询返回必要的显示名、版本、评级和来源状态，安全书签、原片绝对路径和原始配方数据由 App 管理。
+## 安装 Phosdeck Skill
 
-### 修改与撤销
-
-修改指定图库会话、目标 ID、期望值或版本及请求标识。耗时查询和计算传递不可变快照，业务提交和必要的 UI 状态发布遵守现有隔离约定。来自多个客户端的修改串行执行，在数据库事务中再次核对目标和期望值。用户手动编辑、切换图库或存在未完成手势时，返回冲突原因及刷新／等待的动作。
-
-单次和批次修改沿用现有事务与撤销边界。结果返回实际受影响对象、`commit_state`（`not_committed`、`committed` 或 `unknown`）和可撤销的 `operation_id`。事务已保存、后续界面刷新失败时返回 `warning` 和已提交状态，客户端先回读，避免重复写入。撤销绑定实际 `AppModel.undo` 栈顶动作及其分组身份，`redo_operation` 使用通过 MCP 撤销时的同一 ID。其他动作入栈、用户先行撤销、栈清空或切库时，旧操作标识会失效。无值变化时返回空操作标识。文件写入报告发布和回读结果及可用的恢复方式。
-
-写入携带 `get_workspace` 返回的 `request_epoch` 及客户端生成的 `request_id`。同一代次内，同 ID 和相同参数返回已有结果或已受理的任务 ID，同 ID 不同参数报冲突。切库使旧会话的新写入请求失效，并保留已受理动作的重发结果。去重记录有界，换代前等待在途任务结束，代次过期后先回读再提交。任务控制使用 `job_id`，冲突选择还绑定 `conflict_id`。HTTP 重连保留业务去重，App 重启后按已有持久化任务回读结果，无法确定的状态先核验实际数据。
-
-### 多步任务
-
-导入、智能选择、合成和导出以任务 ID 连接准备、预览、执行及结果。任务提供进度、阶段、已完成对象、失败原因、取消入口及实际支持的恢复动作。文件或选项选择面板对应等待用户输入状态，用户完成后可继续同一任务。
-
-任务使用 `queued`、`running`、`waiting_for_user`、`succeeded`、`partially_succeeded`、`failed` 和 `cancelled`。同一工作区一次运行一个工作区任务，另可同时运行一个辅助选片分析。服务保留最近 64 个临时任务，复制导入和导出的持久记录可从原图库查询。取消请求先返回当前状态，达到终态后按已提交或已发布内容报告结果。客户端断线后通过 `get_job` 查询业务状态，`cancel_job` 取消指定任务。服务关闭时停止接受新调用，并按现有任务的提交边界结束或取消执行。
-
-### 本地连接
-
-设置提供本地 MCP 开关、图像共享、状态、实际端点和连接配置。开关默认关闭，开启偏好按 App 安装身份保存。运行期间绑定 `127.0.0.1:0`，由系统分配端口，成功后公布实际 `/mcp` 端点。正式 App 与 Preview 可同时运行，`serverInfo.name` 区分应用名称，`get_capabilities` 另返回 bundle ID 和本次启动的实例 ID。每次启动监听生成独立令牌，重启服务后客户端重新取得端点及令牌。绑定失败显示错误和重试入口。
-
-首批互通以 MCP `2025-11-25` 的 Streamable HTTP 为基线，使用官方 Swift SDK `0.12.1` 的 `StatefulHTTPServerTransport` 处理 MCP 消息，使用 SwiftNIO `2.105.0` 的 `NIOPosix`／`NIOHTTP1` 提供回环监听和 HTTP 解析。每个 MCP 会话拥有各自的 transport 和 `Server`，请求 ID 仅在该会话内匹配。参考官方 conformance server 的分层和会话路由，App 的监听、认证、队列和启停用原生实现。若后续需要较新协议版本，随 SDK 能力及真实客户端互通更新。[MCP 传输规范](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) · [Swift SDK 会话路由](https://github.com/modelcontextprotocol/swift-sdk/blob/a0ae212ebf6eab5f754c3129608bc5557637e605/Sources/MCPConformance/Server/HTTPApp.swift)
-
-在聚合请求体和分配会话前校验确切的回环 `Host`、存在时的 `Origin` 及 `Authorization: Bearer`。无效凭据返回 HTTP `401` 和 Bearer 质询，不匹配的 `Host`／`Origin` 返回 `403`。控制请求体、空闲连接、并发和会话数量，关停时关闭监听及活动连接并清除本次凭据。网络解析在主线程之外运行。沙箱使用入站网络权限，签名沿用已有构建约定。服务生命周期由 App 持有，设置窗口负责呈现和控制。[入站网络权限](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.server)
-
-HTTP 响应流随 POST 请求返回。独立 GET 流返回 `405`。每次连接处理一个请求。`plan_photo_merge` 和 `edit_merge_retouch` 的请求体上限为 1 MiB，以容纳长序列的来源修订和长笔画。其余方法与工具的上限为 64 KiB，超过上限返回 HTTP `413`。传输会话空闲 15 分钟或达到消息及响应大小上限时需要重新初始化，业务请求代次在监听运行期间继续有效。图库会话仍有效时，重连后可继续使用有效的分页游标。
-
-`get_photo_preview` 的质量预览最多等待渲染 150 秒，连接最多保留 180 秒。达到渲染时限时返回 `preview_timeout`。旧渲染结束前，同质量的新请求返回 `workspace_busy`，之后可在同一会话重试。
-
-导入和导出等较长的任务可间隔数秒轮询。传输会话到期后重新初始化，核对服务实例和图库会话，并用原 `job_id` 继续查询。
-
-“复制 JSON 配置”适用于接受 `mcpServers` 的 Streamable HTTP 客户端。复制的内容包含 `type: "http"`、当前 `url` 和 `Authorization` 请求头。Claude Code 可通过 `--mcp-config` 加载这份 JSON。令牌随服务重启更新，请将配置保存在本机。[Claude Code MCP 配置](https://code.claude.com/docs/en/mcp)
-
-“复制 Codex 配置”生成 Streamable HTTP 的 TOML 片段。下例端口由设置实际显示值替换，`PHOSDECK_MCP_TOKEN` 由启动客户端的环境提供。Codex 配置引用变量名，令牌由用户在设置中单独复制。Preview 使用独立的服务器配置名和令牌环境变量。[OpenAI Docs 的 MCP 配置](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
-
-```toml
-[mcp_servers.phosdeck]
-url = "http://127.0.0.1:49152/mcp"
-bearer_token_env_var = "PHOSDECK_MCP_TOKEN"
-```
-
-### 安装 Phosdeck Skill
-
-源码仓库的 `.agents/skills/phosdeck` 是 Skill 的源目录，Phosdeck 构建时将它复制到应用包的 `Contents/Resources/phosdeck`。在 Finder 中对应用选择“显示包内容”即可取得。安装或更新时复制整个 `phosdeck` 目录，保留 `SKILL.md` 和 `references/`。[Phosdeck Skill](../.agents/skills/phosdeck/SKILL.md)
+Skill 源目录位于 [`.agents/skills/phosdeck/`](../.agents/skills/phosdeck/SKILL.md)，构建时复制到应用包 `Contents/Resources/phosdeck`。复制整个目录（含 `SKILL.md` 和 `references/`）到客户端目录后重启会话即可发现：
 
 | 客户端 | 项目目录 | 用户目录 |
 |---|---|---|
-| Codex | `.agents/skills/`，在源码仓库中自动发现 | `~/.agents/skills/` |
+| Codex | `.agents/skills/`（仓库内自动发现） | `~/.agents/skills/` |
 | Claude Code | `.claude/skills/` | `~/.claude/skills/` |
 
-在目标工作区启动新的客户端会话，确认能发现 `phosdeck`。连接 MCP 后先让 Agent 读取应用身份和当前图库，确认连接的是正式版或 Preview，再操作照片。[Codex Skill 目录](https://learn.chatgpt.com/docs/build-skills) · [Claude Code Skill 目录](https://code.claude.com/docs/en/skills)
+## 接口速览
 
-### 首批接口
+各领域完整参数与操作剧本见随包 Skill 参考文档（[图库与导入](../.agents/skills/phosdeck/references/library-and-import.md) · [选片与元数据](../.agents/skills/phosdeck/references/culling-and-metadata.md) · [组织](../.agents/skills/phosdeck/references/organization.md) · [显影](../.agents/skills/phosdeck/references/development.md) · [画布与局部](../.agents/skills/phosdeck/references/canvas.md) · [合成与导出](../.agents/skills/phosdeck/references/output.md) · [维护](../.agents/skills/phosdeck/references/maintenance.md)）。
 
-工具名和业务字段采用 `snake_case`。空输入使用 `{}`。照片查询默认每页 50 张，上限 200 张。显影预览默认长边 768 像素，上限 1024 像素，使用原生 sRGB 与透明度语义。这些是第二步的有界默认值，随实际客户端接收和资源验证核对。
+### 图库、组织与维护接口
 
-| 工具 | 输入 | `data` 与主要原生入口 |
-|---|---|---|
-| `get_capabilities` | `{}` | 应用名称、版本、bundle ID、`instance_id`、各已注册工具的当前可用性及原因，图像共享状态。取自 `Bundle`、服务设置及 `AppModel` 的可用条件 |
-| `get_workspace` | `{}` | `catalog_session_id`、`request_epoch`、图库显示名、当前来源和查询、视图和工具、活动 `photo_id` 与修订号、选择数量及最多 50 个 ID、是否截断、任务和原生编辑状态。MCP 试修单独返回 `photo_draft`，为空表示没有草稿。完整选择用 `list_selected_photos` 分页 |
-| `list_photos` | `catalog_session_id`，可选 `query` 或 `photo_ids`、`cursor`、`page_size`、`listing`、`contact_sheet` | `items`、`source_id`、`query_mode`、`page_offset`、`matched_count`、`visible_count`、`next_cursor`。每项含编号、`photo_id`、名称、版本、源与配方修订号、拍摄信息、评级、旗标、色标、源可用性和堆叠信息。拼图请求另附 PNG 和格子坐标 |
-| `get_photo_preview` | `catalog_session_id`、`photo_id`、`source_revision`、`recipe_revision`，支持缩放预览、[1:1 局部预览和尺寸检查](#画布几何和局部编辑接口) | `preview_id`、目标身份、原分辨率画布与实际图像尺寸、坐标空间与直方图，另附 PNG。使用 `CatalogStore.photo`、`ImageRequest` 和 `ImagePipeline.render`，校验图像共享、来源及版本 |
-| `set_photo_rating` | `catalog_session_id`、`photo_id`、`expected_rating`、`rating`（两种评级均为 0 至 5 的整数）、`request_epoch`、`request_id` | `photo_id`、`previous_rating`、`rating`、`changed`、`commit_state`、`operation_id`。复用 `AppModel.updateOrganization` 的保存和回读。MCP 明确指定目标，事务校验期望评级，并关闭自动前进 |
-| `undo_operation` | `catalog_session_id`、`operation_id`、`request_epoch`、`request_id` | 被撤销的 `operation_id`、已核对的恢复结果及 `commit_state`。复用 `AppModel.undo`，栈顶身份或当前值冲突返回 `undo_conflict` |
-
-多页 TIFF 的照片条目和预览包含 `tiff_page_count`。预览始终显示第 1 页，渲染结果的 `tiff_preview_page` 为 `1`、`editable_canvas` 为 `false`。
-
-第二步沿 `CatalogQueryTests`、`StackTests` 和 `WorkflowTests` 验证分页查询跨页、折叠堆叠两种计数、切库后的旧游标和已保存预览版本。用合成图库的一张明确照片验证评级并回读，重复相同请求只产生一次提交，手动改动触发版本冲突，用户在原生菜单可撤销 MCP 评级，MCP 只能撤销匹配的栈顶动作。验证结果同时核对当前照片、数据库、界面及真实客户端返回。
-
-### 图库和导入接口
-
-具体输入以 `tools/list` 为准。图库打开后，`request_file_access`、`create_catalog` 和 `open_catalog` 同样携带当前 `catalog_session_id`。系统面板返回按用途绑定的 `access_id`。普通 `.phoscat` 和带同级 `.phoscat-files` 文件夹的整库归档一次选择文件即可授权。`Files` 布局的项目和旧后缀目录按需授权所在文件夹。切库和停止服务会使旧授权与计划失效。文件授权、计划和任务结果返回名称、相对名称及业务 ID。[macOS App 沙箱文件授权](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox)
-
-长操作返回 `job_id`，用 `get_job` 查看 `state`、`phase`、进度、`user_action` 和结果。等待复制冲突时，结果提供 `conflict_id`、文件名和当前允许的策略。取消后继续读终态及已保存结果。任务结果和来源列表用 `next_offset` 分页。工作区的 `agent_job` 表示当前进行中的 Agent 任务。
-
-引用导入按候选 ID 选择，复制按组 ID 选择。逐张修改复制组的输入或分配附件时，用 `base_plan_id` 及原计划的候选、附件或组 ID 生成新计划。执行复用保存的源身份及复制命名决策。文件夹差异使用单独的差异与位置 ID，应用时整批重新核验。原片已在记录位置且核验一致时，`restorable` 差异列出可恢复的版本 ID 和名称。选择相应差异 ID 后，提交结果以 `restored` 计数及版本状态报告恢复。
-
-复制记录的 `record_id` 随图库持久化。在同一图库中可用它调用 `get_job`，检查文件发布、入库、恢复记录，再继续未完成的工作。内存中的其他任务可跨 HTTP 会话查询。服务重新启动后，从当前图库和复制日志回读状态。
+- **图库与导入**：`list_library_sources`、`list_recent_catalogs`、`create_catalog`、`open_catalog`、`request_file_access`、`relocate_library_root`、`locate_photo_original`、`plan_photo_import`（支持 `relative_paths` 仅验选定文件）、`start_photo_import`、`resolve_import_conflict`、`show_recent_import`、`scan_library_folder`、`plan_folder_review`、`apply_folder_review` 及复制导入恢复／备份清理工具。
+- **集合、版本、堆叠与配对**：集合 CRUD／手工排序／智能集合、虚拟副本（含历史／快照来源）、手动与按时间自动堆叠，以及 RAW/JPEG 检测、核验、配对与解绑。
+- **合成与导出**：支持全景／HDR／HDR 全景／对焦／均值／稳健均值／中值／多重曝光／星轨（关闭对齐上限 2048 帧，暗场至多 128 张）规划、预览、精修（`edit_merge_retouch`／`get_merge_retouch`）、星轨累计 PNG 导出与 TIFF32／DNG 母版保存；支持单／多规格导出预设、计划预览、安全发布、中断核验与重授位置。
+- **设置、诊断与维护**：界面偏好与面板展开、社区语言包、存储与缓存配额、图库 SQLite 备份／恢复／JSON 清单，以及本地 RAW 相机诊断。
 
 ### 浏览选片和标记接口
 
-`set_library_query` 接受 `list_library_sources` 返回的 `source_id`、原生筛选条件和排序。传入条件会启用相应筛选分区，也可显式控制 `filter_sections` 和 `filters_enabled`。`filters_open` 只控制筛选器显示。`hold_results` 冻结成员和顺序，`refresh_library_query` 重新计算。根据 `get_workspace` 的 `query_revision` 和 `selection_revision` 可核对全选、增减选择等依赖当前工作区的操作。
-
-`list_photos` 省略 `query` 和 `photo_ids` 时读取当前工作区，默认 `listing=visible`。传入 `query` 对象时独立查询，`{}` 从所有照片开始，`source_id` 可取自 `list_library_sources`。支持文件名、星级比较、旗标、色标、关键词、相机、镜头、ISO、包含两端的拍摄日期，以及文件名、拍摄时间、星级和普通集合手工顺序。独立查询默认按拍摄时间升序，`listing=matches` 包含折叠组员，可显式改用 `visible`。智能集合保存的规则与本次条件同时生效。也可单独提供 `photo_ids`，按指定顺序读取候选，结果的 `query_mode` 为 `explicit`。续页传 `next_cursor`，省略 `query` 和 `photo_ids`，并沿用首屏页大小和列表类型。原生来源、筛选、排序、页位置、选中和活动照片由用户继续控制。独立查询的 `query_mode` 为 `independent`，需要界面查询代次的写入仍从 `get_workspace` 读取 `query_revision`。
-
-例如，用 `{"catalog_session_id":"…","query":{"rating_threshold":4,"date_from":"2026-11-09","date_through":"2026-11-15","sort":"captureDate","descending":true},"contact_sheet":true}` 查看指定日期内四星及以上的照片。拼图默认每页 12 张，最大 24 张，复用原生缩略图并显示保存版本。续页仍需传 `contact_sheet:true`。照片的 `number` 贯穿这次列表的各页，PNG 从左至右、从上至下排布。每行给出从拼图左上角起算的 `cell_pixels` 和实际照片的 `image_pixels`。原片失效或无法读取时，该格保留编号和缺图标记，行内的 `thumbnail_status` 和 `thumbnail_error` 给出原因。空页返回空列表。取图沿用预览共享开关。
-
-选出候选后，用对应条目的 `photo_id`、`source_revision` 和 `recipe_revision` 调用 `get_photo_preview`。设置 `resolution=native` 并传照片内的 `region` 或 `region_pixels` 可获取 1:1 局部。把拼图中的目标区域相对于该格的 `image_pixels` 换算为照片内的归一化坐标，再作为 `region` 传入。需要先知道原生尺寸或分块大小时，使用 `plan_only:true`。
+- `set_library_query`／`refresh_library_query` 控制系统查询与冻结结果；`list_photos` 支持当前视图、独立 `query`（不改动原生界面）或显式 `photo_ids` 分页，并可返回带编号与像素坐标的缩略图拼图（`contact_sheet=true`，默认 12 张／上限 24 张）。
+- 支持跨页与折叠堆叠选片、比较／调查视图控制、批量评级／旗标／色标（单批上限 200 张，冲突整批拒绝）、关键词与题注编辑。
 
 #### 辅助选片
 
-`analyze_photo_culling` 需要 `catalog_session_id`，并接受一组明确的 `photo_ids` 或一个与 `list_photos` 同结构的独立 `query`。一次最多分析 1,000 个照片版本，超过时先缩小范围。调用会返回 `job_id`，用 `get_job` 查看进度和结果，用 `next_offset` 翻页。分析期间用户可继续浏览。图库内容在分析期间变化时，任务提示重新分析。
-
-- **按连拍找候选。** 相邻照片的拍摄间隔默认不超过 10 秒，并且须与组内第一张达到 0.93 的画面相似度。用 `interval_seconds` 与 `minimum_similarity` 调整阈值。同一原片的虚拟版本只算一次，缺少可比较时间的照片仍可得到清晰度与剪切比例。结果把同组照片排在一起，`rank=1` 和 `recommended=true` 表示组内清晰度最高的候选。
-- **按参考照找相似。** 传入 `reference_photo_id` 后，按与参考照的相似度从高到低返回匹配，默认阈值为 0.8。搜索范围内参考照的同原片版本会排除，候选无需满足拍摄时间条件。
-
-指标来自最长边 320 像素的原片缩略图。清晰度 `sharpness` 为 0–100，适合在同一组内比较。高光与阴影剪切分别给出 0–1 的比例，依据缩略图显示值。报告只返回数值和身份字段。可用候选的 `photo_ids` 调用 `list_photos(contact_sheet=true)` 取有序拼图，再取候选的 1:1 局部，两种取图都沿用照片预览共享。看完后可用 `edit_photo_stack` 建堆叠或用 `set_photo_marks` 打标。结果中的不可读取项含 `error_code`。
-
-`list_selected_photos` 按版本 ID 分页，包含跨页或折叠的已选版本。`select_photos` 可替换、增加、移除或清空选择，也可选中全部命中或一个堆叠的匹配成员。打开指定版本使用 `open_version`，浏览位置和前后页用 `navigate_library`。`previous_page` 和 `next_page` 保留选择与活动版本，`previous_photo` 和 `next_photo` 切换当前照片。
-
-工作区、比较和调查工具返回实际活动照片、参考／候选版本和可见调查页。缩放和平移以对应视口为准，平移返回归一化的当前中心与等待新渲染几何的请求位置。剪切开关只影响界面显示。通过 `get_photo_preview` 查看已保存的显影结果，沿用独立图像共享开关。
-
-`set_photo_ratings` 和 `set_photo_marks` 单次接收最多 200 个明确目标。每张传入所修改字段的当前值，任一不匹配时整批保留，并返回 `marks_conflict` 和对应照片的实际标记。相对星级以各张照片原值步进，越界停在 0 或 5。`advance` 显式开启时，仅从本批目标中的活动照片前进。批量写入返回各版本的前后标记和共同的撤销 ID。
-
-`list_keywords` 可搜索目录词表、返回近期关键词和选中计数，并按 `photo_id` 回读该版本的关键词及题注。添加与移除限定版本，重命名沿用全图库关联校验。题注以 `expected_captions` 核对每张现有内容，遇到 `caption_conflict` 时先核对新值再决定是否重发。关键词和题注变更可通过原生撤销栈撤销。
-
-### 集合、版本、堆叠与配对接口
-
-`get_collection` 分页读取实际成员，普通集合按保存的手工顺序，智能集合按现行规则计算。`collection_revision` 跟踪保存的名称、规则或成员顺序。`set_collection_members` 的 `collect_results` 使用当前查询的全部命中，包含跨页、折叠及冻结范围。快速集合动作使用 `get_workspace` 的目标 ID。普通集合创建、改名及收集查询结果沿用原生保存语义，其余动作按结果中的 `operation_id` 判断能否撤销。智能集合可提供 `rules` 或 `from_current_query=true`，保存后可用返回的 `source_id` 打开。
-
-`photo_id` 指照片版本。`list_photos` 与版本工具返回的物理 `source_id` 指同一原片。`list_photo_versions` 可用其中任一 ID 查同原片的编辑版本。`list_edit_records` 用 `record_type=history` 或 `snapshots` 查指定版本的保存记录。`create_virtual_copies` 默认复制当前保存编辑，也可以给单个目标指定一个 `history_id` 或 `snapshot_id`。复制和移除可用 `expected_revisions` 核对各目标的来源与配方，移除版本保留原片及撤销所需记录。
-
-`list_photo_stacks` 返回各组的封面、匹配数及成员总数。指定 `stack_id` 或成员 `photo_id` 时可分页查看完整顺序及每张是否在查询内。`plan_auto_stacks` 按相邻拍摄时间差生成计划，`get_job` 分页列出候选组员及跳过原因计数。`apply_auto_stacks` 应用所审查的整个计划，提交时重新核对查询和输入，整批使用一次原生撤销。
-
-`list_raw_jpeg_pairs` 查询已有关系，`listing=sources` 列出物理 RAW 与 JPEG 来源及目录记录的可用状态。自动配对依次调用 `plan_raw_jpeg_pairs` 的 `detect`、`verify`，再以核验后的 `plan_id` 和 `candidate_ids` 调用 `apply_raw_jpeg_pairs`。已明确是同一次拍摄时，也可用 `action=manual`、两侧来源 ID 与 `same_capture=true` 生成核验计划。每步任务均通过 `get_job` 回读。应用时复查原片和已存关系，整批提交并返回配对 ID 和撤销标识。过期时重新检测或核验。解绑保留双方原片和编辑版本。配对任一侧可用其物理来源 ID 查版本，再通过已有工具定位、比较或加入堆叠。
+- `analyze_photo_culling` 接收显式 `photo_ids` 或独立 `query`（单次上限 1,000 版本），基于 320 px 原片缩略图在后台生成报告：
+  - **连拍候选**：按拍摄时间间隔（默认 10 s）与画面相似度（默认 0.93）分组，按清晰度 `sharpness` 排序并标记 `recommended=true`。
+  - **相似图检索**：传入 `reference_photo_id` 按相似度降序返回匹配（默认阈值 0.8）。
 
 ### 全局显影、前后对照与编辑记录接口
 
-`get_photo_recipe` 按照片版本读取全局参数及修订号，也可用同版本的历史或快照 ID 读取保存值。各参数的范围随 `tools/list` 发布。参数工具只更新传入字段。曝光使用 EV，对比度和饱和度以 1 为中性，温度使用 K。RAW 细节参数可传 `null` 使用解码器默认值。`reset_adjustments` 可重置一组参数，`group=all` 复用原生完整重置，包含几何、蒙版与污点。
-
-用 `edit_photo_draft(action=begin)` 开启单张草稿。给 `set_global_adjustments`、`set_color_adjustments`、`set_tone_curve`、`set_zone_lighting`、`set_detail_adjustments` 或 `set_effects` 传入 `draft_id`、`draft_revision` 及保存版本的修订号，可在同一草稿试修。每次修改后从 `get_job` 取最新草稿修订，用草稿字段调用 `get_photo_recipe` 回读参数，或调用 `get_photo_preview` 取图。用 `long_edge` 且省略区域字段可预览整幅编辑画面。满意后用 `edit_photo_draft(action=commit)` 提交整份草稿，或用 `action=cancel` 丢弃。
-
-用 `preview_quality=interactive` 快速查看活动草稿的整幅效果，省略区域、叠加和对照字段。快速图使用交互显影，返回 `editable_canvas=false`，供目视试修。快修与质量图各自同时处理一个请求。草稿更新时取消旧修订的预览请求，过期请求返回 `stale_draft`。旧质量渲染退出期间，可以用最新修订取快速图。定稿核对、取样、落笔、叠加和 1:1 检查使用默认的 `preview_quality=quality`。在来源、配方和尺寸相同时，可复用最近一张质量整图，包括草稿提交后的回读。命中时返回 `reused=true`，预览 ID 和修订号仍按当前请求更新。
-
-在草稿里试用预设时，调用 `transfer_adjustments(action=preset)`，传入草稿字段、`preset_id`、`preset_revision`、单个目标的 `photo_ids` 和对应的 `expected_revisions`。`amount` 范围为 0–2，`1` 对应 100%。连续调强度或换预设均从这轮试用前的草稿计算，`amount=0` 恢复该草稿状态。修改其他草稿参数后，下一次试用以修改后的配方为起点。任务结果、配方和预览中的 `preset_trial` 给出当前试用的预设、强度和参数组。用最新草稿修订取整图预览，确认后整份草稿只新增一条编辑历史。
-
-参数修改、自动分析、恢复历史、批量曝光和传递返回任务 ID。单张提交核对 `source_revision` 和 `recipe_revision`，批量按 `expected_revisions` 核对每个显式照片 ID。原片不可用或参数不适用时返回单张错误或逐项跳过原因。提交前复查版本，成功项整批保存并在原生撤销栈登记一次。用 `get_job` 查看状态、已保存修订号与 `operation_id`，再通过配方或预览核验结果。
-
-`set_before_after` 切换活动照片的整幅原样、并排或分割显示，并可绑定历史或快照。通过 `get_workspace` 读取两侧和加载状态。`preview_adjustment` 在原生窗口临时预览编辑记录、预设或隐藏单个显影组。客户端取图使用 `get_photo_preview`。默认返回保存版本，`preview_variant=original` 返回未裁剪基线，`before` 将基线或指定记录对齐到当前保存版本的几何。默认模式也可预览记录、预设或隐藏单个组。取图沿用图像共享开关。
-
-`list_adjustment_presets` 按名称、分组和收藏查找预设，预设变更和应用使用返回的 ID 与修订标识。`transfer_adjustments` 支持 App 内复制粘贴、同步、沿用上一张和按强度应用预设。选择明确的参数组。预设未指定组时沿用它保存的选择。XMP 通过 `request_file_access(purpose=xmp_presets)` 由用户选择文件，经 `plan_xmp_preset_import` 查看转换诊断后导入选定候选，沿用原生稀疏参数和重复检查。
-
-`list_edit_records` 分页返回历史与快照。`apply_edit_record` 通过 `history_id` 切到选定步骤并保留原有历史，通过 `snapshot_id` 应用快照并记录这次调整。提供显影草稿时，工具将选定状态应用到草稿。创建及改名快照沿用原生保存行为，改名和删除核对 `snapshot_revision`。删除快照、修改已有预设及导入 XMP 可用返回的操作 ID 撤销。
+- 覆盖全部原生全局参数、曲线、五区光线、HSL、黑白混色、色彩分级、通用／RAW 细节、手动去边、暗角／颗粒、自动调整、相对曝光、匹配总曝光、参数传递、预设管理、XMP 预设导入、前后对照与历史／快照管理。
+- **整图草稿试修**：`edit_photo_draft(action=begin)` 开启单张内存草稿，可连续调整全局、几何、预设强度、局部与污点；`preview_quality=interactive` 用于快速目视试修，`quality` 用于定稿并复用同配方同尺寸缓存；`commit` 仅写一条编辑历史。
 
 #### 逐张调整并批量提交
 
-1. 用 `plan_adjustment_batch` 提交 `edits`。每项包含从 `list_photos` 或 `get_photo_recipe` 取得的 `photo_id`、`source_revision`、`recipe_revision` 和该照片的 `adjustments`。每批最多 64 个不同的照片版本，请求仍受本地 MCP 64 KiB 请求体上限约束。
-2. 从 `get_job` 读取 `plan_id` 和按输入顺序返回的 `items`。每项的 `changes` 按参数组列出 `before` 和 `after`。计划期间只计算参数，照片历史保持原样。若无变化，该项为 `unchanged`。
-3. 用 `apply_adjustment_batch` 一次提交该 `plan_id`。任一目标的保存版本、位置、来源或原片校验失败，整批都不会写入。成功时每张有变化的照片增加一条编辑历史，并返回更新后的修订号和整批的 `operation_id`。用相同的 `request_id` 和参数重试提交可取回原任务。提交后可用 `get_photo_recipe` 或 `get_photo_preview` 核对更新，用 `undo_operation` 或原生 ⌘Z 撤销整批。
-
-`adjustments` 可包含 `global`、`color`、`detail`、`effects`、`curves` 和 `zone_gains`，范围与对应的单张工具一致。曲线按通道提供完整点列，分区光为五个 EV 值。省略的参数沿用该版本保存值。以下仅列出 `edits` 的示例值。
-
-```json
-[
-  {
-    "photo_id": "photo-a",
-    "source_revision": 1,
-    "recipe_revision": 4,
-    "adjustments": {"global": {"exposure": 0.45, "temperature": 5900}}
-  },
-  {
-    "photo_id": "photo-b",
-    "source_revision": 1,
-    "recipe_revision": 2,
-    "adjustments": {
-      "global": {"exposure": -0.35},
-      "color": {"hsl": {"blue": {"saturation": -12}}}
-    }
-  }
-]
-```
-
-规划和提交都以照片版本 ID 为目标，沿用用户当前的图库来源、筛选、排序、页位置和选中照片。计划留在本次图库会话，切库、服务重启、计划任务从历史中淘汰或提交成功后需要重新规划。任务的 `error_code` 给出失败原因，涉及单张照片时可用 `error_details.photo_id` 定位。
+1. `plan_adjustment_batch` 提交最多 64 张不同版本及其逐张 `adjustments`（受 `64 KiB` 请求体上限约束），预览各组 `before`／`after` 变化。
+2. `apply_adjustment_batch` 在提交前复核全部目标版本与原片，通过后一次事务保存并登记一条原生撤销；任一冲突或失败整批不写入。
 
 ### 画布、几何和局部编辑接口
 
-`get_photo_preview` 支持 `region` 局部预览。`preview_variant=crop_canvas` 返回裁剪工具所用的完整几何画布，供 `set_crop` 设置矩形及 `edit_perspective_guides` 设置参考线。默认保存预览用于显影取样、污点及蒙版操作。用 `editable_canvas` 判断预览是否可供编辑。换版、保存或关闭图像共享后重新获取预览和修订。区域内的坐标以返回的 PNG 为准。
-
-`resolution=native` 请求 1:1 局部 PNG。用左上角为原点的归一化 `region` 或整数 `region_pixels` 框选，省略 `long_edge`。像素坐标以当前预览版本的原分辨率画布为准，画布包含该版本的旋转、翻转、裁剪和透视结果。响应给出 `canvas_width`、`canvas_height` 和实际像素框。每块最长边为 2048 像素，总面积至多 1,048,576 像素。用 `plan_only=true` 查看尺寸、`fits` 和建议框，此时可省略区域以查询整个画布。渲染请求超限时返回 `preview_region_too_large` 和 `suggested_region_pixels`，可缩小或按相邻像素框分块读取。
-
-取图沿用原生显影管线。对支持局部处理的不透明源，普通画笔和已固定采样源的污点只处理选区所需的像素、滤镜周边和跨块来源。自动选源、去雾等全图分析以及透明源保留完整处理，原片验证和解码仍由原生管线完成。
-
-`set_photo_geometry` 可更新旋转、拉直、翻转与透视。`solve_perspective` 返回原生自动求解状态。在活动照片的裁剪工作区编辑参考线，回读有效线、求解状态和已应用参数。`sample_preview` 返回图像 RGB 与剪切标记，或读取当前显影的亮度分区。`adjust_from_preview` 和 `edit_point_color` 使用原生浮点取样。`get_spot_repairs` 返回已保存的目标与采样源，可按 ID 读完整路径。`edit_spot_repair` 支持整笔提交与单独换源。用 `source_preview_id` 可在同一照片修订的另一块局部预览中指定采样点。画笔和污点半径按 `source_width` 和 `source_height` 中较短的一边计算。
-
-`get_mask_state` 按照片版本返回组，指定组和组件 ID 后读取细节。画笔、渐变和颜色／亮度范围可分别编辑。用 `get_photo_preview(mask_overlay={mask_id,style,color})` 读取覆盖图，或用 `without_mask_id` 对比临时隐藏的局部效果。`set_mask_display` 控制活动窗口的覆盖图和引导线。局部参数编辑、传递及应用局部预设保留目标选区，按实际保存修订返回原生撤销标识。
-
-用 `edit_photo_draft(action=begin)` 和明确的照片 ID、源和配方修订号开始试修。从 `get_job` 取回 `draft_id`、`draft_revision`，把它们与原保存版本的身份一起传给预览、蒙版或污点工具。每次试修后从任务结果取最新草稿修订；用同一 `region_pixels` 重取 1:1 PNG 对比，也可以叠加蒙版或临时隐藏其效果。目标和跨块采样源必须来自同一草稿修订的可编辑预览。修改笔划时传入上一次返回的 `stroke_index`，可用当前预览换路径，也可省略路径和预览只改笔刷大小等参数。省略草稿字段即可单独读取原保存版本。
-
-裁剪、拉直、旋转和透视也可以试修。给 `set_photo_geometry` 和 `set_crop` 传入当前草稿字段，设置裁剪框时使用同一草稿修订的 `crop_canvas` 预览。
-
-当前图库会话保留一个内存草稿；反复试修不会改变保存版本、原片、编辑历史或撤销栈。`action=commit` 使用当前草稿 ID 和修订保存，有变化时整份草稿只写一条编辑历史并返回原生撤销标识。`action=cancel` 丢弃草稿；切换图库或停止服务也会丢弃。期间若保存版本变化，提交会拒绝覆盖；可取消后从最新版本重新试修。
-
-智能蒙版在活动照片的蒙版工作区运行。`get_capabilities` 的 `smart_mask_models` 返回本机可用能力。调用 `start_smart_mask` 后用 `get_job` 查询分析，`get_mask_state` 返回选择修订、候选、人物、部位、脸框和失败原因。编辑或提交使用当前 `smart_session_id` 和 `selection_revision`。用 `smart_overlay` 查看指定候选或已选覆盖，用 `apply_smart_mask` 按原生分组提交。运行中的分析可由 `cancel_job` 取消，空闲会话可在选择工具中取消。
-
-### 照片合成与导出接口
-
-`plan_photo_merge` 和 `plan_export` 接受有序 `photo_ids` 与每张照片的 `expected_revisions`，其中包含 `source_revision` 和 `recipe_revision`。用 `get_job` 读取计划、进度与分页结果。图库切换或服务重启后重新规划，照片修订变化后先回读当前状态。运行中的合成和导出可用 `cancel_job` 取消，随后查看已经发布的结果。
-
-合成计划支持 `panorama`、`hdr`、`hdrPanorama`、`focus`、`average`、`robustAverage`、`median`、`additive`、`lighten`、`darken`、`screen`。HDR 全景按 `bracket_size` 将连续来源分组。星轨、均值、稳健均值和中值可用 `dark_photo_ids` 标记 `photo_ids` 中至多 128 张暗场；每张亮场与暗场都须提供修订，计划按 `role` 返回 `light` 或 `dark`。精修索引只计算亮场，母版另外记录暗场来源。`robustAverage` 需要 5–128 张曝光一致的亮场，完整尺寸保存会使用临时空间。`render_merge_preview` 返回可供 `get_merge_preview` 查看和 `save_photo_merge` 保存的 `preview_id`，重新渲染会替换已准备的预览。`display_ev` 仅影响回读图像。保存前在原生面板授权 `merge_destination`，选择 `tiff` 或 `dng` 母版和新文件名。结果的 `published`、`verified` 和 `indexed` 分别记录发布、核验和入库。堆叠可用返回的 `operation_id` 撤销，母版保留。若文件已发布但未入库，用返回的 `file_id` 定位母版并检查，再按需要引用导入。
-
-对焦、HDR、全景、HDR 全景和星轨母版包含可继续编辑的工程。`edit_merge_retouch(action: begin)` 从 `preview_id` 开始；`reopen` 使用母版的 `photo_id`、`source_revision` 和 `recipe_revision`。任务返回 `preview_id`、`draft_id` 和 `draft_revision`，后续设置、撤销、读取与保存必须使用同一当前修订。`set` 的 `changes` 可追加一条 `append_stroke`、删除 `remove_stroke_index`、替换 `excluded_sources` 或修改 `star_trails`。笔画的 `source_index` 从 0 开始，HDR 全景指一个完整曝光组；`path` 是预收边画布的左上原点归一化坐标，`radius` 是短边比例，操作为 `keep`／`exclude`／`automatic`。原生范围校验、笔画预算与至少保留一帧的约束不变。 `star_trails.comet_half_life` 为 0–128 帧，0 关闭。
-
-`get_merge_retouch` 的 `state` 分页回读笔画，`sources` 分页列出来源和可选检查点的分析覆盖；`source`／`result`／`coverage`／`constraints` 返回图像，后两者只叠加显示，不写入成片。`region_pixels` 返回 1:1 区域（最大边 2048、面积 1048576 像素），不与 `long_edge` 混用；`plan_only` 可在不共享图像时查询尺寸和分块建议。来源检查、笔画、蒙版和返回区域都在边界变形、填充与裁剪之前，不能把显示缩图坐标直接当作最终母版像素坐标。
-
-用 `undo`／`redo` 可回退草稿修改（保留最近 32 步）；`reset` 清空来源修正和星轨设置，`cancel` 放弃本次草稿并恢复开始时设置。`save_photo_merge` 对活动精修草稿要求当前 `draft_id`／`draft_revision`，保存新母版后草稿失效，原母版不改写。更换图库、重新生成预览或服务重启也会使草稿失效。MCP 合成计划的亮场上限为 128 帧，关闭对齐的星轨可到 2048 帧；暗场另计。
-
-`export_star_trail_sequence` 接受星轨 `preview_id`、`merge_destination` 的 `destination_access_id` 和新文件夹 `name`；活动精修时也传当前 `draft_id`／`draft_revision`。任务分页返回 `frame_number`（从 1 开始）、`source_index`（对应亮场，从 0 开始）、文件名及 `sha256`。用 `published`、`verified` 和 `commit_state` 区分取消、成功或已发布待核验。成功后可用 `reveal_file_in_finder(kind: star_sequence, file_id: …)` 显示文件夹，当前预览仍可保存浮点母版。
-
-导出使用 `export_destination` 授权。单规格可直接传 `options`，多规格各自指定 `title`、`subfolder` 及所需选项。可通过 `preset_id` 和 `preset_revision` 选用内置或自定义预设，再覆盖单项选项。`jpeg` 必须选 `black` 或 `white` 铺底。`png` 和 `tiff` 保留透明度，TIFF 使用 16 位。`metadata_policy` 支持 `none`、`capture`、`description` 和 `captureAndDescription`。题注和关键词取自计划时的图库，相机数据仅写入原生允许的拍摄字段。`get_export_preview` 分页显示名称和冲突，传 `output_id` 时返回像素预览。所有像素预览均需要开启照片预览共享。
-
-仅对 `ready: true` 的计划调用 `run_export`。运行前重新核对修订和目标，再冻结配方、原片身份和元数据。任务分别报告 `published_count`、`verified_count`、`completed_count` 及每个输出的 `record_id`。连接中断时先回读任务，服务重启后可用 `list_export_records` 查询持久记录。`verify_or_retry_export` 校验已发布文件的摘要，缺失时用原冻结设置重新生成，遇到同名外部文件会保留原文件。授权失效时用原生面板选择每条记录的原始父目录，再调用 `reauthorize_export_location`。`reveal_file_in_finder` 按导出记录、已入库母版、临时母版文件 ID、当前图库或导入备份定位文件。
-
-### 设置、诊断与图库维护接口
-
-`get_preferences` 返回当前界面偏好。`set_preferences` 的 `preferences` 只更新指定字段。`develop_groups` 可指定要展开或折叠的分组，单分组模式一次展开一个调整分组。左右栏宽和胶片带高度用原生点数，图库缩略图大小按原生滑块范围保存。筛选条在临时浏览范围内沿用原生的返回行为。`show_app_panel` 可打开 `settings`、`task_results`、`import_recovery`、`output_recovery` 或 `camera_diagnostics`，用 `get_job` 或 `get_workspace` 的 `open_panel` 核对可见面板。设置页用 `pane` 选择 `appearance`、`storage`、`shortcuts` 或 `agent`。Agent 的服务、共享和令牌继续在原生设置管理。
-
-语言包通过 `request_file_access` 的 `language_pack` 授权，经 `edit_language_pack(action=import)` 校验、安装并选为下次启动语言。用 `list_language_packs` 取得 ID 和当前运行状态。`select_language` 的 `official` 跟随 macOS，`community` 使用明确的 `pack_id`。移除也使用明确的 `pack_id`。查看 `restart_required`，由用户重新打开 App 以应用语言选择。
-
-`get_storage_usage` 返回图库、缩略图、任务暂存和恢复文件的字节数及不可访问项数。`set_cache_quota` 支持 1、5、10 GiB。`clear_thumbnail_cache` 返回本次删除的字节数，继续浏览时缩略图可重新生成。两种操作沿用原生维护锁。
-
-备份和清单分别授权 `catalog_backup_destination`、`catalog_manifest_destination`，使用新文件名并检查 `published` 和 `verified`。备份保存图库数据库。JSON 清单省略沙箱书签，仍含图库的照片路径和编辑信息。恢复使用 `catalog_backup_source` 和 `create_catalog` 两种授权，写入新的 `.phoscat`，核验后打开并返回新的 `catalog_session_id`。切换后重新读取工作区及目标对象。若文件已发布但打开失败，先检查返回的文件名，已有文件由原生无覆盖发布保护。
-
-相机检查使用 `camera_samples` 目录授权。检查按名称排序的前 32 个受支持 RAW 候选，只查看所选目录的第一层。任务区分完成分析与单个样片的检查结论。用 `report_id` 和 `sample_index` 回读可用的显影或嵌入预览，图像共享开关控制像素返回。保存报告需 `camera_report_destination` 授权，JSON 省略样片名、路径和像素。取消后可保存已检查的部分。结果只适用于本机及相应样片。
-
-### 原生操作覆盖复核
-
-| 原生入口 | 对应操作及回归入口 |
-|---|---|
-| 文件菜单与任务恢复 | 图库打开、导入和文件夹核对对应第三步，合成与输出记录对应第六步，图库维护和恢复面板对应第七步。用 `AgentLibraryTests`、`AgentOutputTests` 和 `AgentMaintenanceTests` 核对。 |
-| 照片与显示菜单、网格及胶片带 | 选片、标记、版本、堆叠、配对、比较及工作区对应第四步。用 `AgentOrganizationTests`、`AgentDevelopTests` 和浏览相关回归核对。 |
-| 左栏、右栏和画布 | 文件夹和集合、历史及预设对应第三至四步，几何、取样、修复与蒙版对应第五步，布局与面板展开对应第七步。 |
-| 设置与帮助菜单 | 偏好、社区语言包、缓存、快捷键和相机检查对应第七步。相机检查面板可查看本次 Agent 结果。 |
-
-连续堆叠比较的进入、切组和退出定位属于原生选片流程，保留在 App 内。Agent 可用 `list_photo_stacks` 读取堆叠成员，用 `set_compare_photos` 在 App 中比较指定版本。开启预览共享后，Agent 可用 `get_photo_preview` 获取指定版本的图像。[已定决策](decisions.md#界面与交互)
-
-MCP 撤销和重做只接受自己返回且仍在栈顶的操作 ID；手工编辑用原生编辑菜单撤销。原生表单关闭、窗口管理、系统剪贴板、系统语言选择和授权确认仍使用本机交互。
-
-## 实施顺序
-
-### 第一步 核定操作清单和接口契约
-
-以本文件的操作清单、原生入口、系统边界和首批接口为交付。连接方式与依赖组合通过签名沙箱探针及本机客户端确认。后续具体字段随代码注册及对应测试维护，待完成项在 STATUS 追踪。
-
-### 第二步 接入本地服务和观察能力
-
-依赖第一步。
-
-- 接入设置开关、服务生命周期、身份校验、实例识别和连接配置。开放能力查询、当前状态、分页照片查询和版本化图像预览。
-- 建立一个由 UI 与 MCP 共用的可撤销操作作为写入接通验证，覆盖请求去重、版本冲突和明确的提交结果。
-- 同步建立配套 Skill 的连接与观察部分，工具名称引用本步真实注册项。
-- 验证协议交互、有效及无效凭据、Origin／Host、端口占用、多客户端、启停和 App 退出。用实际客户端读取合成照片并完成一次修改及撤销，在固定体验 App 中核对中英双主题设置与状态。
-
-### 第三步 接入图库 导入和任务状态
-
-依赖第二步。
-
-- 接入图库创建／打开／切换、原生授权等待、来源重定位、引用和复制导入、冲突选择及文件夹差异。
-- 从现有任务流程提取可观察的状态和结果，先覆盖导入的取消、恢复和断线后查询，供后续合成及输出复用。
-- 验证从授权目录导入、跨页查询和定位。回归同名冲突、取消、部分失败、过期差异计划、切库和重新连接。输出逐项结果，并核对文件及数据库的实际状态。
-
-### 第四步 接入整理 全局显影和记录
-
-依赖第三步。
-
-- 接入覆盖表中的整理、集合、版本、堆叠、关联和查询动作，以及全部现有全局参数、自动调整、预设、参数传递、历史和快照。
-- 接入浏览／比较／参考照片、缩放、前后对比和常用面板状态。批量显影返回每张实际结果和整批撤销能力。
-- 验证跨页选片、冻结筛选、折叠堆叠、虚拟副本身份、同请求重发、手动编辑冲突、批次保存失败和撤销／重做。预设及配方与 UI 操作使用相同语义。
-
-### 第五步 接入画布 几何和局部编辑
-
-依赖第四步的配方、观察和撤销契约。
-
-- 定义预览坐标到源坐标的转换，接入裁剪、拉直、透视参考线、污点、颜色取样、图上目标调整、画笔路径、渐变、范围和蒙版组件操作。
-- 接入智能蒙版的分析、候选查看、选择、增减提示、局部参数和提交，返回模型可用性及分析失败原因。
-- 用同一预览版本核对坐标和参数，一笔或一次几何调整对应其原生提交边界。独立读取非对称梯度像素，核对 90°、270° 及组合翻转后的逆映射。
-- 回归旋转、翻转、裁剪、透视、缩放及图像边缘的命中位置，同时覆盖取消、换图、过期预览和缺少模型。用合成色块／梯度核对像素位置，用已授权人物素材核对智能选区与叠加结果。
-
-### 第六步 接入照片合成和完整输出
-
-依赖第三步的任务及文件授权、第四步的配方和组织能力。包含局部编辑的全链路联调还依赖第五步。
-
-- 接入所有现有合成方式、来源顺序、选项、预览、母版保存、入库和组织结果。
-- 接入导出预设、命名检查、元数据、全部现有格式、多规格输出、记录、重试和取消。复用冻结配方、来源身份核验及安全发布流程。
-- 验证完整任务“导入包围曝光 → HDR DNG → 人物蒙版提亮 → 两种尺寸 JPEG”。其他合成方式、PNG／TIFF16、透明度及失败恢复分别核对。
-- 回归目标冲突、磁盘写入失败、发布后入库失败、取消发生在提交边界、客户端断开和任务重复请求。根据实际文件回读尺寸、格式、位深、元数据和完成数量。
-
-### 第七步 补齐设置 维护和能力缺口
-
-依赖已接入的图库和任务基础。
-
-- 接入其余视图与偏好、语言包、缓存与存储、相机检查、备份、恢复为新图库及管理清单。
-- 重新检查所有菜单、上下文菜单、画布、设置和恢复面板，将覆盖清单逐项对应到可调用工具及验证入口。
-- 验证设置持久化、需要重启的状态反馈、缓存清理与渲染并发、备份回读和恢复定位。对受环境或授权约束的功能返回具体条件。
-- 列出所有剩余缺口供用户决定处理方式，覆盖率的分母采用第一步的实际操作清单。
-
-### 第八步 完成 Skill 客户端联调和整体验收
-
-依赖前七步。Skill 在第二步起随每批能力维护，本步完成整体验证和分发。
-
-- 从源码和应用包提供可安装的 `phosdeck` Skill 目录，随工具更新。主文件描述触发条件、连接、状态读取、执行及结果核验；整理、显影、局部编辑、合成、导出和恢复细节按工作流放入参考文件。
-- Skill 使用工具发现和返回的 schema，引用真实工具及可用条件，按用户授权连续推进任务。需要用户输入时说明待完成动作，得到输入后继续，结束时回读实际结果。
-- 在本机 Codex 完成主验收，再用第二个独立客户端核对协议及图像返回。
-- 跑完整工作流、人工与 Agent 交替编辑、重连、错误恢复及覆盖清单回归。完成与覆盖范围相符的原生全量检查、固定体验 App 实窗检查和依赖声明检查，交由用户体验验收。
-
-## 验证与交付约定
-
-每批交付包含可执行能力、对应的 Skill 内容、受影响的回归检查，以及用户可复现的体验步骤。操作入口测试检验校验、保存和状态，MCP 集成测试检验协议到原生执行的完整调用链，实际客户端与原生窗口核对可观察结果。
-
-整体验收至少覆盖整理与批量显影、手工几何及局部精修、智能蒙版、合成后继续编辑、多规格输出、授权及任务恢复六组工作流。小规模样例完成后，补测大批量分页、多个客户端和长任务期间的 UI 操作，检查队列上限及过期请求处理。性能测试按 AGENTS.md 固定条件记录基线与后续结果。
-
-新增能力与现有 App 行为逐项核对。仍缺失的动作、环境跳过、未验证客户端及模型依赖都明确记录，最终完成状态由用户确认。原始日志和测量保存在 `build/`，实际检查和限制写入提交说明。
+- `get_photo_preview` 支持 `crop_canvas` 几何画布、蒙版叠加（`mask_overlay`／`without_mask_id`）及 `resolution=native` 1:1 局部 PNG（`region` 或 `region_pixels`，单块最长边 2048 px、面积上限 1,048,576 px，可用 `plan_only=true` 查询分块）。
+- 覆盖裁剪、旋转、翻转、透视与参考线求解、像素与目标调整取样、点颜色、污点修复（支持跨块 `source_preview_id` 取样）、普通蒙版（画笔／渐变／颜色与亮度范围）、局部参数预设与智能蒙版会话。普通画笔与固定源污点在不透明源上走局部区域渲染，全图分析与透明源保持完整渲染。
 
 ## 技术依据
 
-- Swift SDK `0.12.1` 对应提交 `a0ae212`（2026-04-29），SwiftNIO `2.105.0` 对应提交 `2f58d8e`（2026-11-02）。引入时以实际 Xcode 解析的依赖为准，将各包的 LICENSE 和存在的 NOTICE 随包分发。Swift SDK 处于 MIT 至 Apache-2.0 迁移期，保留原始许可说明。[Swift SDK 许可](https://github.com/modelcontextprotocol/swift-sdk/blob/a0ae212ebf6eab5f754c3129608bc5557637e605/LICENSE) · [SwiftNIO 版本](https://github.com/apple/swift-nio/releases/tag/2.105.0)
-- 文件选择授权与后续访问沿用系统安全作用域书签。[App Sandbox](https://developer.apple.com/documentation/security/app-sandbox)
-- 配套 Skill 采用包含 `SKILL.md` 的目录结构，连接配置及工具实际支持情况由客户端联调核定。[Agent Skills 规范](https://agentskills.io/specification)
+- **依赖版本**：MCP Swift SDK `0.12.1`（`a0ae212`，2026-04-29）、SwiftNIO `2.105.0`（`2f58d8e`，2026-11-02），随包分发声明见 [mcp-NOTICES.txt](references/mcp-NOTICES.txt)。[Swift SDK 许可](https://github.com/modelcontextprotocol/swift-sdk/blob/a0ae212ebf6eab5f754c3129608bc5557637e605/LICENSE) · [SwiftNIO 发布](https://github.com/apple/swift-nio/releases/tag/2.105.0)
+- **平台规范**：[macOS App Sandbox](https://developer.apple.com/documentation/security/app-sandbox) · [Agent Skills 规范](https://agentskills.io/specification)

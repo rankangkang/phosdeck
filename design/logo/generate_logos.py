@@ -67,8 +67,7 @@ def write_selected_wordmarks():
         raise ValueError("wordmark source colors missing")
     for theme, p in (("ivory", IVORY), ("graphite", GRAPHITE)):
         artwork = source.replace("#242423", p["ink"]).replace("#EC761B", p["lamp"])
-        for name in ("wordmark-approved", "logo-wordmark"):
-            open(os.path.join(OUT, f"{name}-{theme}.svg"), "w").write(artwork)
+        open(os.path.join(OUT, f"wordmark-approved-{theme}.svg"), "w").write(artwork)
 
 
 def final_sheet():
