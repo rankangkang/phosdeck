@@ -87,7 +87,7 @@
 
 下一轮优先处理用户在本次验收中发现的问题。
 
-Lightroom 功能补齐第一批（匹配总曝光、直方图拖动、图上目标调整）、第二批文件夹差异预览、第三批自动白平衡／自动色调及手动去边已实现原生版本，运行对照与未测边界见待用户验收。交互参考本机 Classic 15.2.1 安装资源和 Adobe 公开说明，未恢复 Adobe 算法。以下保留候选，沿用 [已定决策](decisions.md) 中的不做与暂缓范围。
+Lightroom 功能补齐第一批（匹配总曝光、直方图拖动、图上目标调整）、第二批文件夹差异预览、第三批自动白平衡／自动色调及手动去边已实现原生版本，运行对照与未测边界见待用户验收。交互参考本机 Classic 15.2.1 安装资源和 Adobe 公开说明，未恢复 Adobe 算法。以下保留候选，沿用 [已定决策](decisions.md) 中的不做与暂缓范围；完整的对标问题排查、功能缺口与分阶段优化路线见 [差距与演进清单](roadmap.md)。
 
 - **外部编辑往返（用户暂缓）**：参考 [外部编辑](https://helpx.adobe.com/lightroom-classic/desktop/work-with-external-editors/open-lightroom-photos-external-applications.html)。复用 TIFF16 导出生成派生文件、交给外部 App，再核验并作为独立来源入库关联；文件生命周期、身份与中断恢复须单独设计。
 - **离线可编辑代理（用户暂缓）**：参考 [Smart Previews](https://helpx.adobe.com/uk/lightroom-classic/desktop/viewing-photos/lightroom-smart-previews.html)。已有缩略图／预览缓存，原片不可用时仍缺编辑代理；须定义代理格式、来源身份、RAW 基准、重连核验和最终输出规则。
