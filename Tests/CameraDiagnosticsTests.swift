@@ -63,7 +63,9 @@ final class CameraDiagnosticsTests: XCTestCase {
         var report = CameraDiagnosticReport.empty(); report.photos = [result.photo]
         let json = String(decoding: try JSONEncoder().encode(report),as: UTF8.self)
         XCTAssertFalse(json.contains(url.path)); XCTAssertFalse(json.contains(url.lastPathComponent))
-        XCTAssertEqual(result.photo.compression,"unknown"); XCTAssertNil(result.photo.sensorBits)
+        XCTAssertNotEqual(result.photo.compression, "unknown")
+        XCTAssertNotNil(result.photo.sensorBits)
+        XCTAssertEqual(result.photo.checks.first { $0.id == "sensorMeasurements" }?.verdict, .passed)
     }
     func testAppleDNGRefusalIsPreserved() async throws {
         let url = try MoreRAWTests.sample("iphone12pro_8bit_ljpeg.DNG")

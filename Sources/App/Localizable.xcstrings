@@ -91,6 +91,60 @@
         }
       }
     },
+    "app.rawBitstreamDamaged": {
+      "extractionState": "manual",
+      "comment": "Sources/Imaging/RAWDecoder.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RAW sensor data is corrupted or incomplete. Import and development stopped"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RAW 传感器数据已损坏或不完整，已停止导入与显影"
+          }
+        }
+      }
+    },
+    "camera.sensorCorrupted": {
+      "extractionState": "manual",
+      "comment": "Sources/Imaging/CameraDiagnostics.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LibRaw detected corrupted RAW bitstream data (%lld errors)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LibRaw 检测到 RAW 压缩数据流损坏（%lld 处错误）。"
+          }
+        }
+      }
+    },
+    "camera.sensorVerified": {
+      "extractionState": "manual",
+      "comment": "Sources/Imaging/CameraDiagnostics.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LibRaw %@: %@ %@, %@, black %@, white %@%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LibRaw %@：%@ %@，%@，黑电平 %@，白电平 %@%@"
+          }
+        }
+      }
+    },
     "cameraLook.asShot": {
       "extractionState": "manual",
       "localizations": {

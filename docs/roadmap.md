@@ -6,8 +6,8 @@
 
 ### 1. 输入格式与机内色彩
 
-- **底层仍强依赖 Apple `CIRAWFilter`**：[PhotoFileType.swift](../Sources/Imaging/PhotoFileType.swift) 与 [RAWDecoder.swift](../Sources/Imaging/RAWDecoder.swift) 已通过声明式格式注册表、容器完整性校验与薄解码抽象层开放 15 种常见 RAW 扩展名及静态 SDR HEIC／HEIF／HIF，但仍缺独立第三方 RAW 后端——个别损坏 RAW（如已复现的富士 RAF）在 Apple RAW 解码器下可能静默输出黑块，新机型与无损压缩支持受制于 macOS 更新；Apple DNG／ProRAW 与 HDR PQ／HLG HEIF 亦暂未开放。
-- **相机风格缺少正式品牌资源**：[CameraLooks/manifest.json](../Sources/Imaging/CameraLooks/manifest.json) 目前仅有开发验证用的 `diagnostic.test-table`，正式版菜单为空；缺少跨品牌的机内色彩配置文件与自动识别，RAW 默认显色观感弱于 Lightroom 的相机匹配配置文件。
+- **自研 GPU 去马赛克与品牌机内风格资源仍待补齐**：[PhotoFileType.swift](../Sources/Imaging/PhotoFileType.swift) 与 [RAWDecoder.swift](../Sources/Imaging/RAWDecoder.swift) 已支持 15 种 RAW 扩展名与静态 SDR HEIC／HEIF／HIF，并已接入纯净 LGPL-2.1 `LibRaw 0.22.3`（[Packages/LibRawRuntime](../Packages/LibRawRuntime)）用于损坏比特流检出、传感器真值／机内风格标签提取及 `libraw-0.22-v1` 解码兜底；但默认 RAW 显影仍以 Apple `CIRAWFilter` 为主，尚未切换为 `LibRaw unpack + Metal GPU 去马赛克`，Apple DNG／ProRAW 与 HDR PQ／HLG HEIF 亦暂未开放。
+- **相机风格缺少正式品牌资源**：[CameraLooks/manifest.json](../Sources/Imaging/CameraLooks/manifest.json) 目前仅有开发验证用的 `diagnostic.test-table`，正式版菜单为空；机内风格识别数据通道已由 LibRaw MakerNote 打通，但跨品牌的正式校准色表仍待分批接入。
 
 ### 2. 显示与色彩管线
 
@@ -86,7 +86,7 @@
 
 ### P1：补齐高频摄影工作流
 
-1. **实拍 RAW 验证与光学能力扩充**：基于 `CameraDiagnostics` 逐类补齐真实 CR2／ORF／RW2／PEF／3FR 样片实证，并推进独立 LibRaw 解码通道（覆盖坏片比特流检出与新机压缩模式）；补齐手动畸变、裁剪前暗角与位移缩放，评估接入 Lensfun 镜头库。
+1. **实拍 RAW 验证与光学能力扩充**：基于 `CameraDiagnostics` 逐类补齐真实 CR2／ORF／RW2／PEF／3FR 样片实证，并按需向 `LibRaw unpack + Metal GPU 去马赛克` 演进；补齐手动畸变、裁剪前暗角与位移缩放，评估接入 Lensfun 镜头库。
 2. **高频闭环补齐**：
    - 复制／同步支持污点修复与蒙版；
    - 补齐局部锐化／降噪／去边，以及选天空／主体／背景；

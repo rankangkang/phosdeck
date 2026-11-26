@@ -94,6 +94,9 @@
 		4FA4AC8FDB9D910882D5F45F /* AppMCPCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = EACF06B5BD4CBE1E87B52050 /* AppMCPCanvas.swift */; };
 		4FBF58D7FCDD241110662D3B /* AppMCPVersions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FD162E8F1699EF024E5F336 /* AppMCPVersions.swift */; };
 		505FEF11AD6A16E64FA8C0CD /* SmartMaskRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = F1B7CBD98E68A361FFCC8CF9 /* SmartMaskRuntime */; };
+		CA13000100014CA8A1B2C3D4 /* LibRawRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = CA13000400014CA8A1B2C3D4 /* LibRawRuntime */; };
+		CA13000500014CA8A1B2C3D4 /* libraw-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = CA13000600014CA8A1B2C3D4 /* libraw-LICENSE.txt */; };
+		CA13000700014CA8A1B2C3D4 /* LibRawRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA13000800014CA8A1B2C3D4 /* LibRawRuntimeTests.swift */; };
 		5081BD46ECDAD576D41E3593 /* KeywordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B82E88B8A2AC65FCD809C856 /* KeywordTests.swift */; };
 		510C483678CFF8044C5B2348 /* CatalogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F515C766CB595EBDCC52619A /* CatalogStore.swift */; };
 		516141394FECD54B51CEC6E6 /* ManualDefringeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13493A41D462FFE0B8CCFE87 /* ManualDefringeTests.swift */; };
@@ -493,6 +496,9 @@
 		6DCC7466E5C7AA593B75B1E9 /* PhotoComparison.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoComparison.swift; sourceTree = "<group>"; };
 		6DFB7C0111F7779C337483DC /* MergeFusion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeFusion.swift; sourceTree = "<group>"; };
 		701B5F5D8F27B165CA52550F /* SmartMaskRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SmartMaskRuntime; path = Packages/SmartMaskRuntime; sourceTree = SOURCE_ROOT; };
+		CA13000200014CA8A1B2C3D4 /* LibRawRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LibRawRuntime; path = Packages/LibRawRuntime; sourceTree = SOURCE_ROOT; };
+		CA13000600014CA8A1B2C3D4 /* libraw-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "libraw-LICENSE.txt"; sourceTree = "<group>"; };
+		CA13000800014CA8A1B2C3D4 /* LibRawRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibRawRuntimeTests.swift; sourceTree = "<group>"; };
 		71D0FAA7DB8025C83B55E500 /* PhosdeckHighlights.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = PhosdeckHighlights.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		72834F1F4F591E840A5375A7 /* PhotoGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoGrid.swift; sourceTree = "<group>"; };
 		72F226D298E64CA720813F0F /* SmartCollections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartCollections.swift; sourceTree = "<group>"; };
@@ -696,6 +702,7 @@
 				055EA59D12B4089542166764 /* PhosdeckPluginKit in Frameworks */,
 				A9AF7AE897BF0BA4581D9C73 /* GRDB in Frameworks */,
 				505FEF11AD6A16E64FA8C0CD /* SmartMaskRuntime in Frameworks */,
+				CA13000100014CA8A1B2C3D4 /* LibRawRuntime in Frameworks */,
 				B418B956399C651AF1780651 /* MCP in Frameworks */,
 				9147158B8FCF8EB591B79048 /* NIOCore in Frameworks */,
 				13FF772A440056E642DFF2CF /* NIOHTTP1 in Frameworks */,
@@ -904,6 +911,7 @@
 			children = (
 				990C432FAC40183C7AFCAF75 /* PhosdeckPluginKit */,
 				701B5F5D8F27B165CA52550F /* SmartMaskRuntime */,
+				CA13000200014CA8A1B2C3D4 /* LibRawRuntime */,
 			);
 			path = Packages;
 			sourceTree = "<group>";
@@ -963,6 +971,7 @@
 				BCD117B975B8D324E443FC7F /* litert-NOTICES.txt */,
 				BF8C69F1435A1BD0A5426B67 /* mcp-NOTICES.txt */,
 				E3A83C56E358320BAB449331 /* oklab-LICENSE.txt */,
+				CA13000600014CA8A1B2C3D4 /* libraw-LICENSE.txt */,
 				92D0762D0064535CAAD58F58 /* redlamp-LICENSE.txt */,
 			);
 			name = references;
@@ -1129,6 +1138,7 @@
 				CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */,
 				CA12F17E00024CA8A1B2C3D4 /* InputFormatTests.swift */,
 				CA12F17E00034CA8A1B2C3D4 /* LargeCatalogPerformanceTests.swift */,
+				CA13000800014CA8A1B2C3D4 /* LibRawRuntimeTests.swift */,
 				136DDEBBB9B67684C4A8E07D /* MaskingTests.swift */,
 				B388E5663A53B8A967A5E66A /* MoreRAWTests.swift */,
 				FAB33D099D411E9A62472751 /* MultiExportTests.swift */,
@@ -1238,6 +1248,7 @@
 				2A0369BFB6A6EB364F7359D9 /* PhosdeckPluginKit */,
 				9A730FBA6F408BEEAF194A38 /* GRDB */,
 				F1B7CBD98E68A361FFCC8CF9 /* SmartMaskRuntime */,
+				CA13000400014CA8A1B2C3D4 /* LibRawRuntime */,
 				87930699CABA396B02EEAA76 /* MCP */,
 				0D514072A4151B7DACF758D2 /* NIOCore */,
 				AD74392248C3E4E9AC9F8927 /* NIOHTTP1 */,
@@ -1327,6 +1338,7 @@
 				50F8284A75D7C1D123471D8B /* XCRemoteSwiftPackageReference "swift-sdk" */,
 				74774F0D92151DD9966C80B4 /* XCLocalSwiftPackageReference "Packages/PhosdeckPluginKit" */,
 				7BC88D641FFA8E8704F1FEF5 /* XCLocalSwiftPackageReference "Packages/SmartMaskRuntime" */,
+				CA13000300014CA8A1B2C3D4 /* XCLocalSwiftPackageReference "Packages/LibRawRuntime" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 97EB9B2D5A20EE049CA2596D /* Products */;
@@ -1372,6 +1384,7 @@
 				92ACA5A376EA8D386D143200 /* litert-NOTICES.txt in Resources */,
 				A942241A165064F331A069C5 /* mcp-NOTICES.txt in Resources */,
 				B641194595A82AD57EB72BBA /* oklab-LICENSE.txt in Resources */,
+				CA13000500014CA8A1B2C3D4 /* libraw-LICENSE.txt in Resources */,
 				2839DA7140FEE64BACCD4910 /* phosdeck in Resources */,
 				CA11BF1700024CA8A1B2C3D4 /* CameraLooks in Resources */,
 				3544CB46CB725EE79DFD266E /* raster-exposure-colour-v4.bin in Resources */,
@@ -1496,6 +1509,7 @@
 				CA11BF1700034CA8A1B2C3D4 /* CameraLookTests.swift in Sources */,
 				CA12BF1700024CA8A1B2C3D4 /* InputFormatTests.swift in Sources */,
 				CA12BF1700034CA8A1B2C3D4 /* LargeCatalogPerformanceTests.swift in Sources */,
+				CA13000700014CA8A1B2C3D4 /* LibRawRuntimeTests.swift in Sources */,
 				A7BFFBE08EC5243BFEB6CB94 /* MaskingTests.swift in Sources */,
 				88077A5B55E9F590612254DC /* MoreRAWTests.swift in Sources */,
 				EFC097407C520378932F221E /* MultiExportTests.swift in Sources */,
@@ -2168,6 +2182,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/SmartMaskRuntime;
 		};
+		CA13000300014CA8A1B2C3D4 /* XCLocalSwiftPackageReference "Packages/LibRawRuntime" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/LibRawRuntime;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -2242,6 +2260,10 @@
 		F1B7CBD98E68A361FFCC8CF9 /* SmartMaskRuntime */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SmartMaskRuntime;
+		};
+		CA13000400014CA8A1B2C3D4 /* LibRawRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = LibRawRuntime;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

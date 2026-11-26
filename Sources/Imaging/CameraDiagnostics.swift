@@ -1,6 +1,7 @@
 import CoreImage
 import Foundation
 import ImageIO
+import LibRawRuntime
 
 struct CameraDiagnosticCheck: Codable, Equatable, Identifiable {
     enum Verdict: String, Codable { case passed, warning, failed, skipped }
@@ -149,7 +150,27 @@ actor CameraDiagnostics {
             check("embeddedReference", embedded == nil ? .skipped : .passed,
                   embedded == nil ? L10n.text("camera.noEmbedded", defaultValue: "No readable embedded preview. Reference comparison skipped.")
                   : L10n.text("camera.embedded", defaultValue: "Embedded preview available for visual reference. Its camera style is not a color-accuracy target."))
-            check("sensorMeasurements", .skipped, L10n.text("camera.sensorUnavailable", defaultValue: "Sensor black/white levels, bit depth and compression are not verified by the Apple RAW path."))
+            let probe = try LibRawRuntime.probe(url: url, verifyBitstream: true)
+            if probe.succeeded {
+                row.compression = probe.compression
+                row.sensorBits = probe.sensorBits
+                let pattern = probe.isXTrans ? "X-Trans" : "Bayer"
+                let bits = probe.sensorBits.map { "\($0)-bit" } ?? "unknown"
+                let look = probe.cameraLookHint.map { " · \($0.name)" } ?? ""
+                let version = LibRawRuntime.libraryVersion
+                let black = String(probe.blackLevel)
+                let white = String(probe.whiteLevel)
+                check("sensorMeasurements", .passed,
+                      L10n.text("camera.sensorVerified", defaultValue: "LibRaw \(version): \(pattern) \(bits), \(probe.compression), black \(black), white \(white)\(look)"))
+            } else if probe.isBitStreamCorrupted {
+                row.compression = probe.compression
+                row.sensorBits = probe.sensorBits
+                let errors = Int(probe.dataErrorCount)
+                check("sensorMeasurements", .failed,
+                      L10n.text("camera.sensorCorrupted", defaultValue: "LibRaw detected corrupted RAW bitstream data (\(errors) errors)."))
+            } else {
+                check("sensorMeasurements", .skipped, L10n.text("camera.sensorUnavailable", defaultValue: "Sensor black/white levels, bit depth and compression are not verified by the Apple RAW path."))
+            }
             try Task.checkCancellation()
             stage = "sourceIdentity"
             guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: photo.identity),

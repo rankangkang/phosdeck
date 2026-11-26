@@ -214,7 +214,7 @@ enum PhotoFileType {
         try openAppleRAWFilter(url)
     }
 
-    static func openAppleRAWFilter(_ url: URL) throws -> CIRAWFilter {
+    static func validateRAWContainer(_ url: URL) throws -> PhotoFormatDescriptor {
         guard let format = descriptor(for: url), format.isRAW else {
             throw LRCError(L10n.text("app.theSourceIsNotASupportedRAWCandidate", defaultValue: "The source is not a supported RAW candidate"))
         }
@@ -238,6 +238,11 @@ enum PhotoFileType {
         case .jpeg, .png, .tiff, .heif:
             break
         }
+        return format
+    }
+
+    static func openAppleRAWFilter(_ url: URL) throws -> CIRAWFilter {
+        _ = try validateRAWContainer(url)
         guard let raw = CIRAWFilter(imageURL: url) else {
             throw LRCError(L10n.text("app.thisMacOSVersionCannotDevelopThisCameraOrRAW", defaultValue: "This macOS version cannot develop this camera or RAW compression mode"))
         }

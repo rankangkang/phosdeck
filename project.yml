@@ -20,6 +20,8 @@ packages:
     path: Packages/PhosdeckPluginKit
   SmartMaskRuntime:
     path: Packages/SmartMaskRuntime
+  LibRawRuntime:
+    path: Packages/LibRawRuntime
   GRDB:
     url: https://github.com/groue/GRDB.swift.git
     exactVersion: 7.11.1
@@ -78,6 +80,8 @@ targets:
         buildPhase: resources
       - path: docs/references/mcp-NOTICES.txt
         buildPhase: resources
+      - path: docs/references/libraw-LICENSE.txt
+        buildPhase: resources
       - path: .agents/skills/phosdeck
         type: folder
         buildPhase: resources
@@ -115,6 +119,8 @@ targets:
       - package: GRDB
       - package: SmartMaskRuntime
         product: SmartMaskRuntime
+      - package: LibRawRuntime
+        product: LibRawRuntime
       - package: swift-sdk
         product: MCP
       - package: swift-nio
@@ -234,6 +240,7 @@ targets:
       # Includes LightroomImportTests.swift for read-only catalog conversion and file handling.
       # Includes InputFormatTests.swift for expanded RAW container checks, SDR HEIC/HEIF, and RAWDecoderSession parity.
       # Includes LargeCatalogPerformanceTests.swift for 10,000-photo query, keyword, and thumbnail scale regression.
+      # Includes LibRawRuntimeTests.swift for LGPL-2.1 LibRaw 0.22.3 sensor probes, bitstream corruption checks, and fallback decoding.
       - path: Tests
         excludes: [test_calibration_paths.py]
     dependencies:

@@ -143,6 +143,7 @@ Phosdeck draws on Lightroom Classic's workflow and uses algorithms and implement
 | [Redlamp](https://github.com/pdcgomes/redlamp) | Line detection and CPU focus-stack alignment, depth and detail fusion adapted under MPL-2.0; line constraints, conservative geometry fallback and camera-evidence organization inform native implementations. |
 | [PhotoCraft](https://github.com/storytold/photocraft) | Source of the test-only PatchMatch prototype through Lightcraft, adapted under MIT. The prototype is not part of the app's current repair pipeline. |
 | [Oklab — Björn Ottosson](https://bottosson.github.io/posts/oklab/) | Conversion matrices and reference implementation for perceptual color processing, with MIT attribution retained. |
+| [LibRaw](https://www.libraw.org/) | Pinned `0.22.3` core under LGPL-2.1 (without GPL2/GPL3 demosaic packs) for RAW sensor measurements, MakerNote look hints, compressed bitstream integrity checks, and fallback linear decoding. |
 
 The [third-party attribution and license notice](docs/references/lightcraft-LICENSE.txt) records the specific ports, upstream revisions, and copyright notices.
 
@@ -155,6 +156,7 @@ Project code is licensed under [AGPL-3.0-only](LICENSE). Third-party code, depen
 - [Fuji Recipe Converter attribution and MIT license](docs/references/fuji-recipe-converter-LICENSE.txt).
 - [Oklab attribution and MIT license](docs/references/oklab-LICENSE.txt).
 - [GRDB MIT license](docs/references/grdb-LICENSE.txt).
+- [LibRaw 0.22.3 attribution and LGPL-2.1 license](docs/references/libraw-LICENSE.txt) (without GPL2/GPL3 demosaic packs).
 - [MCP Swift SDK, SwiftNIO, and dependency notices](docs/references/mcp-NOTICES.txt).
 - [SmartMaskRuntime/LiteRT Apache-2.0 license](Packages/SmartMaskRuntime/LICENSE) and [pinned runtime dependency notices](docs/references/litert-NOTICES.txt).
 - [Smart-mask research model sources, licenses, and restrictions](docs/references/smart-mask-research-NOTICE.txt).

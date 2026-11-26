@@ -143,6 +143,7 @@ Phosdeck 参考了 Lightroom Classic 的工作流，也使用了以下开源项�
 | [Redlamp](https://github.com/pdcgomes/redlamp) | 直线检测、对焦堆栈的 CPU 对齐、深度求解与细节融合按 MPL-2.0 适配；几何求解的线约束与保守回退、相机诊断的证据组织方式作为参考，其余为原生自有实现。 |
 | [PhotoCraft](https://github.com/storytold/photocraft) | 经 Lightcraft 引入的测试用 PatchMatch 原型来源，按 MIT 许可适配；该原型不属于当前 App 的修复管线。 |
 | [Oklab — Björn Ottosson](https://bottosson.github.io/posts/oklab/) | 感知色彩处理使用其转换矩阵与参考实现，保留 MIT 许可及归属。 |
+| [LibRaw](https://www.libraw.org/) | 锁定 `0.22.3` 核心（按 LGPL-2.1 使用，不含 GPL2／GPL3 去马赛克扩展包），用于 RAW 传感器真值测量、MakerNote 风格识别、压缩比特流损坏校验及线性解码兜底。 |
 
 具体移植范围、上游版本和版权声明保存在[第三方归属与许可](docs/references/lightcraft-LICENSE.txt)中。
 
@@ -154,6 +155,7 @@ Phosdeck 参考了 Lightroom Classic 的工作流，也使用了以下开源项�
 - [Redlamp 的归属与 MPL-2.0 许可](docs/references/redlamp-LICENSE.txt)。
 - [Oklab 的归属与 MIT 许可](docs/references/oklab-LICENSE.txt)。
 - [GRDB 的 MIT 许可](docs/references/grdb-LICENSE.txt)。
+- [LibRaw 0.22.3 的归属与 LGPL-2.1 许可](docs/references/libraw-LICENSE.txt)（不含 GPL2／GPL3 去马赛克扩展包）。
 - [MCP Swift SDK、SwiftNIO 与运行时依赖声明](docs/references/mcp-NOTICES.txt)。
 - [SmartMaskRuntime／LiteRT 的 Apache-2.0 许可](Packages/SmartMaskRuntime/LICENSE)与[固定运行时依赖声明](docs/references/litert-NOTICES.txt)。
 - [智能蒙版研究模型的来源、许可及限制](docs/references/smart-mask-research-NOTICE.txt)。
