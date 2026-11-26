@@ -1,6 +1,96 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "app.animatedOrSequenceHEIFIsNotSupported": {
+      "extractionState": "manual",
+      "comment": "Sources/Imaging/PhotoFileType.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Animated or sequence HEIC/HEIF files are not supported"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂不支持动态或序列 HEIC／HEIF 文件"
+          }
+        }
+      }
+    },
+    "app.heifColorModelUnsupported": {
+      "extractionState": "manual",
+      "comment": "Sources/Imaging/PhotoFileType.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only standard RGB or grayscale SDR HEIC/HEIF files are supported"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅支持标准 RGB 或灰度 SDR HEIC／HEIF 文件"
+          }
+        }
+      }
+    },
+    "app.heifHDRTransferNotSupported": {
+      "extractionState": "manual",
+      "comment": "Sources/Imaging/PhotoFileType.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HDR PQ / HLG HEIC/HEIF files are not supported yet. Standard SDR HEIC/HEIF is supported"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂不支持 HDR PQ／HLG 编码的 HEIC／HEIF，目前仅支持标准 SDR HEIC／HEIF"
+          }
+        }
+      }
+    },
+    "app.heifPixelsCannotBeDecodedCompletely": {
+      "extractionState": "manual",
+      "comment": "Sources/Imaging/PhotoFileType.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HEIC/HEIF pixels cannot be decoded completely"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法完整解码 HEIC／HEIF 像素"
+          }
+        }
+      }
+    },
+    "app.theISOBMFFContainerIsIncompleteOrUnsupported": {
+      "extractionState": "manual",
+      "comment": "Sources/Imaging/PhotoFileType.swift",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The ISOBMFF container is incomplete or unsupported. Development stopped"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ISOBMFF 容器不完整或不受支持，已停止显影"
+          }
+        }
+      }
+    },
     "cameraLook.asShot": {
       "extractionState": "manual",
       "localizations": {
@@ -31667,13 +31757,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "RAW: ARW, DNG, NEF, CR3, RAF, verified per file."
+            "value": "RAW: ARW, SR2, DNG, NEF, NRW, CR2, CR3, RAF, ORF, RW2, RWL, PEF, 3FR, FFF, SRW, verified per file."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "RAW：ARW、DNG、NEF、CR3、RAF，按文件验证。"
+            "value": "RAW：ARW、SR2、DNG、NEF、NRW、CR2、CR3、RAF、ORF、RW2、RWL、PEF、3FR、FFF、SRW，按文件验证。"
           }
         }
       }
@@ -37911,13 +38001,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Source contents are not JPEG/TIFF/PNG"
+            "value": "Source contents are not JPEG/TIFF/PNG/HEIC"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "来源内容不是 JPEG/TIFF/PNG"
+            "value": "来源内容不是 JPEG/TIFF/PNG/HEIC"
           }
         }
       }
@@ -38989,13 +39079,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Supports RAW, JPEG, TIFF, and PNG"
+            "value": "Supports RAW, JPEG, TIFF, PNG, and HEIC/HEIF"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "支持 RAW、JPEG、TIFF、PNG"
+            "value": "支持 RAW、JPEG、TIFF、PNG 与 HEIC／HEIF"
           }
         }
       }
@@ -43128,13 +43218,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "TIFF: RGB. PNG: static 8/16-bit, including grayscale, indexed color, and transparency."
+            "value": "TIFF: RGB. PNG: static 8/16-bit, including grayscale, indexed color, and transparency. HEIC/HEIF: static SDR (HDR PQ/HLG and sequences are not supported)."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "TIFF：RGB；PNG：静态 8／16 位，支持灰度、调色板与透明度。"
+            "value": "TIFF：RGB；PNG：静态 8／16 位，支持灰度、调色板与透明度；HEIC／HEIF：静态 SDR（暂不支持 HDR PQ／HLG 与动态序列）。"
           }
         }
       }

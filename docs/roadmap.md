@@ -6,8 +6,7 @@
 
 ### 1. 输入格式与机内色彩
 
-- **RAW 与现代格式覆盖偏窄**：[PhotoFileType.swift](../Sources/Imaging/PhotoFileType.swift) 仅启用 5 种 RAW 扩展名（`arw`、`dng`、`nef`、`cr3`、`raf`）及 `jpg`/`tif`/`png`。存量常见的 Canon `cr2`、OM System/Olympus `orf`、Panasonic `rw2`、Leica `rwl`、Pentax `pef`、Hasselblad `3fr`，以及 `HEIC`/`HEIF`、Apple DNG／ProRAW 均未开放。
-- **底层强依赖 Apple `CIRAWFilter`**：个别损坏 RAW（如已复现的富士 RAF）在 Apple RAW 解码器下可能静默输出黑块；新机型与无损压缩支持受制于 macOS 更新。
+- **底层仍强依赖 Apple `CIRAWFilter`**：[PhotoFileType.swift](../Sources/Imaging/PhotoFileType.swift) 与 [RAWDecoder.swift](../Sources/Imaging/RAWDecoder.swift) 已通过声明式格式注册表、容器完整性校验与薄解码抽象层开放 15 种常见 RAW 扩展名及静态 SDR HEIC／HEIF／HIF，但仍缺独立第三方 RAW 后端——个别损坏 RAW（如已复现的富士 RAF）在 Apple RAW 解码器下可能静默输出黑块，新机型与无损压缩支持受制于 macOS 更新；Apple DNG／ProRAW 与 HDR PQ／HLG HEIF 亦暂未开放。
 - **相机风格缺少正式品牌资源**：[CameraLooks/manifest.json](../Sources/Imaging/CameraLooks/manifest.json) 目前仅有开发验证用的 `diagnostic.test-table`，正式版菜单为空；缺少跨品牌的机内色彩配置文件与自动识别，RAW 默认显色观感弱于 Lightroom 的相机匹配配置文件。
 
 ### 2. 显示与色彩管线
@@ -98,7 +97,7 @@
 
 ### P1：补齐高频摄影工作流
 
-1. **格式与光学能力扩充**：基于相机诊断验证流程逐步开放 `CR2`、`ORF`、`RW2` 与 `HEIC`；补齐手动畸变、裁剪前暗角与位移缩放，评估接入 Lensfun 镜头库。
+1. **实拍 RAW 验证与光学能力扩充**：基于 `CameraDiagnostics` 逐类补齐真实 CR2／ORF／RW2／PEF／3FR 样片实证，并推进独立 LibRaw 解码通道（覆盖坏片比特流检出与新机压缩模式）；补齐手动畸变、裁剪前暗角与位移缩放，评估接入 Lensfun 镜头库。
 2. **高频闭环补齐**：
    - 复制／同步支持污点修复与蒙版；
    - 补齐蒙版 `Intersect` 入口、局部锐化／降噪／去边，以及选天空／主体／背景；

@@ -135,6 +135,8 @@
 		CA11BF1800014CA8A1B2C3D4 /* AsShotMatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11F18E00014CA8A1B2C3D4 /* AsShotMatch.swift */; };
 		CA11BF1700024CA8A1B2C3D4 /* CameraLooks in Resources */ = {isa = PBXBuildFile; fileRef = CA11F17E00024CA8A1B2C3D4 /* CameraLooks */; };
 		CA11BF1700034CA8A1B2C3D4 /* CameraLookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */; };
+		CA12BF1700014CA8A1B2C3D4 /* RAWDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA12F17E00014CA8A1B2C3D4 /* RAWDecoder.swift */; };
+		CA12BF1700024CA8A1B2C3D4 /* InputFormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA12F17E00024CA8A1B2C3D4 /* InputFormatTests.swift */; };
 		6AB6461EBE8AD700A2F77691 /* MergeRetouch.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE7F8EC215D83D4C44204F6C /* MergeRetouch.swift */; };
 		6B6451CD6EB692EF9FB34F22 /* CopyImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 396462D8FA0A606288246598 /* CopyImporter.swift */; };
 		6B89DEB27BDF636E96F7E4FD /* MergeSourceConstraints.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8566DFC204EA5ECB32B6F41 /* MergeSourceConstraints.swift */; };
@@ -611,6 +613,8 @@
 		CA11F18E00014CA8A1B2C3D4 /* AsShotMatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsShotMatch.swift; sourceTree = "<group>"; };
 		CA11F17E00024CA8A1B2C3D4 /* CameraLooks */ = {isa = PBXFileReference; lastKnownFileType = folder; path = CameraLooks; sourceTree = "<group>"; };
 		CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraLookTests.swift; sourceTree = "<group>"; };
+		CA12F17E00014CA8A1B2C3D4 /* RAWDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RAWDecoder.swift; sourceTree = "<group>"; };
+		CA12F17E00024CA8A1B2C3D4 /* InputFormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputFormatTests.swift; sourceTree = "<group>"; };
 		D5108D77A264E78F7FA33FCC /* ExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
 		D52005774225CC370C0FE0B2 /* smart-mask-fixture.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "smart-mask-fixture.json"; sourceTree = "<group>"; };
 		D5326EE1C195E589C79C9DD8 /* CameraDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraDiagnosticsView.swift; sourceTree = "<group>"; };
@@ -1036,6 +1040,7 @@
 				C73B22FE3BDFAB96F47E4D1C /* MultiFrameImage.swift */,
 				D57DA30B6875D2B90929CDD6 /* PerceptualColor.swift */,
 				790D86A9D1B3EB4B60F12A2B /* PhotoFileType.swift */,
+				CA12F17E00014CA8A1B2C3D4 /* RAWDecoder.swift */,
 				5DEB749F8066AEF192B647CF /* PhotoGeometry.swift */,
 				1E7385A37C624F57B9BA9B1D /* PhotoMergeEngine.swift */,
 				7A85AD58728D4A69B22ACF14 /* PluginDevelopEffect.swift */,
@@ -1120,6 +1125,7 @@
 				3C6AE47922597822F0A07526 /* LocalParameterPresetTests.swift */,
 				13493A41D462FFE0B8CCFE87 /* ManualDefringeTests.swift */,
 				CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */,
+				CA12F17E00024CA8A1B2C3D4 /* InputFormatTests.swift */,
 				136DDEBBB9B67684C4A8E07D /* MaskingTests.swift */,
 				B388E5663A53B8A967A5E66A /* MoreRAWTests.swift */,
 				FAB33D099D411E9A62472751 /* MultiExportTests.swift */,
@@ -1485,6 +1491,7 @@
 				37F2D11A67BCE63CD166941E /* LocalizationTests.swift in Sources */,
 				516141394FECD54B51CEC6E6 /* ManualDefringeTests.swift in Sources */,
 				CA11BF1700034CA8A1B2C3D4 /* CameraLookTests.swift in Sources */,
+				CA12BF1700024CA8A1B2C3D4 /* InputFormatTests.swift in Sources */,
 				A7BFFBE08EC5243BFEB6CB94 /* MaskingTests.swift in Sources */,
 				88077A5B55E9F590612254DC /* MoreRAWTests.swift in Sources */,
 				EFC097407C520378932F221E /* MultiExportTests.swift in Sources */,
@@ -1662,6 +1669,7 @@
 				D0E58F2630A0256DBFD872C2 /* PhotoCanvas.swift in Sources */,
 				5C78D31590996F6439102199 /* PhotoComparison.swift in Sources */,
 				69C7E29F85D174B76F029A09 /* PhotoFileType.swift in Sources */,
+				CA12BF1700014CA8A1B2C3D4 /* RAWDecoder.swift in Sources */,
 				054A9E2E6D37A4048350B7E6 /* PhotoGeometry.swift in Sources */,
 				A0B198FF3ABD50E426C13092 /* PhotoGrid.swift in Sources */,
 				742E7D1134D2846DE5B3473D /* PhotoMergeEngine.swift in Sources */,

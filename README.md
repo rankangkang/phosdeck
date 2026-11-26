@@ -105,8 +105,8 @@ xcodebuild -downloadComponent MetalToolchain
 
 | Area | Current support |
 |---|---|
-| Input | JPEG, RGB TIFF (first-page preview for multi-page files), and supported static PNG files. ARW, NEF, CR3, RAF, and some DNG files depend on the camera, compression mode, and macOS decoder. |
-| Not enabled | HEIC and Apple DNG/ProRAW. |
+| Input | JPEG, RGB TIFF (first-page preview for multi-page files), supported static PNG, and static SDR HEIC/HEIF/HIF files. ARW, SR2, DNG, NEF, NRW, CR2, CR3, RAF, ORF, RW2, RWL, PEF, 3FR, FFF, and SRW depend on the camera, compression mode, and macOS decoder. |
+| Not enabled | HDR PQ/HLG HEIF, animated/sequence HEIF, and Apple DNG/ProRAW. |
 | Output | JPEG, 8-bit PNG, and 16-bit TIFF, currently in sRGB. Wide-gamut output and soft proofing are not implemented. |
 | Smart masks | Whole-person selection uses system Vision and needs no extra weights. Object and body-part selection require separately prepared research models. Manual masks and saved selections work without those models. Distribution rights for the face weights remain unresolved; see the [model guide (Chinese)](docs/smart-mask-models.md). |
 | Catalog format | Old catalog schemas are not migrated during development. Keep existing catalogs, backups, and originals before upgrading. |

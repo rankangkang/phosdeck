@@ -85,7 +85,7 @@ actor ImagePipeline {
     private let context: CIContext
     private let developContext: CIContext
     static let outputSpace = CGColorSpace(name: CGColorSpace.sRGB)!
-    private var previewRAW: (key: String, filter: CIRAWFilter, defaults: RAWDetailSettings, details: RAWDetailSettings)?
+    private var previewRAW: (key: String, session: RAWDecoderSession, details: RAWDetailSettings)?
     private var previewDecoded: (key: String, image: CIImage)?
     private var maskBaselineCache: (key: String, image: CIImage)?
     private var asShotCache: (digest: String, decoder: String, match: AsShotMatch)?
@@ -172,8 +172,8 @@ actor ImagePipeline {
             let digest = try SafeFileWriter.sha256(url)
             if !request.photo.isRAW {
                 guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-                      request.photo.details?.composite != nil || [UTType.jpeg.identifier, UTType.tiff.identifier, UTType.png.identifier].contains(CGImageSourceGetType(source) as String? ?? "") else {
-                    throw LRCError(L10n.text("app.sourceContentsAreNotJPEGTIFFPNG", defaultValue: "Source contents are not JPEG/TIFF/PNG"))
+                      request.photo.details?.composite != nil || PhotoFileType.isSupportedRasterUTI(CGImageSourceGetType(source) as String? ?? "") else {
+                    throw LRCError(L10n.text("app.sourceContentsAreNotJPEGTIFFPNG", defaultValue: "Source contents are not JPEG/TIFF/PNG/HEIC"))
                 }
                 _ = try raster(url)
                 guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: request.photo.identity) else { throw LRCError(L10n.text("app.theSourceChangedWhileCreatingItsBaseline", defaultValue: "The source changed while creating its baseline")) }
@@ -182,13 +182,14 @@ actor ImagePipeline {
                 recipe.grain.ensureSeed()
                 return recipe
             }
-            let raw = try PhotoFileType.rawFilter(url)
+            let raw = try RAWDecoderSession(url: url)
             defer { PhotoFileType.releaseValidationCaches() }
-            try PhotoFileType.validateRAWDecode(raw)
+            try raw.validateDecode()
             guard try FileIdentity.read(url) == JSONDecoder().decode(FileIdentity.self, from: request.photo.identity) else { throw LRCError(L10n.text("app.theSourceChangedWhileCreatingItsBaseline", defaultValue: "The source changed while creating its baseline")) }
-            var recipe = EditRecipe(sourceDigest: digest, decoderVersion: raw.decoderVersion.rawValue,
-                              baselineExposure: Double(raw.baselineExposure), baselineTemperature: Double(raw.neutralTemperature),
-                              baselineTint: Double(raw.neutralTint), temperature: Double(raw.neutralTemperature), tint: Double(raw.neutralTint))
+            let metrics = raw.baselineMetrics
+            var recipe = EditRecipe(sourceDigest: digest, decoderVersion: metrics.decoderVersion,
+                              baselineExposure: metrics.exposure, baselineTemperature: metrics.temperature,
+                              baselineTint: metrics.tint, temperature: metrics.temperature, tint: metrics.tint)
             recipe.grain.ensureSeed()
             return recipe
         }
@@ -222,16 +223,11 @@ actor ImagePipeline {
         let (lease, url) = try source(request)
         defer { withExtendedLifetime(lease) {} }
         guard request.photo.isRAW else { throw LRCError(L10n.text("app.theSourceIsNotRAW", defaultValue: "The source is not RAW")) }
-        let raw = try PhotoFileType.rawFilter(url)
-        if let recipe = request.recipe {
-            try recipe.validate(lookLibrary: cameraLooks)
-            let decoder = CIRAWDecoderVersion(rawValue: recipe.decoderVersion)
-            guard raw.supportedDecoderVersions.contains(decoder) else { throw LRCError(L10n.text("app.theRecipeSOriginalDecoderIsUnavailable", defaultValue: "The recipe's original decoder is unavailable")) }
-            raw.decoderVersion = decoder
-        }
-        let defaults = RAWDetailSettings(raw: raw)
-        try request.recipe?.rawDetails.checkSupport(defaults)
-        return defaults
+        if let recipe = request.recipe { try recipe.validate(lookLibrary: cameraLooks) }
+        let raw = try RAWDecoderSession(url: url, decoderVersion: request.recipe?.decoderVersion,
+                                        unavailableMessage: L10n.text("app.theRecipeSOriginalDecoderIsUnavailable", defaultValue: "The recipe's original decoder is unavailable"))
+        try request.recipe?.rawDetails.checkSupport(raw.defaults)
+        return raw.defaults
     }
 
     /// Independent full-float lane for merging originals. No geometry, creative edits,
@@ -244,38 +240,15 @@ actor ImagePipeline {
             let native: CGSize
             var resolvedLensCorrection: Bool?
             if request.photo.isRAW {
-                let raw = try PhotoFileType.rawFilter(url)
-                if let recipe = request.recipe {
-                    let version = CIRAWDecoderVersion(rawValue:recipe.decoderVersion)
-                    guard raw.supportedDecoderVersions.contains(version) else { throw LRCError(L10n.text("app.theRecipeSOriginalDecoderIsUnavailable", defaultValue:"The recipe's original decoder is unavailable")) }
-                    raw.decoderVersion = version
-                    // Lens geometry belongs to the source decode. Creative RAW detail settings do not.
-                    if let lens = recipe.rawDetails.lensCorrection,raw.isLensCorrectionSupported { raw.isLensCorrectionEnabled = lens }
-                }
-                resolvedLensCorrection = raw.isLensCorrectionSupported ? raw.isLensCorrectionEnabled : nil
-                native = raw.orientation.rawValue >= 5 ? CGSize(width:raw.nativeSize.height,height:raw.nativeSize.width) : raw.nativeSize
-                raw.scaleFactor = longEdge.map { Float(min(1,Double($0)/max(native.width,native.height))) } ?? 1
-                raw.isDraftModeEnabled = false; raw.exposure = 0; raw.baselineExposure = 0
-                raw.boostAmount = 0; raw.boostShadowAmount = 0; raw.extendedDynamicRangeAmount = 2
-                raw.isGamutMappingEnabled = false
-                if raw.isLocalToneMapSupported { raw.localToneMapAmount = 0 }
-                raw.neutralTemperature = Float(whiteBalance.temperature); raw.neutralTint = Float(whiteBalance.tint)
-                if raw.isLuminanceNoiseReductionSupported { raw.luminanceNoiseReductionAmount = 0 }
-                if raw.isColorNoiseReductionSupported { raw.colorNoiseReductionAmount = 0 }
-                if raw.isSharpnessSupported { raw.sharpnessAmount = 0 }
-                if forDarkCalibration {
-                    // Scene-dependent detail processing can alter the same hot pixel
-                    // differently in a light and a dark before their linear subtraction.
-                    if raw.isContrastSupported { raw.contrastAmount = 0 }
-                    if raw.isDetailSupported { raw.detailAmount = 0 }
-                    if raw.isMoireReductionSupported { raw.moireReductionAmount = 0 }
-                    // Some runtimes lack these selectors even when the SDK declares them.
-                    if raw.responds(to: #selector(getter: CIRAWFilter.isDespeckleSupported)),
-                       raw.responds(to: #selector(setter: CIRAWFilter.despeckleAmount)),
-                       raw.isDespeckleSupported { raw.despeckleAmount = 0 }
-                }
-                guard let output = raw.outputImage else { throw LRCError(L10n.text("app.rawDecodingFailed", defaultValue:"RAW decoding failed")) }
-                image = Self.originZero(output)
+                let raw = try RAWDecoderSession(url: url, decoderVersion: request.recipe?.decoderVersion,
+                                                unavailableMessage: L10n.text("app.theRecipeSOriginalDecoderIsUnavailable", defaultValue: "The recipe's original decoder is unavailable"))
+                // Lens geometry belongs to the source decode. Creative RAW detail settings do not.
+                let decoded = try raw.renderLinearMerge(longEdge: longEdge, whiteBalance: whiteBalance,
+                                                        lensCorrection: request.recipe?.rawDetails.lensCorrection,
+                                                        forDarkCalibration: forDarkCalibration)
+                resolvedLensCorrection = decoded.resolvedLensCorrection
+                native = decoded.nativeSize
+                image = Self.originZero(decoded.image)
             } else {
                 var decoded = try raster(url,materializeSource:true)
                 native = decoded.extent.size
@@ -326,18 +299,11 @@ actor ImagePipeline {
                 image = context.createCGImage(pixels.ciImage(), from: CGRect(x: 0, y: 0, width: pixels.width, height: pixels.height),
                                               format: .RGBA8, colorSpace: Self.outputSpace)
             } else if request.photo.isRAW {
-                let raw = try PhotoFileType.rawFilter(url)
-                try PhotoGeometry.checkSize(raw.nativeSize)
-                raw.scaleFactor = Float(min(1, CGFloat(edge) / max(raw.nativeSize.width, raw.nativeSize.height)))
-                raw.isDraftModeEnabled = false
-                raw.extendedDynamicRangeAmount = 0
-                image = raw.outputImage.flatMap {
-                    let scaled = Self.resized($0, longEdge: edge)
-                    return context.createCGImage(scaled, from: scaled.extent.integral, format: .RGBA8, colorSpace: Self.outputSpace)
-                }
+                let raw = try RAWDecoderSession(url: url)
+                image = try raw.renderCullingThumbnail(longEdge: edge, context: context)
             } else {
-                let input = try PhotoFileType.imageSource(url)
-                image = CGImageSourceCreateThumbnailAtIndex(input, 0, [
+                let inspected = try PhotoFileType.inspectSource(url)
+                image = CGImageSourceCreateThumbnailAtIndex(inspected.source, inspected.primaryIndex, [
                     kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
                     kCGImageSourceThumbnailMaxPixelSize: edge
                 ] as CFDictionary)
@@ -364,47 +330,38 @@ actor ImagePipeline {
                 maskCache.removeAll()
                 context.clearCaches(); developContext.clearCaches()
             }
-            let raw: CIRAWFilter
-            if previewEdge != nil, let cached = previewRAW, cached.key == sourceKey, cached.details == recipe.rawDetails { raw = cached.filter }
-            else {
-                raw = try PhotoFileType.rawFilter(url)
+            let raw: RAWDecoderSession
+            if previewEdge != nil, let cached = previewRAW, cached.key == sourceKey, cached.details == recipe.rawDetails {
+                raw = cached.session
+            } else {
+                raw = try RAWDecoderSession(url: url, decoderVersion: recipe.decoderVersion)
                 if previewEdge != nil {
                     // A detail/lens change starts a fresh RAW filter. Reusing a
                     // mutated RAF filter can retain stale pixels after reset.
                     context.clearCaches(); developContext.clearCaches()
                     previewDecoded = nil; previewSpatial = nil
                     maskCache.removeAll()
+                    previewRAW = (sourceKey, raw, recipe.rawDetails)
                 }
             }
-            let decoder = CIRAWDecoderVersion(rawValue: recipe.decoderVersion)
-            guard raw.supportedDecoderVersions.contains(decoder) else { throw LRCError(L10n.text("app.theRecipeSOriginalDecoderIsUnavailableReRendering", defaultValue: "The recipe's original decoder is unavailable. Re-rendering stopped")) }
-            if raw.decoderVersion != decoder { raw.decoderVersion = decoder }
-            let defaults = previewRAW?.key == sourceKey ? previewRAW!.defaults : RAWDetailSettings(raw: raw)
-            if previewEdge != nil { previewRAW = (sourceKey, raw, defaults, recipe.rawDetails) }
-            try recipe.rawDetails.apply(to: raw, defaults: defaults)
-            let scale: Float = (previewEdge ?? displayEdge).map { Float(min(1, Double($0) / max(raw.nativeSize.width, raw.nativeSize.height))) } ?? 1
-            let temperature = Float(recipe.asShotWhiteBalance ? recipe.baselineTemperature : recipe.temperature)
-            let tint = Float(recipe.asShotWhiteBalance ? recipe.baselineTint : recipe.tint)
-            if raw.scaleFactor != scale { raw.scaleFactor = scale }
+            let temperature = recipe.asShotWhiteBalance ? recipe.baselineTemperature : recipe.temperature
+            let tint = recipe.asShotWhiteBalance ? recipe.baselineTint : recipe.tint
             let draft = previewEdge != nil && !zoneReferenceOnly && !pointReferenceOnly && !decodeOnly
-            if raw.isDraftModeEnabled != draft { raw.isDraftModeEnabled = draft }
-            if raw.extendedDynamicRangeAmount != 0 { raw.extendedDynamicRangeAmount = 0 }
-            if raw.baselineExposure != Float(recipe.baselineExposure) { raw.baselineExposure = Float(recipe.baselineExposure) }
-            if raw.exposure != Float(recipe.exposure) { raw.exposure = Float(recipe.exposure) }
-            if raw.neutralTemperature != temperature { raw.neutralTemperature = temperature }
-            if raw.neutralTint != tint { raw.neutralTint = tint }
             // CIRAWFilter owns EXIF orientation. Applying it again would rotate twice.
-            let native = raw.nativeSize
-            orientedSourceSize = raw.orientation.rawValue >= 5 ? CGSize(width: native.height, height: native.width) : native
+            orientedSourceSize = raw.orientedNativeSize
             let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
             let detailsKey = try encoder.encode(recipe.rawDetails).base64EncodedString()
-            let decodeKey = "\(sourceKey):\(pointReferenceOnly ? "float-reference" : "preview"):\(raw.scaleFactor):\(draft):\(recipe.baselineExposure):\(recipe.exposure):\(recipe.asShotWhiteBalance ? recipe.baselineTemperature : recipe.temperature):\(recipe.asShotWhiteBalance ? recipe.baselineTint : recipe.tint):\(detailsKey)"
+            let expectedScale: Float = (previewEdge ?? displayEdge).map { Float(min(1, Double($0) / max(raw.nativeSize.width, raw.nativeSize.height))) } ?? 1
+            let decodeKey = "\(sourceKey):\(pointReferenceOnly ? "float-reference" : "preview"):\(expectedScale):\(draft):\(recipe.baselineExposure):\(recipe.exposure):\(temperature):\(tint):\(detailsKey)"
+            try recipe.rawDetails.checkSupport(raw.defaults)
             let decoded: CIImage
             if previewEdge != nil, let cached = previewDecoded, cached.key == decodeKey { decoded = cached.image }
             else if reuseDecoded, recipe.pipelineVersion >= 2, let cached = qualityDecoded, cached.key == decodeKey { decoded = cached.image }
             else {
                 if reuseDecoded { qualityDecoded = nil; qualityCacheBytes = 0 }
-                guard let output = raw.outputImage else { throw LRCError(L10n.text("app.rawDecodingFailed", defaultValue: "RAW decoding failed")) }
+                let output = try raw.renderDevelop(previewEdge: previewEdge, displayEdge: displayEdge, draft: draft,
+                                                   baselineExposure: recipe.baselineExposure, exposure: recipe.exposure,
+                                                   temperature: temperature, tint: tint, details: recipe.rawDetails).image
                 if previewEdge != nil {
                     // Materialize only the small, linear RAW result. Reuse it for HSL,
                     // tone and spatial edits instead of decoding the RAW on each frame.
@@ -471,21 +428,22 @@ actor ImagePipeline {
             options[.colorSpace] = Self.outputSpace
         }
         let decoded: CIImage
-        if materializeSource || inspected.tiffPageCount != nil {
+        if materializeSource || inspected.tiffPageCount != nil || inspected.primaryIndex != 0 {
             // Full-size JPEG -> RGBAf readback can take Core Image's direct file
             // conversion path, which overruns a decoder buffer on macOS 27 with
             // real 2048px macro JPEGs. ImageIO's decoded bitmap avoids that path;
-            // it also makes page zero explicit for multi-page TIFF previews.
-            guard let bitmap = CGImageSourceCreateImageAtIndex(source,0,[kCGImageSourceShouldAllowFloat:true,kCGImageSourceShouldCacheImmediately:true] as CFDictionary) else {
-                throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue:"Cannot decode the image or color profile"))
+            // it also makes page zero explicit for multi-page TIFF previews and
+            // honors non-zero primary image indices in HEIF containers.
+            guard let bitmap = CGImageSourceCreateImageAtIndex(source, inspected.primaryIndex, [kCGImageSourceShouldAllowFloat: true, kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else {
+                throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue: "Cannot decode the image or color profile"))
             }
-            if inspected.tiffPageCount != nil, CGImageSourceGetStatusAtIndex(source, 0) != .statusComplete {
-                throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue:"Cannot decode the image or color profile"))
+            if inspected.tiffPageCount != nil, CGImageSourceGetStatusAtIndex(source, inspected.primaryIndex) != .statusComplete {
+                throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue: "Cannot decode the image or color profile"))
             }
             let orientation = (properties[kCGImagePropertyOrientation as String] as? NSNumber)?.int32Value ?? 1
             var bitmapOptions = options
-            bitmapOptions.removeValue(forKey:.applyOrientationProperty)
-            decoded = CIImage(cgImage:bitmap,options:bitmapOptions).oriented(forExifOrientation:orientation)
+            bitmapOptions.removeValue(forKey: .applyOrientationProperty)
+            decoded = CIImage(cgImage: bitmap, options: bitmapOptions).oriented(forExifOrientation: orientation)
         } else {
             guard let image = CIImage(contentsOf:url,options:options) else { throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue:"Cannot decode the image or color profile")) }
             decoded = image
@@ -607,17 +565,12 @@ actor ImagePipeline {
             maskBaselineCache = (key, image)
             return image
         }
-        let raw = try PhotoFileType.rawFilter(url)
-        let version = CIRAWDecoderVersion(rawValue: recipe.decoderVersion)
-        guard raw.supportedDecoderVersions.contains(version) else { throw LRCError(L10n.text("app.theMaskBaselineDecoderIsUnavailable", defaultValue: "The mask baseline decoder is unavailable")) }
-        raw.decoderVersion = version; raw.extendedDynamicRangeAmount = 0
+        let raw = try RAWDecoderSession(url: url, decoderVersion: recipe.decoderVersion,
+                                        unavailableMessage: L10n.text("app.theMaskBaselineDecoderIsUnavailable", defaultValue: "The mask baseline decoder is unavailable"))
         // Range masks retain their original tonal baseline but must use the same lens geometry.
-        try RAWDetailSettings(lensCorrection: recipe.rawDetails.lensCorrection).apply(to: raw, defaults: RAWDetailSettings(raw: raw))
-        raw.baselineExposure = Float(recipe.baselineExposure); raw.exposure = 0
-        raw.neutralTemperature = Float(recipe.baselineTemperature); raw.neutralTint = Float(recipe.baselineTint)
-        raw.scaleFactor = edge.map { Float(min(1, Double($0) / max(raw.nativeSize.width, raw.nativeSize.height))) } ?? 1
-        raw.isDraftModeEnabled = false
-        guard let output = raw.outputImage else { throw LRCError(L10n.text("app.rangeMaskBaselineDecodingFailed", defaultValue: "Range mask baseline decoding failed")) }
+        let output = try raw.renderMaskBaseline(edge: edge, baselineExposure: recipe.baselineExposure,
+                                                temperature: recipe.baselineTemperature, tint: recipe.baselineTint,
+                                                lensCorrection: recipe.rawDetails.lensCorrection)
         var image = Self.originZero(output)
         if edge != nil {
             guard let raster = developContext.createCGImage(image, from: image.extent, format: .RGBAh, colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!) else { throw LRCError(L10n.text("app.rangeMaskBaselineRenderingFailed", defaultValue: "Range mask baseline rendering failed")) }
@@ -721,20 +674,15 @@ actor ImagePipeline {
         defer { withExtendedLifetime(lease) {} }
         try Task.checkCancellation()
         guard request.photo.supportsEditing, let recipe = request.recipe, recipe.pipelineVersion == 2 else { throw AutomaticAdjustmentPixels.insufficient }
-        let raw: CIRAWFilter?
+        let raw: RAWDecoderSession?
         let rasterBase: CIImage?
         let size: CGSize
         if request.photo.isRAW {
-            let filter = try PhotoFileType.rawFilter(url)
-            let version = CIRAWDecoderVersion(rawValue: recipe.decoderVersion)
-            guard filter.supportedDecoderVersions.contains(version) else { throw LRCError(L10n.text("app.theRecipeSOriginalDecoderIsUnavailable", defaultValue: "The recipe's original decoder is unavailable")) }
-            filter.decoderVersion = version
-            try recipe.rawDetails.apply(to: filter, defaults: RAWDetailSettings(raw: filter))
-            filter.scaleFactor = Float(min(1, 512 / max(filter.nativeSize.width, filter.nativeSize.height)))
-            filter.isDraftModeEnabled = false; filter.extendedDynamicRangeAmount = 0
-            filter.baselineExposure = Float(recipe.baselineExposure)
-            size = filter.orientation.rawValue >= 5 ? CGSize(width: filter.nativeSize.height, height: filter.nativeSize.width) : filter.nativeSize
-            raw = filter; rasterBase = nil
+            let session = try RAWDecoderSession(url: url, decoderVersion: recipe.decoderVersion,
+                                                unavailableMessage: L10n.text("app.theRecipeSOriginalDecoderIsUnavailable", defaultValue: "The recipe's original decoder is unavailable"))
+            try session.configureAnalysis(longEdge: 512, baselineExposure: recipe.baselineExposure, details: recipe.rawDetails)
+            size = session.orientedNativeSize
+            raw = session; rasterBase = nil
         } else {
             let decoded = try raster(url)
             size = decoded.extent.size; rasterBase = decoded; raw = nil
@@ -745,9 +693,8 @@ actor ImagePipeline {
             try Task.checkCancellation()
             let image: CIImage
             if let raw {
-                raw.exposure = Float(exposure)
-                raw.neutralTemperature = Float(wb.temperature); raw.neutralTint = Float(wb.tint)
-                guard let output = raw.outputImage else { throw LRCError(L10n.text("app.rawDecodingFailed", defaultValue: "RAW decoding failed")) }
+                let output = try raw.evaluateAnalysis(whiteBalance: wb, exposure: exposure,
+                                                      failureMessage: L10n.text("app.rawDecodingFailed", defaultValue: "RAW decoding failed"))
                 image = Self.originZero(output)
             } else if let rasterBase {
                 var balanced = rasterBase
@@ -805,20 +752,15 @@ actor ImagePipeline {
         defer { withExtendedLifetime(lease) {} }
         guard let recipe = request.recipe else { throw LRCError(L10n.text("app.thePhotoIsNotReady", defaultValue: "The photo is not ready")) }
         try recipe.validate(for: request.photo, lookLibrary: cameraLooks)
-        let raw: CIRAWFilter?
+        let raw: RAWDecoderSession?
         let base: CIImage?
         let size: CGSize
         if request.photo.isRAW {
-            let filter = try PhotoFileType.rawFilter(url)
-            let version = CIRAWDecoderVersion(rawValue: recipe.decoderVersion)
-            guard filter.supportedDecoderVersions.contains(version) else { throw LRCError(L10n.text("app.theRecipeSOriginalDecoderIsUnavailable", defaultValue: "The recipe's original decoder is unavailable")) }
-            filter.decoderVersion = version
-            try recipe.rawDetails.apply(to: filter, defaults: RAWDetailSettings(raw: filter))
-            filter.scaleFactor = Float(min(1, 1024 / max(filter.nativeSize.width, filter.nativeSize.height)))
-            filter.isDraftModeEnabled = false; filter.extendedDynamicRangeAmount = 0
-            filter.baselineExposure = Float(recipe.baselineExposure); filter.exposure = 0
-            size = filter.orientation.rawValue >= 5 ? CGSize(width: filter.nativeSize.height, height: filter.nativeSize.width) : filter.nativeSize
-            raw = filter; base = nil
+            let session = try RAWDecoderSession(url: url, decoderVersion: recipe.decoderVersion,
+                                                unavailableMessage: L10n.text("app.theRecipeSOriginalDecoderIsUnavailable", defaultValue: "The recipe's original decoder is unavailable"))
+            try session.configureAnalysis(longEdge: 1024, baselineExposure: recipe.baselineExposure, details: recipe.rawDetails)
+            size = session.orientedNativeSize
+            raw = session; base = nil
         } else {
             let decoded = try raster(url)
             size = decoded.extent.size; base = Self.resized(decoded, longEdge: 1024); raw = nil
@@ -831,8 +773,8 @@ actor ImagePipeline {
             try Task.checkCancellation()
             let image: CIImage
             if let raw {
-                raw.neutralTemperature = Float(value.temperature); raw.neutralTint = Float(value.tint)
-                guard let output = raw.outputImage else { throw LRCError(L10n.text("app.whiteBalanceSamplingDecodeFailed", defaultValue: "White balance sampling decode failed")) }
+                let output = try raw.evaluateAnalysis(whiteBalance: value, exposure: 0,
+                                                      failureMessage: L10n.text("app.whiteBalanceSamplingDecodeFailed", defaultValue: "White balance sampling decode failed"))
                 image = Self.originZero(output)
             } else if let base {
                 image = base.applyingFilter("CITemperatureAndTint", parameters: [
@@ -1779,7 +1721,7 @@ actor ThumbnailService {
                 let result: Result<Encoded, Error>
                 do {
                     try Task.checkCancellation()
-                    if photo.recipe != nil || photo.isRAW || URL(fileURLWithPath: photo.relativePath).pathExtension.lowercased() == "png" {
+                    if photo.recipe != nil || photo.isRAW || PhotoFileType.usesPipelineThumbnail(URL(fileURLWithPath: photo.relativePath)) {
                         let recipe = try photo.recipe.map { try JSONDecoder().decode(EditRecipe.self, from: $0) }
                         try recipe?.validate(for: photo)
                         let image = try await render(ImageRequest(photo: photo, root: root, recipe: recipe), edge)
@@ -1807,8 +1749,8 @@ actor ThumbnailService {
             try Task.checkCancellation()
             return try encode(image)
         }
-        let source = try PhotoFileType.imageSource(url)
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageIfAbsent: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: edge] as CFDictionary) else { throw LRCError(L10n.text("app.noThumbnailAvailable", defaultValue: "No thumbnail available")) }
+        let inspected = try PhotoFileType.inspectSource(url)
+        guard let image = CGImageSourceCreateThumbnailAtIndex(inspected.source, inspected.primaryIndex, [kCGImageSourceCreateThumbnailFromImageIfAbsent: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: edge] as CFDictionary) else { throw LRCError(L10n.text("app.noThumbnailAvailable", defaultValue: "No thumbnail available")) }
         try Task.checkCancellation()
         guard try FileIdentity.read(url) == identity else { throw CancellationError() }
         return try encode(image)

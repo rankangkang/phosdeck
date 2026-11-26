@@ -88,11 +88,11 @@ struct ImportSheet: View {
                 Text(source.path).font(.caption11).foregroundStyle(Theme.textSecondary).textSelection(.enabled)
             }
             Seam()
-            DisclosureGroup(L10n.text("app.supportsRAWJPEGTIFFAndPNG", defaultValue: "Supports RAW, JPEG, TIFF, and PNG")) {
+            DisclosureGroup(L10n.text("app.supportsRAWJPEGTIFFAndPNG", defaultValue: "Supports RAW, JPEG, TIFF, PNG, and HEIC/HEIF")) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.text("app.rawARWDNGNEFCR3RAFVerifiedPerFile", defaultValue: "RAW: ARW, DNG, NEF, CR3, RAF, verified per file."))
+                    Text(L10n.text("app.rawARWDNGNEFCR3RAFVerifiedPerFile", defaultValue: "RAW: ARW, SR2, DNG, NEF, NRW, CR2, CR3, RAF, ORF, RW2, RWL, PEF, 3FR, FFF, SRW, verified per file."))
                     Text(L10n.text("app.appleDNGProRAWIsNotCurrentlySupported", defaultValue: "Apple DNG / ProRAW is not currently supported."))
-                    Text(L10n.text("app.tiffRGBPNGStatic816BitIncludingGrayscale", defaultValue: "TIFF: RGB. PNG: static 8/16-bit, including grayscale, indexed color, and transparency."))
+                    Text(L10n.text("app.tiffRGBPNGStatic816BitIncludingGrayscale", defaultValue: "TIFF: RGB. PNG: static 8/16-bit, including grayscale, indexed color, and transparency. HEIC/HEIF: static SDR (HDR PQ/HLG and sequences are not supported)."))
                 }.padding(.top, 4).fixedSize(horizontal: false, vertical: true)
             }.font(.caption11).foregroundStyle(Theme.textSecondary)
             Spacer()

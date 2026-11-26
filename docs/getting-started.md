@@ -40,7 +40,7 @@ Lightroom Classic 的 `.lrcat` 可通过“文件 → 从 Lightroom Classic 目�
 
 拍摄时间、原文件名和大小相同的照片会标为疑似重复。大小和拍摄时间相符时，可用文件内容识别改名的副本。
 
-支持 JPEG、RGB TIFF、支持范围内的静态 PNG，以及部分 ARW／NEF／CR3／RAF／DNG。多页 TIFF 仅提供首页缩略图和预览，原文件保留全部页面。RAW 能否读取取决于具体文件和 macOS。HEIC、Apple DNG／ProRAW 暂未开放。复制 XMP／ACR 附件时只保留文件，不同步其中的调整。
+支持 JPEG、RGB TIFF、支持范围内的静态 PNG、静态 SDR HEIC／HEIF／HIF，以及部分 ARW／SR2／DNG／NEF／NRW／CR2／CR3／RAF／ORF／RW2／RWL／PEF／3FR／FFF／SRW。多页 TIFF 仅提供首页缩略图和预览，原文件保留全部页面。RAW 能否读取取决于具体文件和 macOS。HDR PQ／HLG 编码的 HEIF、动态／序列 HEIF 与 Apple DNG／ProRAW 暂未开放。复制 XMP／ACR 附件时只保留文件，不同步其中的调整。
 
 未调整的富士 RAF 有可读的机内 JPEG 时，网格和胶片带可以先显示机内预览。首次以适窗大图查看时，停留后会切到 Phosdeck 的 RAW 显影结果，两者颜色可能不同。已有调整的照片按保存的配方显示。
 

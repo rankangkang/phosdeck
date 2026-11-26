@@ -440,7 +440,7 @@ actor ReferenceImporter {
                 throw LRCError(L10n.text("app.cannotDecodeTheImageOrColorProfile", defaultValue: "Cannot decode the image or color profile"))
             }
         }
-        if PhotoFileType.isRAW(url) && inspected.composite == nil { try PhotoFileType.validateRAWDecode(PhotoFileType.rawFilter(url)) }
+        if PhotoFileType.isRAW(url) && inspected.composite == nil { try RAWDecoderSession(url: url).validateDecode() }
         if url.pathExtension.lowercased() == "dng",inspected.composite != nil { _ = try MergeDNGCodec.open(url)?.image() }
         guard try FileIdentity.read(url) == identity else { throw LRCError(L10n.text("app.theSourceChangedDuringImportVerification", defaultValue: "The source changed during import verification")) }
         let exif = props[kCGImagePropertyExifDictionary as String] as? [String: Any]
