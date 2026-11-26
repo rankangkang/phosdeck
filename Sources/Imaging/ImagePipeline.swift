@@ -1546,11 +1546,11 @@ actor ThumbnailService {
 
     private enum Lane: Equatable {
         case jpeg, render
-        var limit: Int {
-            switch self {
-            case .jpeg: return min(4, max(2, ProcessInfo.processInfo.activeProcessorCount / 2))
-            case .render: return 2
-            }
+    }
+    private func limit(for lane: Lane) -> Int {
+        switch lane {
+        case .jpeg: return min(4, max(2, ProcessInfo.processInfo.activeProcessorCount / 2))
+        case .render: return renderLimit
         }
     }
     private actor RenderPool {
@@ -1605,6 +1605,7 @@ actor ThumbnailService {
     private var pending: [String: Load] = [:]
     // A cancelled decoder still occupies its slot until it returns.
     private var running: [UInt64: Lane] = [:]
+    private let renderLimit: Int
     private let render: @Sendable (ImageRequest, Int) async throws -> CGImage
     private let deviceConditions: @Sendable () -> (lowPower: Bool, thermal: ProcessInfo.ThermalState)
     private var prewarmRecheck: Task<Void, Never>?
@@ -1612,11 +1613,17 @@ actor ThumbnailService {
     init(deviceConditions: @escaping @Sendable () -> (lowPower: Bool, thermal: ProcessInfo.ThermalState) = {
         let info = ProcessInfo.processInfo
         return (info.isLowPowerModeEnabled, info.thermalState)
-    }, renderer: (@Sendable (ImageRequest, Int) async throws -> CGImage)? = nil) {
+    }, renderConcurrency: Int? = nil, renderer: (@Sendable (ImageRequest, Int) async throws -> CGImage)? = nil) {
         self.deviceConditions = deviceConditions
-        let pool = RenderPool(count: Lane.render.limit)
-        render = renderer ?? { request, edge in
-            try await pool.render(request, edge: edge)
+        let limit = max(1, renderConcurrency ?? (renderer == nil ? 2 : 1))
+        renderLimit = limit
+        if let renderer {
+            render = renderer
+        } else {
+            let pool = RenderPool(count: limit)
+            render = { request, edge in
+                try await pool.render(request, edge: edge)
+            }
         }
         cache.totalCostLimit = 128 * 1024 * 1024
     }
@@ -1755,7 +1762,7 @@ actor ThumbnailService {
             prewarmRecheck = nil
             let queued = pending.filter { _, load in
                 load.worker == nil && (load.priority != .prefetch || canPrefetch)
-                    && running.values.count(where: { $0 == load.lane }) < load.lane.limit
+                    && running.values.count(where: { $0 == load.lane }) < limit(for: load.lane)
             }
             guard let (key, load) = queued.min(by: { lhs, rhs in
                 if lhs.value.priority != rhs.value.priority { return lhs.value.priority.rawValue > rhs.value.priority.rawValue }
