@@ -16,6 +16,7 @@ struct MetalPhotoView: NSViewRepresentable {
     var cropAutoZoom = true
     var onClick: ((CGPoint) -> Void)?
     var onPan: ((CGPoint) -> Void)?
+    var onMagnifyZoom: ((Double?, CGPoint) -> Void)?
     var accessibilityName = L10n.text("app.photoCanvas", defaultValue: "Photo Canvas")
     var targetedToolID: String?
     var onTargetBegin: ((CGPoint) -> Bool)?
@@ -72,7 +73,9 @@ struct MetalPhotoView: NSViewRepresentable {
         view.actualPixels = actualPixels
         view.zoomScale = zoomScale; view.fill = fill; view.cropAngle = cropAngle; view.cropAutoZoom = cropAutoZoom
         view.onClick = onClick
-        view.onPan = onPan; view.setAccessibilityLabel(accessibilityName)
+        view.onPan = onPan
+        view.onMagnifyZoom = onMagnifyZoom
+        view.setAccessibilityLabel(accessibilityName)
         view.onPixelReadout = onPixelReadout
         view.readoutEnabled = nextReadoutEnabled
         view.source = image
@@ -166,7 +169,8 @@ final class CanvasFrameRenderer: @unchecked Sendable {
             return 0
         }
         let encoding = CACurrentMediaTime()
-        ci.render(current.image, to: drawable.texture, commandBuffer: command, bounds: current.bounds, colorSpace: ImagePipeline.outputSpace)
+        let colorSpace = current.layer.colorspace ?? ImagePipeline.outputSpace
+        ci.render(current.image, to: drawable.texture, commandBuffer: command, bounds: current.bounds, colorSpace: colorSpace)
         PreviewLog.logger.debug("encode-done attempt=\(current.attempt) ms=\((CACurrentMediaTime() - encoding) * 1000)")
         guard state.withLock({ $0.generation == current.generation }) else { return 0 }
         let submitted = CACurrentMediaTime(), frameID = drawable.drawableID
@@ -273,9 +277,13 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
     var zoomScale = 1.0
     var fill = false
     var cropAngle: Double? { didSet { if oldValue != cropAngle { renderer?.invalidate() } } }
+    static let displayColorSpace: CGColorSpace = CGColorSpace(name: CGColorSpace.displayP3) ?? ImagePipeline.outputSpace
     var cropAutoZoom = true { didSet { if oldValue != cropAutoZoom { renderer?.invalidate() } } }
     var onClick: ((CGPoint) -> Void)?
     var onPan: ((CGPoint) -> Void)?
+    var onMagnifyZoom: ((Double?, CGPoint) -> Void)?
+    private var pinchVisualScale: Double?
+    private var pinchAnchor = CGPoint(x: 0.5, y: 0.5)
     var targetedToolID: String?
     var onTargetBegin: ((CGPoint) -> Bool)?
     var onTargetChange: ((Double) -> Void)?
@@ -330,12 +338,15 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         super.viewDidMoveToWindow()
         window?.acceptsMouseMovedEvents = true
         NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didChangeScreenProfileNotification, object: nil)
         if let window {
             NotificationCenter.default.addObserver(self, selector: #selector(targetWindowLost), name: NSWindow.didResignKeyNotification, object: window)
-        } else { cancelTargetGesture() }
+            NotificationCenter.default.addObserver(self, selector: #selector(screenProfileChanged), name: NSWindow.didChangeScreenProfileNotification, object: window)
+        } else { cancelTargetGesture(); pinchVisualScale = nil }
         if window == nil { renderer?.invalidate(); zoomMotion = nil; lastImageRect = nil; isPaused = true; enableSetNeedsDisplay = true }
     }
-    @objc private func targetWindowLost() { cancelTargetGesture() }
+    @objc private func targetWindowLost() { cancelTargetGesture(); pinchVisualScale = nil }
+    @objc private func screenProfileChanged() { renderer?.invalidate(); needsDisplay = true }
     deinit { NotificationCenter.default.removeObserver(self) }
     override func setFrameSize(_ newSize: NSSize) {
         if newSize != frame.size { cancelTargetGesture() }
@@ -351,9 +362,9 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         let device = MTLCreateSystemDefaultDevice()
         super.init(frame: .zero, device: device)
         framebufferOnly = false; isPaused = true; enableSetNeedsDisplay = true
-        colorPixelFormat = .bgra8Unorm
+        colorPixelFormat = device != nil ? .bgr10a2Unorm : .bgra8Unorm
         layer?.masksToBounds = true
-        (layer as? CAMetalLayer)?.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
+        (layer as? CAMetalLayer)?.colorspace = Self.displayColorSpace
         (layer as? CAMetalLayer)?.presentsWithTransaction = false
         if let commands = device?.makeCommandQueue() { renderer = CanvasFrameRenderer(commands: commands, acquire: acquireDrawable) }
         delegate = self
@@ -811,10 +822,86 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         }
         let p = convert(event.locationInWindow, from: nil)
         let backing = window?.backingScaleFactor ?? 1
-        let point = CGPoint(x: p.x * backing, y: (isFlipped ? p.y : bounds.height - p.y) * backing)
+        onClick?(imageAnchor(at: p, source: source, backingScale: backing))
+    }
+
+    private func imageAnchor(at localPoint: CGPoint, source: CGImage, backingScale: CGFloat) -> CGPoint {
+        let point = CGPoint(x: localPoint.x * backingScale,
+                            y: (isFlipped ? localPoint.y : bounds.height - localPoint.y) * backingScale)
         let size = presentationSize(source: source, canvas: drawableSize)
         let center = canPan ? displayCenter : CGPoint(x: 0.5, y: 0.5)
-        onClick?(Self.imagePoint(point, center: center, displayed: size, canvas: drawableSize))
+        let anchor = Self.imagePoint(point, center: center, displayed: size, canvas: drawableSize)
+        return CGPoint(x: min(1, max(0, anchor.x)), y: min(1, max(0, anchor.y)))
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard !targetTracking, !maskTracking, !spotTracking, cropAngle == nil, source != nil, canPan else {
+            super.scrollWheel(with: event)
+            return
+        }
+        let factor: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 12
+        applyScrollPan(deltaX: event.scrollingDeltaX * factor,
+                       deltaY: event.scrollingDeltaY * factor,
+                       backingScale: window?.backingScaleFactor ?? 1)
+        updatePixelReadout(event)
+        updateMaskPointer(event)
+        updateSpotCursor(event)
+        updateBrushCursor(event)
+    }
+
+    func applyScrollPan(deltaX: CGFloat, deltaY: CGFloat, backingScale: CGFloat) {
+        guard !targetTracking, !maskTracking, !spotTracking, cropAngle == nil, source != nil, canPan else { return }
+        guard deltaX != 0 || deltaY != 0 else { return }
+        if zoomMotion != nil { zoomMotion = nil; isPaused = true; enableSetNeedsDisplay = true }
+        panBy(CGSize(width: deltaX, height: deltaY), backingScale: backingScale)
+    }
+
+    override func magnify(with event: NSEvent) {
+        guard !targetTracking, !maskTracking, !spotTracking, cropAngle == nil, source != nil else {
+            pinchVisualScale = nil
+            super.magnify(with: event)
+            return
+        }
+        applyMagnification(event.magnification, phase: event.phase,
+                           at: convert(event.locationInWindow, from: nil),
+                           backingScale: window?.backingScaleFactor ?? 1)
+    }
+
+    func applyMagnification(_ magnification: Double, phase: NSEvent.Phase, at location: CGPoint, backingScale: CGFloat) {
+        guard !targetTracking, !maskTracking, !spotTracking, cropAngle == nil, let source,
+              drawableSize.width > 0, drawableSize.height > 0 else {
+            pinchVisualScale = nil
+            return
+        }
+        let fit = CanvasPinchZoom.fitVisualScale(source: source, nativeSize: nativeSize, canvas: drawableSize)
+        if phase == .began || pinchVisualScale == nil {
+            let base = nativeSize ?? CGSize(width: source.width, height: source.height)
+            let fillScale = max(Double(drawableSize.width) / max(1, Double(base.width)),
+                                Double(drawableSize.height) / max(1, Double(base.height)))
+            pinchVisualScale = actualPixels ? zoomScale : (fill ? fillScale : fit)
+            pinchAnchor = imageAnchor(at: location, source: source, backingScale: backingScale)
+        }
+        if let current = pinchVisualScale {
+            let next = CanvasPinchZoom.step(currentVisualScale: current, magnification: magnification, fitVisualScale: fit)
+            pinchVisualScale = next.visualScale
+            let activeZoom: Double? = actualPixels ? zoomScale : nil
+            if next.targetZoom != activeZoom {
+                onMagnifyZoom?(next.targetZoom, pinchAnchor)
+            }
+        }
+        if phase == .ended || phase == .cancelled {
+            pinchVisualScale = nil
+        }
+    }
+
+    override func smartMagnify(with event: NSEvent) {
+        guard !targetTracking, !maskTracking, !spotTracking, cropAngle == nil, let source else {
+            super.smartMagnify(with: event)
+            return
+        }
+        let anchor = imageAnchor(at: convert(event.locationInWindow, from: nil), source: source,
+                                 backingScale: window?.backingScaleFactor ?? 1)
+        onClick?(anchor)
     }
     func rebuildMaskOverlay() {
         maskCoverage = nil; maskHandles.path = nil
@@ -1180,6 +1267,31 @@ enum DisplayOverlay {
     private static func linear(_ color: NSColor) -> CIVector {
         func decode(_ c: CGFloat) -> CGFloat { c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
         return CIVector(x: decode(color.redComponent), y: decode(color.greenComponent), z: decode(color.blueComponent))
+    }
+}
+
+/// Pure pinch-to-zoom math mapping continuous trackpad magnification onto
+/// Fit or `AppModel.zoomScales` steps.
+enum CanvasPinchZoom {
+    static func fitVisualScale(source: CGImage, nativeSize: CGSize?, canvas: CGSize) -> Double {
+        let base = nativeSize ?? CGSize(width: source.width, height: source.height)
+        return min(Double(canvas.width) / max(1, Double(base.width)),
+                   Double(canvas.height) / max(1, Double(base.height)))
+    }
+
+    static func step(currentVisualScale: Double, magnification: Double, fitVisualScale: Double,
+                     scales: [Double] = AppModel.zoomScales) -> (visualScale: Double, targetZoom: Double?) {
+        let clampedMag = magnification.isFinite ? max(-0.75, min(2.0, magnification)) : 0
+        let minScale = min(fitVisualScale * 0.85, scales.first ?? 0.0625)
+        let maxScale = scales.last ?? 16
+        let next = min(maxScale, max(minScale, currentVisualScale * (1 + clampedMag)))
+        if next <= fitVisualScale * 1.03 {
+            return (next, nil)
+        }
+        let candidates = scales.filter { $0 > fitVisualScale * 1.01 }
+        let pool = candidates.isEmpty ? scales : candidates
+        let nearest = pool.min { abs(log2($0) - log2(next)) < abs(log2($1) - log2(next)) }
+        return (next, nearest)
     }
 }
 

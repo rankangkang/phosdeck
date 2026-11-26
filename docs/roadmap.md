@@ -11,8 +11,7 @@
 
 ### 2. 显示与色彩管线
 
-- **全线锁定 8-bit SDR sRGB**：[ImagePipeline.swift](../Sources/Imaging/ImagePipeline.swift) 与 [MetalPhotoView.swift](../Sources/UI/MetalPhotoView.swift) 将显示与输出统一固定在 `sRGB`／`RGBA8`，不支持 Display P3 广色域、10-bit 色深或 Apple XDR 屏幕的 HDR／EDR 显影预览。
-- **限制软打样表现力**：内置软打样插件已落地（[插件系统方案](plugin-system.md)），但画布本身被裁切在 sRGB 内，超出 sRGB 但在打印机与 P3 屏范围内的颜色无法准确呈现。
+- **显影输出与导出仍锁定 SDR sRGB**：[MetalPhotoView.swift](../Sources/UI/MetalPhotoView.swift) 呈现层已升级至 10-bit `.bgr10a2Unorm` 与 Display P3 色彩空间，但 [ImagePipeline.swift](../Sources/Imaging/ImagePipeline.swift) 的显影成片与导出仍固定为 `sRGB`（广色域输出按 [decisions.md](decisions.md#暂缓) 暂缓），且尚不支持 Apple XDR 屏幕的 HDR／EDR 显影预览。
 
 ### 3. 大图库查询与浏览性能
 
@@ -51,7 +50,6 @@
 
 ### 2. 图库管理、检索与画布交互
 
-- **原生 macOS 画布手势**：[MetalPhotoView.swift](../Sources/UI/MetalPhotoView.swift) 未实现 `magnify(with:)` 触控板捏合缩放与 `scrollWheel(with:)` 滚动画布平移。
 - **检索、排序与批量清理**：
   - 文本筛选仅支持文件名（[CatalogQueries.swift](../Sources/Catalog/CatalogQueries.swift)），不能检索题注、关键词或虚拟副本名；
   - 排序仅支持文件名、拍摄时间与星级，缺标旗、色标、文件类型、修改时间与宽高比；
@@ -82,9 +80,8 @@
 
 1. **大图库浏览续项**
    - 评估用连续虚拟滚动替代 200 张硬分页，并在用户恢复标准预览前置方案后补齐分层预览（当前会话级物化索引、`browseRevision` 缓存与双路缩略图渲染池已落地）。
-2. **渲染缓存与交互手势续项**
-   - 进一步放宽 RAW 解码／上游缓存复用条件（当前栅格解码缓存与 `ExportService` 有界多核并发已落地）；
-   - 在 [MetalPhotoView.swift](../Sources/UI/MetalPhotoView.swift) 补齐触控板捏合缩放与滚动平移手势。
+2. **RAW 渲染缓存续项**
+   - 进一步放宽 RAW 解码／上游缓存复用条件（当前栅格解码缓存、`ExportService` 有界多核并发、画布 10-bit Display P3 呈现与触控板手势已落地）。
 3. **解决正式发布阻塞项**
    - 分批校准并上架首批真实品牌机内相机风格资源，验证按机身／拍摄风格识别。
    - 先确立 Apache-2.0 模型（SAM 2.1 Tiny + SelfieMulticlass）的正式分发与按需安装机制，替换或隔离有非商业争议的 `FaceParsing` 权重，补全 LiteRT 依赖声明。
@@ -98,7 +95,7 @@
    - 补齐蒙版 `Intersect` 入口、局部锐化／降噪／去边，以及选天空／主体／背景；
    - 明确区分或收敛 `SpotRepair` 的 `heal` 与 `remove` 模式；
    - 导入补齐预设、关键词与重命名；导出补齐文件大小限制、短边／宽高约束与 PPI；筛选补齐题注与关键词检索及一键清理标 `X` 废片。
-3. **显示管线升级**：将画布升级至 Display P3 与 10-bit 色彩，释放软打样与广色域屏幕潜力。
+3. **广色域显影与 HDR／EDR**：在画布 10-bit Display P3 呈现基础上，后续按需推进广色域预览／导出与 Apple XDR 屏幕 HDR／EDR 显影。
 
 ### P2：架构治理与放大差异化优势
 

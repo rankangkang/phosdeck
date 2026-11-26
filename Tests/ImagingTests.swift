@@ -2730,4 +2730,135 @@ extension ImagingTests {
         XCTAssertEqual(aligned[0], 1, accuracy: 0.01)
         XCTAssertEqual(aligned[4], 0, accuracy: 0.01)
     }
+
+    @MainActor
+    func testCanvasUses10BitDisplayP3LayerAndRendersWideGamutFrame() async throws {
+        guard let device = MTLCreateSystemDefaultDevice() else { throw XCTSkip("Metal unavailable") }
+        let canvas = PhotoMetalCanvas()
+        XCTAssertEqual(canvas.colorPixelFormat, .bgr10a2Unorm)
+        let metalLayer = try XCTUnwrap(canvas.layer as? CAMetalLayer)
+        XCTAssertEqual(metalLayer.colorspace?.name, CGColorSpace.displayP3)
+
+        let commands = try XCTUnwrap(device.makeCommandQueue())
+        let layer = CAMetalLayer()
+        layer.device = device
+        layer.pixelFormat = .bgr10a2Unorm
+        layer.colorspace = PhotoMetalCanvas.displayColorSpace
+        layer.framebufferOnly = false
+        layer.drawableSize = CGSize(width: 32, height: 32)
+        let captured = OSAllocatedUnfairLock(uncheckedState: [CAMetalDrawable]())
+        let renderer = CanvasFrameRenderer(commands: commands, acquire: { target in
+            let drawable = target.nextDrawable()
+            if let drawable { captured.withLock { $0.append(drawable) } }
+            return drawable
+        })
+        defer { renderer.invalidate() }
+
+        let bounds = CGRect(x: 0, y: 0, width: 32, height: 32)
+        // Pure Display P3 green exceeds sRGB gamut; verify 10-bit Display P3 render preserves it.
+        let p3Green = CIColor(red: 0, green: 1, blue: 0, alpha: 1, colorSpace: PhotoMetalCanvas.displayColorSpace)!
+        renderer.submit(CIImage(color: p3Green).cropped(to: bounds), bounds: bounds, layer: layer, attempt: 1)
+        try await waitUntil { renderer.isIdle }
+        let drawable = try XCTUnwrap(captured.withLock { $0.last })
+        let bytes = try XCTUnwrap(device.makeBuffer(length: 32 * 32 * 4, options: .storageModeShared))
+        let command = try XCTUnwrap(commands.makeCommandBuffer())
+        let blit = try XCTUnwrap(command.makeBlitCommandEncoder())
+        blit.copy(from: drawable.texture, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOrigin(),
+                  sourceSize: MTLSize(width: 32, height: 32, depth: 1), to: bytes, destinationOffset: 0,
+                  destinationBytesPerRow: 32 * 4, destinationBytesPerImage: 32 * 32 * 4)
+        blit.endEncoding()
+        await withCheckedContinuation { continuation in
+            command.addCompletedHandler { _ in continuation.resume() }
+            command.commit()
+        }
+        let packed = bytes.contents().assumingMemoryBound(to: UInt32.self)[0]
+        // bgr10a2Unorm bit layout: B[0..9], G[10..19], R[20..29], A[30..31]
+        let b10 = packed & 0x3FF
+        let g10 = (packed >> 10) & 0x3FF
+        let r10 = (packed >> 20) & 0x3FF
+        XCTAssertGreaterThan(g10, 980, "10-bit Display P3 green channel must reach near full scale")
+        XCTAssertLessThan(r10, 40, "Display P3 green must not clip into sRGB red channel")
+        XCTAssertLessThan(b10, 40, "Display P3 green must not clip into sRGB blue channel")
+    }
+
+    @MainActor
+    func testCanvasScrollPanFollowsDirectionAndRespectsToolBoundaries() throws {
+        let canvas = PhotoMetalCanvas()
+        let viewport = PhotoViewport()
+        let cg = try XCTUnwrap(CIContext().createCGImage(CIImage(color: .gray).cropped(to: CGRect(x: 0, y: 0, width: 2000, height: 1000)),
+                                                         from: CGRect(x: 0, y: 0, width: 2000, height: 1000)))
+        canvas.frame = CGRect(x: 0, y: 0, width: 500, height: 250)
+        canvas.drawableSize = CGSize(width: 1000, height: 500)
+        canvas.source = cg
+        canvas.nativeSize = CGSize(width: 2000, height: 1000)
+        canvas.viewport = viewport
+        canvas.actualPixels = false
+        canvas.fill = false
+
+        var pannedCenters = [CGPoint]()
+        canvas.onPan = { pannedCenters.append($0) }
+
+        // Fit mode: scroll wheel must not pan.
+        canvas.applyScrollPan(deltaX: 50, deltaY: 50, backingScale: 2)
+        XCTAssertTrue(pannedCenters.isEmpty)
+
+        // Zoomed 1:1 mode: scrolling right/down moves image right/down (center x/y decrease).
+        canvas.actualPixels = true
+        canvas.zoomScale = 1.0
+        viewport.update(image: CGSize(width: 2000, height: 1000), canvas: CGSize(width: 1000, height: 500), zoomed: true)
+        canvas.displayCenter = viewport.center
+        canvas.applyScrollPan(deltaX: 100, deltaY: 50, backingScale: 2)
+        XCTAssertEqual(pannedCenters.count, 1)
+        XCTAssertEqual(viewport.center.x, 0.4, accuracy: 0.001)
+        XCTAssertEqual(viewport.center.y, 0.4, accuracy: 0.001)
+
+        // Crop mode disables scroll pan.
+        canvas.cropAngle = 0
+        canvas.applyScrollPan(deltaX: -100, deltaY: -50, backingScale: 2)
+        XCTAssertEqual(pannedCenters.count, 1)
+    }
+
+    @MainActor
+    func testCanvasPinchZoomAnchorsPointerStepsThroughScalesAndReturnsToFit() throws {
+        let canvas = PhotoMetalCanvas()
+        let viewport = PhotoViewport()
+        let cg = try XCTUnwrap(CIContext().createCGImage(CIImage(color: .gray).cropped(to: CGRect(x: 0, y: 0, width: 2000, height: 1000)),
+                                                         from: CGRect(x: 0, y: 0, width: 2000, height: 1000)))
+        canvas.frame = CGRect(x: 0, y: 0, width: 500, height: 250)
+        canvas.drawableSize = CGSize(width: 1000, height: 500)
+        canvas.source = cg
+        canvas.nativeSize = CGSize(width: 2000, height: 1000)
+        canvas.viewport = viewport
+        canvas.actualPixels = false
+        canvas.zoomScale = 1.0
+
+        var zoomEvents = [(Double?, CGPoint)]()
+        canvas.onMagnifyZoom = { scale, anchor in
+            zoomEvents.append((scale, anchor))
+            canvas.actualPixels = scale != nil
+            if let scale { canvas.zoomScale = scale }
+        }
+
+        // Fit scale is 1000 / 2000 = 0.5. Pinch out at top-right quadrant (x=375, y=187.5 in bottom-left NSView).
+        let pointer = CGPoint(x: 375, y: 187.5)
+        canvas.applyMagnification(0.6, phase: .began, at: pointer, backingScale: 2)
+        XCTAssertEqual(zoomEvents.last?.0, 1.0)
+        XCTAssertEqual(try XCTUnwrap(zoomEvents.last?.1.x), 0.75, accuracy: 0.01)
+        XCTAssertEqual(try XCTUnwrap(zoomEvents.last?.1.y), 0.25, accuracy: 0.01)
+
+        // Continue pinching out past 1.5 -> steps to 2.0 (200%).
+        canvas.applyMagnification(1.2, phase: .changed, at: pointer, backingScale: 2)
+        XCTAssertEqual(zoomEvents.last?.0, 2.0)
+
+        // Pinch back in below fit threshold -> returns to Fit (nil).
+        canvas.applyMagnification(-0.75, phase: .changed, at: pointer, backingScale: 2)
+        canvas.applyMagnification(-0.5, phase: .ended, at: pointer, backingScale: 2)
+        XCTAssertNil(try XCTUnwrap(zoomEvents.last).0)
+
+        // Crop mode ignores pinch gestures.
+        let countBeforeCrop = zoomEvents.count
+        canvas.cropAngle = 0
+        canvas.applyMagnification(0.8, phase: .began, at: pointer, backingScale: 2)
+        XCTAssertEqual(zoomEvents.count, countBeforeCrop)
+    }
 }

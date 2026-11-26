@@ -286,6 +286,7 @@ struct DevelopReferenceView: View {
                         photoID: reference.photo?.id, nativeSize: reference.nativeSize, backdrop: mat.gray,
                         zoomScale: reference.zoom ?? 1,
                         onClick: { model.selectDevelopReferenceZoom(reference.zoom == nil ? 1 : nil, focus: $0) },
+                        onMagnifyZoom: { model.selectDevelopReferenceZoom($0, focus: $1) },
                         accessibilityName: L10n.text("app.developReferenceCanvas", defaultValue: "Develop Reference Canvas"))
                     if !reference.status.isEmpty {
                         Text(reference.status).font(.caption11).multilineTextAlignment(.center).padding(16)
@@ -416,7 +417,9 @@ private struct ComparisonPane: View {
                                photoID: pane.photo?.id, nativeSize: pane.nativeSize, backdrop: mat.gray,
                                zoomScale: pane.zoom ?? 1,
                                onClick: { comparison.toggleZoom(in: pane, at: $0) },
-                               onPan: { comparison.pan(from: pane, to: $0) }, accessibilityName: title + L10n.text("app.canvas_1720", defaultValue: "Canvas"))
+                               onPan: { comparison.pan(from: pane, to: $0) },
+                               onMagnifyZoom: { comparison.selectZoom($0, in: pane, focus: $1) },
+                               accessibilityName: title + L10n.text("app.canvas_1720", defaultValue: "Canvas"))
                 if !pane.status.isEmpty {
                     Text(pane.status).multilineTextAlignment(.center).padding(12)
                         .foregroundStyle(Color(nsColor: mat.text))

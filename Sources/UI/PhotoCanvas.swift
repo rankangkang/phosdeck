@@ -72,6 +72,7 @@ struct PhotoCanvas: View {
                                    cropAngle: model.cropMode ? model.recipe?.cropPreviewAngle : nil,
                                    cropAutoZoom: !model.cropMode || (model.recipe?.straightenAutoZoom ?? true),
                                    onClick: { model.toggleCanvasZoom(at: $0) },
+                                   onMagnifyZoom: { model.magnifyZoom(to: $0, anchor: $1) },
                                    targetedToolID: model.targetedAdjustment?.identifier,
                                    onTargetBegin: { model.beginTargetedAdjustment(at: $0) },
                                    onTargetChange: { model.updateTargetedAdjustment(delta: $0) },
@@ -175,6 +176,7 @@ struct PhotoCanvas: View {
         ZStack(alignment: .topLeading) {
             MetalPhotoView(viewport: model.viewport, image: image, actualPixels: model.fullResolution, photoID: model.activeID, nativeSize: model.renderedNativeSize, backdrop: mat.gray,
                            zoomScale: model.zoomScale, fill: model.fillView, onClick: { model.toggleCanvasZoom(at: $0) },
+                           onMagnifyZoom: { model.magnifyZoom(to: $0, anchor: $1) },
                            accessibilityName: L10n.text("app.canvas", defaultValue: "\(title) canvas"), clipping: model.showClipping,
                            clipShadows: shadowWarning, clipHighlights: highlightWarning,
                            onPixelReadout: after ? pixelReadout(for: image) : nil)

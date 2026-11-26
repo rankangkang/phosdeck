@@ -61,6 +61,7 @@
 - **图库打开**：普通 `.phoscat` 选择一次即可打开，交互待用户验收。旧 `.omlcat`／`.omlrcat` 打开时可确认仅改后缀、保持原名或取消。
 - **相机风格**：传感器 RAW 的基本调整通过单一入口打开画布右侧的浏览栏，按可折叠的品牌分组显示当前照片的双列缩略图。悬停试显，点击保存，“完成”收起。随包提供 Redlamp 和 Fuji Recipe Converter 的近似色表，覆盖 X‑S10 的 18 个固定胶片模拟，加上 Nostalgic Neg. 和 REALA ACE。索尼随包提供 LightCraft 的 ST，可本机安装适配后的 Sony Look Bridge 日光色表补齐 α7R V 其余 9 项，色表的再分发授权待明确。浏览体验及目标机内直出对照待用户验收。[上手指南](getting-started.md#3-整理与编辑)
 - **输入格式扩展与 RAW 解码抽象**：[PhotoFileType.swift](../Sources/Imaging/PhotoFileType.swift) 改用声明式格式注册表与按容器族校验，开放 15 种 RAW（新增 CR2／ORF／RW2／RWL／PEF／3FR／FFF／NRW／SRW／SR2）及静态 SDR HEIC／HEIF／HIF，保持 Apple DNG／ProRAW 与 HDR PQ／HLG／序列 HEIF 拒绝门禁；[RAWDecoder.swift](../Sources/Imaging/RAWDecoder.swift) 收敛 `ImagePipeline` 的 Apple RAW 调用边界。合成 SDR HEIF、容器截断／伪装／HDR 拒绝及公开 CC0 Sony／Leica／Fujifilm RAW 回归已核对；真实 CR2／ORF／RW2／PEF／3FR 样片与导入窗口待测。
+- **Metal 画布 10 位 Display P3 与触控板手势**：[MetalPhotoView.swift](../Sources/UI/MetalPhotoView.swift) 呈现层已切换为 `.bgr10a2Unorm` 与 Display P3 色彩空间并响应切屏色域通知；主画布、参考视图与比较视图接入双指滚动平移、指针锚点捏合缩放及智能双击缩放，裁剪与绘制中自动屏蔽。Metal 10 位广色域渲染、滚动与捏合锚点回归及插件测试已通过；真实触控板手感与广色域显示器实窗待用户验收。
 - **免证书构建与使用说明**：[源码构建](../README.zh.md#快速上手)尚待其他机器验证；[上手指南](getting-started.md)和中英文[贡献指南](../CONTRIBUTING.zh.md)待用户审核。
 
 ## 已知问题

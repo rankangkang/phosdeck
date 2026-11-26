@@ -3205,6 +3205,20 @@ final class AppModel {
             viewport.focusOnNextGeometry(point)
         }
     }
+    /// Pinch-to-zoom target anchored at a normalized photo point.
+    func magnifyZoom(to factor: Double?, anchor: CGPoint) {
+        guard !cropMode, image != nil else { return }
+        if let factor {
+            guard Self.zoomScales.contains(factor) else { return }
+            let wasFull = fullResolution
+            selectZoom(factor)
+            if !wasFull || viewport.center != anchor {
+                viewport.focusOnNextGeometry(anchor)
+            }
+        } else if fullResolution || fillView {
+            selectZoom(nil)
+        }
+    }
     var canShowBeforeAfter: Bool { photoSwitchDisplay == nil && !editorUsesPreviousPhoto && !isPreviewingAdjustment && !whiteBalanceSampling && targetedAdjustment == nil && !pointSampling && !showPointColorRange && hasRecipe && !cropMode && !maskMode && !spotMode && comparison == nil }
     /// `\`: the whole canvas shows the untoned, uncropped original.
     func toggleBefore() {
