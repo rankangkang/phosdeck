@@ -82,8 +82,8 @@ struct AdjustmentRow: View {
                     }
                 }
                 .focused($editing)
-                .onSubmit { apply(); if !invalid { editing = false } }
-                .onExitCommand { cancel(); editing = false }
+                .onSubmit { apply(); if !invalid { endEditing() } }
+                .onExitCommand { cancel(); endEditing() }
                 .onChange(of: editing) {
                     guard !editing, draft != nil else { return }
                     apply()
@@ -112,7 +112,22 @@ struct AdjustmentRow: View {
         L10n.text("app.numberRangeError", defaultValue: "Enter a number between \(Self.display(range.lowerBound, digits: digits, signed: false)) and \(Self.display(range.upperBound, digits: digits, signed: false)). Press Esc to cancel.")
     }
     private func cancel() { draft = nil; draftPhotoID = nil; invalid = false }
-    private func resetValue() { cancel(); editing = false; change(bounded(reset), true) }
+    private func endEditing() {
+        editing = false
+        let activeEditors = (NSApp?.windows ?? []).compactMap { window -> (NSWindow, NSTextView)? in
+            guard let editor = window.firstResponder as? NSTextView, editor.isFieldEditor else { return nil }
+            return (window, editor)
+        }
+        guard !activeEditors.isEmpty else { return }
+        // Clearing @FocusState synchronously inside onSubmit/onExitCommand can leave
+        // AppKit's NSTextField field editor active; resign that exact editor if it remained.
+        DispatchQueue.main.async {
+            for (window, editor) in activeEditors where window.firstResponder === editor {
+                window.makeFirstResponder(nil)
+            }
+        }
+    }
+    private func resetValue() { cancel(); endEditing(); change(bounded(reset), true) }
     private func apply() {
         guard enabled, draft == nil || draftPhotoID == photoID else { cancel(); return }
         guard let text = draft else { return }

@@ -330,4 +330,127 @@ final class LargeCatalogPerformanceTests: XCTestCase {
         try catalog.database.write { db in try db.execute(sql: "DELETE FROM photo WHERE id='extra-1'") }
         XCTAssertEqual(try catalog.page(PhotoQuery(metadata: LibraryMetadataFilter(lens: "Extra Lens")), offset: 0, limit: 10).total, 0)
     }
+
+    func testBatchExportAndRasterPreviewBenchmark() async throws {
+        let workDir = directory.appendingPathComponent("batch3a")
+        let srcDir = workDir.appendingPathComponent("src")
+        let catDir = workDir.appendingPathComponent("cat")
+        try FileManager.default.createDirectory(at: srcDir, withIntermediateDirectories: true)
+        let catalog = try CatalogStore(directory: catDir)
+        let root = try catalog.addRoot(url: srcDir, bookmark: try AccessLease.bookmark(srcDir, readOnly: true))
+        let ciCtx = CIContext(options: [.workingFormat: CIFormat.RGBAf, .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!])
+
+        func makeGradientCG(width: Int, height: Int, seed: Int) throws -> CGImage {
+            let extent = CGRect(x: 0, y: 0, width: width, height: height)
+            let grad = CIFilter(name: "CILinearGradient", parameters: [
+                "inputPoint0": CIVector(x: 0, y: 0),
+                "inputColor0": CIColor(red: 0.1 + Double(seed % 5) * 0.1, green: 0.25, blue: 0.6),
+                "inputPoint1": CIVector(x: CGFloat(width), y: CGFloat(height)),
+                "inputColor1": CIColor(red: 0.85, green: 0.65 - Double(seed % 4) * 0.08, blue: 0.2)
+            ])!.outputImage!.cropped(to: extent)
+            return try XCTUnwrap(ciCtx.createCGImage(grad, from: extent, format: .RGBA8, colorSpace: ImagePipeline.outputSpace))
+        }
+
+        // Prepare 16 synthetic 2400x1600 edited JPEGs for batch export benchmark.
+        let prepPipeline = ImagePipeline()
+        var editedRequests = [ImageRequest]()
+        for i in 0..<16 {
+            let url = srcDir.appendingPathComponent(String(format: "photo_%02d.jpg", i))
+            let cg = try makeGradientCG(width: 2400, height: 1600, seed: i)
+            let dest = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+            CGImageDestinationAddImage(dest, cg, [kCGImageDestinationLossyCompressionQuality: 0.92] as CFDictionary)
+            XCTAssertTrue(CGImageDestinationFinalize(dest))
+            let photo = try ReferenceImporter.inspect(url: url, root: root, rootURL: srcDir)
+            try catalog.index(photo)
+            var recipe = try await prepPipeline.baseline(ImageRequest(photo: photo, root: root, recipe: nil))
+            recipe.exposure = 0.25
+            recipe.develop.highlights = -20
+            recipe.develop.shadows = 15
+            recipe.develop.clarity = 10
+            recipe.develop.vibrance = 12
+            editedRequests.append(ImageRequest(photo: photo, root: root, recipe: recipe))
+        }
+
+        var jpegExportSamples = [Double]()
+        var tiffExportSamples = [Double]()
+        for round in 0..<3 {
+            let outJPEG = workDir.appendingPathComponent("out-jpeg-\(round)")
+            try FileManager.default.createDirectory(at: outJPEG, withIntermediateDirectories: true)
+            let bmJPEG = try AccessLease.bookmark(outJPEG, readOnly: false)
+            let jpegSnaps = editedRequests.enumerated().map { idx, req in
+                ExportSnapshot(id: "j-\(round)-\(idx)", request: req,
+                               destination: outJPEG.appendingPathComponent(String(format: "out_%02d.jpg", idx)),
+                               targetBookmark: bmJPEG, options: ExportOptions(format: .jpeg, quality: 0.9, jpegMatte: .white))
+            }
+            let t0 = CFAbsoluteTimeGetCurrent()
+            let jReports = await ExportService(pipeline: ImagePipeline()).run(jpegSnaps, catalog: catalog) { _ in }
+            jpegExportSamples.append((CFAbsoluteTimeGetCurrent() - t0) * 1000)
+            XCTAssertEqual(jReports.count, 16)
+            XCTAssertTrue(jReports.allSatisfy { $0.hasPrefix("成功") || $0.hasPrefix("Succeeded") }, "\(jReports)")
+
+            let outTIFF = workDir.appendingPathComponent("out-tiff-\(round)")
+            try FileManager.default.createDirectory(at: outTIFF, withIntermediateDirectories: true)
+            let bmTIFF = try AccessLease.bookmark(outTIFF, readOnly: false)
+            let tiffSnaps = editedRequests.prefix(8).enumerated().map { idx, req in
+                ExportSnapshot(id: "t-\(round)-\(idx)", request: req,
+                               destination: outTIFF.appendingPathComponent(String(format: "out_%02d.tif", idx)),
+                               targetBookmark: bmTIFF, options: ExportOptions(format: .tiff))
+            }
+            let t1 = CFAbsoluteTimeGetCurrent()
+            let tReports = await ExportService(pipeline: ImagePipeline()).run(tiffSnaps, catalog: catalog) { _ in }
+            tiffExportSamples.append((CFAbsoluteTimeGetCurrent() - t1) * 1000)
+            XCTAssertEqual(tReports.count, 8)
+            XCTAssertTrue(tReports.allSatisfy { $0.hasPrefix("成功") || $0.hasPrefix("Succeeded") }, "\(tReports)")
+        }
+
+        // Prepare 2048x1365 PNG and HEIC for repeated quality preview benchmark.
+        let pngURL = srcDir.appendingPathComponent("bench.png")
+        let heicURL = srcDir.appendingPathComponent("bench.heic")
+        let largeCG = try makeGradientCG(width: 2048, height: 1365, seed: 3)
+        let pngDest = try XCTUnwrap(CGImageDestinationCreateWithURL(pngURL as CFURL, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(pngDest, largeCG, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(pngDest))
+        let heicDest = try XCTUnwrap(CGImageDestinationCreateWithURL(heicURL as CFURL, UTType.heic.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(heicDest, largeCG, [kCGImageDestinationLossyCompressionQuality: 0.95] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(heicDest))
+
+        let pngPhoto = try ReferenceImporter.inspect(url: pngURL, root: root, rootURL: srcDir)
+        let heicPhoto = try ReferenceImporter.inspect(url: heicURL, root: root, rootURL: srcDir)
+        let pngBase = try await prepPipeline.baseline(ImageRequest(photo: pngPhoto, root: root, recipe: nil))
+        let heicBase = try await prepPipeline.baseline(ImageRequest(photo: heicPhoto, root: root, recipe: nil))
+
+        var pngPreviewSamples = [Double]()
+        var heicPreviewSamples = [Double]()
+        for _ in 0..<3 {
+            let pPipe = ImagePipeline()
+            let tp0 = CFAbsoluteTimeGetCurrent()
+            for step in 0..<6 {
+                var r = pngBase
+                r.saturation = 1.0 + Double(step) * 0.04
+                let res = try await pPipe.render(ImageRequest(photo: pngPhoto, root: root, recipe: r), longEdge: 2400, reuseDecoded: true)
+                XCTAssertEqual(res.image.width, 2048)
+            }
+            pngPreviewSamples.append((CFAbsoluteTimeGetCurrent() - tp0) * 1000)
+
+            let hPipe = ImagePipeline()
+            let th0 = CFAbsoluteTimeGetCurrent()
+            for step in 0..<6 {
+                var r = heicBase
+                r.saturation = 1.0 + Double(step) * 0.04
+                let res = try await hPipe.render(ImageRequest(photo: heicPhoto, root: root, recipe: r), longEdge: 2400, reuseDecoded: true)
+                XCTAssertEqual(res.image.width, 2048)
+            }
+            heicPreviewSamples.append((CFAbsoluteTimeGetCurrent() - th0) * 1000)
+        }
+
+        let report: [String: Any] = [
+            "export_16_jpeg_2400px": stats(jpegExportSamples),
+            "export_8_tiff16_2400px": stats(tiffExportSamples),
+            "raster_png_6_previews_2048px": stats(pngPreviewSamples),
+            "raster_heic_6_previews_2048px": stats(heicPreviewSamples)
+        ]
+        let jsonData = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+        let jsonString = String(decoding: jsonData, as: UTF8.self)
+        print("BATCH3A_PERF_JSON_BEGIN\n\(jsonString)\nBATCH3A_PERF_JSON_END")
+    }
 }

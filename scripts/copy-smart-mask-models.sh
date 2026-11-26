@@ -20,14 +20,14 @@ done
 copied=0
 if [ "$objects" = 1 ]; then
     for name in SAM2_1TinyImageEncoderFLOAT16.mlmodelc SAM2_1TinyPromptEncoderFLOAT16.mlmodelc SAM2_1TinyMaskDecoderFLOAT16.mlmodelc; do
-        /usr/bin/ditto "$models/$name" "$destination/$name"
+        /bin/cp -R "$models/$name" "$destination/$name"
     done
     copied=1
 fi
 for name in FaceParsing.mlmodelc selfie_multiclass_256x256.tflite; do
     if [ "$name" = FaceParsing.mlmodelc ]; then
         [ -d "$models/$name" ] || continue
-        /usr/bin/ditto "$models/$name" "$destination/$name"
+        /bin/cp -R "$models/$name" "$destination/$name"
     else
         [ -f "$models/$name" ] || continue
         # The TFLite model is a single file, and its old copy was already removed.

@@ -56,8 +56,18 @@ struct ExportSnapshot: Codable {
 actor ExportService {
     let pipeline: ImagePipeline
     private let checkpoint: @Sendable (String) throws -> Void
-    init(pipeline: ImagePipeline, checkpoint: @escaping @Sendable (String) throws -> Void = { _ in }) {
-        self.pipeline = pipeline; self.checkpoint = checkpoint
+    private let serialOnly: Bool
+
+    init(pipeline: ImagePipeline) {
+        self.pipeline = pipeline
+        self.checkpoint = { _ in }
+        self.serialOnly = false
+    }
+
+    init(pipeline: ImagePipeline, checkpoint: @escaping @Sendable (String) throws -> Void) {
+        self.pipeline = pipeline
+        self.checkpoint = checkpoint
+        self.serialOnly = true
     }
 
     static func logs(catalog: CatalogStore) throws -> [ExportLog] {
@@ -146,7 +156,6 @@ actor ExportService {
              outcome: @escaping @MainActor @Sendable (ExportOutcome) -> Void = { _ in },
              observe: (@MainActor @Sendable (ExportObservation) -> Void)? = nil,
              progress: @escaping @Sendable (String) async -> Void) async -> [String] {
-        var reports = [String]()
         do {
             let rows = try snapshots.map { ($0.id, try JSONEncoder().encode($0), $0.destination.path) }
             // Journal the entire submitted batch before observing cancellation. The
@@ -157,97 +166,182 @@ actor ExportService {
                 }
             }
         } catch { return [L10n.text("app.couldNotSaveTheOutputPlanNoOutputWas", defaultValue: "Could not save the output plan. No output was written: \(error.localizedDescription)")] }
-        for (index, snapshot) in snapshots.enumerated() {
-            if Task.isCancelled { reports.append(L10n.text("app.remainingOutputsCancelled", defaultValue: "Remaining outputs cancelled")); break }
-            await step(index, snapshots.count)
-            var published = false
-            var previouslyCompleted = false
-            do {
-                let id = snapshot.id
-                let existing = try await catalog.database.read { db -> (state: String, digest: String?, snapshot: Data, staging: String?)? in
-                    try Row.fetchOne(db, sql: "SELECT state,digest,snapshot,staging FROM exportItem WHERE id=?", arguments: [id])
-                        .map { ($0["state"], $0["digest"], $0["snapshot"], $0["staging"]) }
+
+        let total = snapshots.count
+        guard total > 0 else { return [] }
+
+        let maxWorkers = serialOnly || total <= 1
+            ? 1
+            : min(4, max(2, ProcessInfo.processInfo.activeProcessorCount / 2), total)
+        let checkpoint = self.checkpoint
+
+        if maxWorkers == 1 {
+            var reports = [String]()
+            for (index, snapshot) in snapshots.enumerated() {
+                if Task.isCancelled {
+                    reports.append(L10n.text("app.remainingOutputsCancelled", defaultValue: "Remaining outputs cancelled"))
+                    break
                 }
-                if existing?.state.hasPrefix("archived:") == true {
-                    reports.append(L10n.text("archive.historyOnly", defaultValue: "Archived task records are kept for reference."))
-                    continue
+                await step(index, total)
+                let report = await Self.process(snapshot, index: index, total: total, pipeline: pipeline,
+                                                catalog: catalog, checkpoint: checkpoint,
+                                                outcome: outcome, observe: observe, progress: progress)
+                reports.append(report)
+            }
+            if Task.isCancelled {
+                Self.markRemainingCancelled(snapshots.map(\.id), catalog: catalog)
+            }
+            return reports
+        }
+
+        // Bounded multi-core export: each worker owns an isolated ImagePipeline while
+        // catalog writes remain serialized through GRDB and reports preserve input order.
+        let workers: [ImagePipeline] = [pipeline] + (1..<maxWorkers).map { _ in ImagePipeline() }
+        var orderedReports = [String?](repeating: nil, count: total)
+        var nextIndex = 0
+        var completedCount = 0
+        var cancelledUnstarted = false
+
+        await withTaskGroup(of: (index: Int, workerSlot: Int, report: String).self) { group in
+            var freeSlots = Array(0..<maxWorkers)
+            while nextIndex < total && !freeSlots.isEmpty {
+                if Task.isCancelled { cancelledUnstarted = true; break }
+                let idx = nextIndex; nextIndex += 1
+                let slot = freeSlots.removeFirst()
+                let snapshot = snapshots[idx]
+                let workerPipeline = workers[slot]
+                group.addTask {
+                    let report = await Self.process(snapshot, index: idx, total: total, pipeline: workerPipeline,
+                                                    catalog: catalog, checkpoint: checkpoint,
+                                                    outcome: outcome, observe: observe, progress: progress)
+                    return (idx, slot, report)
                 }
-                previouslyCompleted = existing?.state == "completed"
-                let frozen = try existing.map { try JSONDecoder().decode(ExportSnapshot.self, from: $0.snapshot) } ?? snapshot
-                try frozen.options.validate()
-                try frozen.metadata.validate(policy: frozen.options.metadataPolicy)
-                let lease = try AccessLease(bookmark: frozen.targetBookmark)
-                defer { withExtendedLifetime(lease) {} }
-                let folder = try Self.authorizedFolder(for: frozen.destination, scope: lease.url)
-                // A journal entry is not evidence that its external output still exists.
-                // Verify before preparing the source, so intact output can be checked offline.
-                if FileManager.default.fileExists(atPath: frozen.destination.path) {
-                    _ = try FileIdentity.read(frozen.destination)
-                    if let digest = existing?.digest, try SafeFileWriter.sha256(frozen.destination) == digest {
-                        try state(frozen.id, "completed", catalog: catalog)
-                        await outcome(.verified)
-                        if let observe {
-                            await observe(ExportObservation(id: frozen.id, outcome: .verified,
-                                                           dimensions: Self.dimensions(at: frozen.destination)))
+            }
+            while let finished = await group.next() {
+                orderedReports[finished.index] = finished.report
+                completedCount += 1
+                await step(completedCount, total)
+                freeSlots.append(finished.workerSlot)
+                if nextIndex < total {
+                    if Task.isCancelled {
+                        cancelledUnstarted = true
+                    } else {
+                        let idx = nextIndex; nextIndex += 1
+                        let slot = freeSlots.removeFirst()
+                        let snapshot = snapshots[idx]
+                        let workerPipeline = workers[slot]
+                        group.addTask {
+                            let report = await Self.process(snapshot, index: idx, total: total, pipeline: workerPipeline,
+                                                            catalog: catalog, checkpoint: checkpoint,
+                                                            outcome: outcome, observe: observe, progress: progress)
+                            return (idx, slot, report)
                         }
-                        reports.append(previouslyCompleted ? L10n.text("app.verifiedWithoutWritingAgain", defaultValue: "Verified without writing again: \(frozen.destination.lastPathComponent)") :
-                            L10n.text("app.verifiedTheOutputPublishedBeforeInterruption", defaultValue: "Verified the output published before interruption: \(frozen.destination.lastPathComponent)"))
-                        continue
                     }
-                    throw LRCError(L10n.text("app.theDestinationExistsAndCannotBeVerifiedAsThis", defaultValue: "The destination exists and cannot be verified as this task's output. Overwriting is not allowed"))
                 }
-                var snapshot = try await prepared(frozen)
-                if let previous = existing?.staging, FileManager.default.fileExists(atPath: previous) {
-                    var retained = snapshot.retainedStaging ?? []
-                    let url = URL(fileURLWithPath: previous)
-                    if !retained.contains(url) { retained.append(url) }
-                    snapshot.retainedStaging = retained
-                }
-                let encoded = try JSONEncoder().encode(snapshot)
-                let snapshotID = snapshot.id
-                try await catalog.database.write { db in
-                    try db.execute(sql: "UPDATE exportItem SET snapshot=? WHERE id=?", arguments: [encoded, snapshotID])
-                }
-                let staging = try SafeFileWriter.stage(in: snapshot.destination.deletingLastPathComponent())
-                try state(snapshot.id, "rendering", catalog: catalog, staging: staging.path)
-                try checkpoint("rendering")
-                await progress(L10n.text("app.writing", defaultValue: "Writing \(index + 1)/\(snapshots.count) · \(snapshot.request.photo.displayName)"))
-                let dimensions = try await pipeline.export(snapshot.request, staging: staging, options: snapshot.options, metadata: snapshot.metadata)
-                let renderedIdentity = try FileIdentity.read(staging)
-                let digest = try SafeFileWriter.sha256(staging)
-                try await catalog.database.write { try $0.execute(sql: "UPDATE exportItem SET state='verified', digest=? WHERE id=?", arguments: [digest, snapshotID]) }
-                try checkpoint("verified")
-                try Task.checkCancellation()
-                guard try Self.authorizedFolder(for: snapshot.destination, scope: lease.url).path == folder.path,
-                      try FileIdentity.read(staging) == renderedIdentity else {
-                    throw LRCError(L10n.text("app.theDestinationChangedWhileCreatingSubfoldersNothingQueued", defaultValue: "The destination changed before publication"))
-                }
-                try SafeFileWriter.publish(staging, to: snapshot.destination)
-                published = true
-                let sameFile = (try? FileIdentity.read(snapshot.destination)) == renderedIdentity
-                if let observe {
-                    await observe(ExportObservation(id: snapshot.id, outcome: .published, dimensions: sameFile ? dimensions : nil))
-                }
-                guard sameFile else { throw LRCError(L10n.text("app.frozenTaskIdentityOrLocationMismatch", defaultValue: "Frozen task identity or location mismatch")) }
-                try checkpoint("publishedBeforeJournal")
-                try state(snapshot.id, "completed", catalog: catalog)
-                await outcome(.published)
-                reports.append(L10n.text("app.succeeded", defaultValue: "Succeeded: \(snapshot.destination.lastPathComponent)"))
-            } catch {
-                let message = published ? L10n.text("app.publishedButRecordingFailedVerificationRequired", defaultValue: "Published, but recording failed. Verification required: \(error.localizedDescription)") : error.localizedDescription
-                let failureState = published || previouslyCompleted ? "needsReview" : (Task.isCancelled ? "cancelled" : "failed")
-                try? Self.journal(catalog) { try $0.execute(sql: "UPDATE exportItem SET state=?,error=? WHERE id=?", arguments: [failureState, message, snapshot.id]) }
-                reports.append("\(snapshot.request.photo.displayName)：\(message)")
             }
         }
+
+        var reports = orderedReports.compactMap { $0 }
         if Task.isCancelled {
-            let ids = snapshots.map(\.id)
-            try? Self.journal(catalog) { db in
-                for id in ids { try db.execute(sql: "UPDATE exportItem SET state='cancelled' WHERE id=? AND state='planned'", arguments: [id]) }
+            if cancelledUnstarted {
+                reports.append(L10n.text("app.remainingOutputsCancelled", defaultValue: "Remaining outputs cancelled"))
             }
+            Self.markRemainingCancelled(snapshots.map(\.id), catalog: catalog)
         }
         return reports
     }
+
+    private static func markRemainingCancelled(_ ids: [String], catalog: CatalogStore) {
+        try? journal(catalog) { db in
+            for id in ids { try db.execute(sql: "UPDATE exportItem SET state='cancelled' WHERE id=? AND state='planned'", arguments: [id]) }
+        }
+    }
+
+    private static func process(_ snapshot: ExportSnapshot, index: Int, total: Int, pipeline: ImagePipeline,
+                                catalog: CatalogStore, checkpoint: @Sendable (String) throws -> Void,
+                                outcome: @MainActor @Sendable (ExportOutcome) -> Void,
+                                observe: (@MainActor @Sendable (ExportObservation) -> Void)?,
+                                progress: @Sendable (String) async -> Void) async -> String {
+        var published = false
+        var previouslyCompleted = false
+        do {
+            let id = snapshot.id
+            let existing = try await catalog.database.read { db -> (state: String, digest: String?, snapshot: Data, staging: String?)? in
+                try Row.fetchOne(db, sql: "SELECT state,digest,snapshot,staging FROM exportItem WHERE id=?", arguments: [id])
+                    .map { ($0["state"], $0["digest"], $0["snapshot"], $0["staging"]) }
+            }
+            if existing?.state.hasPrefix("archived:") == true {
+                return L10n.text("archive.historyOnly", defaultValue: "Archived task records are kept for reference.")
+            }
+            previouslyCompleted = existing?.state == "completed"
+            let frozen = try existing.map { try JSONDecoder().decode(ExportSnapshot.self, from: $0.snapshot) } ?? snapshot
+            try frozen.options.validate()
+            try frozen.metadata.validate(policy: frozen.options.metadataPolicy)
+            let lease = try AccessLease(bookmark: frozen.targetBookmark)
+            defer { withExtendedLifetime(lease) {} }
+            let folder = try authorizedFolder(for: frozen.destination, scope: lease.url)
+            // A journal entry is not evidence that its external output still exists.
+            // Verify before preparing the source, so intact output can be checked offline.
+            if FileManager.default.fileExists(atPath: frozen.destination.path) {
+                _ = try FileIdentity.read(frozen.destination)
+                if let digest = existing?.digest, try SafeFileWriter.sha256(frozen.destination) == digest {
+                    try state(frozen.id, "completed", catalog: catalog)
+                    await outcome(.verified)
+                    if let observe {
+                        await observe(ExportObservation(id: frozen.id, outcome: .verified,
+                                                       dimensions: dimensions(at: frozen.destination)))
+                    }
+                    return previouslyCompleted
+                        ? L10n.text("app.verifiedWithoutWritingAgain", defaultValue: "Verified without writing again: \(frozen.destination.lastPathComponent)")
+                        : L10n.text("app.verifiedTheOutputPublishedBeforeInterruption", defaultValue: "Verified the output published before interruption: \(frozen.destination.lastPathComponent)")
+                }
+                throw LRCError(L10n.text("app.theDestinationExistsAndCannotBeVerifiedAsThis", defaultValue: "The destination exists and cannot be verified as this task's output. Overwriting is not allowed"))
+            }
+            var snapshot = try await prepared(frozen, pipeline: pipeline)
+            if let previous = existing?.staging, FileManager.default.fileExists(atPath: previous) {
+                var retained = snapshot.retainedStaging ?? []
+                let url = URL(fileURLWithPath: previous)
+                if !retained.contains(url) { retained.append(url) }
+                snapshot.retainedStaging = retained
+            }
+            let encoded = try JSONEncoder().encode(snapshot)
+            let snapshotID = snapshot.id
+            try await catalog.database.write { db in
+                try db.execute(sql: "UPDATE exportItem SET snapshot=? WHERE id=?", arguments: [encoded, snapshotID])
+            }
+            let staging = try SafeFileWriter.stage(in: snapshot.destination.deletingLastPathComponent())
+            try state(snapshot.id, "rendering", catalog: catalog, staging: staging.path)
+            try checkpoint("rendering")
+            await progress(L10n.text("app.writing", defaultValue: "Writing \(index + 1)/\(total) · \(snapshot.request.photo.displayName)"))
+            let renderedDimensions = try await pipeline.export(snapshot.request, staging: staging, options: snapshot.options, metadata: snapshot.metadata)
+            let renderedIdentity = try FileIdentity.read(staging)
+            let digest = try SafeFileWriter.sha256(staging)
+            try await catalog.database.write { try $0.execute(sql: "UPDATE exportItem SET state='verified', digest=? WHERE id=?", arguments: [digest, snapshotID]) }
+            try checkpoint("verified")
+            try Task.checkCancellation()
+            guard try authorizedFolder(for: snapshot.destination, scope: lease.url).path == folder.path,
+                  try FileIdentity.read(staging) == renderedIdentity else {
+                throw LRCError(L10n.text("app.theDestinationChangedWhileCreatingSubfoldersNothingQueued", defaultValue: "The destination changed before publication"))
+            }
+            try SafeFileWriter.publish(staging, to: snapshot.destination)
+            published = true
+            let sameFile = (try? FileIdentity.read(snapshot.destination)) == renderedIdentity
+            if let observe {
+                await observe(ExportObservation(id: snapshot.id, outcome: .published, dimensions: sameFile ? renderedDimensions : nil))
+            }
+            guard sameFile else { throw LRCError(L10n.text("app.frozenTaskIdentityOrLocationMismatch", defaultValue: "Frozen task identity or location mismatch")) }
+            try checkpoint("publishedBeforeJournal")
+            try state(snapshot.id, "completed", catalog: catalog)
+            await outcome(.published)
+            return L10n.text("app.succeeded", defaultValue: "Succeeded: \(snapshot.destination.lastPathComponent)")
+        } catch {
+            let message = published ? L10n.text("app.publishedButRecordingFailedVerificationRequired", defaultValue: "Published, but recording failed. Verification required: \(error.localizedDescription)") : error.localizedDescription
+            let failureState = published || previouslyCompleted ? "needsReview" : (Task.isCancelled ? "cancelled" : "failed")
+            try? journal(catalog) { try $0.execute(sql: "UPDATE exportItem SET state=?,error=? WHERE id=?", arguments: [failureState, message, snapshot.id]) }
+            return "\(snapshot.request.photo.displayName)：\(message)"
+        }
+    }
+
     private static func dimensions(at url: URL) -> (Int, Int)? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let info = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
@@ -258,14 +352,14 @@ actor ExportService {
     private static func journal(_ catalog: CatalogStore, _ changes: (Database) throws -> Void) throws {
         try catalog.database.write(changes)
     }
-    private func prepared(_ snapshot: ExportSnapshot) async throws -> ExportSnapshot {
+    private static func prepared(_ snapshot: ExportSnapshot, pipeline: ImagePipeline) async throws -> ExportSnapshot {
         guard snapshot.request.photo.supportsEditing, snapshot.request.recipe == nil else { return snapshot }
         // Freeze the source's own neutral baseline, never the later mutable catalog recipe.
         let baseline = try await pipeline.baseline(snapshot.request)
         return ExportSnapshot(id: snapshot.id, request: ImageRequest(photo: snapshot.request.photo, root: snapshot.request.root, recipe: baseline),
                               destination: snapshot.destination, targetBookmark: snapshot.targetBookmark, options: snapshot.options, retainedStaging: snapshot.retainedStaging, metadata: snapshot.metadata)
     }
-    private func state(_ id: String, _ state: String, catalog: CatalogStore, staging: String? = nil) throws {
+    private static func state(_ id: String, _ state: String, catalog: CatalogStore, staging: String? = nil) throws {
         try catalog.database.write { db in
             try db.execute(sql: "UPDATE exportItem SET state=?,error=NULL,staging=coalesce(?,staging) WHERE id=?", arguments: [state, staging, id])
         }

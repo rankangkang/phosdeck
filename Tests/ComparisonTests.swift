@@ -924,8 +924,7 @@ final class ComparisonTests: XCTestCase {
                     change: { value, _ in input.value = value }, commit: { input.commits += 1 }).padding(20)
             }
         }
-        let input = Input(), host = NSHostingView(rootView: InputView(input: Input()))
-        host.rootView = InputView(input: input)
+        let input = Input(), host = NSHostingView(rootView: InputView(input: input))
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 400, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = host
         defer { window.orderOut(nil); window.contentView = nil }
@@ -936,7 +935,7 @@ final class ComparisonTests: XCTestCase {
         let field = try XCTUnwrap(fields(host).first { $0.isEditable })
         window.makeFirstResponder(field); field.selectText(nil)
         let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
-        try await Task.sleep(for: .milliseconds(60)) // Let SwiftUI observe native focus before submitting.
+        try await Task.sleep(for: .milliseconds(80)) // Let SwiftUI observe native focus before submitting.
         editor.insertText("1.00", replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
         try await Task.sleep(for: .milliseconds(30))
         editor.insertNewline(nil)

@@ -62,7 +62,13 @@ final class PresetManagementTests: XCTestCase {
         ]
         let found = PresetBrowser.filtered(presets, search: "café", groups: ["夜景", "人像"])
         XCTAssertEqual(Set(found.map(\.id)), Set(["1", "2"]), "Search is canonical-Unicode and group selection accepts more than one group")
-        XCTAssertEqual(PresetBrowser.filtered(presets, search: "", groups: [], favoritesOnly: true).map(\.id), ["3", "1"], "Favorites keep the browser's localized group ordering")
+        let expectedFavoriteOrder = "室内".localizedStandardCompare("夜景") == .orderedAscending ? ["3", "1"] : ["1", "3"]
+        XCTAssertEqual(PresetBrowser.filtered(presets, search: "", groups: [], favoritesOnly: true).map(\.id), expectedFavoriteOrder, "Favorites keep the browser's localized group ordering")
+        let asciiFavorites = [
+            AdjustmentPreset(id: "b", name: "Beta", recipe: Data(), options: Data(), groupName: "Night", favorite: true),
+            AdjustmentPreset(id: "a", name: "Alpha", recipe: Data(), options: Data(), groupName: "Indoor", favorite: true)
+        ]
+        XCTAssertEqual(PresetBrowser.filtered(asciiFavorites, search: "", groups: [], favoritesOnly: true).map(\.id), ["a", "b"])
         XCTAssertTrue(PresetBrowser.filtered(presets, search: "不存在", groups: []).isEmpty, "No-match state must be an explicit empty result")
     }
 

@@ -93,6 +93,7 @@ actor ImagePipeline {
     private let maskCache = MaskPipeline.RasterCache()
     private var qualityDecoded: (key: String, image: CIImage)?
     private var qualitySourceKey: String?
+    private var rasterDecodedCache: (key: String, image: CIImage)?
     private let qualityCacheLimit: Int
     private(set) var qualityCacheBytes = 0
     private var renderedSpotOffsets: [UUID: MaskPoint] = [:]
@@ -317,10 +318,11 @@ actor ImagePipeline {
 
     private func graph(_ request: ImageRequest, url: URL, orientedSourceSize: inout CGSize, previewEdge: Int? = nil,
                        zoneReferenceOnly: Bool = false, pointReferenceOnly: Bool = false, decodeOnly: Bool = false,
-                       reuseDecoded: Bool = false, displayEdge: Int? = nil, nativeArea: ((CGSize) throws -> NativePreviewArea)? = nil) throws -> CIImage {
+                       reuseDecoded: Bool = false, displayEdge: Int? = nil, reuseRaster: Bool = false, nativeArea: ((CGSize) throws -> NativePreviewArea)? = nil) throws -> CIImage {
         renderedSpotOffsets = [:]
         var image: CIImage
         if request.photo.isRAW {
+            rasterDecodedCache = nil
             guard let recipe = request.recipe else { throw LRCError(L10n.text("app.theRAWEditBaselineHasNotBeenCreated", defaultValue: "The RAW edit baseline has not been created")) }
             try recipe.validate(lookLibrary: cameraLooks)
             let sourceKey = "\(url.path):\(request.photo.identity.base64EncodedString()):\(recipe.sourceDigest):\(recipe.decoderVersion)"
@@ -395,7 +397,21 @@ actor ImagePipeline {
                 maskBaselineCache = nil; maskCache.removeAll()
                 context.clearCaches(); developContext.clearCaches()
             }
-            let decoded = try raster(url)
+            let decoded: CIImage
+            let rasterKey = reuseRaster
+                ? (request.recipe?.sourceDigest ?? request.photo.digest).map { "\(url.path):\(request.photo.identity.base64EncodedString()):\($0)" }
+                : nil
+            if let rasterKey, let cached = rasterDecodedCache, cached.key == rasterKey {
+                decoded = cached.image
+            } else {
+                let fresh = try raster(url)
+                if let rasterKey, fitsQualityCache(fresh.extent.integral.size) {
+                    rasterDecodedCache = (rasterKey, fresh)
+                } else if rasterKey == nil {
+                    rasterDecodedCache = nil
+                }
+                decoded = fresh
+            }
             orientedSourceSize = decoded.extent.size
             let area = try nativeArea?(orientedSourceSize)
             guard let recipe = request.recipe else { return decoded }
@@ -1267,11 +1283,13 @@ actor ImagePipeline {
                 // quality render, even if the source is subsequently restored.
                 if !completed {
                     qualityDecoded = nil; qualityCacheBytes = 0; qualitySourceKey = nil
+                    rasterDecodedCache = nil
                     maskBaselineCache = nil; maskCache.removeAll()
                     nativeOpacity = nil
                 }
             }
             let cacheDecoded = stage == nil && reuseDecoded && longEdge == nil && pixelFormat == .RGBA8 && Self.canCacheDecoded(request)
+            let cacheRaster = stage == nil && reuseDecoded && pixelFormat == .RGBA8 && !request.photo.isRAW && request.recipe != nil
             if reuseDecoded, !cacheDecoded, qualitySourceKey != nil {
                 qualityDecoded = nil; qualityCacheBytes = 0; qualitySourceKey = nil
                 maskBaselineCache = nil; maskCache.removeAll()
@@ -1317,7 +1335,7 @@ actor ImagePipeline {
                 renderedSpotOffsets = [:]
             } else {
                 graph = try self.graph(request, url: url, orientedSourceSize: &orientedSize, reuseDecoded: cacheDecoded,
-                                       displayEdge: displayEdge, nativeArea: nativeArea)
+                                       displayEdge: displayEdge, reuseRaster: cacheRaster, nativeArea: nativeArea)
             }
             var image = try Self.finish(Self.resized(graph, longEdge: longEdge), request: request)
             let finishedFrame = image
