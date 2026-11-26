@@ -63,6 +63,31 @@ final class CatalogStore: @unchecked Sendable {
     private(set) var pluginStageWarnings: [String] = []
     static let schemaVersion = 13
 
+    // Session-scoped caches accessed exclusively on `database`'s serialized queue.
+    var snapshotGeneration: UInt64 = 0
+    var queryCache: [CachedQueryOrder] = []
+    var keywordTotalsCache: (revision: UInt64, rows: [(keyword: String, name: String, total: Int)])?
+    var folderPathsCache: (revision: UInt64, paths: [String: [String]])?
+
+    static func photoFilename(_ path: String) -> String {
+        if !path.isEmpty, !path.hasSuffix("/") {
+            if let slash = path.lastIndex(of: "/") {
+                let next = path.index(after: slash)
+                if next < path.endIndex { return String(path[next...]) }
+            } else {
+                return path
+            }
+        }
+        return URL(fileURLWithPath: path).lastPathComponent
+    }
+
+    static func photoFilenameKey(_ path: String) -> String {
+        let name = photoFilename(path)
+        if name.utf8.allSatisfy({ $0 < 128 }) { return name.lowercased() }
+        return name.precomposedStringWithCanonicalMapping
+            .unicodeScalars.map { String($0).lowercased() }.joined()
+    }
+
     /// New working directory or an exactly current catalog; no migration.
     convenience init(directory: URL) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -100,16 +125,13 @@ final class CatalogStore: @unchecked Sendable {
             withExtendedLifetime((access, recoveryAccess, archiveFilesAccess, lock)) {}
             db.add(function: DatabaseFunction("photo_filename", argumentCount: 1, pure: true) { values in
                 guard let path = String.fromDatabaseValue(values[0]) else { return nil }
-                return URL(fileURLWithPath: path).lastPathComponent
+                return Self.photoFilename(path)
             })
             // query.rs::cmp_name, LightCraft 4f0b110: lowercase each Unicode
             // scalar, then compare lexically. SQLite NOCASE only covers ASCII.
             db.add(function: DatabaseFunction("photo_filename_key", argumentCount:1, pure:true) { values in
                 guard let path = String.fromDatabaseValue(values[0]) else { return nil }
-                // URL can expose a decomposed filesystem spelling. Keep the
-                // same canonical-name convention as export conflict checks.
-                return URL(fileURLWithPath:path).lastPathComponent.precomposedStringWithCanonicalMapping
-                    .unicodeScalars.map { String($0).lowercased() }.joined()
+                return Self.photoFilenameKey(path)
             })
             db.add(function: DatabaseFunction("photo_day", argumentCount: 1, pure: true) { values in
                 LibraryMetadataFilter.day(String.fromDatabaseValue(values[0]))
@@ -122,6 +144,17 @@ final class CatalogStore: @unchecked Sendable {
                 return iso
             })
             try db.execute(sql: "CREATE TEMP TABLE browseSnapshot (snapshotID TEXT NOT NULL, photoID TEXT NOT NULL, position INTEGER NOT NULL, PRIMARY KEY(snapshotID, photoID), UNIQUE(snapshotID, position))")
+            try db.execute(sql: """
+                CREATE TEMP TABLE photoIndex (
+                    photoID TEXT PRIMARY KEY NOT NULL,
+                    filename TEXT NOT NULL,
+                    filenameKey TEXT NOT NULL,
+                    captureDay TEXT,
+                    captureSub TEXT,
+                    lens TEXT,
+                    iso INTEGER
+                )
+                """)
             try db.execute(sql: "PRAGMA foreign_keys = ON")
             // Single serialized connection, rollback journal; WAL is deliberately not enabled.
             try db.execute(sql: "PRAGMA synchronous = FULL")
@@ -207,7 +240,55 @@ final class CatalogStore: @unchecked Sendable {
                 plan.state = "interrupted"
                 try db.execute(sql: "UPDATE importPlan SET state='interrupted',payload=? WHERE id=?", arguments: [try JSONEncoder().encode(plan), plan.id])
             }
+            try Self.initializePhotoIndex(in: db)
         }
+    }
+
+    /// Materialize per-session searchable/sortable fields into `temp.photoIndex`
+    /// without altering the on-disk schema, and keep it synchronized via TEMP triggers.
+    private static func initializePhotoIndex(in db: Database) throws {
+        let insert = try db.makeStatement(sql: "INSERT INTO photoIndex (photoID,filename,filenameKey,captureDay,captureSub,lens,iso) VALUES (?,?,?,?,?,?,?)")
+        let cursor = try Row.fetchCursor(db, sql: "SELECT id, relativePath, captureDate, metadata FROM photo")
+        while let row = try cursor.next() {
+            let id: String = row["id"]
+            let path: String = row["relativePath"]
+            let captureDate: String? = row["captureDate"]
+            let metadataBlob: Data? = row["metadata"]
+            let name = Self.photoFilename(path)
+            let key = name.utf8.allSatisfy({ $0 < 128 })
+                ? name.lowercased()
+                : name.precomposedStringWithCanonicalMapping.unicodeScalars.map { String($0).lowercased() }.joined()
+            let day = LibraryMetadataFilter.day(captureDate)
+            let sub = captureDate.map { String($0.dropFirst(10)) }
+            var lens: String?
+            var iso: Int?
+            if let metadataBlob,
+               let dict = (try? JSONSerialization.jsonObject(with: metadataBlob)) as? [String: Any] {
+                lens = dict["lens"] as? String
+                if let value = dict["iso"] as? Int, value > 0 { iso = value }
+            }
+            try insert.execute(arguments: [id, name, key, day, sub, lens, iso])
+        }
+        try db.execute(sql: """
+            CREATE INDEX temp.photoIndex_filenameKey ON photoIndex(filenameKey, photoID);
+            CREATE INDEX temp.photoIndex_day ON photoIndex(captureDay, captureSub, photoID);
+            CREATE INDEX temp.photoIndex_iso ON photoIndex(iso, photoID);
+            CREATE TEMP TRIGGER photoIndex_insert AFTER INSERT ON photo BEGIN
+                INSERT OR REPLACE INTO photoIndex (photoID,filename,filenameKey,captureDay,captureSub,lens,iso)
+                VALUES (NEW.id, photo_filename(NEW.relativePath), photo_filename_key(NEW.relativePath),
+                        photo_day(NEW.captureDate), substr(NEW.captureDate, 11),
+                        photo_lens(NEW.metadata), photo_iso(NEW.metadata));
+            END;
+            CREATE TEMP TRIGGER photoIndex_update AFTER UPDATE OF relativePath, captureDate, metadata ON photo BEGIN
+                INSERT OR REPLACE INTO photoIndex (photoID,filename,filenameKey,captureDay,captureSub,lens,iso)
+                VALUES (NEW.id, photo_filename(NEW.relativePath), photo_filename_key(NEW.relativePath),
+                        photo_day(NEW.captureDate), substr(NEW.captureDate, 11),
+                        photo_lens(NEW.metadata), photo_iso(NEW.metadata));
+            END;
+            CREATE TEMP TRIGGER photoIndex_delete AFTER DELETE ON photo BEGIN
+                DELETE FROM photoIndex WHERE photoID = OLD.id;
+            END;
+            """)
     }
 
     /// Read on the catalog's database queue in the same snapshot as the photos.

@@ -308,6 +308,7 @@ final class AppModel {
     var roots: [StorageRoot] = []
     var collections: [PhotoCollection] = []
     var collectionCounts: [String:Int] = [:]
+    @ObservationIgnored private var collectionCountsCacheKey: (catalogID: ObjectIdentifier, revision: UInt64, collections: [PhotoCollection])?
     private(set) var targetCollectionID: String?
     private var targetMemberIDs: Set<String> = []
     private(set) var quickCollectionID: String?
@@ -949,7 +950,12 @@ final class AppModel {
         if holdFilterResults, heldResultsID == nil { heldResultsID = try catalog.holdResults(query, replacing: nil) }
         let currentQuery = query
         if currentQuery != lastAppliedQuery || scope != lastAppliedScope { browseGeneration = UUID() }
-        collectionCounts = Dictionary(uniqueKeysWithValues:collections.map { ($0.id,(try? catalog.collectionCount($0)) ?? -1) })
+        let rev = catalog.browseRevision
+        let countsKey = (catalogID: ObjectIdentifier(catalog), revision: rev, collections: collections)
+        if collectionCountsCacheKey.map({ $0.catalogID == countsKey.catalogID && $0.revision == countsKey.revision && $0.collections == countsKey.collections }) != true {
+            collectionCounts = Dictionary(uniqueKeysWithValues: collections.map { ($0.id, (try? catalog.collectionCount($0)) ?? -1) })
+            collectionCountsCacheKey = countsKey
+        }
         let page = try catalog.page(currentQuery, offset: pageOffset, limit: pageSize)
         photos = page.photos; resultCount = page.total; visibleCount = page.visibleTotal; stackBadges = page.badges; pageOffset = page.offset
         pairedSourceIDs = try catalog.pairedSources(within:Set(photos.map(\.sourceKey)))
@@ -1973,11 +1979,17 @@ final class AppModel {
     var organizationIDs: Set<String> { survey == nil ? selection : Set(activeID.map { [$0] } ?? []) }
     private func reloadOrganizationSummary() throws {
         try reloadTargetCollectionState()
-        guard let catalog, !selection.isEmpty else { selectedFlag = nil; selectedRating = nil; selectedColorLabel = nil; return }
-        let marks = organizationIDs.map { _ in "?" }.joined(separator: ",")
-        guard !marks.isEmpty else { selectedFlag = nil; selectedRating = nil; selectedColorLabel = nil; return }
+        let ids = organizationIDs
+        guard let catalog, !selection.isEmpty, !ids.isEmpty else { selectedFlag = nil; selectedRating = nil; selectedColorLabel = nil; return }
+        if ids.count == 1, let id = ids.first, let photo = (activePhoto?.id == id ? activePhoto : photos.first { $0.id == id }), !photo.deleted {
+            selectedFlag = photo.flag
+            selectedColorLabel = photo.colorLabel
+            selectedRating = photo.rating
+            return
+        }
+        let encoded = String(decoding: try JSONEncoder().encode(Array(ids)), as: UTF8.self)
         let summary = try catalog.database.read { db in
-            try Row.fetchOne(db, sql: "SELECT count(DISTINCT flag) AS flags, min(flag) AS flag, count(DISTINCT rating) AS ratings, min(rating) AS rating, count(DISTINCT colorLabel) AS colors, min(colorLabel) AS colorLabel FROM photo WHERE deleted=0 AND id IN (\(marks))", arguments: StatementArguments(organizationIDs))
+            try Row.fetchOne(db, sql: "SELECT count(DISTINCT flag) AS flags, min(flag) AS flag, count(DISTINCT rating) AS ratings, min(rating) AS rating, count(DISTINCT colorLabel) AS colors, min(colorLabel) AS colorLabel FROM photo WHERE deleted=0 AND id IN (SELECT value FROM json_each(?))", arguments: [encoded])
         }
         selectedFlag = summary.flatMap { ($0["flags"] as Int) == 1 ? $0["flag"] as Int? : nil }
         selectedColorLabel = summary.flatMap { ($0["colors"] as Int) == 1 ? $0["colorLabel"] as Int? : nil }

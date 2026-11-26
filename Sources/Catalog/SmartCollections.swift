@@ -25,10 +25,10 @@ enum SmartField: String, Codable, CaseIterable, Identifiable {
     }
     var column:String {
         switch self {
-        case .filename:return "photo_filename(photo.relativePath)"; case .rating:return "photo.rating"; case .flag:return "photo.flag"
+        case .filename:return "idx.filename"; case .rating:return "photo.rating"; case .flag:return "photo.flag"
         case .colorLabel:return "photo.colorLabel"
-        case .keyword:return "keyword"; case .camera:return "photo.camera"; case .lens:return "photo_lens(photo.metadata)"
-        case .iso:return "photo_iso(photo.metadata)"; case .captureDate:return "photo_day(photo.captureDate)"
+        case .keyword:return "keyword"; case .camera:return "photo.camera"; case .lens:return "idx.lens"
+        case .iso:return "idx.iso"; case .captureDate:return "idx.captureDay"
         case .virtualCopy:return "(photo.copyName IS NOT NULL)"; case .copyName:return "photo.copyName"
         }
     }
@@ -201,6 +201,6 @@ extension CatalogStore {
     func collectionCount(_ collection:PhotoCollection) throws -> Int {
         let query = try collection.resultQuery()
         let (predicate,args) = query.predicate
-        return try database.read { try Int.fetchOne($0,sql:"SELECT count(*) FROM photo WHERE "+predicate,arguments:args) ?? 0 }
+        return try database.read { try Int.fetchOne($0,sql:"SELECT count(*) FROM "+query.relation+" WHERE "+predicate,arguments:args) ?? 0 }
     }
 }

@@ -16,10 +16,8 @@
 
 ### 3. 大图库查询与浏览性能
 
-- **SQLite 查询强依赖 Swift UDF，索引失效**：[CatalogStore.swift](../Sources/Catalog/CatalogStore.swift) 注册了 `photo_filename_key`、`photo_day`、`photo_lens`、`photo_iso` 四个自定义函数，其中 `photo_lens` 与 `photo_iso` 需逐行反序列化 JSON；[CatalogQueries.swift](../Sources/Catalog/CatalogQueries.swift) 在排序、筛选与 `stackCTE` 窗口计算中直接调用这些函数，大图库下会触发全表扫描与同步排序开销。
-- **关键词统计全表聚合**：[CatalogKeywords.swift](../Sources/Catalog/CatalogKeywords.swift) 的 `keywordSummary` 在选片变化时扫描全表聚合计数。
-- **网格 200 张硬分页**：[AppModel.swift](../Sources/App/AppModel.swift) 以 `pageSize = 200` 分页，大图库选片需手动翻页，连续浏览体验不如虚拟滚动网格。
-- **冷缓存浏览与切图偏慢**：[ImagePipeline.swift](../Sources/Imaging/ImagePipeline.swift) 中 `ThumbnailService` 仅缓存 320 px 小图且 RAW 与已编辑图共用单通道 `.serial` 队列；缺少标准预览前置与“先出内嵌预览、再替换精准渲染”的分层机制。
+- **网格 200 张硬分页**：[AppModel.swift](../Sources/App/AppModel.swift) 仍以 `pageSize = 200` 分页，大图库选片需手动翻页，连续浏览体验不如虚拟滚动网格（查询、排序、堆叠翻页、关键词计数与集合计数已通过会话级 `temp.photoIndex` 与 `browseRevision` 缓存大幅提速，且未改动 schema 13）。
+- **冷缓存整屏 RAW 浏览仍需等待逐张显影**：[ImagePipeline.swift](../Sources/Imaging/ImagePipeline.swift) 的 `ThumbnailService` 已启用双路有界渲染池与多路 JPEG 缩略图并发，但仍仅缓存 320 px 小图，缺少标准预览前置与“先出内嵌预览、再替换精准渲染”的分层机制（按 [decisions.md](decisions.md#暂缓) 暂缓）。
 
 ### 4. 渲染缓存与导出吞吐
 
@@ -83,9 +81,8 @@
 
 ### P0：扫清主力可用与正式分发阻塞
 
-1. **大图库查询与浏览提速**
-   - 将 `lens`、`iso`、`captureDay`、`filenameSortKey` 落为 `photo` 表物化列并建复合索引，消除 SQL 查询中的逐行 JSON 反序列化；缓存或增量维护关键词计数。
-   - 评估用连续虚拟滚动替代 200 张硬分页；建立分层预览策略（优先显示内嵌／标准预览，后台替换为精准显影），适度提升 `ThumbnailService` 对 RAW 的有界并发。
+1. **大图库浏览续项**
+   - 评估用连续虚拟滚动替代 200 张硬分页，并在用户恢复标准预览前置方案后补齐分层预览（当前会话级物化索引、`browseRevision` 缓存与双路缩略图渲染池已落地）。
 2. **修复编辑缓存与释放多核导出**
    - 拆分解码／白平衡曝光缓存与下游显影缓存，放宽复用条件，避免常规调色反复触发整图 RAW 重解码。
    - 在 [ExportService.swift](../Sources/Export/ExportService.swift) 按内存预算引入有界多核并发导出。

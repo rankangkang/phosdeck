@@ -137,6 +137,7 @@
 		CA11BF1700034CA8A1B2C3D4 /* CameraLookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */; };
 		CA12BF1700014CA8A1B2C3D4 /* RAWDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA12F17E00014CA8A1B2C3D4 /* RAWDecoder.swift */; };
 		CA12BF1700024CA8A1B2C3D4 /* InputFormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA12F17E00024CA8A1B2C3D4 /* InputFormatTests.swift */; };
+		CA12BF1700034CA8A1B2C3D4 /* LargeCatalogPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA12F17E00034CA8A1B2C3D4 /* LargeCatalogPerformanceTests.swift */; };
 		6AB6461EBE8AD700A2F77691 /* MergeRetouch.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE7F8EC215D83D4C44204F6C /* MergeRetouch.swift */; };
 		6B6451CD6EB692EF9FB34F22 /* CopyImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 396462D8FA0A606288246598 /* CopyImporter.swift */; };
 		6B89DEB27BDF636E96F7E4FD /* MergeSourceConstraints.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8566DFC204EA5ECB32B6F41 /* MergeSourceConstraints.swift */; };
@@ -615,6 +616,7 @@
 		CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraLookTests.swift; sourceTree = "<group>"; };
 		CA12F17E00014CA8A1B2C3D4 /* RAWDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RAWDecoder.swift; sourceTree = "<group>"; };
 		CA12F17E00024CA8A1B2C3D4 /* InputFormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputFormatTests.swift; sourceTree = "<group>"; };
+		CA12F17E00034CA8A1B2C3D4 /* LargeCatalogPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeCatalogPerformanceTests.swift; sourceTree = "<group>"; };
 		D5108D77A264E78F7FA33FCC /* ExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
 		D52005774225CC370C0FE0B2 /* smart-mask-fixture.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "smart-mask-fixture.json"; sourceTree = "<group>"; };
 		D5326EE1C195E589C79C9DD8 /* CameraDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraDiagnosticsView.swift; sourceTree = "<group>"; };
@@ -1126,6 +1128,7 @@
 				13493A41D462FFE0B8CCFE87 /* ManualDefringeTests.swift */,
 				CA11F17E00034CA8A1B2C3D4 /* CameraLookTests.swift */,
 				CA12F17E00024CA8A1B2C3D4 /* InputFormatTests.swift */,
+				CA12F17E00034CA8A1B2C3D4 /* LargeCatalogPerformanceTests.swift */,
 				136DDEBBB9B67684C4A8E07D /* MaskingTests.swift */,
 				B388E5663A53B8A967A5E66A /* MoreRAWTests.swift */,
 				FAB33D099D411E9A62472751 /* MultiExportTests.swift */,
@@ -1492,6 +1495,7 @@
 				516141394FECD54B51CEC6E6 /* ManualDefringeTests.swift in Sources */,
 				CA11BF1700034CA8A1B2C3D4 /* CameraLookTests.swift in Sources */,
 				CA12BF1700024CA8A1B2C3D4 /* InputFormatTests.swift in Sources */,
+				CA12BF1700034CA8A1B2C3D4 /* LargeCatalogPerformanceTests.swift in Sources */,
 				A7BFFBE08EC5243BFEB6CB94 /* MaskingTests.swift in Sources */,
 				88077A5B55E9F590612254DC /* MoreRAWTests.swift in Sources */,
 				EFC097407C520378932F221E /* MultiExportTests.swift in Sources */,

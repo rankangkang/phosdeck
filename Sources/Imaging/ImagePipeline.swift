@@ -1527,8 +1527,37 @@ actor ThumbnailService {
     }
 
     private enum Lane: Equatable {
-        case jpeg, serial
-        var limit: Int { self == .jpeg ? 2 : 1 }
+        case jpeg, render
+        var limit: Int {
+            switch self {
+            case .jpeg: return min(4, max(2, ProcessInfo.processInfo.activeProcessorCount / 2))
+            case .render: return 2
+            }
+        }
+    }
+    private actor RenderPool {
+        private var available: [ImagePipeline]
+        private var waiters: [CheckedContinuation<ImagePipeline, Never>] = []
+        init(count: Int) {
+            available = (0..<max(1, count)).map { _ in ImagePipeline() }
+        }
+        func render(_ request: ImageRequest, edge: Int) async throws -> CGImage {
+            let worker = await acquire()
+            defer { release(worker) }
+            try Task.checkCancellation()
+            return try await worker.renderThumbnail(request, edge: edge)
+        }
+        private func acquire() async -> ImagePipeline {
+            if let worker = available.popLast() { return worker }
+            return await withCheckedContinuation { waiters.append($0) }
+        }
+        private func release(_ worker: ImagePipeline) {
+            if !waiters.isEmpty {
+                waiters.removeFirst().resume(returning: worker)
+            } else {
+                available.append(worker)
+            }
+        }
     }
     private struct Waiter {
         let priority: Priority
@@ -1567,9 +1596,9 @@ actor ThumbnailService {
         return (info.isLowPowerModeEnabled, info.thermalState)
     }, renderer: (@Sendable (ImageRequest, Int) async throws -> CGImage)? = nil) {
         self.deviceConditions = deviceConditions
-        let pipeline = ImagePipeline()
+        let pool = RenderPool(count: Lane.render.limit)
         render = renderer ?? { request, edge in
-            try await pipeline.renderThumbnail(request, edge: edge)
+            try await pool.render(request, edge: edge)
         }
         cache.totalCostLimit = 128 * 1024 * 1024
     }
@@ -1643,7 +1672,7 @@ actor ThumbnailService {
                     pending[key]?.waiters[waiter] = demand
                 } else {
                     let ext = URL(fileURLWithPath: photo.relativePath).pathExtension.lowercased()
-                    let lane: Lane = photo.recipe == nil && (ext == "jpg" || ext == "jpeg") ? .jpeg : .serial
+                    let lane: Lane = photo.recipe == nil && (ext == "jpg" || ext == "jpeg") ? .jpeg : .render
                     nextID &+= 1
                     pending[key] = Load(id: nextID, photo: photo, root: root, edge: edge, lane: lane, waiters: [waiter: demand])
                 }

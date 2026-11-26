@@ -75,11 +75,11 @@ extension CatalogStore {
     }
 
     func keywordSummary(selected ids: Set<String>) throws -> [KeywordSummary] {
-        try database.read { try Self.keywordSummary($0, selected: ids) }
+        try database.read { try keywordSummary($0, selected: ids) }
     }
     func keywordBrowser(selected ids: Set<String>, photoID: String?) throws -> (keywords: [KeywordSummary], terms: [String]?, caption: String?) {
         try database.read { db in
-            let summary = try Self.keywordSummary(db, selected: ids)
+            let summary = try keywordSummary(db, selected: ids)
             guard let photoID else { return (summary, nil, nil) }
             guard let caption = try String.fetchOne(db, sql: "SELECT caption FROM photo WHERE id=? AND deleted=0", arguments: [photoID]) else {
                 throw OrganizationError.photoUnavailable
@@ -88,14 +88,38 @@ extension CatalogStore {
             return (summary, terms, caption)
         }
     }
-    private static func keywordSummary(_ db: Database, selected ids: Set<String>) throws -> [KeywordSummary] {
-        // ponytail: aggregate on selection changes; cache totals if large keyword catalogs make this slow.
-        let marks = ids.isEmpty ? "NULL" : ids.map { _ in "?" }.joined(separator: ",")
-        return try KeywordSummary.fetchAll(db, sql: """
-            SELECT keyword, min(name) AS name, count(*) AS total,
-                   sum(CASE WHEN photoID IN (\(marks)) THEN 1 ELSE 0 END) AS selected
-            FROM photoKeyword WHERE photoID IN (SELECT id FROM photo WHERE deleted=0) GROUP BY keyword ORDER BY keyword
-            """, arguments: StatementArguments(ids))
+    private func keywordSummary(_ db: Database, selected ids: Set<String>) throws -> [KeywordSummary] {
+        let rev = browseRevision
+        let totals: [(keyword: String, name: String, total: Int)]
+        if let cached = keywordTotalsCache, cached.revision == rev {
+            totals = cached.rows
+        } else {
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT k.keyword, min(k.name) AS name, count(*) AS total
+                FROM photoKeyword k JOIN photo p ON p.id=k.photoID
+                WHERE p.deleted=0 GROUP BY k.keyword ORDER BY k.keyword
+                """)
+            totals = rows.map { ($0["keyword"] as String, $0["name"] as String, $0["total"] as Int) }
+            keywordTotalsCache = (rev, totals)
+        }
+        guard !totals.isEmpty else { return [] }
+        var selectedCounts = [String: Int]()
+        if !ids.isEmpty {
+            let encoded = String(decoding: try JSONEncoder().encode(Array(ids)), as: UTF8.self)
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT k.keyword, count(*) AS selected
+                FROM photoKeyword k JOIN photo p ON p.id=k.photoID
+                WHERE p.deleted=0 AND k.photoID IN (SELECT value FROM json_each(?))
+                GROUP BY k.keyword
+                """, arguments: [encoded])
+            selectedCounts.reserveCapacity(rows.count)
+            for row in rows {
+                selectedCounts[row["keyword"] as String] = row["selected"] as Int
+            }
+        }
+        return totals.map { item in
+            KeywordSummary(keyword: item.keyword, name: item.name, total: item.total, selected: selectedCounts[item.keyword] ?? 0)
+        }
     }
 
     func photoKeywords(ids: Set<String>) throws -> [String: [String]] {
