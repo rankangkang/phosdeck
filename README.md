@@ -107,7 +107,7 @@ xcodebuild -downloadComponent MetalToolchain
 |---|---|
 | Input | JPEG, RGB TIFF (first-page preview for multi-page files), supported static PNG, and static SDR HEIC/HEIF/HIF files. ARW, SR2, DNG, NEF, NRW, CR2, CR3, RAF, ORF, RW2, RWL, PEF, 3FR, FFF, and SRW depend on the camera, compression mode, and macOS decoder. |
 | Not enabled | HDR PQ/HLG HEIF, animated/sequence HEIF, and Apple DNG/ProRAW. |
-| Output | JPEG, 8-bit PNG, and 16-bit TIFF, currently in sRGB. Wide-gamut output and soft proofing are not implemented. |
+| Output | JPEG, 8-bit PNG, and 16-bit TIFF, currently in sRGB. Wide-gamut output is not implemented. The Metal canvas renders in 10-bit Display P3, and built-in plugins include ICC soft proofing with gamut warning, highlight selection, and Warm Print. |
 | Smart masks | Whole-person selection uses system Vision and needs no extra weights. Object and body-part selection require separately prepared research models. Manual masks and saved selections work without those models. Distribution rights for the face weights remain unresolved; see the [model guide (Chinese)](docs/smart-mask-models.md). |
 | Catalog format | Old catalog schemas are not migrated during development. Keep existing catalogs, backups, and originals before upgrading. |
 | Interface language | Built-in Simplified Chinese and English, with support for community language packs. The English interface still has some clipped text and wording issues; see the [localization guide (Chinese)](docs/localization.md). |

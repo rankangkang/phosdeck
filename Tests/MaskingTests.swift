@@ -810,4 +810,59 @@ final class MaskingTests: XCTestCase {
         XCTAssertNil(model.error)
     }
 
+    @MainActor func testMaskPanelIntersectControlFitsNarrowInspectorInBothThemes() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mask-intersect-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let catalog = try CatalogStore(directory: directory)
+        let root = try catalog.addRoot(url: directory, bookmark: try AccessLease.bookmark(directory, readOnly: true))
+        let photo = Photo(id: "p1", rootID: root.id, relativePath: "sample.jpg", identity: Data(), identityKey: "p1", width: 100, height: 100)
+        var recipe = EditRecipe(sourceDigest: String(repeating: "a", count: 64), decoderVersion: EditRecipe.rasterDecoderVersion,
+                                baselineExposure: 0, baselineTemperature: 5500, baselineTint: 0, temperature: 5500, tint: 0)
+        recipe.schemaVersion = 3
+        let group = LocalAdjustment(components: [MaskComponent(tool: .linear)])
+        recipe.localAdjustments = [group]
+        let model = AppModel(previewRenderer: { _, _, _ in throw LRCError("synthetic") })
+        model.catalog = catalog; model.roots = [root]; model.photos = [photo]
+        model.activeID = photo.id; model.activePhoto = photo; model.selection = [photo.id]
+        model.recipe = recipe; model.canEdit = true
+        model.editMode = true; model.maskMode = true
+        model.selectedMaskID = group.id; model.selectedComponentID = group.components[0].id
+
+        XCTAssertNotNil(model.selectedMask)
+        func tokens(_ element: Any) -> [String] {
+            var result = [String]()
+            if let ax = element as? NSAccessibilityProtocol {
+                if let id = ax.accessibilityIdentifier(), !id.isEmpty { result.append(id) }
+                if let label = ax.accessibilityLabel(), !label.isEmpty { result.append(label) }
+                if let title = ax.accessibilityTitle(), !title.isEmpty { result.append(title) }
+                if let children = ax.accessibilityChildren() {
+                    for child in children { result += tokens(child) }
+                }
+            }
+            if let view = element as? NSView {
+                for subview in view.subviews { result += tokens(subview) }
+            }
+            return result
+        }
+        for theme in [ColorScheme.light, .dark] {
+            for width in [CGFloat(220), CGFloat(300)] {
+                let host = NSHostingView(rootView: MaskPanel(model: model).frame(width: width, height: 500).preferredColorScheme(theme))
+                let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: width, height: 500), styleMask: [.borderless], backing: .buffered, defer: false)
+                window.contentView = host
+                defer { window.contentView = nil }
+                host.layoutSubtreeIfNeeded()
+                try await Task.sleep(for: .milliseconds(40))
+                host.layoutSubtreeIfNeeded()
+                XCTAssertLessThanOrEqual(host.fittingSize.width, width + 1, "MaskPanel must not overflow at \(width)pt")
+                let found = Set(tokens(host))
+                for op in [MaskOperation.add, .subtract, .intersect] {
+                    let expectedLabel = L10n.text("app.maskComponent", defaultValue: "\(op.title) mask component")
+                    XCTAssertTrue(found.contains("mask-operation-\(op.rawValue)") || found.contains(expectedLabel) || found.contains(op.title),
+                                  "Missing \(op.rawValue) control in \(found)")
+                }
+            }
+        }
+    }
+
 }

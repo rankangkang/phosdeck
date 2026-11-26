@@ -73,13 +73,7 @@ struct SpotCanvasDraft: Equatable {
 }
 
 extension AppModel {
-    var spotInstruction: String {
-        switch spotKind {
-        case .clone: return L10n.text("app.copiesTheSourceColorAndTextureExactlyDragThe", defaultValue: "Copies the source color and texture exactly. Drag the source to choose another area; moving the target also moves the source. [ / ] changes size")
-        case .heal: return L10n.text("app.usesSourceTextureWhileMatchingTheColorAroundThe", defaultValue: "Uses source texture while matching the color around the target. Move the source to a differently colored area to see how Heal differs from Clone. [ / ] changes size")
-        case .remove: return L10n.text("app.usesTheHealAlgorithmAndAutomaticallySelectsASimilar", defaultValue: "Uses the Heal algorithm and automatically selects a similar nearby source. You can drag the source afterward. [ / ] changes size")
-        }
-    }
+    var spotInstruction: String { spotKind.helpText }
     func setSpotMode(_ enabled: Bool) {
         if enabled == spotMode { return }
         if enabled, !canEdit { return }

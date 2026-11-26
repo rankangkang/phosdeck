@@ -22,7 +22,7 @@ struct SpotPanel: View {
                     .disabled(model.refreshingSpotSource || !repairs.contains(where: { $0.id == model.selectedSpotID && $0.enabled }))
                     .help(L10n.text("app.chooseAnotherSourceForThisSpotUndoIsAvailable", defaultValue: "Choose another source for this spot; undo is available, and you can also drag the source directly"))
                     .accessibilityIdentifier("spot-refresh-source")
-                KeyRow(title: L10n.text("app.method", defaultValue: "Method"), options: SpotRepairMode.allCases.map { KeyOption($0, $0.title) }, selection: mode)
+                KeyRow(title: L10n.text("app.method", defaultValue: "Method"), options: SpotRepairMode.allCases.map { KeyOption($0, $0.title, help: $0.helpText) }, selection: mode)
                     .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 4)
                 AdjustmentRow(label: L10n.text("app.size", defaultValue: "Size"), value: model.spotRadius * 200, range: 0.2...100, reset: 8,
                               change: { model.setSpotRadius($0 / 200, commit: $1) }, commit: { model.commitRecipe() })

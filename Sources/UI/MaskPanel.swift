@@ -162,26 +162,54 @@ struct MaskPanel: View {
         }.font(.body13).fixedSize(horizontal: false, vertical: true)
     }
     private var maskActions: some View {
-        HStack(spacing: 8) {
-            ForEach([MaskOperation.add, .subtract], id: \.self) { operation in
-                Menu {
-                    Button(L10n.text("app.people", defaultValue: "People")) { model.beginSmartMask(operation: operation, workflow: .people) }
-                    ForEach(MaskTool.allCases) { tool in
-                        Button(tool.title) { model.addMask(tool, operation: operation) }
-                            .disabled(tool == .object && SmartMaskEngine.bundledModels.objectDirectory == nil)
-                    }
-                } label: { Label(operation.title, systemImage: operation == .add ? "plus" : "minus") }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .keySurface(height: 24).accessibilityLabel(L10n.text("app.maskComponent", defaultValue: "\(operation.title) mask component"))
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                maskOperationMenus
+                Spacer(minLength: 0)
+                maskControlsButton
             }
-            Spacer(minLength: 0)
-            Button(L10n.text("app.controls", defaultValue: "Controls")) { model.showMaskGuides.toggle() }
-                .buttonStyle(.key(selected: hasControlLines && model.showMaskGuides, height: 24, padding: 7, lampInside: true))
-                .disabled(!hasControlLines)
-                .help(hasControlLines ? L10n.text("app.showPinsAndControlsHSelectionOverlayOIs", defaultValue: "Show pins and controls (H); selection overlay (O) is independent") : L10n.text("app.thisSelectionHasNoControlsUseThisSwitchFor", defaultValue: "This selection has no controls. Use this switch for gradients or color samples"))
-                .accessibilityLabel(L10n.text("app.showMaskControls", defaultValue: "Show Mask Controls")).accessibilityValue(hasControlLines ? (model.showMaskGuides ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off")) : L10n.text("app.noControls", defaultValue: "No Controls"))
-                .accessibilityAddTraits(hasControlLines && model.showMaskGuides ? .isSelected : [])
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    maskOperationMenus
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 6) {
+                    maskControlsButton
+                    Spacer(minLength: 0)
+                }
+            }
         }
+    }
+    private var maskOperationMenus: some View {
+        ForEach([MaskOperation.add, .subtract, .intersect], id: \.self) { operation in
+            Menu {
+                Button(L10n.text("app.people", defaultValue: "People")) { model.beginSmartMask(operation: operation, workflow: .people) }
+                ForEach(MaskTool.allCases) { tool in
+                    Button(tool.title) { model.addMask(tool, operation: operation) }
+                        .disabled(tool == .object && SmartMaskEngine.bundledModels.objectDirectory == nil)
+                }
+            } label: { Label(operation.title, systemImage: Self.operationIcon(operation)) }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .keySurface(height: 24)
+                .accessibilityLabel(L10n.text("app.maskComponent", defaultValue: "\(operation.title) mask component"))
+                .accessibilityIdentifier("mask-operation-\(operation.rawValue)")
+        }
+    }
+    private static func operationIcon(_ operation: MaskOperation) -> String {
+        switch operation {
+        case .add: return "plus"
+        case .subtract: return "minus"
+        case .intersect: return "square.on.square.intersection.dashed"
+        case .replace: return "circle"
+        }
+    }
+    private var maskControlsButton: some View {
+        Button(L10n.text("app.controls", defaultValue: "Controls")) { model.showMaskGuides.toggle() }
+            .buttonStyle(.key(selected: hasControlLines && model.showMaskGuides, height: 24, padding: 7, lampInside: true))
+            .disabled(!hasControlLines)
+            .help(hasControlLines ? L10n.text("app.showPinsAndControlsHSelectionOverlayOIs", defaultValue: "Show pins and controls (H); selection overlay (O) is independent") : L10n.text("app.thisSelectionHasNoControlsUseThisSwitchFor", defaultValue: "This selection has no controls. Use this switch for gradients or color samples"))
+            .accessibilityLabel(L10n.text("app.showMaskControls", defaultValue: "Show Mask Controls")).accessibilityValue(hasControlLines ? (model.showMaskGuides ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off")) : L10n.text("app.noControls", defaultValue: "No Controls"))
+            .accessibilityAddTraits(hasControlLines && model.showMaskGuides ? .isSelected : [])
     }
     private var hasControlLines: Bool {
         guard let component = model.selectedMaskComponent else { return false }
@@ -499,11 +527,16 @@ struct MaskListPanel: View {
                 Button(L10n.text("app.invertMask", defaultValue: "Invert Mask")) { model.selectMask(group.id, component: nil); model.changeMask { $0.inverted.toggle() }; model.showMaskOverlay = true }
                 ForEach([MaskOperation.add, .subtract, .intersect], id: \.self) { operation in
                     Menu(operation.title) {
+                        Button(L10n.text("app.people", defaultValue: "People")) {
+                            model.selectMask(group.id, component: nil)
+                            model.beginSmartMask(operation: operation, workflow: .people)
+                        }
                         ForEach(MaskTool.allCases) { tool in
                             Button(tool.title) {
                                 model.selectMask(group.id, component: nil)
                                 model.addMask(tool, operation: operation)
                             }
+                            .disabled(tool == .object && SmartMaskEngine.bundledModels.objectDirectory == nil)
                         }
                     }
                 }

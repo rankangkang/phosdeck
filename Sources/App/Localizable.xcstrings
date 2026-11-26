@@ -44963,13 +44963,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Uses the Heal algorithm and automatically selects a similar nearby source. You can drag the source afterward. [ / ] changes size"
+            "value": "Uses the same tone-matching Heal algorithm with automatic nearby source selection (not generative content-aware fill). You can drag the source afterward. [ / ] changes size"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "和修复同一套算法，来源自动落在附近最像的地方，也可以再拖。 [ / ] 调整大小"
+            "value": "与修复共用同一套色调匹配算法，自动选择附近相近来源（非生成式内容感知填补），也可以再拖来源。 [ / ] 调整大小"
           }
         }
       }

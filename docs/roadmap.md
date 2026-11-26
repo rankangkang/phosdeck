@@ -27,10 +27,7 @@
 
 - **普通图像曝光响应表的合规风险**：[RasterExposure.swift](../Sources/Imaging/RasterExposure.swift) 采用 Lightroom 合成图输出拟合表，公开使用依据尚未判定，且大曝光下与 Lightroom 仍有差异。
 - **正式版智能蒙版功能退化**：Release 构建会移除全部研究权重（[智能蒙版模型](smart-mask-models.md)），导致正式版对象选区禁用、人物部位不可用；`FaceParsing` 权重受训练数据非商业协议限制，LiteRT 完整依赖清单与正式模型分发机制尚未落地。
-- **实现细节与文档不一致**：
-  - [SpotRepair.swift](../Sources/Imaging/SpotRepair.swift) 中 `heal` 与 `remove` 共用完全相同的色调融合算法，缺少与模式名匹配的消除差异；
-  - [Masking.swift](../Sources/Imaging/Masking.swift) 已定义 `intersect`（交集），但 [MaskPanel.swift](../Sources/UI/MaskPanel.swift) 未暴露 UI 入口；
-  - [README.md](../README.md) 与 [README.zh.md](../README.zh.md) 仍称软打样未实现，部分缓存与支持目录仍沿用历史名 `OhMyLRC`，英文界面存在少量截断与措辞待打磨。
+- **实现细节与历史命名**：部分缓存与支持目录仍沿用历史名 `OhMyLRC`，英文界面存在少量截断与措辞待打磨（蒙版检查器已补齐 `Intersect` 入口，`SpotRepair` 已明确说明 `Remove` 与 `Heal` 共用自动选源色调修复算法，README 已同步内置软打样状态）。
 - **核心文件耦合偏重**：[AppModel.swift](../Sources/App/AppModel.swift)、[WorkspaceView.swift](../Sources/UI/WorkspaceView.swift)、[ImagePipeline.swift](../Sources/Imaging/ImagePipeline.swift) 与 [MetalPhotoView.swift](../Sources/UI/MetalPhotoView.swift) 体积过大，工具状态互斥与跨区交互高度集中，后续演进容易引入回归。
 
 ---
@@ -43,7 +40,7 @@
 
 - **镜头光学与几何变换**：JPEG／TIFF 缺少镜头校正；全格式缺少手动畸变、裁剪前手动镜头暗角、手动缩放与 X/Y 位移，以及独立镜头配置库（如 Lensfun）。
 - **相机原色校准与正式机内风格**：缺少红／绿／蓝三原色色相与饱和度校准（影响调色及 Lightroom／XMP 预设迁移还原度），以及正式校准的各品牌机内风格资源。
-- **高频智能选区与交集操作**：缺少一键**选择天空**、**选择主体**、**选择背景**，以及蒙版**交集（Intersect）**的界面入口。
+- **高频智能选区**：缺少一键**选择天空**、**选择主体**、**选择背景**。
 - **局部调整参数范围**：[Masking.swift](../Sources/Imaging/Masking.swift) 的 `LocalDevelopSettings` 暂不支持局部锐化、局部降噪、局部去边与局部点颜色。
 - **跨照片同步范围**：[EditRecipe.swift](../Sources/Imaging/EditRecipe.swift) 的 `RecipePasteOptions` 尚不支持批量同步污点修复（如传感器批量除尘）和局部蒙版。
 - **内容感知消除与 AI 降噪**：缺少真正的内容感知填补与现代 RAW AI 降噪（后者适合依托插件派生照片接入口承接）。
@@ -92,8 +89,7 @@
 1. **实拍 RAW 验证与光学能力扩充**：基于 `CameraDiagnostics` 逐类补齐真实 CR2／ORF／RW2／PEF／3FR 样片实证，并推进独立 LibRaw 解码通道（覆盖坏片比特流检出与新机压缩模式）；补齐手动畸变、裁剪前暗角与位移缩放，评估接入 Lensfun 镜头库。
 2. **高频闭环补齐**：
    - 复制／同步支持污点修复与蒙版；
-   - 补齐蒙版 `Intersect` 入口、局部锐化／降噪／去边，以及选天空／主体／背景；
-   - 明确区分或收敛 `SpotRepair` 的 `heal` 与 `remove` 模式；
+   - 补齐局部锐化／降噪／去边，以及选天空／主体／背景；
    - 导入补齐预设、关键词与重命名；导出补齐文件大小限制、短边／宽高约束与 PPI；筛选补齐题注与关键词检索及一键清理标 `X` 废片。
 3. **广色域显影与 HDR／EDR**：在画布 10-bit Display P3 呈现基础上，后续按需推进广色域预览／导出与 Apple XDR 屏幕 HDR／EDR 显影。
 
