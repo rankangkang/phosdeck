@@ -369,35 +369,19 @@ struct WorkspaceView: View {
         })
     }
     private var topBar: some View {
-        let moduleRow = KeyRow(title: L10n.text("app.module", defaultValue: "Module"), options: [KeyOption(.library, L10n.text("app.library", defaultValue: "Library"), help: L10n.text("app.returnToLibraryAndRestoreItsViewGGrid", defaultValue: "Return to Library and restore its view; G: Grid / E: Loupe")), KeyOption(.develop, L10n.text("app.develop", defaultValue: "Develop"), help: L10n.text("app.developD", defaultValue: "Develop (D)"))],
-                               selection: module, lampsInside: true, height: Self.topKey, padding: 10)
-            .disabled(!model.workspaceAvailable)
-        let exportKey = Button(L10n.text("app.export_1997", defaultValue: "Export")) { model.requestExport() }
-            .buttonStyle(PrimaryKeyStyle(height: Self.topKey))
-            .disabled(!model.canExportPhotos)
-            .help(L10n.text("app.exportSelectedPhotosE", defaultValue: "Export selected photos (⇧⌘E)"))
-        let leadingBrand = HStack(spacing: 10) {
+        HStack(alignment: .keyCenter, spacing: 12) {
             if !fullScreen { Color.clear.frame(width: 64, height: 1).accessibilityHidden(true) }
             Wordmark()
             Text(model.catalogName).font(.caption11).foregroundStyle(Theme.textSecondary).lineLimit(1).truncationMode(.middle)
                 .help(model.catalog?.fileURL.path ?? L10n.text("app.noCatalogOpenFileNewCatalogOpenCatalog", defaultValue: "No catalog open (File › New Catalog / Open Catalog)"))
-        }
-        return ViewThatFits(in: .horizontal) {
-            ZStack {
-                HStack(alignment: .keyCenter, spacing: 12) {
-                    leadingBrand
-                    Spacer(minLength: 160)
-                    exportKey
-                }
-                moduleRow
-            }
-            .frame(minWidth: 720)
-            HStack(alignment: .keyCenter, spacing: 12) {
-                leadingBrand
-                Spacer(minLength: 8)
-                moduleRow
-                exportKey
-            }
+            Spacer(minLength: 8)
+            KeyRow(title: L10n.text("app.module", defaultValue: "Module"), options: [KeyOption(.library, L10n.text("app.library", defaultValue: "Library"), help: L10n.text("app.returnToLibraryAndRestoreItsViewGGrid", defaultValue: "Return to Library and restore its view; G: Grid / E: Loupe")), KeyOption(.develop, L10n.text("app.develop", defaultValue: "Develop"), help: L10n.text("app.developD", defaultValue: "Develop (D)"))],
+                   selection: module, lampsInside: true, height: Self.topKey, padding: 10)
+                .disabled(!model.workspaceAvailable)
+            Button(L10n.text("app.export_1997", defaultValue: "Export")) { model.requestExport() }
+                .buttonStyle(PrimaryKeyStyle(height: Self.topKey))
+                .disabled(!model.canExportPhotos)
+                .help(L10n.text("app.exportSelectedPhotosE", defaultValue: "Export selected photos (⇧⌘E)"))
         }
         .padding(.top, Metrics.topBarKeyLine - Self.topKey / 2)
         .padding(.horizontal, 12).frame(height: Metrics.topBar, alignment: .top)
@@ -1096,19 +1080,29 @@ struct WorkspaceView: View {
         }.disabled(model.selection.isEmpty || !model.canMarkPhotos)
     }
     private var quickCollectionControls: some View {
-        HStack(spacing: 1) {
+        let targetName = model.targetCollection?.name ?? L10n.text("app.quickCollection", defaultValue: "Quick Collection")
+        let quickStatus = model.quickCollectMembership == nil
+            ? L10n.text("app.someAdded", defaultValue: "Some Added")
+            : model.quickCollectMembership == true
+                ? L10n.text("app.added_2136", defaultValue: "Added")
+                : L10n.text("app.notAdded", defaultValue: "Not Added")
+        let quickDetail = model.quickCollectMembership == true
+            ? L10n.text("app.removeQuickCollectionShortcut", defaultValue: "B: Remove from \(targetName) · \(model.quickCollectScope)")
+            : L10n.text("app.addQuickCollectionShortcut", defaultValue: "B: Add to \(targetName) · \(model.quickCollectScope)")
+        let controlsEnabled = !model.selection.isEmpty && model.canMarkPhotos
+        return HStack(spacing: -1) {
             Button { model.toggleQuickCollection() } label: {
                 LampLabel(on: model.quickCollectMembership == true) {
                     Image(systemName: model.quickCollectMembership == nil ? "tray.and.arrow.down" : "tray")
+                        .font(.system(size: 10.5, weight: .medium))
                 }
-            }.buttonStyle(.ghostTool(selected: model.quickCollectMembership == true, height: Self.toolKey, padding: 5))
+            }.buttonStyle(.key(selected: model.quickCollectMembership == true, position: .leading, height: Self.toolKey, padding: 6))
                 .accessibilityLabel(L10n.text("app.quickCollection", defaultValue: "Quick Collection")).accessibilityIdentifier("quick-collect")
-                .accessibilityValue(model.quickCollectMembership == nil ? L10n.text("app.someAdded", defaultValue: "Some Added") : model.quickCollectMembership == true ? L10n.text("app.added_2136", defaultValue: "Added") : L10n.text("app.notAdded", defaultValue: "Not Added"))
-                .help(model.quickCollectMembership == true
-                      ? L10n.text("app.removeQuickCollectionShortcut", defaultValue: "B: Remove from \(model.targetCollection?.name ?? L10n.text("app.quickCollection", defaultValue: "Quick Collection")) · \(model.quickCollectScope)")
-                      : L10n.text("app.addQuickCollectionShortcut", defaultValue: "B: Add to \(model.targetCollection?.name ?? L10n.text("app.quickCollection", defaultValue: "Quick Collection")) · \(model.quickCollectScope)"))
+                .accessibilityValue(quickStatus)
+                .instrumentHoverHint(title: L10n.text("app.quickCollection", defaultValue: "Quick Collection"),
+                                     status: quickStatus, active: model.quickCollectMembership == true, detail: quickDetail)
             Menu {
-                Text(L10n.text("app.target", defaultValue: "Target: \(model.targetCollection?.name ?? L10n.text("app.quickCollection", defaultValue: "Quick Collection"))"))
+                Text(L10n.text("app.target", defaultValue: "Target: \(targetName)"))
                 Text(L10n.text("app.scope", defaultValue: "Scope: \(model.quickCollectScope)"))
                 Divider()
                 Button(L10n.text("app.useQuickCollection", defaultValue: "Use Quick Collection")) { model.setTargetCollection(nil) }
@@ -1118,17 +1112,25 @@ struct WorkspaceView: View {
                         else { Text(collection.name) }
                     }
                 }
-            } label: { Image(systemName: "ellipsis").font(.system(size: 10)).frame(width: 14, height: Self.toolKey) }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).tint(Theme.textSecondary).fixedSize()
-                .accessibilityLabel(L10n.text("app.quickCollectionTarget_2141", defaultValue: "Quick Collection Target")).help(L10n.text("app.chooseARegularCollectionForQuickCollectionTheCurrent", defaultValue: "Choose a regular collection for Quick Collection. The current target is marked with + in the sidebar"))
+            } label: { Image(systemName: "chevron.down").font(.system(size: 8.5, weight: .semibold)) }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .keySurface(position: .trailing, height: Self.toolKey, enabled: controlsEnabled, padding: 4, minWidth: 16)
+                .accessibilityLabel(L10n.text("app.quickCollectionTarget_2141", defaultValue: "Quick Collection Target"))
+                .instrumentHoverHint(title: L10n.text("app.quickCollectionTarget_2141", defaultValue: "Quick Collection Target"),
+                                     detail: L10n.text("app.chooseARegularCollectionForQuickCollectionTheCurrent", defaultValue: "Choose a regular collection for Quick Collection. The current target is marked with + in the sidebar"))
         }.fixedSize()
     }
     private var advanceControl: some View {
-        Button { model.autoAdvance.toggle() } label: {
-            LampLabel(on: model.autoAdvance) { Image(systemName: "arrow.right.to.line") }
-        }.buttonStyle(.ghostTool(selected: model.autoAdvance, height: Self.toolKey, padding: 5))
-            .accessibilityLabel(L10n.text("app.autoAdvance", defaultValue: "Auto Advance")).accessibilityValue(model.autoAdvance ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off"))
-            .help(L10n.text("app.autoAdvanceSelectTheNextPhotoAfterFlaggingOr", defaultValue: "Auto Advance: select the next photo after flagging or rating. Shift temporarily reverses it; Caps Lock also enables keyboard culling"))
+        let status = model.autoAdvance ? L10n.text("app.on", defaultValue: "On") : L10n.text("app.off", defaultValue: "Off")
+        return Button { model.autoAdvance.toggle() } label: {
+            LampLabel(on: model.autoAdvance) {
+                Image(systemName: "arrow.right.to.line").font(.system(size: 10.5, weight: .medium))
+            }
+        }.buttonStyle(.key(selected: model.autoAdvance, height: Self.toolKey, padding: 6))
+            .accessibilityLabel(L10n.text("app.autoAdvance", defaultValue: "Auto Advance")).accessibilityValue(status)
+            .instrumentHoverHint(title: L10n.text("app.autoAdvance", defaultValue: "Auto Advance"),
+                                 status: status, active: model.autoAdvance,
+                                 detail: L10n.text("app.autoAdvanceHintDetail", defaultValue: "Selects the next photo after flagging, rating, or labeling. Hold Shift to reverse temporarily; Caps Lock also enables continuous keyboard culling."))
             .disabled(!model.workspaceAvailable)
     }
     private var centerToolbar: some View {

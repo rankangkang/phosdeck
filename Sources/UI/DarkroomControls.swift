@@ -531,6 +531,247 @@ struct InfoHintButton: View {
     }
 }
 
+/// Non-activating darkroom instrument hover card for compact toolbar keys.
+private struct HoverHintCard: View {
+    let title: String
+    let status: String?
+    let active: Bool
+    let detail: String
+    static let shadowInset: CGFloat = 8
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                if let status, !status.isEmpty {
+                    Spacer(minLength: 8)
+                    HStack(spacing: 4) {
+                        if active {
+                            Circle()
+                                .fill(Theme.lampOn)
+                                .frame(width: 5, height: 5)
+                                .shadow(color: Theme.lampOn.opacity(0.45), radius: 1.5)
+                        }
+                        Text(status)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(active ? Theme.accentText : Theme.textSecondary)
+                    }
+                }
+            }
+            Text(detail)
+                .font(.caption11)
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(1.5)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: 236, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(Theme.panel)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .strokeBorder(Theme.controlBorder, lineWidth: 0.75)
+                )
+                .shadow(color: Color.black.opacity(0.22), radius: 5, y: 2)
+        )
+        .padding(Self.shadowInset)
+    }
+}
+
+private final class HoverHintPanel: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+private final class HoverHintTrackingView: NSView {
+    var hintTitle: String = ""
+    var hintStatus: String?
+    var hintActive: Bool = false
+    var hintDetail: String = ""
+
+    private var trackingArea: NSTrackingArea?
+    private var pendingShow: DispatchWorkItem?
+    private var panel: HoverHintPanel?
+    private var mouseDownMonitor: Any?
+    private var hovering = false
+
+    override func isAccessibilityElement() -> Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovering = true
+        scheduleShow()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovering = false
+        hidePanel()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            hovering = false
+            hidePanel()
+            NotificationCenter.default.removeObserver(self)
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self)
+        guard let window else { hidePanel(); return }
+        NotificationCenter.default.addObserver(self, selector: #selector(handleWindowInactive), name: NSWindow.didResignKeyNotification, object: window)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleWindowInactive), name: NSWindow.willCloseNotification, object: window)
+    }
+
+    @objc private func handleWindowInactive() {
+        hovering = false
+        hidePanel()
+    }
+
+    func updateContent(title: String, status: String?, active: Bool, detail: String) {
+        let changed = title != hintTitle || status != hintStatus || active != hintActive || detail != hintDetail
+        hintTitle = title
+        hintStatus = status
+        hintActive = active
+        hintDetail = detail
+        if changed, let panel, panel.isVisible {
+            layoutAndShow(panel: panel)
+        }
+    }
+
+    private func scheduleShow() {
+        pendingShow?.cancel()
+        installMouseDownMonitor()
+        let work = DispatchWorkItem { [weak self] in
+            self?.showIfStillHovering()
+        }
+        pendingShow = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32, execute: work)
+    }
+
+    private func showIfStillHovering() {
+        guard hovering, let parent = window, parent.isVisible, parent.isKeyWindow, !isHiddenOrHasHiddenAncestor else { return }
+        let hintPanel: HoverHintPanel
+        if let existing = panel {
+            hintPanel = existing
+        } else {
+            let created = HoverHintPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            created.isOpaque = false
+            created.backgroundColor = .clear
+            created.hasShadow = false
+            created.ignoresMouseEvents = true
+            created.hidesOnDeactivate = true
+            created.isReleasedWhenClosed = false
+            panel = created
+            hintPanel = created
+        }
+        layoutAndShow(panel: hintPanel)
+    }
+
+    private func layoutAndShow(panel hintPanel: HoverHintPanel) {
+        guard let parent = window else { return }
+        let hosting = NSHostingView(rootView: HoverHintCard(title: hintTitle, status: hintStatus, active: hintActive, detail: hintDetail))
+        hosting.layoutSubtreeIfNeeded()
+        let size = hosting.fittingSize
+        hintPanel.appearance = parent.effectiveAppearance
+        hintPanel.contentView = hosting
+
+        let anchor = parent.convertToScreen(convert(bounds, to: nil))
+        let pad = HoverHintCard.shadowInset
+        var origin = NSPoint(x: anchor.midX - size.width / 2, y: anchor.maxY + 6 - pad)
+        if let visible = (parent.screen ?? NSScreen.main)?.visibleFrame {
+            if origin.y + size.height - pad > visible.maxY - 4 {
+                origin.y = anchor.minY - size.height + pad - 6
+            }
+            let minX = visible.minX + 4 - pad
+            let maxX = visible.maxX - size.width + pad - 4
+            if maxX >= minX {
+                origin.x = min(max(origin.x, minX), maxX)
+            }
+        }
+        hintPanel.setFrame(NSRect(origin: origin, size: size), display: true)
+        if hintPanel.parent !== parent {
+            hintPanel.parent?.removeChildWindow(hintPanel)
+            parent.addChildWindow(hintPanel, ordered: .above)
+        }
+        hintPanel.orderFront(nil)
+    }
+
+    private func installMouseDownMonitor() {
+        guard mouseDownMonitor == nil else { return }
+        mouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+            self?.hidePanel()
+            return event
+        }
+    }
+
+    private func hidePanel() {
+        pendingShow?.cancel()
+        pendingShow = nil
+        if let monitor = mouseDownMonitor {
+            NSEvent.removeMonitor(monitor)
+            mouseDownMonitor = nil
+        }
+        if let panel {
+            panel.parent?.removeChildWindow(panel)
+            panel.orderOut(nil)
+        }
+    }
+
+    deinit {
+        pendingShow?.cancel()
+        if let monitor = mouseDownMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let panel {
+            panel.parent?.removeChildWindow(panel)
+            panel.orderOut(nil)
+        }
+        NotificationCenter.default.removeObserver(self)
+    }
+}
+
+private struct HoverHintAnchor: NSViewRepresentable {
+    let title: String
+    let status: String?
+    let active: Bool
+    let detail: String
+
+    func makeNSView(context: Context) -> HoverHintTrackingView {
+        let view = HoverHintTrackingView()
+        view.updateContent(title: title, status: status, active: active, detail: detail)
+        return view
+    }
+
+    func updateNSView(_ view: HoverHintTrackingView, context: Context) {
+        view.updateContent(title: title, status: status, active: active, detail: detail)
+    }
+}
+
+extension View {
+    /// Shows a compact darkroom-styled non-activating hover hint card above the control.
+    func instrumentHoverHint(title: String, status: String? = nil, active: Bool = false, detail: String) -> some View {
+        overlay {
+            HoverHintAnchor(title: title, status: status, active: active, detail: detail)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
 /// Lamp seated on the key face before its label, for bars too shallow for a lamp row under the keys.
 struct LampLabel<Content: View>: View {
     var on: Bool
@@ -643,11 +884,11 @@ struct KeyRow<Value: Hashable>: View {
 
 /// Background for a menu or other non-button content that must look like a joined key.
 extension View {
-    func keySurface(position: KeyPosition = .single, height: CGFloat = Metrics.key, selected: Bool = false, enabled: Bool = true, preservesAppearance: Bool = false) -> some View {
+    func keySurface(position: KeyPosition = .single, height: CGFloat = Metrics.key, selected: Bool = false, enabled: Bool = true, preservesAppearance: Bool = false, padding: CGFloat = 8, minWidth: CGFloat? = nil) -> some View {
         offset(y: KeyTravel(pressed: false, selected: selected).labelOffset(height: height))
             .font(.system(size: 12, weight: selected ? .semibold : .regular))
             .foregroundStyle(enabled || preservesAppearance ? Theme.text : Theme.textDisabled).tint(enabled || preservesAppearance ? Theme.text : Theme.textDisabled)
-            .padding(.horizontal, 8).frame(minWidth: height, minHeight: height, maxHeight: height)
+            .padding(.horizontal, padding).frame(minWidth: minWidth ?? height, minHeight: height, maxHeight: height)
             .background(KeySurface(position: position, height: height, selected: selected, enabled: enabled, preservesAppearance: preservesAppearance))
     }
 }

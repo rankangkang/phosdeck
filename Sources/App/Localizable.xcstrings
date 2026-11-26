@@ -7232,6 +7232,24 @@
         }
       }
     },
+    "app.autoAdvanceHintDetail": {
+      "extractionState": "manual",
+      "comment": "Sources/UI/WorkspaceView.swift: auto advance hover hint",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selects the next photo after flagging, rating, or labeling. Hold Shift to reverse temporarily; Caps Lock also enables continuous keyboard culling."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打标、评级或贴色标后自动切到下一张。按住 Shift 临时反转；开启大写锁定也可连续键盘选片。"
+          }
+        }
+      }
+    },
     "app.autoAdvanceSelectTheNextPhotoAfterFlaggingOr": {
       "extractionState": "manual",
       "comment": "Sources/UI/WorkspaceView.swift: 978",
