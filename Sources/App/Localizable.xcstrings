@@ -1,6 +1,176 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "library.fileType": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File Type"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件类型"
+          }
+        }
+      }
+    },
+    "library.fileModified": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File Modification Time"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原片修改时间"
+          }
+        }
+      }
+    },
+    "library.aspectRatio": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Original Aspect Ratio"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原片宽高比"
+          }
+        }
+      }
+    },
+    "library.searchableText": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Searchable Photo Text"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "照片可搜索文本"
+          }
+        }
+      }
+    },
+    "library.searchPrompt": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filename, caption, keyword or copy name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件名、题注、关键词或虚拟副本名"
+          }
+        }
+      }
+    },
+    "photoRemoval.removeRejected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove Rejected Photos from Catalog…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从图库移除已排除的照片…"
+          }
+        }
+      }
+    },
+    "photoRemoval.rejectedTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove rejected photos from the catalog?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从图库移除已排除的照片？"
+          }
+        }
+      }
+    },
+    "photoRemoval.rejectedDetails": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rejected versions in the current results: %lld, including all pages and folded stacks. Original files stay in place. You can undo this removal."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前结果共有 %lld 个已排除版本，含所有分页及折叠堆叠中的匹配项。原片保留在原位，可撤销此次移除。"
+          }
+        }
+      }
+    },
+    "photoRemoval.noRejected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No rejected photos in the current results"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前结果中没有标为排除的照片"
+          }
+        }
+      }
+    },
+    "photoRemoval.rejectedChanged": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The rejected photos in these results changed. Cancel and review them again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前结果中的废片已变更。请取消后重新核对。"
+          }
+        }
+      }
+    },
     "app.animatedOrSequenceHEIFIsNotSupported": {
       "extractionState": "manual",
       "comment": "Sources/Imaging/PhotoFileType.swift",

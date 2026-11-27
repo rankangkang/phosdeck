@@ -2,13 +2,18 @@ import Foundation
 import GRDB
 
 enum PhotoSort: String, CaseIterable, Codable, Identifiable {
-    case filename, captureDate, rating
+    case filename, captureDate, rating, flag, colorLabel, fileType, fileModified, aspectRatio
     var id: String { rawValue }
     var title: String {
         switch self {
         case .filename: return L10n.text("app.filename", defaultValue: "Filename")
         case .captureDate: return L10n.text("app.captureTime", defaultValue: "Capture Time")
         case .rating: return L10n.text("app.rating_415", defaultValue: "Rating")
+        case .flag: return L10n.text("app.pickFlag", defaultValue: "Pick Flag")
+        case .colorLabel: return L10n.text("app.colorLabel", defaultValue: "Color Label")
+        case .fileType: return L10n.text("library.fileType", defaultValue: "File Type")
+        case .fileModified: return L10n.text("library.fileModified", defaultValue: "File Modification Time")
+        case .aspectRatio: return L10n.text("library.aspectRatio", defaultValue: "Original Aspect Ratio")
         }
     }
 }
@@ -149,6 +154,11 @@ struct PhotoQuery: Equatable {
         case .filename: primary = "idx.filenameKey COLLATE BINARY" + direction
         case .captureDate: primary = "(idx.captureDay IS NULL) ASC, idx.captureDay" + direction + ", idx.captureSub" + direction
         case .rating: primary = "photo.rating" + direction
+        case .flag: primary = "photo.flag" + direction
+        case .colorLabel: primary = "photo.colorLabel" + direction
+        case .fileType: primary = "idx.fileType" + direction
+        case .fileModified: primary = "(idx.modifiedSeconds IS NULL) ASC, idx.modifiedSeconds" + direction + ", idx.modifiedNanoseconds" + direction
+        case .aspectRatio: primary = "(idx.aspectRatio IS NULL) ASC, idx.aspectRatio" + direction
         }
         if isManualCollectionOrder { return "membership.rowid ASC, photo.relativePath COLLATE BINARY ASC, photo.id ASC" }
         return primary + ", photo.relativePath COLLATE BINARY ASC, photo.id ASC"
@@ -183,9 +193,25 @@ struct PhotoQuery: Equatable {
             sql.append("photo.id IN (SELECT photoID FROM photoKeyword WHERE keyword = ?)")
             values.append(KeywordSummary.key(keyword))
         }
-        if !search.isEmpty { sql.append("idx.filename LIKE ? ESCAPE '\\' COLLATE NOCASE"); values.append("%" + Self.escape(search) + "%") }
+        var arguments: StatementArguments = StatementArguments(values)
+        if !search.isEmpty {
+            let (clause, args) = Self.textSearch(search)
+            sql.append(clause)
+            arguments += args
+        }
         let (rules, ruleArgs) = smart?.sql ?? ("1", StatementArguments())
-        return ((sql + [source, rules]).joined(separator: " AND "), StatementArguments(values) + sourceArgs + ruleArgs)
+        return ((sql + [source, rules]).joined(separator: " AND "), arguments + sourceArgs + ruleArgs)
+    }
+    static func textKey(_ value: String) -> String {
+        value.precomposedStringWithCanonicalMapping.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    static func textSearch(_ value: String) -> (String, StatementArguments) {
+        let key = textKey(value)
+        return ("""
+            (instr(idx.searchFilename, ?) > 0 OR instr(idx.searchCaption, ?) > 0 OR instr(idx.searchCopyName, ?) > 0
+             OR EXISTS (SELECT 1 FROM photoKeyword k WHERE k.photoID = photo.id AND instr(k.keyword, ?) > 0))
+            """, [key, key, key, key])
     }
     private var sourcePredicate: (String, StatementArguments) {
         let scope = smart?.source ?? self.scope
@@ -489,6 +515,12 @@ extension CatalogStore {
             let (predicate, args) = query.predicate
             return try String.fetchAll(db, sql: "SELECT photo.id FROM " + query.relation + " WHERE " + predicate + " ORDER BY " + query.order, arguments: args)
         }
+    }
+
+    static func rejectedResultIDs(_ db: Database, query: PhotoQuery) throws -> Set<String> {
+        let (predicate, args) = query.predicate
+        return try Set(String.fetchAll(db, sql: "SELECT photo.id FROM " + query.relation + " WHERE (" + predicate + ") AND photo.flag = ?",
+                                       arguments: args + [PhotoFlag.rejected.rawValue]))
     }
 
     func comparisonStacks(_ query: PhotoQuery) throws -> [PhotoStack] {

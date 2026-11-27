@@ -203,8 +203,11 @@ extension CatalogQueryTests {
         let root = try catalog.addRoot(url: directory, bookmark: Data())
         try catalog.database.write { db in
             for i in 0..<407 {
-                try Photo(id: String(format: "%04d", i), rootID: root.id, relativePath: "folder\(i % 3)/IMG_\(String(format: "%04d", 406 - i)).jpg", identity: Data(), identityKey: "sort:\(i)", rating: i % 6,
-                          captureDate: i % 17 == 0 ? nil : "2026:10:\(String(format: "%02d", i % 28 + 1)) 12:00:00", width: 1, height: 1).insert(db)
+                let fileType = ["ARW", "jpg", "JPG", "png"][i % 4]
+                let file = i % 17 == 0 ? FileIdentity.unverified : FileIdentity(device: 1, inode: UInt64(i + 1), size: 8, modifiedSeconds: Int64(i % 4), modifiedNanoseconds: Int64(i % 31))
+                let metadata = try JSONEncoder().encode(PhotoMetadata(orientation: i.isMultiple(of: 2) ? 6 : 1))
+                try Photo(id: String(format: "%04d", i), rootID: root.id, relativePath: "folder\(i % 3)/IMG_\(String(format: "%04d", 406 - i)).\(fileType)", identity: try JSONEncoder().encode(file), identityKey: "sort:\(i)", rating: i % 6, flag: i % 3 - 1, colorLabel: i % 6,
+                          captureDate: i % 17 == 0 ? nil : "2026:10:\(String(format: "%02d", i % 28 + 1)) 12:00:00", width: i % 5, height: 3, metadata: metadata).insert(db)
             }
         }
         for sort in PhotoSort.allCases {
@@ -218,6 +221,24 @@ extension CatalogQueryTests {
                 case .filename:
                     XCTAssertEqual(all.map(\.name), all.map(\.name).sorted(by: descending ? (>) : (<)))
                 case .rating: XCTAssertEqual(all.map(\.rating), all.map(\.rating).sorted(by: descending ? (>) : (<)))
+                case .flag: XCTAssertEqual(all.map(\.flag), all.map(\.flag).sorted(by: descending ? (>) : (<)))
+                case .colorLabel: XCTAssertEqual(all.map(\.colorLabel), all.map(\.colorLabel).sorted(by: descending ? (>) : (<)))
+                case .fileType:
+                    let types = all.map { ($0.name as NSString).pathExtension.lowercased() }
+                    XCTAssertEqual(types, types.sorted(by: descending ? (>) : (<)))
+                case .fileModified:
+                    let keys = try all.map { try JSONDecoder().decode(FileIdentity.self, from: $0.identity) }
+                    let dates = keys.prefix(while: { $0 != .unverified })
+                    XCTAssertEqual(dates.count, keys.filter { $0 != .unverified }.count)
+                    let times = dates.map { $0.modifiedSeconds * 1_000_000_000 + $0.modifiedNanoseconds }
+                    XCTAssertEqual(times, times.sorted(by: descending ? (>) : (<)))
+                case .aspectRatio:
+                    let known = all.prefix(while: { $0.width > 0 })
+                    XCTAssertEqual(known.count, all.filter { $0.width > 0 }.count)
+                    let ratios = known.map { photo in
+                        photo.details?.orientation == 6 ? Double(photo.height) / Double(photo.width) : Double(photo.width) / Double(photo.height)
+                    }
+                    XCTAssertEqual(ratios, ratios.sorted(by: descending ? (>) : (<)))
                 case .captureDate:
                     XCTAssertNil(all.last?.captureDate, "Missing capture times sort last in both directions")
                     let dates = all.compactMap(\.captureDate)
@@ -226,6 +247,36 @@ extension CatalogQueryTests {
             }
         }
     }
+    func testSourceSortKeysFollowReinspectionAndCatalogReopen() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        func identity(_ seconds: Int64) throws -> Data {
+            try JSONEncoder().encode(FileIdentity(device: 1, inode: UInt64(seconds), size: 1, modifiedSeconds: seconds, modifiedNanoseconds: 0))
+        }
+        do {
+            let catalog = try CatalogStore(directory: directory)
+            let root = try catalog.addRoot(url: directory, bookmark: Data())
+            for (id, seconds) in [("a", Int64(1)), ("b", 2)] {
+                try catalog.index(Photo(id: id, rootID: root.id, relativePath: id + ".jpg", identity: try identity(seconds), identityKey: id, width: 8, height: 4))
+            }
+            XCTAssertEqual(try catalog.allResultIDs(PhotoQuery(sort: .fileModified)), ["a", "b"])
+            try catalog.database.write { db in
+                try db.execute(sql: "UPDATE photo SET relativePath='a.png', metadata=?, identity=?, caption=? WHERE id='a'",
+                               arguments: [try JSONEncoder().encode(PhotoMetadata(orientation: 6)), try identity(3), "Épreuve"])
+            }
+            for sort in [PhotoSort.fileType, .fileModified] {
+                XCTAssertEqual(try catalog.allResultIDs(PhotoQuery(sort: sort)), ["b", "a"])
+            }
+            XCTAssertEqual(try catalog.allResultIDs(PhotoQuery(sort: .aspectRatio, descending: true)), ["b", "a"])
+        }
+        let reopened = try CatalogStore(directory: directory)
+        XCTAssertEqual(try reopened.allResultIDs(PhotoQuery(search: "épreuve")), ["a"])
+        for sort in [PhotoSort.fileType, .fileModified] {
+            XCTAssertEqual(try reopened.allResultIDs(PhotoQuery(sort: sort)), ["b", "a"])
+        }
+        XCTAssertEqual(try reopened.allResultIDs(PhotoQuery(sort: .aspectRatio, descending: true)), ["b", "a"])
+    }
+
     func testMetadataIntersectionMissingFieldsAndWholeCalendarDays() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

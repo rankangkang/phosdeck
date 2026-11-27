@@ -130,7 +130,8 @@ struct SettingsSheet: View {
             shortcutGroup(L10n.text("app.panelsAndInput", defaultValue: "Panels and Input"), rows: [(L10n.text("app.leftPanelRightPanelFilmstrip", defaultValue: "Left Panel / Right Panel / Filmstrip"), "⌥⌘1 / 2 / 3"), (L10n.text("app.previewApplyEndPresetPreview", defaultValue: "Preview / Apply / End Preset Preview"), "↑、↓ / Return / Esc"), (L10n.text("app.fineSliderAdjustment", defaultValue: "Fine Slider Adjustment"), L10n.text("app.holdWhileDragging", defaultValue: "Hold ⇧ while dragging")), (L10n.text("app.commitCancelNumericInput", defaultValue: "Commit / Cancel Numeric Input"), "Return / Esc")])
             shortcutGroup(L10n.text("app.sourcesAndSelection", defaultValue: "Sources and Selection"), rows: [
                 (L10n.text("photoRemoval.selectAllResults", defaultValue: "Select All Matching Photos"), "⌘A"),
-                (L10n.text("photoRemoval.deleteShortcut", defaultValue: "Remove Selected Photos in Library"), "Delete")
+                (L10n.text("photoRemoval.deleteShortcut", defaultValue: "Remove Selected Photos in Library"), "Delete"),
+                (L10n.text("photoRemoval.removeRejected", defaultValue: "Remove Rejected Photos from Catalog…"), "⌘Delete")
             ])
             Text(L10n.text("app.useForMultiSelectionInGridClickAPhoto", defaultValue: "Use ⌘ / ⇧ for multi-selection in Grid. Click a photo to toggle zoom; drag to pan when zoomed. Drag dividers to resize. The zoom menu offers 6.25%–1600%."))
                 .font(.caption11).foregroundStyle(Theme.textSecondary)

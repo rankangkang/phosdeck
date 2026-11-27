@@ -4,6 +4,8 @@
 
 Read `get_workspace` for the catalog session and the user's current view. Find sources with `list_library_sources`. For independent browsing, use `list_photos` with a `query` object, such as `{"source_id":"all","rating_threshold":4,"sort":"captureDate","descending":true}`. An empty object starts from all photos in capture order. Independent queries default to `listing=matches`, which includes folded stack members. With `listing=visible` the result follows stack folding.
 
+The `search` string matches a literal substring in the filename, version caption, keywords or virtual copy name. For an exact catalog keyword use `keyword`. Additional sort fields are `flag`, `colorLabel`, `fileType` (extension), `fileModified` (last recorded original file timestamp) and `aspectRatio` (original dimensions with EXIF orientation applied). Missing dates and dimensions sort last in either direction.
+
 Pass `next_cursor` as `cursor` for each continuation, omitting `query` and keeping its page size and listing. If the cursor expires, repeat the initial query with the current catalog session. Omit `query` on the first page to read the user's current results with the default `listing=visible`. Use `list_selected_photos` for the full selection, which can span pages and folded stacks.
 
 When the user wants to change the view, use `set_library_query` for the source, criteria, filter sections, sort, or hold mode. Omitted fields retain their values. Specify `clear_filters` when starting with new criteria, and use `filters_open` to show or hide the filter controls. With `hold_results` on, saved ratings and other edits remain visible on the same result rows. Use `refresh_library_query` when the task calls for recomputing membership.

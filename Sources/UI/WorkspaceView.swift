@@ -404,7 +404,7 @@ struct WorkspaceView: View {
     private var hasFilter: Bool { model.hasLibraryFilters }
     private var filterSummary: String {
         var parts: [String] = []
-        if model.isFilterSectionActive(.text), !model.search.isEmpty { parts.append(L10n.text("app.filename_2002", defaultValue: "Filename: ") + model.search) }
+        if model.isFilterSectionActive(.text), !model.search.isEmpty { parts.append("“" + model.search + "”") }
         if model.isFilterSectionActive(.attribute), model.ratingComparison.isActive(threshold: model.ratingThreshold) {
             parts.append(model.ratingThreshold == 0 ? L10n.text("app.unrated_2003", defaultValue: "\(model.ratingComparison.symbol) Unrated") : "\(model.ratingComparison.symbol) \(model.ratingThreshold) ★")
         }
@@ -734,8 +734,8 @@ struct WorkspaceView: View {
             filterModeBar
             if model.isFilterSectionActive(.text) {
                 HStack(spacing: 8) {
-                    SilkText(L10n.text("app.filename", defaultValue: "Filename")).foregroundStyle(Theme.textSecondary)
-                    TextField(L10n.text("app.searchFilenames", defaultValue: "Search Filenames"), text: $model.search).textFieldStyle(.instrument)
+                    SilkText(L10n.text("app.text", defaultValue: "Text")).foregroundStyle(Theme.textSecondary)
+                    TextField(L10n.text("library.searchPrompt", defaultValue: "Filename, caption, keyword or copy name"), text: $model.search).textFieldStyle(.instrument)
                         .accessibilityIdentifier("library-text-filter")
                     if !model.search.isEmpty {
                         Button { model.search = "" } label: { Image(systemName: "xmark") }
@@ -894,6 +894,8 @@ struct WorkspaceView: View {
                 }.disabled(model.active?.isVirtualCopy != true)
                 Button(L10n.text("photoRemoval.removeFromCatalog", defaultValue: "Remove from Catalog…")) { model.requestPhotoRemoval() }
                     .disabled(!model.canRemovePhotos)
+                Button(L10n.text("photoRemoval.removeRejected", defaultValue: "Remove Rejected Photos from Catalog…"), action: model.requestRejectedPhotoRemoval)
+                    .disabled(!model.canRemoveRejected)
                 Divider()
                 Toggle(L10n.text("app.holdResultsUntilManualRefresh", defaultValue: "Hold Results Until Manual Refresh"), isOn: $model.holdFilterResults)
                 Button(L10n.text("app.refreshAllResultsManually", defaultValue: "Refresh All Results Manually")) { model.refreshResults() }
@@ -1688,6 +1690,10 @@ private struct PhotoRemovalSheet: View {
                         }
                     }
                 }.frame(height: min(200, CGFloat(originals.count) * 24 + 28))
+            } else if request.rejectedQuery != nil {
+                Text(L10n.text("photoRemoval.rejectedTitle", defaultValue: "Remove rejected photos from the catalog?")).font(.headline)
+                Text(L10n.text("photoRemoval.rejectedDetails", defaultValue: "Rejected versions in the current results: \(request.ids.count), including all pages and folded stacks. Original files stay in place. You can undo this removal."))
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(L10n.text("photoRemoval.removeTitle", defaultValue: "Remove the selected photos from the catalog?")).font(.headline)
                 Text(L10n.text("photoRemoval.removeDetails", defaultValue: "Selected versions: \(request.ids.count). Original files stay in place. To recover, undo the removal or restore the versions in Review Folder Changes."))

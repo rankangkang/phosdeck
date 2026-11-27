@@ -43,7 +43,7 @@ final class SmartCollectionTests:XCTestCase {
         for field in SmartField.allCases {
             let rule:SmartRule
             switch field {
-            case .filename:rule = SmartRule(field:field,op:.contains,value:"IMG_0")
+            case .filename, .text:rule = SmartRule(field:field,op:.contains,value:"IMG_0")
             case .rating:rule = SmartRule(field:field,op:.between,value:"3",upper:"5")
             case .flag:rule = SmartRule(field:field,op:.equal,value:"1")
             case .colorLabel:rule = SmartRule(field:field,op:.equal,value:"0")
@@ -73,6 +73,35 @@ final class SmartCollectionTests:XCTestCase {
         XCTAssertThrowsError(try save(SmartRules(source:"collection:s"),id:"recursive",catalog:catalog))
         XCTAssertThrowsError(try JSONDecoder().decode(SmartRules.self,from:Data("{\"conditions\":[{\"field\":\"notImplemented\"}]}".utf8)))
     }
+    @MainActor func testTextSearchIncludesVersionMetadataAndSavedRulesFollowEdits() throws {
+        let (folder, catalog, _) = try fixture(6)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let term = "黄昏%_"
+        let copy = try XCTUnwrap(catalog.createVirtualCopies(ids: ["00000"]).first)
+        _ = try catalog.renameVersion(id: copy.id, name: "Cafe\u{301} 印样 " + term)
+        XCTAssertEqual(try catalog.allResultIDs(PhotoQuery(search: "CAFÉ")), [copy.id])
+        _ = try catalog.changeKeywords(["旅行" + term, "合影" + term], ids: ["00001"], adding: true)
+        _ = try catalog.setCaptions(["00002": term + " 港口", "00003": "黄昏30X"])
+        let query = PhotoQuery(search: term)
+        let rules = try SmartRules.from(query)
+        _ = try save(rules, catalog: catalog)
+        let expected: Set<String> = [copy.id, "00001", "00002"]
+        XCTAssertEqual(Set(try catalog.allResultIDs(query)), expected)
+        XCTAssertEqual(try catalog.members("s"), expected)
+        let inverse = SmartRule(field: .text, op: .notContains, value: term)
+        XCTAssertEqual(Set(try catalog.allResultIDs(PhotoQuery(smart: SmartRules(conditions: [inverse])))), ["00000","00003","00004","00005"])
+        let model = AppModel(previewRenderer: { _, _, _ in throw LRCError("fixture") })
+        model.catalog = catalog
+        try model.reload()
+        model.setScope("collection:s")
+        model.choose(["00002"], active: "00002")
+        _ = try model.savePhotoCaptions("港口", ids: ["00002"])
+        XCTAssertNotEqual(model.activeID, "00002")
+        XCTAssertEqual(try catalog.members("s"), [copy.id, "00001"])
+        model.undo.undo()
+        XCTAssertEqual(try catalog.members("s"), expected)
+    }
+
     func testLiveMembersOrdinarySourceCopiesPersistenceAndAny() throws {
         let (folder,catalog,root) = try fixture(12); defer { try? FileManager.default.removeItem(at:folder) }
         try catalog.collection(name:"Manual",id:"m"); try catalog.membership(ids:["00000","00001","00002"],collection:"m",add:true)

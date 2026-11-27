@@ -137,6 +137,43 @@ final class BrowseHistoryTests: XCTestCase {
         XCTAssertEqual(model.selection, selection)
     }
 
+    @MainActor func testRemoveRejectedUsesLiveFlagsInsideHeldResultsAndPreservesSelectionUntilConfirmation() throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.directory) }
+        let hidden = f.firstIDs[1], last = f.firstIDs.last!, excluded = f.firstIDs[2]
+        let stack = try XCTUnwrap(f.catalog.editStacks(.group(top: f.firstIDs[0], members: [f.firstIDs[0], hidden])).current.first)
+        _ = try f.catalog.editStacks(.collapse([stack.id], true))
+        try f.catalog.setOrganization(ids: [excluded], rating: 1)
+        let model = try makeModel(for: f.catalog)
+        model.scope = f.first.id
+        model.ratingThreshold = 5
+        model.holdFilterResults = true
+        model.photoSort = .filename
+        try model.reloadPhotos()
+        model.choose([f.firstIDs[0]], active: f.firstIDs[0])
+        model.requestRejectedPhotoRemoval()
+        XCTAssertNil(model.photoRemoval)
+        try f.catalog.setOrganization(ids: [hidden, last, excluded, f.secondIDs[0]], flag: -1)
+        model.requestRejectedPhotoRemoval()
+        let stale = try XCTUnwrap(model.photoRemoval)
+        XCTAssertEqual(stale.ids, [hidden, last])
+        XCTAssertEqual(model.selection, [f.firstIDs[0]])
+        try f.catalog.setOrganization(ids: [hidden], flag: 0)
+        XCTAssertThrowsError(try model.confirmPhotoRemoval(stale))
+        XCTAssertNotNil(try f.catalog.photo(last))
+        model.photoRemoval = nil
+        try f.catalog.setOrganization(ids: [hidden], flag: -1)
+        model.requestRejectedPhotoRemoval()
+        try model.confirmPhotoRemoval(XCTUnwrap(model.photoRemoval))
+        XCTAssertNil(try f.catalog.photo(hidden))
+        XCTAssertNil(try f.catalog.photo(last))
+        XCTAssertNotNil(try f.catalog.photo(excluded))
+        XCTAssertNotNil(try f.catalog.photo(f.secondIDs[0]))
+        model.undo.undo()
+        XCTAssertEqual(try f.catalog.photoCount(), f.firstIDs.count + f.secondIDs.count)
+        XCTAssertEqual(try f.catalog.stacks().first?.members, stack.members)
+    }
+
     @MainActor func testLibraryDeleteInRegularCollectionOnlyRemovesMembership() throws {
         let f = try fixture(firstCount: 3)
         defer { try? FileManager.default.removeItem(at: f.directory) }

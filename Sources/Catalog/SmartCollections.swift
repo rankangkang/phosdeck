@@ -4,10 +4,11 @@ import GRDB
 // Field/operator semantics adapted from LightCraft 4f0b110 catalog/rules.rs,
 // cmd/library.rs and the rules editor (MIT; see third-party notice).
 enum SmartField: String, Codable, CaseIterable, Identifiable {
-    case filename, rating, flag, colorLabel, keyword, camera, lens, iso, captureDate, virtualCopy, copyName
+    case filename, text, rating, flag, colorLabel, keyword, camera, lens, iso, captureDate, virtualCopy, copyName
     var id:String { rawValue }
     var title:String {
         switch self {
+        case .text:return L10n.text("library.searchableText", defaultValue: "Searchable Photo Text")
         case .filename:return L10n.text("app.filename", defaultValue: "Filename"); case .rating:return L10n.text("app.rating_415", defaultValue: "Rating"); case .flag:return L10n.text("app.pickFlag", defaultValue: "Pick Flag")
         case .colorLabel:return L10n.text("app.colorLabel", defaultValue: "Color Label")
         case .keyword:return L10n.text("app.keywords", defaultValue: "Keywords"); case .camera:return L10n.text("app.camera", defaultValue: "Camera"); case .lens:return L10n.text("app.lens", defaultValue: "Lens")
@@ -16,6 +17,7 @@ enum SmartField: String, Codable, CaseIterable, Identifiable {
     }
     var numeric:Bool { self == .rating || self == .flag || self == .colorLabel || self == .iso }
     var operators:[SmartOperator] {
+        if self == .text { return [.contains, .notContains] }
         if self == .virtualCopy { return [.equal] }
         if self == .rating { return [.equal,.notEqual,.atLeast,.atMost,.greaterThan,.lessThan,.between,.empty,.notEmpty] }
         if self == .colorLabel { return [.equal,.notEqual,.oneOf] }
@@ -23,8 +25,9 @@ enum SmartField: String, Codable, CaseIterable, Identifiable {
         if numeric || self == .captureDate { return [.equal,.notEqual,.atLeast,.atMost,.between,.empty,.notEmpty] }
         return [.contains,.notContains,.equal,.notEqual,.empty,.notEmpty]
     }
-    var column:String {
+    var column:String? {
         switch self {
+        case .text:return nil
         case .filename:return "idx.filename"; case .rating:return "photo.rating"; case .flag:return "photo.flag"
         case .colorLabel:return "photo.colorLabel"
         case .keyword:return "keyword"; case .camera:return "photo.camera"; case .lens:return "idx.lens"
@@ -74,7 +77,10 @@ struct SmartRule:Codable,Equatable,Hashable,Identifiable {
     }
     var sql:(String,StatementArguments) {
         guard (try? validate()) != nil else { return ("0",[]) }
-        let column = field.column
+        guard let column = field.column else {
+            let (clause, args) = PhotoQuery.textSearch(value)
+            return (op == .notContains ? "NOT " + clause : clause, args)
+        }
         if op == .oneOf {
             let labels = value.split(separator: ",").compactMap { Int($0) }
             return (column + " IN (" + labels.map { _ in "?" }.joined(separator: ",") + ")", StatementArguments(labels))
@@ -135,7 +141,7 @@ struct SmartRules:Codable,Equatable,Hashable {
         }
         guard query.metadata.validationMessage == nil else { throw LRCError(query.metadata.validationMessage!) }
         var rules = [SmartRule(field:.rating,op:query.ratingComparison.smartOperator,value:String(query.ratingThreshold))]
-        if !query.search.isEmpty { rules.append(SmartRule(field:.filename,op:.contains,value:query.search)) }
+        if !query.search.isEmpty { rules.append(SmartRule(field:.text,op:.contains,value:query.search)) }
         if query.flags.count == 1, let flag = query.flags.first { rules.append(SmartRule(field:.flag,op:.equal,value:String(flag))) }
         else if query.flags.count == 2, let excluded = Set([-1,0,1]).subtracting(query.flags).first {
             rules.append(SmartRule(field:.flag,op:.notEqual,value:String(excluded)))

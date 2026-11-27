@@ -136,12 +136,13 @@ final class CatalogStore: @unchecked Sendable {
             db.add(function: DatabaseFunction("photo_day", argumentCount: 1, pure: true) { values in
                 LibraryMetadataFilter.day(String.fromDatabaseValue(values[0]))
             })
-            db.add(function: DatabaseFunction("photo_lens", argumentCount: 1, pure: true) { values in
-                Data.fromDatabaseValue(values[0]).flatMap { try? JSONDecoder().decode(PhotoMetadata.self, from: $0) }?.lens
+            db.add(function: DatabaseFunction("photo_file_type", argumentCount: 1, pure: true) { values in
+                guard let path = String.fromDatabaseValue(values[0]) else { return nil }
+                return (path as NSString).pathExtension.lowercased()
             })
-            db.add(function: DatabaseFunction("photo_iso", argumentCount: 1, pure: true) { values in
-                guard let data = Data.fromDatabaseValue(values[0]), let iso = (try? JSONDecoder().decode(PhotoMetadata.self, from: data))?.iso, iso > 0 else { return nil }
-                return iso
+            db.add(function: DatabaseFunction("photo_text_key", argumentCount: 1, pure: true) { values in
+                guard let text = String.fromDatabaseValue(values[0]), !text.isEmpty else { return "" }
+                return PhotoQuery.textKey(text)
             })
             try db.execute(sql: "CREATE TEMP TABLE browseSnapshot (snapshotID TEXT NOT NULL, photoID TEXT NOT NULL, position INTEGER NOT NULL, PRIMARY KEY(snapshotID, photoID), UNIQUE(snapshotID, position))")
             try db.execute(sql: """
@@ -152,7 +153,14 @@ final class CatalogStore: @unchecked Sendable {
                     captureDay TEXT,
                     captureSub TEXT,
                     lens TEXT,
-                    iso INTEGER
+                    iso INTEGER,
+                    fileType TEXT NOT NULL,
+                    modifiedSeconds INTEGER,
+                    modifiedNanoseconds INTEGER,
+                    aspectRatio REAL,
+                    searchFilename TEXT NOT NULL,
+                    searchCaption TEXT NOT NULL,
+                    searchCopyName TEXT NOT NULL
                 )
                 """)
             try db.execute(sql: "PRAGMA foreign_keys = ON")
@@ -247,43 +255,35 @@ final class CatalogStore: @unchecked Sendable {
     /// Materialize per-session searchable/sortable fields into `temp.photoIndex`
     /// without altering the on-disk schema, and keep it synchronized via TEMP triggers.
     private static func initializePhotoIndex(in db: Database) throws {
-        let insert = try db.makeStatement(sql: "INSERT INTO photoIndex (photoID,filename,filenameKey,captureDay,captureSub,lens,iso) VALUES (?,?,?,?,?,?,?)")
-        let cursor = try Row.fetchCursor(db, sql: "SELECT id, relativePath, captureDate, metadata FROM photo")
-        while let row = try cursor.next() {
-            let id: String = row["id"]
-            let path: String = row["relativePath"]
-            let captureDate: String? = row["captureDate"]
-            let metadataBlob: Data? = row["metadata"]
-            let name = Self.photoFilename(path)
-            let key = name.utf8.allSatisfy({ $0 < 128 })
-                ? name.lowercased()
-                : name.precomposedStringWithCanonicalMapping.unicodeScalars.map { String($0).lowercased() }.joined()
-            let day = LibraryMetadataFilter.day(captureDate)
-            let sub = captureDate.map { String($0.dropFirst(10)) }
-            var lens: String?
-            var iso: Int?
-            if let metadataBlob,
-               let dict = (try? JSONSerialization.jsonObject(with: metadataBlob)) as? [String: Any] {
-                lens = dict["lens"] as? String
-                if let value = dict["iso"] as? Int, value > 0 { iso = value }
-            }
-            try insert.execute(arguments: [id, name, key, day, sub, lens, iso])
-        }
+        // Use the same projection on open, import and source reinspection. All keys
+        // come from the catalog, including timestamps for currently offline originals.
         try db.execute(sql: """
+            CREATE TEMP VIEW photoIndexValues AS
+            SELECT id AS photoID, photo_filename(relativePath) AS filename, photo_filename_key(relativePath) AS filenameKey,
+                   photo_day(captureDate) AS captureDay, substr(captureDate, 11) AS captureSub,
+                   meta ->> '$.lens' AS lens,
+                   CASE WHEN json_type(meta, '$.iso') = 'integer' AND meta ->> '$.iso' > 0 THEN meta ->> '$.iso' END AS iso,
+                   photo_file_type(relativePath) AS fileType,
+                   CASE WHEN file ->> '$.inode' != 0 OR file ->> '$.device' != 0 THEN file ->> '$.modifiedSeconds' END AS modifiedSeconds,
+                   CASE WHEN file ->> '$.inode' != 0 OR file ->> '$.device' != 0 THEN file ->> '$.modifiedNanoseconds' END AS modifiedNanoseconds,
+                   CASE WHEN width > 0 AND height > 0 THEN
+                       CASE WHEN meta ->> '$.orientation' BETWEEN 5 AND 8 THEN 1.0 * height / width ELSE 1.0 * width / height END
+                   END AS aspectRatio,
+                   photo_text_key(photo_filename(relativePath)) AS searchFilename,
+                   photo_text_key(caption) AS searchCaption, photo_text_key(copyName) AS searchCopyName
+            FROM (SELECT id, relativePath, captureDate, width, height, caption, copyName,
+                         CASE WHEN json_valid(CAST(metadata AS TEXT)) THEN CAST(metadata AS TEXT) END AS meta,
+                         CASE WHEN json_valid(CAST(identity AS TEXT)) THEN CAST(identity AS TEXT) END AS file
+                  FROM main.photo);
+            INSERT INTO photoIndex SELECT * FROM photoIndexValues;
             CREATE INDEX temp.photoIndex_filenameKey ON photoIndex(filenameKey, photoID);
             CREATE INDEX temp.photoIndex_day ON photoIndex(captureDay, captureSub, photoID);
             CREATE INDEX temp.photoIndex_iso ON photoIndex(iso, photoID);
             CREATE TEMP TRIGGER photoIndex_insert AFTER INSERT ON photo BEGIN
-                INSERT OR REPLACE INTO photoIndex (photoID,filename,filenameKey,captureDay,captureSub,lens,iso)
-                VALUES (NEW.id, photo_filename(NEW.relativePath), photo_filename_key(NEW.relativePath),
-                        photo_day(NEW.captureDate), substr(NEW.captureDate, 11),
-                        photo_lens(NEW.metadata), photo_iso(NEW.metadata));
+                INSERT OR REPLACE INTO photoIndex SELECT * FROM photoIndexValues WHERE photoID = NEW.id;
             END;
-            CREATE TEMP TRIGGER photoIndex_update AFTER UPDATE OF relativePath, captureDate, metadata ON photo BEGIN
-                INSERT OR REPLACE INTO photoIndex (photoID,filename,filenameKey,captureDay,captureSub,lens,iso)
-                VALUES (NEW.id, photo_filename(NEW.relativePath), photo_filename_key(NEW.relativePath),
-                        photo_day(NEW.captureDate), substr(NEW.captureDate, 11),
-                        photo_lens(NEW.metadata), photo_iso(NEW.metadata));
+            CREATE TEMP TRIGGER photoIndex_update AFTER UPDATE OF relativePath, captureDate, metadata, identity, width, height, caption, copyName ON photo BEGIN
+                INSERT OR REPLACE INTO photoIndex SELECT * FROM photoIndexValues WHERE photoID = NEW.id;
             END;
             CREATE TEMP TRIGGER photoIndex_delete AFTER DELETE ON photo BEGIN
                 DELETE FROM photoIndex WHERE photoID = OLD.id;
@@ -1119,8 +1119,12 @@ extension CatalogStore {
     /// Catalog-only deletion. Retain recipes, history, attachments and original
     /// bytes for undo and source siblings. No filesystem deletion or asset GC.
     func setVersionDeletion(_ states: [String: Bool], restoringStacks: [PhotoStack]? = nil,
-                            expecting: [String: PhotoVersionRevision] = [:], requireLive: Bool = false) throws -> [String: Bool] {
+                            expecting: [String: PhotoVersionRevision] = [:], requireLive: Bool = false,
+                            rejectedQuery: PhotoQuery? = nil) throws -> [String: Bool] {
         try database.write { db in
+            if let rejectedQuery, try Self.rejectedResultIDs(db, query: rejectedQuery) != Set(states.keys) {
+                throw Self.rejectedResultsChanged
+            }
             var inverse = [String: Bool]()
             for (id,deleted) in states {
                 guard let photo = try Photo.fetchOne(db,key:id) else { throw LRCError(L10n.text("app.theVersionDoesNotExist", defaultValue: "The version does not exist")) }
@@ -1137,5 +1141,9 @@ extension CatalogStore {
             try Self.writeStacks(restoringStacks ?? stacks,db:db)
             return inverse
         }
+    }
+
+    static var rejectedResultsChanged: LRCError {
+        LRCError(L10n.text("photoRemoval.rejectedChanged", defaultValue: "The rejected photos in these results changed. Cancel and review them again."))
     }
 }

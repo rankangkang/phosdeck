@@ -6,6 +6,7 @@ struct PhotoRemovalRequest: Identifiable {
     let catalog: CatalogStore
     let ids: Set<String>
     let originals: [PhotoTrashItem]?
+    var rejectedQuery: PhotoQuery?
 }
 
 struct PhotoTrashItem: Identifiable, Equatable, Sendable {
@@ -93,6 +94,20 @@ struct PhotoTrashItem: Identifiable, Equatable, Sendable {
 extension AppModel {
     var canRemovePhotos: Bool { canSelectAllResults && !selection.isEmpty }
     var canTrashPhotos: Bool { canRemovePhotos && (selection.count > 1 || active?.isVirtualCopy == false) }
+    var canRemoveRejected: Bool { canSelectAllResults && !editMode && resultCount > 0 }
+
+    func requestRejectedPhotoRemoval() {
+        guard canRemoveRejected, let catalog, commitRecipe() else { return }
+        perform {
+            let query = self.query
+            let ids = try catalog.database.read { try CatalogStore.rejectedResultIDs($0, query: query) }
+            guard !ids.isEmpty else {
+                showNotice(L10n.text("photoRemoval.noRejected", defaultValue: "No rejected photos in the current results"))
+                return
+            }
+            photoRemoval = PhotoRemovalRequest(catalog: catalog, ids: ids, originals: nil, rejectedQuery: query)
+        }
+    }
 
     func deleteLibrarySelection() {
         guard canRemovePhotos else { return }
@@ -123,11 +138,14 @@ extension AppModel {
     }
 
     func confirmPhotoRemoval(_ request: PhotoRemovalRequest) throws {
-        guard photoRemoval?.id == request.id, catalog === request.catalog, selection == request.ids, !busy else {
+        guard photoRemoval?.id == request.id, catalog === request.catalog, !busy else {
             throw OrganizationError.photoUnavailable
         }
+        if let rejectedQuery = request.rejectedQuery {
+            guard query == rejectedQuery else { throw CatalogStore.rejectedResultsChanged }
+        } else if selection != request.ids { throw OrganizationError.photoUnavailable }
         guard let items = request.originals else {
-            _ = try removePhotoVersions(request.ids)
+            _ = try removePhotoVersions(request.ids, rejectedQuery: request.rejectedQuery)
             photoRemoval = nil
             return
         }

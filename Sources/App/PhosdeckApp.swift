@@ -254,6 +254,9 @@ struct WorkspaceCommands: Commands {
             }
             Button(L10n.text("photoRemoval.removeFromCatalog", defaultValue: "Remove from Catalog…")) { model.requestPhotoRemoval() }
                 .disabled(!workspace || !model.canRemovePhotos)
+            Button(L10n.text("photoRemoval.removeRejected", defaultValue: "Remove Rejected Photos from Catalog…"), action: model.requestRejectedPhotoRemoval)
+                .keyboardShortcut(responder.state.textEditing ? nil : KeyboardShortcut(.delete, modifiers: .command))
+                .disabled(!workspace || !model.canRemoveRejected)
             Button(L10n.text("photoRemoval.trash", defaultValue: "Move Originals to Trash…")) { model.requestPhotoRemoval(trash: true) }
                 .disabled(!workspace || !model.canTrashPhotos)
         }

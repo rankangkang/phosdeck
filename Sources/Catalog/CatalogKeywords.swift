@@ -9,8 +9,7 @@ struct KeywordSummary: FetchableRecord, Decodable, Identifiable, Equatable {
     var id: String { keyword }
 
     static func key(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping
-            .folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
+        PhotoQuery.textKey(value.trimmingCharacters(in: .whitespacesAndNewlines))
     }
     /// Commas separate terms; validate the entire draft before any database write.
     static func terms(_ input: String) throws -> [String] {

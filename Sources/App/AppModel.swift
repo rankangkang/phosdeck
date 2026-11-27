@@ -2176,7 +2176,8 @@ final class AppModel {
         let previous = try catalog.setCaptions(Dictionary(uniqueKeysWithValues: ids.map { ($0, value) }), expecting: expecting)
         guard !previous.isEmpty else { return previous }
         registerCatalogUndo(L10n.text("app.editCaption", defaultValue: "Edit Caption"), closed: closedUndo) { $0.restoreCaptions(previous) }
-        if closedUndo { perform { try reloadPhotos() } } else { try reloadPhotos() }
+        if closedUndo { perform { try reloadCaptionResults(preserveEmptySelection: true) } }
+        else { try reloadCaptionResults() }
         status = L10n.text("app.updatedCaptionsForPhotos", defaultValue: "Updated captions for \(previous.count) photos")
         return previous
     }
@@ -2185,7 +2186,14 @@ final class AppModel {
         perform {
             let inverse = try catalog.setCaptions(values)
             undo.registerUndo(withTarget: self) { $0.restoreCaptions(inverse) }
-            try reloadPhotos()
+            try reloadCaptionResults()
+        }
+    }
+    private func reloadCaptionResults(preserveEmptySelection: Bool = false) throws {
+        try reloadPhotos()
+        if (!query.search.isEmpty || query.smart?.conditions.contains(where: { $0.field == .text }) == true),
+           !preserveEmptySelection || activeID != nil || !selection.isEmpty {
+            reconcileVisibleSelection()
         }
     }
     func makeCollection(name: String, id: String? = nil) {
@@ -4249,11 +4257,12 @@ extension AppModel {
         }
         return (made, previousStacks, refreshed)
     }
-    func removePhotoVersions(_ ids: Set<String>, expecting: [String: PhotoVersionRevision] = [:], closedUndo: Bool = false) throws
+    func removePhotoVersions(_ ids: Set<String>, expecting: [String: PhotoVersionRevision] = [:], closedUndo: Bool = false,
+                             rejectedQuery: PhotoQuery? = nil) throws
         -> (previousStacks: [PhotoStack], refreshed: Bool) {
         let title = L10n.text("app.removeEditVersion", defaultValue: "Remove Edit Version")
         return try setPhotoVersionDeletion(Dictionary(uniqueKeysWithValues: ids.map { ($0, true) }),
-                                           title: title, expecting: expecting, closedUndo: closedUndo)
+                                           title: title, expecting: expecting, closedUndo: closedUndo, rejectedQuery: rejectedQuery)
     }
     private func restoreVersionDeletion(_ states: [String: Bool], stacks: [PhotoStack], preserveUnrelatedDraft: Bool, title: String) {
         guard (preserveUnrelatedDraft && states[activeID ?? ""] == nil) || commitRecipe() else { return }
@@ -4262,11 +4271,12 @@ extension AppModel {
         }
     }
     private func setPhotoVersionDeletion(_ states: [String: Bool], stacks: [PhotoStack]? = nil, preserveUnrelatedDraft: Bool = false,
-                                         title: String, expecting: [String: PhotoVersionRevision] = [:], closedUndo: Bool = false) throws
+                                         title: String, expecting: [String: PhotoVersionRevision] = [:], closedUndo: Bool = false,
+                                         rejectedQuery: PhotoQuery? = nil) throws
         -> (previousStacks: [PhotoStack], refreshed: Bool) {
         guard let catalog else { throw OrganizationError.photoUnavailable }
         let oldStacks = try catalog.stacks(), oldSelection = selection, oldActive = activeID
-        let inverse = try catalog.setVersionDeletion(states, restoringStacks: stacks, expecting: expecting, requireLive: closedUndo)
+        let inverse = try catalog.setVersionDeletion(states, restoringStacks: stacks, expecting: expecting, requireLive: closedUndo, rejectedQuery: rejectedQuery)
         registerCatalogUndo(title, closed: closedUndo) { target in
             target.restoreVersionDeletion(inverse, stacks: oldStacks, preserveUnrelatedDraft: preserveUnrelatedDraft, title: title)
             target.restoreStackSelection(oldSelection, active: oldActive)
@@ -4292,7 +4302,12 @@ extension AppModel {
             guard target.commitRecipe() else { return }
             target.perform { _ = try target.renamePhotoVersion(id: id, name: previous, expecting: current) }
         }
-        return (previous, current, perform { try reload() })
+        return (previous, current, perform {
+            try reload()
+            if (!query.search.isEmpty || query.smart != nil), !closedUndo || activeID != nil || !selection.isEmpty {
+                reconcileVisibleSelection()
+            }
+        })
     }
     func openVersion(_ id:String) {
         guard workspaceAvailable, commitRecipe(), let catalog else { return }
