@@ -6,6 +6,7 @@ documentation hygiene). Run from anywhere: python3 scripts/check-harness.py
 """
 from collections import defaultdict
 from pathlib import Path
+import json
 import re
 import subprocess
 import sys
@@ -222,6 +223,267 @@ def check_test_map_sync(errors: list[str]) -> None:
         errors.append(f"docs/architecture.md: 测试映射表引用了不存在的 {stale}")
 
 
+def check_design_token_sync(errors: list[str]) -> None:
+    tokens_path = REPO / "design/darkroom_instrument_tokens_v3.json"
+    theme_path = REPO / "Sources/UI/DarkroomTheme.swift"
+    if not tokens_path.exists() or not theme_path.exists():
+        return
+    tokens = json.loads(tokens_path.read_text(encoding="utf-8"))
+    swift = theme_path.read_text(encoding="utf-8")
+
+    pairs = {
+        m.group(1): (f"#{m.group(2).upper()}", f"#{m.group(3).upper()}")
+        for m in re.finditer(
+            r"static let (\w+)\s*=\s*pair\(0x([0-9A-Fa-f]{6}),\s*0x([0-9A-Fa-f]{6})\)",
+            swift,
+        )
+    }
+    hexes = {
+        m.group(1): f"#{m.group(2).upper()}"
+        for m in re.finditer(r"static let (\w+)\s*=\s*hex\(0x([0-9A-Fa-f]{6})\)", swift)
+    }
+
+    ivory = tokens["themes"]["ivory"]["colors"]
+    graphite = tokens["themes"]["graphite"]["colors"]
+    shared = tokens["sharedColors"]
+
+    theme_pair_map = {
+        "surfaceBase": "surface.base",
+        "surfacePanel": "surface.panel",
+        "surfaceRaised": "surface.raised",
+        "surfaceInset": "surface.inset",
+        "surfaceSelected": "surface.selected",
+        "plateTop": "plate.top",
+        "plateBottom": "plate.bottom",
+        "textPrimary": "text.primary",
+        "textSecondary": "text.secondary",
+        "textDisabled": "text.disabled",
+        "separator": "border.separator",
+        "seamLight": "border.seamLight",
+        "controlBorder": "border.control",
+        "accentText": "accent.text",
+        "accentSignal": "accent.signal",
+        "focusRing": "focus.ring",
+        "error": "status.error",
+        "success": "status.success",
+        "warning": "status.warning",
+        "lampOn": "lamp.on",
+        "lampSocket": "lamp.socket",
+        "lampOff": "lamp.off",
+        "capTop": "cap.top",
+        "capBottom": "cap.bottom",
+        "materialEdge": "material.edge",
+        "knobRimTop": "knob.rimTop",
+        "knobRimBottom": "knob.rimBottom",
+        "keyLip": "key.lip",
+        "keyLipSelected": "key.lipSelected",
+        "keyHeld": "key.held",
+        "keyTop": "key.top",
+        "keyBottom": "key.bottom",
+    }
+    theme_single_map = {
+        "keyPrimaryLip": "key.primaryLip",
+        "keyPrimary": "key.primary",
+        "keyPrimaryTop": "key.primaryTop",
+        "keyPrimaryBottom": "key.primaryBottom",
+        "keyPrimaryText": "key.primaryText",
+        "keyPrimaryEdge": "key.primaryEdge",
+    }
+    shared_map = {
+        "lampSpecular": "lamp.specular",
+        "labelRed": "photoLabel.red",
+        "labelYellow": "photoLabel.yellow",
+        "labelGreen": "photoLabel.green",
+        "labelBlue": "photoLabel.blue",
+        "labelPurple": "photoLabel.purple",
+        "scopeBackground": "scope.background",
+        "scopeBezel": "scope.bezel",
+        "scopeGrid": "scope.grid",
+        "scopeAxis": "scope.axis",
+        "scopeText": "scope.text",
+        "scopeLampOff": "scope.lamp.off",
+        "traceNeutral": "scope.trace.neutral",
+        "traceActive": "scope.trace.active",
+        "traceRed": "scope.trace.red",
+        "traceGreen": "scope.trace.green",
+        "traceBlue": "scope.trace.blue",
+        "clipHighlight": "photoOverlay.clipHighlight",
+        "clipShadow": "photoOverlay.clipShadow",
+        "overlayLight": "photoOverlay.light",
+        "overlayDark": "photoOverlay.dark",
+    }
+
+    for swift_name, token_key in theme_pair_map.items():
+        if swift_name not in pairs:
+            errors.append(f"Sources/UI/DarkroomTheme.swift: 缺少 Palette.{swift_name}（对应 {token_key}）")
+            continue
+        iv, gr = pairs[swift_name]
+        if ivory.get(token_key, "").upper() != iv or graphite.get(token_key, "").upper() != gr:
+            errors.append(
+                f"设计 Token 不同步: Palette.{swift_name}=({iv}, {gr}) != {token_key}=({ivory.get(token_key)}, {graphite.get(token_key)})"
+            )
+
+    for swift_name, token_key in theme_single_map.items():
+        if swift_name not in hexes:
+            errors.append(f"Sources/UI/DarkroomTheme.swift: 缺少 Palette.{swift_name}（对应 {token_key}）")
+            continue
+        val = hexes[swift_name]
+        if ivory.get(token_key, "").upper() != val or graphite.get(token_key, "").upper() != val:
+            errors.append(
+                f"设计 Token 不同步: Palette.{swift_name}={val} != {token_key}=({ivory.get(token_key)}, {graphite.get(token_key)})"
+            )
+
+    for swift_name, token_key in shared_map.items():
+        if swift_name not in hexes:
+            errors.append(f"Sources/UI/DarkroomTheme.swift: 缺少 Palette.{swift_name}（对应 sharedColors.{token_key}）")
+            continue
+        val = hexes[swift_name]
+        if shared.get(token_key, "").upper() != val:
+            errors.append(
+                f"设计 Token 不同步: Palette.{swift_name}={val} != sharedColors.{token_key}={shared.get(token_key)}"
+            )
+
+    for extra in sorted(set(pairs) - set(theme_pair_map)):
+        errors.append(f"Sources/UI/DarkroomTheme.swift: Palette.{extra} 未在 check-harness.py 与 design/darkroom_instrument_tokens_v3.json 中登记同步")
+    for extra in sorted(set(hexes) - set(theme_single_map) - set(shared_map)):
+        errors.append(f"Sources/UI/DarkroomTheme.swift: Palette.{extra} 未在 check-harness.py 与 design/darkroom_instrument_tokens_v3.json 中登记同步")
+
+    metrics_match = re.search(r"enum Metrics \{([\s\S]*?)\n\}", swift)
+    if not metrics_match:
+        errors.append("Sources/UI/DarkroomTheme.swift: 未找到 enum Metrics")
+        return
+    metrics_body = metrics_match.group(1)
+
+    scalar_metrics = {
+        m.group(1): float(m.group(2))
+        for m in re.finditer(r"static let (\w+)(?::\s*CGFloat)?\s*=\s*(-?\d+(?:\.\d+)?)\b", metrics_body)
+    }
+    layout = tokens["layout"]
+    radius = tokens["radius"]
+    comps = tokens["components"]
+    scalar_map = {
+        "topBar": ("layout.topBarHeight", layout["topBarHeight"]),
+        "topBarKeyLine": ("layout.topBarKeyCenterFromTop", layout["topBarKeyCenterFromTop"]),
+        "photoInfoBar": ("layout.photoInfoBarHeight", layout["photoInfoBarHeight"]),
+        "rim": ("layout.chassisRim", layout["chassisRim"]),
+        "toolbar": ("layout.centerToolbarHeight", layout["centerToolbarHeight"]),
+        "statusBar": ("layout.statusBarHeight", layout["statusBarHeight"]),
+        "photoDisplayBezel": ("components.photoDisplayFrame.width", comps["photoDisplayFrame"]["width"]),
+        "importDuplicateShade": ("components.thumbnail.importDuplicateShadeOpacity", comps["thumbnail"]["importDuplicateShadeOpacity"]),
+        "photoMinWidth": ("layout.photoViewportMinWidth", layout["photoViewportMinWidth"]),
+        "cameraLookDockWidth": ("layout.cameraLookDockWidth", layout["cameraLookDockWidth"]),
+        "compactMaskWindowHeight": ("layout.compactMaskWindowHeightExclusive", layout["compactMaskWindowHeightExclusive"]),
+        "padding": ("layout.panelPadding", layout["panelPadding"]),
+        "sectionHeader": ("layout.sectionHeaderHeight", layout["sectionHeaderHeight"]),
+        "row": ("layout.parameterRowHeight.default", layout["parameterRowHeight"]["default"]),
+        "rowLabel": ("layout.parameterColumnsAtDefaultInspector.label", layout["parameterColumnsAtDefaultInspector"]["label"]),
+        "rowValue": ("layout.parameterColumnsAtDefaultInspector.value", layout["parameterColumnsAtDefaultInspector"]["value"]),
+        "rowUnit": ("layout.parameterColumnsAtDefaultInspector.unitWithinValue", layout["parameterColumnsAtDefaultInspector"]["unitWithinValue"]),
+        "gap": ("layout.parameterColumnsAtDefaultInspector.gap1", layout["parameterColumnsAtDefaultInspector"]["gap1"]),
+        "key": ("components.key.defaultHeight", comps["key"]["defaultHeight"]),
+        "keyRadius": ("radius.key", radius["key"]),
+        "inputRadius": ("radius.input", radius["input"]),
+        "scopeRadius": ("radius.scope", radius["scope"]),
+        "lamp": ("components.lamp.diameter", comps["lamp"]["diameter"]),
+        "switchTravel": ("components.toggle.capTravel", comps["toggle"]["capTravel"]),
+        "leverTravel": ("components.leverSwitch.capTravel", comps["leverSwitch"]["capTravel"]),
+    }
+    for swift_name, (token_path, expected) in scalar_map.items():
+        actual = scalar_metrics.get(swift_name)
+        if actual is None:
+            errors.append(f"Sources/UI/DarkroomTheme.swift: 缺少 Metrics.{swift_name}（对应 {token_path}）")
+        elif abs(actual - float(expected)) > 1e-6:
+            errors.append(f"设计尺寸不同步: Metrics.{swift_name}={actual:g} != {token_path}={expected}")
+
+    size_metrics = {
+        m.group(1): (float(m.group(2)), float(m.group(3)))
+        for m in re.finditer(
+            r"static let (\w+)\s*=\s*CGSize\(width:\s*(\d+(?:\.\d+)?),\s*height:\s*(\d+(?:\.\d+)?)\)",
+            metrics_body,
+        )
+    }
+    size_map = {
+        "focusMark": ("stroke.focusMark", (tokens["stroke"]["focusMarkWidthPt"], tokens["stroke"]["focusMarkHeightPt"])),
+        "switchTrack": ("components.toggle", (comps["toggle"]["width"], comps["toggle"]["height"])),
+        "switchCap": ("components.toggle.cap", (comps["toggle"]["capWidth"], comps["toggle"]["capHeight"])),
+        "leverTrack": ("components.leverSwitch", (comps["leverSwitch"]["width"], comps["leverSwitch"]["height"])),
+        "leverCap": ("components.leverSwitch.cap", (comps["leverSwitch"]["capWidth"], comps["leverSwitch"]["capHeight"])),
+    }
+    for swift_name, (token_path, expected) in size_map.items():
+        actual = size_metrics.get(swift_name)
+        if actual is None:
+            errors.append(f"Sources/UI/DarkroomTheme.swift: 缺少 Metrics.{swift_name}（对应 {token_path}）")
+        elif abs(actual[0] - float(expected[0])) > 1e-6 or abs(actual[1] - float(expected[1])) > 1e-6:
+            errors.append(f"设计尺寸不同步: Metrics.{swift_name}={actual} != {token_path}={expected}")
+
+    audit_meta = tokens.get("contrastAudit", {})
+    audit_rel = audit_meta.get("auditFile")
+    if audit_rel:
+        audit_path = REPO / audit_rel
+        if not audit_path.exists():
+            errors.append(f"design/darkroom_instrument_tokens_v3.json: contrastAudit.auditFile 不存在 {audit_rel}")
+        else:
+            audit_data = json.loads(audit_path.read_text(encoding="utf-8"))
+            pairs_count = len(audit_data.get("pairs", []))
+            if audit_meta.get("checkedPairCount") != pairs_count:
+                errors.append(
+                    f"{audit_rel}: pairs 数量 ({pairs_count}) 与 tokens.contrastAudit.checkedPairCount ({audit_meta.get('checkedPairCount')}) 不一致"
+                )
+
+
+def check_ui_design_guards(errors: list[str]) -> None:
+    ui_dir = REPO / "Sources/UI"
+    if not ui_dir.exists():
+        return
+    max_overlay_radius = 4.0
+    rules = [
+        (
+            re.compile(r"\bSlider\s*\("),
+            "禁止使用原生 Slider，请改用 AdjustmentRow / GradientAdjustmentSlider / DetentSlider（见 design/darkroom_instrument_design_system_v3.md）",
+        ),
+        (
+            re.compile(r"\bGroupBox\b|\.(?:ultraThin|thin|regular|thick|ultraThick)Material\b"),
+            "禁止使用 GroupBox 或系统玻璃 Material，请改用 InstrumentPlate() 与 Seam() / Hairline()",
+        ),
+        (
+            re.compile(r"\.buttonStyle\(\s*\.(?:bordered|borderedProminent)\b"),
+            "禁止使用系统 bordered/borderedProminent 按钮样式，请改用 .key / .ghostTool / PrimaryKeyStyle",
+        ),
+        (
+            re.compile(r"\.toggleStyle\(\s*\.switch\b"),
+            "禁止使用系统 .switch 开关样式，请改用 .toggleStyle(.instrument) 或 .latchingKey",
+        ),
+        (
+            re.compile(
+                r"\bColor\.accentColor\b|\.foregroundStyle\(\s*\.(?:accentColor|secondary|primary|blue|orange|yellow|purple|pink|gray)\b"
+            ),
+            "禁止使用系统强调色或裸语义色，请改用 Theme.* 或 PhotoMat（mat.text / mat.textSecondary）",
+        ),
+    ]
+    radius_re = re.compile(r"RoundedRectangle\(\s*cornerRadius:\s*(\d+(?:\.\d+)?)\b")
+
+    for swift_file in sorted(ui_dir.rglob("*.swift")):
+        rel = swift_file.relative_to(REPO).as_posix()
+        text = swift_file.read_text(encoding="utf-8", errors="ignore")
+        if swift_file.name.endswith("Sheet.swift") and ".instrumentForm()" not in text:
+            errors.append(
+                f"{rel}: 独立表单/弹窗须在根节点应用 .instrumentForm()（见 design/darkroom_instrument_design_system_v3.md）"
+            )
+        for lineno, raw_line in enumerate(text.splitlines(), 1):
+            code = re.sub(r"//.*$", "", raw_line)
+            if not code.strip():
+                continue
+            for pattern, message in rules:
+                if pattern.search(code):
+                    errors.append(f"{rel}:{lineno}: {message}")
+            for m in radius_re.finditer(code):
+                val = float(m.group(1))
+                if val > max_overlay_radius:
+                    errors.append(
+                        f"{rel}:{lineno}: RoundedRectangle(cornerRadius: {m.group(1)}) 超过 customOverlayMaximum ({int(max_overlay_radius)} pt)"
+                    )
+
+
 def main() -> int:
     errors: list[str] = []
     files = git_tracked_and_untracked()
@@ -232,6 +494,8 @@ def main() -> int:
     check_markdown_anchors(files, errors)
     check_project_yml_resources(errors)
     check_test_map_sync(errors)
+    check_design_token_sync(errors)
+    check_ui_design_guards(errors)
 
     if errors:
         print("AI 基建与架构检查失败：", file=sys.stderr)

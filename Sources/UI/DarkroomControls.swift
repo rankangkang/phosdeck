@@ -570,10 +570,10 @@ private struct HoverHintCard: View {
         .padding(.vertical, 8)
         .frame(maxWidth: 236, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(Theme.panel)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .strokeBorder(Theme.controlBorder, lineWidth: 0.75)
                 )
                 .shadow(color: Color.black.opacity(0.22), radius: 5, y: 2)

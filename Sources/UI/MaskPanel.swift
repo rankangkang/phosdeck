@@ -598,7 +598,7 @@ private struct MaskThumbnail: View {
         ZStack {
             Color.black
             if let image { Image(decorative: image, scale: 1).resizable().scaledToFit() }
-            else { Image(systemName: "circle.dotted").foregroundStyle(.secondary) }
+            else { Image(systemName: "circle.dotted").foregroundStyle(Theme.textSecondary) }
         }.frame(width: 30, height: 26).overlay(Rectangle().strokeBorder(Theme.controlBorder)).accessibilityHidden(true)
         .task(id: Input(group: group, recipe: recipe, size: size, reference: reference)) {
             guard let size, let recipe else { return }

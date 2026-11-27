@@ -26,7 +26,7 @@
 - 先读实际调用链与全部调用方再改共享根因；优先复用已有实现、标准库与已安装依赖，做当前任务所需的最小改动，不预建框架或顺带重构。
 - 严格遵守 [架构地图](docs/architecture.md) 中的分层 import 边界、显影／色彩／TIFF16 语义与 `SafeFileWriter` 无覆盖发布约定。
 - 参考上游实现时先读对应源码、调用方与测试，记录提交号、日期与路径；在提交说明中区分直接移植、算法／交互借鉴、原生实现与未采用原因，长期取舍记入 [decisions.md](docs/decisions.md)，复用代码保留许可与归属。
-- UI 复用设计 Token，保持中性观片底（主题不得改变图像像素），保留键盘操作、焦点、数值输入与减少动态效果支持。
+- UI 改动先核对 [设计规范 v3](design/darkroom_instrument_design_system_v3.md) 的硬红线与组件选型表，复用 `Theme`／`Metrics`／现有暗房控件；保持中性观片底（主题不得改变图像像素），保留键盘操作、焦点、数值输入与减少动态效果支持。调整共享色值、尺寸或控件模式时，同步更新 [设计 Token v3](design/darkroom_instrument_tokens_v3.json) 与规范，并用 `python3 scripts/check-harness.py` 校验同步与 UI 守护。
 - 改动 MCP 工具或行为时，同步更新随包 Skill（`.agents/skills/phosdeck/`）。
 
 ## 常用命令
