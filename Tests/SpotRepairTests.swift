@@ -55,6 +55,29 @@ final class SpotRepairTests: XCTestCase {
         XCTAssertEqual(pixel(back, 0, 3), 0, accuracy: 0.01)
     }
 
+    func testTransferredRepairsUseTargetPixelsAndRejectAnOverfullMerge() throws {
+        var source = recipe(), target = recipe()
+        target.sourceDigest = String(repeating: "b", count: 64)
+        let spot = SpotRepair(mode: .remove, points: [MaskPoint(0.5, 0.5)], radius: 0.1, feather: 0.3)
+        source.repairs = [spot]
+        let options = RecipePasteOptions(tone: false, whiteBalance: false, color: false, curves: false, zones: false, spotRepairs: true)
+        let transferred = try target.pasting(source, options: options)
+        XCTAssertEqual(transferred.repairs, [spot])
+        XCTAssertNil(transferred.repairs[0].sourceOffset)
+        for (width, height, level) in [(120, 80, Float(0.3)), (80, 120, Float(0.7))] {
+            let input = buffer(width: width, height: height) { x, y in
+                abs(x - width/2) < 3 && abs(y - height/2) < 3 ? 0 : level
+            }
+            let rendered = SpotRepairMath.render(input, repairs: transferred.repairs)
+            XCTAssertEqual(rendered.buffer.pixels[(height/2) * width + width/2].x, level, accuracy: 0.03)
+        }
+        source.repairs[0].sourceOffset = MaskPoint(-0.2, 0)
+        XCTAssertEqual(try transferred.pasting(source, options: options).repairs, source.repairs)
+        XCTAssertThrowsError(try target.applyingPreset(source, options: options, amount: 0.5))
+        target.repairs = (0..<128).map { _ in SpotRepair(points: [MaskPoint(0.8, 0.1)]) }
+        XCTAssertThrowsError(try target.pasting(source, options: options))
+    }
+
     func testRemoveErasesADotWithoutTouchingTheFile() throws {
         let image = buffer(width: 120, height: 80) { x, y in
             (56..<64).contains(x) && (36..<44).contains(y) ? 0 : 0.2 + Float(x) * 0.001

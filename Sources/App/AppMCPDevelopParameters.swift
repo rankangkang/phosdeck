@@ -4,9 +4,13 @@ import MCP
 enum MCPRecipeGroups {
     private static let fields: [String: WritableKeyPath<RecipePasteOptions, Bool>] = [
         "tone": \.tone, "white_balance": \.whiteBalance, "color": \.color, "geometry": \.geometry,
-        "raw_detail": \.details, "camera_look": \.cameraLook, "general_detail": \.generalDetails, "curves": \.curves, "zones": \.zones
+        "raw_detail": \.details, "camera_look": \.cameraLook, "general_detail": \.generalDetails, "curves": \.curves, "zones": \.zones,
+        "masks": \.masks, "spot_repairs": \.spotRepairs
     ]
     static var keys: [String] { fields.keys.sorted() }
+    static func keys(for tool: AppMCPTool) -> [String] {
+        tool == .transferAdjustments ? keys : keys.filter { $0 != "masks" && $0 != "spot_repairs" }
+    }
     static func names(_ options: RecipePasteOptions) -> Value {
         .array(keys.filter { options[keyPath: fields[$0]!] }.map(Value.string))
     }

@@ -946,6 +946,77 @@ final class WorkflowTests: XCTestCase {
         }
     }
 
+    @MainActor func testLocationGroupsApplyFromWorkspaceSheetInBothThemes() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let catalog = try CatalogStore(directory: directory)
+        let root = try catalog.addRoot(url: directory, bookmark: AccessLease.bookmark(directory, readOnly: true))
+        let pipeline = ImagePipeline()
+        var originals = [EditRecipe]()
+        for (index, id) in ["a", "b"].enumerated() {
+            let url = directory.appendingPathComponent(id + ".png")
+            try PNGFixture.data(width: 96 + index * 32, height: 80).write(to: url)
+            var photo = try ReferenceImporter.inspect(url: url, root: root, rootURL: directory)
+            photo.id = id
+            try catalog.index(photo)
+            var recipe = try await pipeline.baseline(.init(photo: photo, root: root, recipe: nil))
+            if id == "a" {
+                recipe.repairs = [SpotRepair(points: [MaskPoint(0.3, 0.4)])]
+                recipe.localAdjustments = [LocalAdjustment(components: [MaskComponent(tool: .linear)], exposure: 1)]
+                recipe.updateMaskVersions()
+            }
+            try catalog.saveRecipe(id: id, recipe: recipe)
+            originals.append(recipe)
+        }
+        let model = AppModel()
+        model.catalog = catalog
+        try model.reload()
+        let groups = RecipePasteOptions(tone: false, whiteBalance: false, color: false, curves: false, zones: false, masks: true, spotRepairs: true)
+        model.confirmAdjustmentOptions(groups)
+        model.choose(["a","b"], active: "a")
+        model.selectWorkspace(.develop)
+        try await waitUntil { model.canEdit }
+        for theme in [ColorScheme.dark, .light] {
+            let host = NSHostingView(rootView: WorkspaceView(model: model).preferredColorScheme(theme))
+            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1280, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: theme == .dark ? .darkAqua : .aqua)
+            window.contentView = host
+            window.makeKeyAndOrderFront(nil)
+            defer { window.orderOut(nil); window.contentView = nil }
+            host.layoutSubtreeIfNeeded()
+            model.requestAdjustments(.sync)
+            try await waitUntil { window.attachedSheet != nil }
+            let sheet = try XCTUnwrap(window.attachedSheet), view = try XCTUnwrap(sheet.contentView)
+            view.layoutSubtreeIfNeeded()
+            func verticalScroll(in node: NSView) -> NSScrollView? {
+                if let scroll = node as? NSScrollView, let document = scroll.documentView,
+                   document.bounds.height > scroll.contentView.bounds.height + 1 { return scroll }
+                return node.subviews.lazy.compactMap(verticalScroll).first
+            }
+            let scroll = try XCTUnwrap(verticalScroll(in: view)), document = try XCTUnwrap(scroll.documentView)
+            scroll.contentView.scroll(to: CGPoint(x: 0, y: document.isFlipped ? document.bounds.height - scroll.contentView.bounds.height : 0))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            view.layoutSubtreeIfNeeded()
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            let shot = XCTAttachment(data: try XCTUnwrap(bitmap.representation(using: .png, properties: [:])), uniformTypeIdentifier: "public.png")
+            shot.name = theme == .dark ? "location-sync-graphite" : "location-sync-ivory"
+            shot.lifetime = .keepAlways
+            add(shot)
+            let enter = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: sheet.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+            XCTAssertTrue(sheet.performKeyEquivalent(with: enter))
+            try await waitUntil { window.attachedSheet == nil }
+            await model.task?.value
+            func targetRecipe() throws -> EditRecipe {
+                try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(catalog.photo("b")?.recipe))
+            }
+            XCTAssertEqual(try targetRecipe().localAdjustments, originals[0].localAdjustments)
+            XCTAssertEqual(try targetRecipe().repairs, originals[0].repairs)
+            model.undo.undo()
+            XCTAssertEqual(try targetRecipe(), originals[1])
+        }
+    }
+
     @MainActor func testRelativeExposureSheetNativeSliderApplyPrecisionAndValidation() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

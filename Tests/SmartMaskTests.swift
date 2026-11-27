@@ -75,6 +75,38 @@ final class SmartMaskTests: XCTestCase {
         XCTAssertEqual(sameSource.localAdjustments.count, 1, "same-source versions can reuse fixed results")
         XCTAssertEqual(sameSource.maskVersion, 3)
     }
+    func testTransferKeepsCompoundSmartMasksBoundToTheirSourceAndUpdatesPortableMasks() throws {
+        var source = recipe()
+        let manual = LocalAdjustment(components: [MaskComponent(tool: .linear)], exposure: 1, settings: LocalDevelopSettings())
+        var subject = MaskComponent(tool: .object, operation: .intersect)
+        subject.raster = try raster(source)
+        let compound = LocalAdjustment(components: [MaskComponent(tool: .radial), subject])
+        source.localAdjustments = [manual, compound]
+        source.updateMaskVersions()
+        let options = RecipePasteOptions(tone: false, whiteBalance: false, color: false, curves: false, zones: false, masks: true)
+        var sameSource = recipe()
+        sameSource.crop = Crop(x: 0.25, y: 0, width: 0.5, height: 1)
+        XCTAssertEqual(try sameSource.pasting(source, options: options).localAdjustments, [manual, compound])
+        XCTAssertEqual(try sameSource.pasting(source, options: options).crop, sameSource.crop)
+        var targets = Array(repeating: sameSource, count: 3)
+        targets[0].sourceDigest = String(repeating: "b", count: 64)
+        targets[1].decoderVersion = "other"
+        targets[2].rawDetails.lensCorrection = true
+        let own = LocalAdjustment(components: [MaskComponent(tool: .luminance)])
+        for var target in targets {
+            var previous = manual
+            previous.exposure = 0.25
+            target.localAdjustments = [previous, own]
+            target.updateMaskVersions()
+            let pasted = try target.pasting(source, options: options)
+            XCTAssertEqual(pasted.localAdjustments, [own, manual])
+            XCTAssertEqual(pasted.maskVersion, 2)
+            XCTAssertEqual(try pasted.pasting(source, options: options), pasted)
+            XCTAssertFalse(target.transferNotes(from: source, options: options).isEmpty)
+            XCTAssertTrue(target.transferNotes(from: source, options: RecipePasteOptions()).isEmpty)
+        }
+    }
+
     func testCachedTileKeepsSerializedIdentityAndRejectsChangedDimensions() throws {
         let tile = try raster(recipe()).base
         let bytes = try tile.pixels()

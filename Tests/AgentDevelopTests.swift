@@ -1198,6 +1198,46 @@ final class AgentDevelopTests: XCTestCase {
         XCTAssertEqual(try SafeFileWriter.sha256(url), try SafeFileWriter.sha256(sample))
     }
 
+    @MainActor func testSyncSpotRepairsAndMasksIsRepeatableAndUndoableAcrossVersions() async throws {
+        let (catalog, _) = try await catalog(ids: ["a", "b", "c"])
+        let client = try await Client(catalog)
+        var source = try client.recipe("a")
+        let clone = SpotRepair(mode: .clone, points: [MaskPoint(0.2, 0.4)], sourceOffset: MaskPoint(0.3, 0))
+        let automatic = SpotRepair(mode: .remove, points: [MaskPoint(0.6, 0.6)])
+        source.repairs = [clone, automatic]
+        source.localAdjustments = [LocalAdjustment(components: [MaskComponent(tool: .linear)], exposure: 0.7)]
+        source.updateMaskVersions()
+        try catalog.saveRecipe(id: "a", recipe: source)
+        var b = try client.recipe("b")
+        b.repairs = [SpotRepair(points: [MaskPoint(0.8, 0.1)])]
+        try catalog.saveRecipe(id: "b", recipe: b)
+        let c = try client.recipe("c")
+        func sync() async throws -> [String: Value] {
+            try await client.job(await client.call(.transferAdjustments, [
+                "action": "sync", "photo_id": "a", "photo_ids": ["b", "c"], "groups": ["spot_repairs", "masks"],
+                "expected_revisions": try client.expected(["a", "b", "c"])
+            ]))
+        }
+        let applied = try await sync()
+        let operation = try XCTUnwrap(applied["operation_id"])
+        for (id, old) in [("b", b), ("c", c)] {
+            let saved = try client.recipe(id)
+            XCTAssertEqual(saved.sourceDigest, old.sourceDigest)
+            XCTAssertEqual(saved.crop, old.crop)
+            XCTAssertEqual(saved.repairs, old.repairs + [clone, automatic])
+            XCTAssertEqual(saved.localAdjustments, source.localAdjustments)
+        }
+        let revision = try catalog.photo("b")?.recipeRevision
+        let repeated = try await sync()
+        XCTAssertEqual(repeated["operation_id"], .null)
+        XCTAssertEqual(repeated["changed_count"], 0)
+        XCTAssertEqual(try catalog.photo("b")?.recipeRevision, revision)
+        _ = try client.data(await client.call(.undo, ["operation_id": operation]))
+        XCTAssertEqual(try client.recipe("b"), b)
+        XCTAssertEqual(try client.recipe("c"), c)
+        XCTAssertEqual(try client.recipe("a"), source)
+    }
+
     @MainActor func testPresetsAndExplicitBatchTransfersKeepTargetIdentity() async throws {
         let (catalog, _) = try await catalog()
         let client = try await Client(catalog)

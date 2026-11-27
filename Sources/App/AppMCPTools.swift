@@ -262,8 +262,9 @@ enum AppMCPTool: String, CaseIterable {
             case .points: return MCPDevelopParameters.pointsSchema
             case .gains: return MCPDevelopParameters.gainsSchema
             case .groups:
-                return ["type": "array", "minItems": 1, "maxItems": .int(MCPRecipeGroups.keys.count), "uniqueItems": true,
-                        "items": ["enum": .array(MCPRecipeGroups.keys.map(Value.string))]]
+                let keys = MCPRecipeGroups.keys(for: tool)
+                return ["type": "array", "minItems": 1, "maxItems": .int(keys.count), "uniqueItems": true,
+                        "items": ["enum": .array(keys.map(Value.string))]]
             case .amount: return MCPDevelopParameters.numberSchema(tool == .localAdjustments ? 0...1 : 0...2)
             case .delta: return MCPDevelopParameters.numberSchema(tool == .adjustPreview ? -200...200 : -5...5)
             case .scale: return ["type": "number", "enum": .array(AppModel.zoomScales.map(Value.double))]
@@ -381,7 +382,8 @@ enum AppMCPTool: String, CaseIterable {
             case .gains: return (try? MCPDevelopParameters.gains(value)) != nil
             case .groups:
                 guard let items = value.arrayValue, !items.isEmpty, Set(items).count == items.count else { return false }
-                return items.allSatisfy { $0.stringValue.map(MCPRecipeGroups.keys.contains) == true }
+                let keys = MCPRecipeGroups.keys(for: tool)
+                return items.allSatisfy { $0.stringValue.map(keys.contains) == true }
             case .amount: return value.number.map((tool == .localAdjustments ? 0.0...1.0 : 0.0...2.0).contains) ?? false
             case .delta: return value.number.map((tool == .adjustPreview ? -200.0...200.0 : -5.0...5.0).contains) ?? false
             case .interval: return value.number.map((0...86400).contains) ?? false

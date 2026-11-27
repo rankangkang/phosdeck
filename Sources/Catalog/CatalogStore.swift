@@ -518,6 +518,7 @@ final class CatalogStore: @unchecked Sendable {
     /// save dialog remains source-compatible until its caller grows a group
     /// picker.
     @discardableResult func savePreset(name: String, recipe: EditRecipe, options: RecipePasteOptions, groupName: String? = nil) throws -> AdjustmentPreset {
+        try options.validatePresetGroups()
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let group = Self.normalizedPresetGroup(groupName)
         guard !name.isEmpty, name.count <= 100, options.hasSelection else {
@@ -544,6 +545,7 @@ final class CatalogStore: @unchecked Sendable {
     /// favorite state are deliberately retained.
     @discardableResult
     func updatePreset(id: String, recipe: EditRecipe, options: RecipePasteOptions) throws -> AdjustmentPreset {
+        try options.validatePresetGroups()
         var options = options
         options.importedXMP = nil // Updating from a photo creates ordinary native parameter groups.
         guard options.hasSelection else { throw LRCError(L10n.text("app.selectAtLeastOnePresetParameterGroup", defaultValue: "Select at least one preset parameter group")) }

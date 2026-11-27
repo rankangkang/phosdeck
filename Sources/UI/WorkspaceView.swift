@@ -1993,12 +1993,22 @@ private struct PasteAdjustmentsSheet: View {
                         Toggle(L10n.text("cameraLook.pasteToggle", defaultValue: "Camera Look"), isOn: Binding(get: { allowsCameraLook && options.cameraLook }, set: { options.cameraLook = $0 })).disabled(!allowsCameraLook)
                         Toggle(L10n.text("app.rawDecodingDetailAndLensCorrection", defaultValue: "RAW Decoding Detail and Lens Correction"), isOn: Binding(get: { allowsRAWDetails && options.details }, set: { options.details = $0 })).disabled(!allowsRAWDetails)
                         Toggle(L10n.text("app.cropRotateAndFlip", defaultValue: "Crop, Rotate, and Flip"), isOn: $options.geometry)
+                        if !saving && action != .preset {
+                            Toggle(L10n.text("app.spotRemoval", defaultValue: "Spot Removal"), isOn: $options.spotRepairs)
+                                .accessibilityIdentifier("transfer-spot-repairs")
+                            Toggle(L10n.text("app.masksAndLocalAdjustments", defaultValue: "Masks and Local Adjustments"), isOn: $options.masks)
+                                .accessibilityIdentifier("transfer-masks")
+                            if options.masks || options.spotRepairs {
+                                Text(L10n.text("transfer.locationHelp", defaultValue: "Positions follow the uncropped photo. Existing copies are updated and other edits are kept. Smart selections require the same original, decoder and lens correction."))
+                                    .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
                     if action == .preset {
                         Text(L10n.text("app.0KeepsCurrentSettings100UsesThePresetAnd", defaultValue: "0% keeps current settings, 100% uses the preset, and 200% continues equally beyond it. Point Color amounts scale between empty and sampled lists; different nonempty lists switch at 50%, while matching samples blend by identity. Values are clamped to control ranges. Integer values such as grain seeds are preserved. Preset masks are added only when the photo lacks the same mask, with their effect scaled by Amount."))
                             .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
                     } else {
-                        Text(L10n.text("app.applySelectedItemsOnlyPreservingTargetMasksAsShot", defaultValue: "Apply selected items only, preserving target masks. As Shot white balance uses each photo's baseline; crops copy relative positions."))
+                        Text(L10n.text("transfer.baselineHelp", defaultValue: "As Shot white balance uses each photo’s baseline. Crops use relative positions."))
                             .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
                     }
                     if !saving {

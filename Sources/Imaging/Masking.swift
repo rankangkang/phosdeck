@@ -233,6 +233,9 @@ struct LocalAdjustment: Codable, Equatable, Identifiable {
     var saturation = 1.0
     var settings: LocalDevelopSettings?
     var refinement: MaskRefinement?
+    func canTransfer(to recipe: EditRecipe) -> Bool {
+        components.allSatisfy { $0.raster?.source.matches(recipe) ?? true }
+    }
     var needsBaseline: Bool {
         (refinement?.edgeRadius ?? 0) > 0 || components.contains { c in
             guard c.enabled else { return false }

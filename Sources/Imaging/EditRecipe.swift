@@ -318,12 +318,14 @@ struct RecipePasteOptions: Codable, Equatable {
     var curves: Bool
     var zones: Bool
     var cameraLook: Bool
+    var masks: Bool
+    var spotRepairs: Bool
     /// Present only for imported sparse presets; ordinary copy/paste keeps its group semantics.
     var importedXMP: XMPPresetSettings?
 
     init(tone: Bool = true, whiteBalance: Bool = true, color: Bool = true, geometry: Bool = false,
          details: Bool = false, generalDetails: Bool = false, curves: Bool = true, zones: Bool = true,
-         cameraLook: Bool = false, importedXMP: XMPPresetSettings? = nil) {
+         cameraLook: Bool = false, masks: Bool = false, spotRepairs: Bool = false, importedXMP: XMPPresetSettings? = nil) {
         self.tone = tone
         self.whiteBalance = whiteBalance
         self.color = color
@@ -333,11 +335,13 @@ struct RecipePasteOptions: Codable, Equatable {
         self.curves = curves
         self.zones = zones
         self.cameraLook = cameraLook
+        self.masks = masks
+        self.spotRepairs = spotRepairs
         self.importedXMP = importedXMP
     }
 
     enum CodingKeys: String, CodingKey {
-        case tone, whiteBalance, color, geometry, details, generalDetails, curves, zones, cameraLook, importedXMP
+        case tone, whiteBalance, color, geometry, details, generalDetails, curves, zones, cameraLook, masks, spotRepairs, importedXMP
     }
 
     init(from decoder: Decoder) throws {
@@ -351,13 +355,21 @@ struct RecipePasteOptions: Codable, Equatable {
         curves = try c.decode(Bool.self, forKey: .curves)
         zones = try c.decode(Bool.self, forKey: .zones)
         cameraLook = try c.decodeIfPresent(Bool.self, forKey: .cameraLook) ?? false
+        masks = try c.decodeIfPresent(Bool.self, forKey: .masks) ?? false
+        spotRepairs = try c.decodeIfPresent(Bool.self, forKey: .spotRepairs) ?? false
         importedXMP = try c.decodeIfPresent(XMPPresetSettings.self, forKey: .importedXMP)
     }
 
-    var hasSelection: Bool { tone || whiteBalance || color || geometry || details || generalDetails || curves || zones || cameraLook }
+    var hasSelection: Bool { tone || whiteBalance || color || geometry || details || generalDetails || curves || zones || cameraLook || masks || spotRepairs }
+    func validatePresetGroups() throws {
+        guard !spotRepairs && !masks else {
+            throw LRCError(L10n.text("transfer.usePhotoTransfer", defaultValue: "Use Paste Adjustments or Sync Adjustments to transfer spot repairs and masks."))
+        }
+    }
     var summary: String {
         let groups = [(cameraLook, L10n.text("cameraLook.label", defaultValue: "Camera Look")), (tone, L10n.text("app.tone", defaultValue: "Tone")), (curves, L10n.text("app.curves", defaultValue: "Curves")), (zones, L10n.text("app.zones", defaultValue: "Zones")), (whiteBalance, L10n.text("app.whiteBalance", defaultValue: "White Balance")),
-                      (color, L10n.text("app.color", defaultValue: "Color")), (generalDetails, L10n.text("app.generalDetail", defaultValue: "General Detail")), (details, L10n.text("app.rawDetail", defaultValue: "RAW Detail")), (geometry, L10n.text("app.geometry", defaultValue: "Geometry"))]
+                      (color, L10n.text("app.color", defaultValue: "Color")), (generalDetails, L10n.text("app.generalDetail", defaultValue: "General Detail")), (details, L10n.text("app.rawDetail", defaultValue: "RAW Detail")), (geometry, L10n.text("app.geometry", defaultValue: "Geometry")),
+                      (spotRepairs, L10n.text("app.spotRemoval", defaultValue: "Spot Removal")), (masks, L10n.text("app.masksAndLocalAdjustments", defaultValue: "Masks and Local Adjustments"))]
         return groups.filter { $0.0 }.map { $0.1 }.joined(separator: "、")
     }
 }
@@ -401,9 +413,27 @@ extension EditRecipe {
         if options.cameraLook, !isRaster, !source.isRaster { value.cameraLook = source.cameraLook }
         if options.curves { value.develop.curves = source.develop.curves }
         if options.zones { value.develop.zones = source.develop.zones }
-        value.schemaVersion = max(value.schemaVersion, value.localAdjustments.isEmpty ? 2 : 3)
+        if options.spotRepairs { value.repairs = Self.mergingLocations(value.repairs, from: source.repairs) }
+        if options.masks {
+            let incoming = source.localAdjustments.filter { $0.canTransfer(to: value) }
+            value.localAdjustments = Self.mergingLocations(value.localAdjustments, from: incoming)
+        }
+        value.updateMaskVersions()
         try value.validate(lookLibrary: lookLibrary)
         return value
+    }
+
+    /// Keep target-only edits, then apply the source sequence in its render order.
+    private static func mergingLocations<T: Identifiable>(_ target: [T], from source: [T]) -> [T] {
+        guard !source.isEmpty else { return target }
+        let incoming = Set(source.map(\.id))
+        return target.filter { !incoming.contains($0.id) } + source
+    }
+
+    mutating func updateMaskVersions() {
+        schemaVersion = max(schemaVersion, localAdjustments.isEmpty ? 2 : 3)
+        if localAdjustments.contains(where: { $0.settings != nil }) { maskVersion = max(maskVersion, 2) }
+        if localAdjustments.contains(where: { $0.components.contains(where: { $0.raster != nil }) }) { maskVersion = 3 }
     }
 
     /// Apply a preset at `amount` (1 = 100 %). Numbers lerp from the current recipe toward the
@@ -413,6 +443,7 @@ extension EditRecipe {
     /// Follows lightcraft `crates/develop/src/presets.rs` `apply_partial` at commit 5436951.
     /// Attribution: docs/references/lightcraft-LICENSE.txt.
     func applyingPreset(_ source: EditRecipe, options: RecipePasteOptions, amount: Double, lookLibrary: CameraLookLibrary = .shared) throws -> Self {
+        try options.validatePresetGroups()
         try source.validate(lookLibrary: lookLibrary)
         if let imported = options.importedXMP {
             let resolved = try imported.resolved(on: self, options: options)
@@ -440,7 +471,7 @@ extension EditRecipe {
         return try value.addingPresetMasks(from: source, amount: t, lookLibrary: lookLibrary)
     }
 
-    func transferNotes(from source: EditRecipe, options: RecipePasteOptions) -> [String] {
+    func transferNotes(from source: EditRecipe, options: RecipePasteOptions, applyingPreset: Bool = false) -> [String] {
         if let imported = options.importedXMP {
             var notes = imported.warnings
             if options.whiteBalance, isRaster, imported.contains(.whiteBalance) { notes.append(L10n.text("app.xmpAbsoluteWhiteBalanceAppliesOnlyToRAWJPEG", defaultValue: "XMP absolute white balance applies only to RAW. JPEG/TIFF/PNG white balance preserved")) }
@@ -449,7 +480,7 @@ extension EditRecipe {
         var notes: [String] = []
         var maskTarget = self
         if options.details, !isRaster, !source.isRaster { maskTarget.rawDetails = source.rawDetails }
-        if source.localAdjustments.contains(where: { $0.components.contains { $0.raster.map { !$0.source.matches(maskTarget) } ?? false } }) {
+        if (options.masks || applyingPreset), source.localAdjustments.contains(where: { !$0.canTransfer(to: maskTarget) }) {
             notes.append(L10n.text("app.smartMasksFromOtherSourcesOrLensGeometryWere", defaultValue: "Smart masks from other sources or lens geometry were skipped. Recognize the target photo again"))
         }
         if options.whiteBalance, isRaster != source.isRaster { notes.append(L10n.text("app.rawAndJPEGTIFFPNGUseDifferentWhiteBalance", defaultValue: "RAW and JPEG/TIFF/PNG use different white balance models. Target white balance preserved")) }
@@ -523,7 +554,7 @@ extension EditRecipe {
         guard !source.localAdjustments.isEmpty else { return self }
         var value = self
         for mask in source.localAdjustments {
-            if mask.components.contains(where: { $0.raster.map { !$0.source.matches(value) } ?? false }) { continue }
+            if !mask.canTransfer(to: value) { continue }
             if value.localAdjustments.contains(where: { $0.name == mask.name && $0.components == mask.components }) { continue }
             guard value.localAdjustments.count < 64 else { break }
             var next = mask
@@ -531,9 +562,7 @@ extension EditRecipe {
             next.amount = min(1, max(0, mask.amount * amount))
             value.localAdjustments.append(next)
         }
-        value.schemaVersion = max(value.schemaVersion, value.localAdjustments.isEmpty ? 2 : 3)
-        if value.localAdjustments.contains(where: { $0.settings != nil }) { value.maskVersion = max(value.maskVersion, 2) }
-        if value.localAdjustments.contains(where: { $0.components.contains(where: { $0.raster != nil }) }) { value.maskVersion = 3 }
+        value.updateMaskVersions()
         try value.validate(lookLibrary: lookLibrary)
         return value
     }

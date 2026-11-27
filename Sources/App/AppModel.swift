@@ -3011,7 +3011,7 @@ final class AppModel {
                             var value = try amount == nil
                                 ? original.pasting(source, options: options)
                                 : original.applyingPreset(source, options: options, amount: amount!)
-                            var notes = original.transferNotes(from: source, options: options)
+                            var notes = original.transferNotes(from: source, options: options, applyingPreset: amount != nil)
                             if photo.isRAW {
                                 let defaults = try await pipeline.rawDefaults(ImageRequest(photo: photo, root: root, recipe: original))
                                 if options.details, !source.isRaster {

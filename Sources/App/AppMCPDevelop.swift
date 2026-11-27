@@ -256,7 +256,7 @@ extension AppMCPTools {
                     }
                 }
                 value = try amount.map { try base.applyingPreset(source, options: options, amount: $0) } ?? base.pasting(source, options: options)
-                notes = base.transferNotes(from: source, options: options)
+                notes = base.transferNotes(from: source, options: options, applyingPreset: amount != nil)
                 if options.details, !source.isRaster, let defaults {
                     notes += value.rawDetails.unavailableNames(defaults)
                     value.rawDetails = value.rawDetails.supported(by: defaults)
@@ -272,9 +272,7 @@ extension AppMCPTools {
             case .canvas(let edit):
                 (value, details) = try await edit(.init(photo: photo, root: root, recipe: original), original, pipeline)
                 if value == original { return (nil, notes, details) }
-                value.schemaVersion = max(value.schemaVersion, value.localAdjustments.isEmpty ? 2 : 3)
-                if value.localAdjustments.contains(where: { $0.settings != nil }) { value.maskVersion = max(value.maskVersion, 2) }
-                if value.localAdjustments.contains(where: { $0.components.contains(where: { $0.raster != nil }) }) { value.maskVersion = 3 }
+                value.updateMaskVersions()
             }
             if value == original && !selectingHistory { return (nil, notes, details) }
             try await MCPDevelopPhoto.validate(value, previous: original, photo: photo, root: root, defaults: defaults, pipeline: pipeline)

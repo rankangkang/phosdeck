@@ -1,6 +1,57 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "transfer.locationHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Positions follow the uncropped photo. Existing copies are updated and other edits are kept. Smart selections require the same original, decoder and lens correction."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "位置按裁剪前的原图对齐。再次传递会更新已复制的项目，保留目标照片自己的调整。智能选区需要相同原片、解码器和镜头校正设置。"
+          }
+        }
+      }
+    },
+    "transfer.baselineHelp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As Shot white balance uses each photo’s baseline. Crops use relative positions."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拍摄时白平衡沿用每张照片的基准值，裁剪按相对位置传递。"
+          }
+        }
+      }
+    },
+    "transfer.usePhotoTransfer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use Paste Adjustments or Sync Adjustments to transfer spot repairs and masks."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请通过粘贴调整或同步调整传递污点修复和蒙版。"
+          }
+        }
+      }
+    },
     "library.fileType": {
       "extractionState": "manual",
       "localizations": {
