@@ -21,13 +21,11 @@ struct AsShotMatch {
             kCGImageSourceThumbnailMaxPixelSize: 256]
         guard let jpeg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary),
               min(jpeg.width, jpeg.height) >= 64 else { return result }
-        let raw = try PhotoFileType.rawFilter(url)
-        raw.decoderVersion = CIRAWDecoderVersion(rawValue: decoder)
-        raw.scaleFactor = Float(min(1, 256 / max(raw.nativeSize.width, raw.nativeSize.height)))
-        raw.isDraftModeEnabled = false
-        raw.extendedDynamicRangeAmount = 0
-        raw.exposure = 0
-        guard let neutral = raw.outputImage else { return result }
+        let session = try RAWDecoderSession(url: url, decoderVersion: decoder)
+        let metrics = session.baselineMetrics
+        let neutral = try session.renderDevelop(previewEdge: 256, draft: false,
+            baselineExposure: metrics.exposure, exposure: 0, temperature: metrics.temperature,
+            tint: metrics.tint, details: RAWDetailSettings()).image
         let ratio = neutral.extent.width / neutral.extent.height
         guard abs(log(ratio / (Double(jpeg.width) / Double(jpeg.height)))) < 0.035 else { return result }
         let baseline = try CameraLookPipeline.apply(neutral, selection: base, library: library)
@@ -167,7 +165,7 @@ struct AsShotMatch {
     }
 
     private static let side = 48
-    private static func grid(_ image: CIImage, _ context: CIContext) -> [SIMD4<Float>] {
+    static func grid(_ image: CIImage, _ context: CIContext) -> [SIMD4<Float>] {
         let extent = image.extent
         let proxy = image.transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY))
             .samplingLinear().transformed(by: CGAffineTransform(scaleX: CGFloat(side)/extent.width, y: CGFloat(side)/extent.height))

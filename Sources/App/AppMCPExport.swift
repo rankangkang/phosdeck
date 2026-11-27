@@ -9,6 +9,7 @@ enum MCPExportOptions {
         "digits": MCPOutputSchema.integer(1...9)
     ])
     static let schema = MCPCanvasFields.patch([
+        "color_space": MCPOutputSchema.choice(ExportColorSpace.allCases.map(\.rawValue)),
         "format": MCPOutputSchema.choice(ExportFormat.allCases.map(\.rawValue)),
         "long_edge": ["anyOf": [MCPOutputSchema.integer(1...30_000), ["type": "null"]]],
         "quality": MCPDevelopParameters.numberSchema(0.1...1), "naming": namingSchema,
@@ -34,6 +35,7 @@ enum MCPExportOptions {
         var options = original
         let fields = value?.objectValue ?? [:]
         if let format = fields["format"]?.stringValue.flatMap(ExportFormat.init(rawValue:)) { options.format = format }
+        if let profile = fields["color_space"]?.stringValue.flatMap(ExportColorSpace.init(rawValue:)) { options.profile = profile }
         if let edge = fields["long_edge"] { options.longEdge = edge.intValue }
         if let quality = fields["quality"]?.number { options.quality = quality }
         if let policy = fields["metadata_policy"]?.stringValue.flatMap(ExportMetadataPolicy.init(rawValue:)) { options.metadataPolicy = policy }
@@ -54,7 +56,7 @@ enum MCPExportOptions {
 
     static func describe(_ options: ExportOptions) -> Value {
         let name = options.naming
-        return ["format": .string(options.format.rawValue), "long_edge": options.longEdge.map(Value.int) ?? .null,
+        return ["color_space": .string(options.profile.rawValue), "format": .string(options.format.rawValue), "long_edge": options.longEdge.map(Value.int) ?? .null,
                 "quality": .double(options.quality), "jpeg_matte": .string(options.jpegMatte.rawValue),
                 "metadata_policy": .string(options.metadataPolicy.rawValue),
                 "naming": ["original_name": .bool(name.originalName), "capture_date": .bool(name.captureDate),
@@ -253,7 +255,7 @@ extension AppMCPWorkflows {
             let request = try MCPOutputSources.request(row)
             let recipe: EditRecipe? = if request.recipe == nil && row.photo.isRAW { try await pipeline.baseline(request) } else { request.recipe }
             let image = try await pipeline.render(.init(photo: row.photo, root: row.root, recipe: recipe), longEdge: edge,
-                jpegMatte: spec.options.format == .jpeg ? spec.options.jpegMatte : nil)
+                jpegMatte: spec.options.format == .jpeg ? spec.options.jpegMatte : nil, profile: spec.options.profile)
             _ = try plan.sources.resolve(catalog, only: photoID)
             return (image.image.width, image.image.height, try MCPOutputImage.png(image.image))
         }

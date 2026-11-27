@@ -66,8 +66,9 @@ actor PhotoMergeEngine {
     private var prepared: Prepared?
     private var retouchBase: (excluded: Set<Int>,cometHalfLife: Int,image: MergeImage)?
     private var retouchResult: (settings: MergeRetouchSettings, image: MergeImage)?
+    private var retouchDisplay: (id: UUID, ev: Double, source: Int, settings: MergeRetouchSettings, sourceImage: CGImage, resultImage: CGImage)?
     private var retouchSource: (index: Int,image: MergeImage)?
-    private var retouchMasksCache: (strokes: [MergeRetouchStroke],masks: [MergeBrushMask])?
+    private var retouchMasksCache: (relativeToBase: Bool, strokes: [MergeRetouchStroke], masks: [MergeBrushMask])?
     private var sourceThumbnails: (offset: Int,count: Int,ev: Double,images: [Int:CGImage])?
     init(checkpoint: @escaping @Sendable (String) throws -> Void = { _ in }) { self.checkpoint = checkpoint }
 
@@ -87,7 +88,7 @@ actor PhotoMergeEngine {
     }
 
     func prepare(_ inputs: [ImageRequest],options: PhotoMergeOptions,darkInputs: [ImageRequest] = [],project: MergeRetouchProject? = nil,progress: Progress) async throws -> MergePreview {
-        prepared = nil; retouchBase = nil; retouchResult = nil; retouchSource = nil; retouchMasksCache = nil; sourceThumbnails = nil
+        prepared = nil; retouchBase = nil; retouchResult = nil; retouchSource = nil; retouchDisplay = nil; retouchMasksCache = nil; sourceThumbnails = nil
         try project?.validate()
         guard project == nil || project?.kind == options.kind else { throw MergeRetouchProject.invalid }
         try options.validate(count:inputs.count)
@@ -395,7 +396,7 @@ actor PhotoMergeEngine {
         } catch {
             throw MergePublicationError(url: destination, identity: identity, verified: verified, cause: error)
         }
-        prepared = nil; retouchBase = nil; retouchResult = nil; retouchSource = nil; retouchMasksCache = nil; sourceThumbnails = nil
+        prepared = nil; retouchBase = nil; retouchResult = nil; retouchSource = nil; retouchDisplay = nil; retouchMasksCache = nil; sourceThumbnails = nil
         return MergeSaved(photo:registered.photo,url:destination,previousStacks:registered.previousStacks)
     }
     private func makePlan(_ frames: [MergeFrame],options: PhotoMergeOptions) throws -> Plan {
@@ -617,10 +618,16 @@ actor PhotoMergeEngine {
         return try local.finish(over:initial)
     }
     private func retouchMasks(_ settings: MergeRetouchSettings,value: Prepared,base: MergeImage? = nil) async throws -> [MergeBrushMask] {
-        if let cached = retouchMasksCache,cached.strokes == settings.strokes { return cached.masks }
+        let relativeToBase = base != nil && (value.options.kind == .focus || value.options.kind == .hdr)
+        var masks: [MergeBrushMask] = []
+        if let cached = retouchMasksCache, cached.relativeToBase == relativeToBase {
+            let prefix = zip(cached.strokes, settings.strokes).prefix { $0.0 == $0.1 }.count
+            if prefix == settings.strokes.count && prefix == cached.masks.count { return cached.masks }
+            masks = Array(cached.masks.prefix(prefix))
+        }
         let (width,height) = value.plan.size
-        var masks = [MergeBrushMask](),maskBytes = 0
-        for stroke in settings.strokes {
+        var maskBytes = masks.reduce(0) { $0 + $1.values.count * MemoryLayout<Float>.stride }
+        for stroke in settings.strokes.dropFirst(masks.count) {
             var mask = try stroke.mask(width:width,height:height)
             if !stroke.restore && !stroke.exclude {
                 let pixels = try await sourcePixels(stroke.source,value:value,region:mask.rect).image
@@ -639,7 +646,7 @@ actor PhotoMergeEngine {
             masks.append(mask)
         }
         try Task.checkCancellation(); guard prepared?.id == value.id else { throw stale }
-        retouchMasksCache = (settings.strokes,masks); return masks
+        retouchMasksCache = (relativeToBase,settings.strokes,masks); return masks
     }
 
     func retouchSettings(_ id: UUID) throws -> MergeRetouchSettings {
@@ -745,9 +752,12 @@ actor PhotoMergeEngine {
         }
         let masks = overlay == .constraints ? try await retouchMasks(settings,value:value,base:base) : []
         let mask = try MergeRetouchOverlayMask.image(source:selected,settings:settings,masks:masks,index:source,kind:value.options.kind,mode:overlay)
-        let pair = try MergeRetouchPreview(source:display(selected),result:display(result),width:base.width,height:base.height,overlay:mask)
         try Task.checkCancellation(); guard prepared?.id == id else { throw stale }
-        return pair
+        let cached = retouchDisplay.flatMap { $0.id == id && $0.ev == ev ? $0 : nil }
+        let sourceImage = try cached.flatMap { $0.source == source ? $0.sourceImage : nil } ?? display(selected)
+        let resultImage = try cached.flatMap { $0.settings == settings ? $0.resultImage : nil } ?? display(result)
+        retouchDisplay = (id, ev, source, settings, sourceImage, resultImage)
+        return MergeRetouchPreview(source:sourceImage,result:resultImage,width:base.width,height:base.height,overlay:mask)
     }
 
     static var memoryBudget: LRCError { LRCError(L10n.text("merge.memoryBudget",defaultValue:"The full-size merge exceeds the memory budget. Choose a smaller source size")) }

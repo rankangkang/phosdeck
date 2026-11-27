@@ -286,6 +286,9 @@ struct WorkspaceCommands: Commands {
             Button(L10n.text("app.actualPixels11", defaultValue: "Actual Pixels 1:1")) { model.selectZoom(1) }
                 .keyboardShortcut("0", modifiers: [.command, .option])
                 .disabled(!workspace || model.active == nil || (!model.singleView && !model.editMode) || model.cropMode || model.comparison != nil || model.survey != nil || responder.state.textEditing)
+            Toggle(L10n.text("display.rawHDRPreview", defaultValue: "Preview RAW Highlights in HDR"), isOn: Binding(
+                get: { model.canPreviewRAWHighlights && model.rawHDRPreview }, set: { model.rawHDRPreview = $0 }))
+                .disabled(!workspace || !model.canPreviewRAWHighlights)
             Toggle(L10n.text("app.showClippingJ", defaultValue: "Show Clipping (J)"), isOn: $model.showClipping).disabled(!workspace || model.active == nil || (!model.singleView && !model.editMode) || model.comparison != nil)
             Divider()
             Toggle(L10n.text("app.leftPanel", defaultValue: "Left Panel"), isOn: $left).keyboardShortcut("1", modifiers: [.command, .option]).disabled(!workspace)

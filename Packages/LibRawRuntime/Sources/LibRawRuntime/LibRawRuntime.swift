@@ -25,6 +25,7 @@ public struct LibRawProbeReport: Equatable, Sendable {
     public let orientedWidth: Int
     public let orientedHeight: Int
     public let colors: Int
+    public let hasColorFilterArray: Bool
     public let isXTrans: Bool
     public let isDNG: Bool
     public let blackLevel: UInt32
@@ -53,7 +54,7 @@ public struct LibRawProbeReport: Equatable, Sendable {
         lhs.dataErrorCount == rhs.dataErrorCount && lhs.isUnsupported == rhs.isUnsupported &&
         lhs.rawWidth == rhs.rawWidth && lhs.rawHeight == rhs.rawHeight &&
         lhs.orientedWidth == rhs.orientedWidth && lhs.orientedHeight == rhs.orientedHeight &&
-        lhs.colors == rhs.colors && lhs.isXTrans == rhs.isXTrans && lhs.isDNG == rhs.isDNG &&
+        lhs.colors == rhs.colors && lhs.hasColorFilterArray == rhs.hasColorFilterArray && lhs.isXTrans == rhs.isXTrans && lhs.isDNG == rhs.isDNG &&
         lhs.blackLevel == rhs.blackLevel && lhs.whiteLevel == rhs.whiteLevel &&
         lhs.dataMaximum == rhs.dataMaximum && lhs.sensorBits == rhs.sensorBits &&
         lhs.compression == rhs.compression && lhs.decoderName == rhs.decoderName &&
@@ -85,6 +86,9 @@ public struct LibRawLinearImage: @unchecked Sendable {
 
 public enum LibRawRuntime {
     public static let decoderVersionIdentifier = "libraw-0.22-v1"
+
+    public static let metalBayerVersion = "libraw-metal-bayer-v1"
+    public static var metalBayerAvailable: Bool { phosdeck_metal_bayer_available() }
 
     public static var libraryVersion: String {
         String(cString: phosdeck_libraw_version())
@@ -122,9 +126,10 @@ public enum LibRawRuntime {
             isUnsupported: raw.isUnsupported,
             rawWidth: Int(raw.rawWidth),
             rawHeight: Int(raw.rawHeight),
-            orientedWidth: Int(raw.width),
-            orientedHeight: Int(raw.height),
+            orientedWidth: Int(raw.flip & 4 == 0 ? raw.width : raw.height),
+            orientedHeight: Int(raw.flip & 4 == 0 ? raw.height : raw.width),
             colors: Int(raw.colors),
+            hasColorFilterArray: raw.hasColorFilterArray,
             isXTrans: raw.isXTrans,
             isDNG: raw.isDNG,
             blackLevel: raw.blackLevel,
@@ -146,6 +151,7 @@ public enum LibRawRuntime {
     public static func decodeLinear(
         url: URL,
         halfSize: Bool = false,
+        metalBayer: Bool = false,
         multipliers: (Float, Float, Float, Float)? = nil
     ) throws -> LibRawLinearImage {
         try Task.checkCancellation()
@@ -154,9 +160,9 @@ public enum LibRawRuntime {
 
         url.path.withCString { cPath in
             if let m = multipliers {
-                phosdeck_libraw_decode_linear16(cPath, halfSize, true, m.0, m.1, m.2, m.3, &result)
+                phosdeck_libraw_decode_linear16(cPath, halfSize, metalBayer, true, m.0, m.1, m.2, m.3, &result)
             } else {
-                phosdeck_libraw_decode_linear16(cPath, halfSize, false, 1, 1, 1, 1, &result)
+                phosdeck_libraw_decode_linear16(cPath, halfSize, metalBayer, false, 1, 1, 1, 1, &result)
             }
         }
         try Task.checkCancellation()
@@ -184,17 +190,19 @@ public enum LibRawRuntime {
         }
 
         // Convert linear 16-bit RGB into linear extended sRGB RGBAf.
-        var rgba = [Float](repeating: 1, count: count * 4)
+        var data = Data(count: count * 4 * MemoryLayout<Float>.stride)
         let inv: Float = 1.0 / 65535.0
-        for i in 0..<count {
-            let s = i * 3
-            let d = i * 4
-            rgba[d] = Float(src[s]) * inv
-            rgba[d + 1] = Float(src[s + 1]) * inv
-            rgba[d + 2] = Float(src[s + 2]) * inv
-            rgba[d + 3] = 1.0
+        try data.withUnsafeMutableBytes { bytes in
+            let rgba = bytes.bindMemory(to: Float.self)
+            for i in 0..<count {
+                if i.isMultiple(of: 65536) { try Task.checkCancellation() }
+                let s = i * 3, d = i * 4
+                rgba[d] = Float(src[s]) * inv
+                rgba[d + 1] = Float(src[s + 1]) * inv
+                rgba[d + 2] = Float(src[s + 2]) * inv
+                rgba[d + 3] = 1
+            }
         }
-        let data = rgba.withUnsafeBufferPointer { Data(buffer: $0) }
         let colorSpace = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
         let image = CIImage(
             bitmapData: data,

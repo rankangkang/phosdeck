@@ -191,7 +191,8 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         didSet {
             if oldValue !== source {
                 if oldValue == nil || source == nil || oldValue?.width != source?.width || oldValue?.height != source?.height { renderer?.invalidate() }
-                sourceImage = source.map { CIImage(cgImage: $0) }
+                sourceImage = source.map { CIImage(cgImage: $0, options: [.toneMapHDRtoSDR: false]) }
+                updateDisplayFormat()
                 pixelSampler = source.flatMap { readoutEnabled ? DisplayPixelSampler(image: $0) : nil }
                 if source == nil { onPixelReadout?(nil) }
             }
@@ -200,7 +201,10 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
     private var sourceImage: CIImage?
     var splitSource: CGImage? {
         didSet {
-            if oldValue !== splitSource { splitImage = splitSource.map { CIImage(cgImage: $0) } }
+            if oldValue !== splitSource {
+                splitImage = splitSource.map { CIImage(cgImage: $0, options: [.toneMapHDRtoSDR: false]) }
+                updateDisplayFormat()
+            }
         }
     }
     private var splitImage: CIImage?
@@ -346,7 +350,18 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         if window == nil { renderer?.invalidate(); zoomMotion = nil; lastImageRect = nil; isPaused = true; enableSetNeedsDisplay = true }
     }
     @objc private func targetWindowLost() { cancelTargetGesture(); pinchVisualScale = nil }
-    @objc private func screenProfileChanged() { renderer?.invalidate(); needsDisplay = true }
+    @objc private func screenProfileChanged() { updateDisplayFormat(); renderer?.invalidate(); needsDisplay = true }
+
+    private func updateDisplayFormat() {
+        guard device != nil, let layer = layer as? CAMetalLayer else { return }
+        let hdr = [source, splitSource].contains { $0?.colorSpace?.name == CGColorSpace.extendedLinearDisplayP3 }
+        let format: MTLPixelFormat = hdr ? .rgba16Float : .bgr10a2Unorm
+        guard colorPixelFormat != format else { return }
+        renderer?.invalidate()
+        colorPixelFormat = format
+        layer.colorspace = hdr ? CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3) : Self.displayColorSpace
+        layer.wantsExtendedDynamicRangeContent = hdr
+    }
     deinit { NotificationCenter.default.removeObserver(self) }
     override func setFrameSize(_ newSize: NSSize) {
         if newSize != frame.size { cancelTargetGesture() }
@@ -437,6 +452,14 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
             self.viewport?.update(image: size, canvas: self.drawableSize, zoomed: self.canPan)
         }
     }
+    private func displayInput(_ input: CIImage) -> CIImage {
+        let available = Float(window?.screen?.maximumExtendedDynamicRangeColorComponentValue ?? 1)
+        guard input.contentHeadroom > max(1, available) else { return input }
+        return input.applyingFilter("CIToneMapHeadroom", parameters: [
+            "inputSourceHeadroom": input.contentHeadroom, "inputTargetHeadroom": max(1, available)
+        ])
+    }
+
     func draw(in view: MTKView) {
         drawAttempt += 1
         let attempt = drawAttempt
@@ -447,7 +470,8 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
         var composition = CIImage(color: CIColor(red: backdrop, green: backdrop, blue: backdrop)).cropped(to: bounds)
         splitLine.path = nil
         if sourceImage == nil { clearSpotOverlay() }
-        if let input = sourceImage {
+        if let sourceImage {
+            let input = displayInput(sourceImage)
             let translated: CIImage
             if let angle = cropAngle {
                 clearSpotOverlay()
@@ -476,7 +500,8 @@ final class PhotoMetalCanvas: MTKView, MTKViewDelegate {
                     presented = DisplayOverlay.clipping(presented, shadows: clipShadows, highlights: clipHighlights, reference: input)
                 }
                 var splitX: CGFloat?
-                if let before = splitImage, rect.width > 0 {
+                if let splitImage, rect.width > 0 {
+                    let before = displayInput(splitImage)
                     // The split follows the canvas centre so it stays visible while zoomed.
                     let x = min(rect.maxX, max(rect.minX, drawableSize.width / 2))
                     let cut = (x - rect.minX) / rect.width * input.extent.width

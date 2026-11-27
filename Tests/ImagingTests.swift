@@ -337,6 +337,26 @@ final class ImagingTests: XCTestCase {
         XCTAssertNil(try PhotoFileType.cameraJPEG(url, edge: 320))
     }
 
+    func testStandardFitPreviewSurvivesColdCacheOnlyForSameCommittedVersion() async throws {
+        let jpeg = try fixture()
+        let root = StorageRoot(id: "fit", path: directory.path, bookmark: try AccessLease.bookmark(directory, readOnly: true), label: "Synthetic")
+        var photo = try ReferenceImporter.inspect(url: jpeg, root: root, rootURL: directory)
+        let baseline = try await ImagePipeline().baseline(ImageRequest(photo: photo, root: root, recipe: nil))
+        photo.recipe = try JSONEncoder().encode(baseline)
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(jpeg as CFURL, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let id = UUID().uuidString, first = ThumbnailService(), cold = ThumbnailService()
+        try await first.configure(catalogID: id, gigabytes: 1)
+        try await first.storePreview(image, photo: photo, edge: ThumbnailService.standardEdge)
+        try await cold.configure(catalogID: id, gigabytes: 1)
+        let hit = try await cold.standardPreview(for: photo)
+        XCTAssertEqual(hit?.width, image.width)
+        photo.recipeRevision += 1
+        let stale = try await cold.standardPreview(for: photo)
+        XCTAssertNil(stale)
+        _ = try await cold.clear()
+    }
+
     func testFitDecodeRetainsNativeOrientationAndEditedCrop() async throws {
         let url = try fixture(orientation: 6)
         let root = StorageRoot(id: "r", path: directory.path, bookmark: try AccessLease.bookmark(directory, readOnly: true), label: "test")
@@ -1434,6 +1454,62 @@ final class ImagingTests: XCTestCase {
             XCTAssertGreaterThan(film ? scroll.contentView.bounds.origin.x : scroll.contentView.bounds.origin.y, 0)
             host.rootView = PhotoDisplayFrame { PhotoGrid(model: model, film: film, filmHeight: height, mat: .white) }
             try await waitUntil { find(host)?.scrollerKnobStyle == .dark }
+        }
+    }
+
+    @MainActor func testContinuousGridLoadsRealThumbnailsBeyondFirstPageInBothThemes() async throws {
+        let original = try fixture()
+        let source = directory.appendingPathComponent("Synthetic")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let catalog = try CatalogStore(directory: directory.appendingPathComponent("catalog"))
+        let root = try catalog.addRoot(url: source, bookmark: AccessLease.bookmark(source, readOnly: true))
+        for index in 0..<215 {
+            let url = source.appendingPathComponent(String(format: "Grid-%03d.jpg", index))
+            try FileManager.default.copyItem(at: original, to: url)
+            try catalog.index(ReferenceImporter.inspect(url: url, root: root, rootURL: source))
+        }
+        let model = AppModel()
+        model.catalog = catalog
+        try model.reload()
+        func findGrid(_ view: NSView) -> NSCollectionView? {
+            if let scroll = view as? NSScrollView, scroll.hasVerticalScroller,
+               let grid = scroll.documentView as? KeyboardCollectionView { return grid }
+            return view.subviews.lazy.compactMap(findGrid).first
+        }
+        for theme in [ColorScheme.dark, .light] {
+            let host = NSHostingView(rootView: WorkspaceView(model: model).preferredColorScheme(theme))
+            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1280, height: 800),
+                                  styleMask: [.titled], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: theme == .dark ? .darkAqua : .aqua)
+            window.contentView = host
+            window.orderFront(nil)
+            defer { window.orderOut(nil); window.contentView = nil }
+            host.layoutSubtreeIfNeeded()
+            let grid = try XCTUnwrap(findGrid(host))
+            XCTAssertEqual(grid.numberOfItems(inSection: 0), 215)
+            let last = IndexPath(item: 214, section: 0)
+            try await waitUntil { grid.visibleItems().contains { ($0 as? PhotoItem)?.displayedImage != nil } }
+            let frame = try XCTUnwrap(grid.layoutAttributesForItem(at: last)?.frame)
+            grid.scrollToVisible(frame)
+            do {
+                try await waitUntil { (grid.item(at: last) as? PhotoItem)?.displayedImage != nil }
+            } catch {
+                print("GRID_LAST frame=\(frame) visible=\(grid.visibleRect) items=\(grid.indexPathsForVisibleItems().map(\.item).sorted()) tip=\(grid.item(at: last)?.view.toolTip ?? "none")")
+                throw error
+            }
+            XCTAssertEqual(model.pageOffset, 0, "Scrolling alone must preserve the filmstrip and selection page")
+            XCTAssertNotNil((grid.delegate as? PhotoGrid.Coordinator)?.photoMenu(at: last))
+            XCTAssertEqual(model.activePhoto?.name, "Grid-214.jpg")
+            XCTAssertEqual(model.pageOffset, 200)
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let shot = XCTAttachment(data: try XCTUnwrap(bitmap.representation(using: .png, properties: [:])), uniformTypeIdentifier: "public.png")
+            shot.name = theme == .dark ? "continuous-grid-graphite" : "continuous-grid-ivory"
+            shot.lifetime = .keepAlways
+            add(shot)
+            model.pageOffset = 0
+            try model.reloadPhotos()
+            model.choose([], active: nil)
         }
     }
 

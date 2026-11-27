@@ -144,6 +144,7 @@ struct WorkspaceNotice: Equatable {
 }
 
 private struct BeforeImageKey: Equatable {
+    let rawHDRPreview: Bool
     let photoID: String
     let recipe: EditRecipe
     let edge: Int?
@@ -158,6 +159,7 @@ struct SavedEditComparison {
 @MainActor
 @Observable
 final class AppModel {
+    var gridOrder: CachedQueryOrder?
     var photos: [Photo] = [] // Only the current SQL page, never the complete library.
     var totalCount = 0
     var resultCount = 0 // Base matching versions, including folded members.
@@ -743,7 +745,7 @@ final class AppModel {
             photo.recipe = nil; otherPhoto.recipe = nil
             photo.recipeRevision = 0; otherPhoto.recipeRevision = 0
             return generation == other.generation && cropPreview == other.cropPreview && edge == other.edge &&
-                request.recipe == other.request.recipe && photo == otherPhoto &&
+                request.rawHDRPreview == other.request.rawHDRPreview && request.recipe == other.request.recipe && photo == otherPhoto &&
                 request.root.id == other.request.root.id && request.root.path == other.request.root.path &&
                 request.root.bookmark == other.request.root.bookmark && request.root.label == other.request.root.label
         }
@@ -902,8 +904,8 @@ final class AppModel {
     nonisolated private static func makePreviewRenderer(quality: ImagePipeline, draft: ImagePipeline)
         -> (ImageRequest, Bool, Int?) async throws -> RenderedImage {
         { request, interactive, edge in
-            if interactive { return try await draft.renderInteractive(request) }
-            return try await quality.renderDisplay(request, edge: edge)
+            if interactive { return try await draft.renderInteractive(request, canvas: true) }
+            return try await quality.renderDisplay(request, edge: edge, canvas: true)
         }
     }
 
@@ -957,6 +959,7 @@ final class AppModel {
             collectionCountsCacheKey = countsKey
         }
         let page = try catalog.page(currentQuery, offset: pageOffset, limit: pageSize)
+        gridOrder = page.order
         photos = page.photos; resultCount = page.total; visibleCount = page.visibleTotal; stackBadges = page.badges; pageOffset = page.offset
         pairedSourceIDs = try catalog.pairedSources(within:Set(photos.map(\.sourceKey)))
         if let id = activeID { activePhoto = try photos.first { $0.id == id } ?? catalog.photo(id) }
@@ -1113,7 +1116,7 @@ final class AppModel {
             gridScroll: scrollPositions[browseScrollKey(film: false)], filmScroll: scrollPositions[browseScrollKey(film: true)])
     }
     func browseScrollKey(film: Bool) -> String {
-        "\(query.scrollQuerySignature)|page:\(pageOffset)|film:\(film)"
+        film ? "\(query.scrollQuerySignature)|page:\(pageOffset)|film:true" : "\(query.scrollQuerySignature)|grid"
     }
     private func copyBrowseSnapshot(_ id: String) throws -> String {
         guard let catalog else { throw LRCError(L10n.text("app.noCatalogIsOpen", defaultValue: "No catalog is open")) }
@@ -1732,6 +1735,7 @@ final class AppModel {
             guard self.catalog === catalog, currentQuery == query, pageOffset == offset else { return }
             totalCount = count
             if storageRoots.map(\.id) != roots.map(\.id) { roots = storageRoots }
+            gridOrder = page.order
             if photos != page.photos { photos = page.photos }
             resultCount = page.total
             visibleCount = page.visibleTotal
@@ -2401,7 +2405,10 @@ final class AppModel {
                     guard token == previewGeneration, !Task.isCancelled else { return }
                     photoSwitchDisplay = PhotoSwitchDisplay(photoID: photo.id, image: thumbnail, histogram: nil, nativeSize: nil)
                 }
-                if singleView, !editMode, !fullResolution,
+                if singleView, !editMode, !fullResolution, let standard = try? await thumbnails.standardPreview(for: photo) {
+                    guard token == previewGeneration, !Task.isCancelled else { return }
+                    photoSwitchDisplay = PhotoSwitchDisplay(photoID: photo.id, image: standard, histogram: nil, nativeSize: nil)
+                } else if singleView, !editMode, !fullResolution,
                    let camera = try? await thumbnails.cameraPreview(for: photo, root: root, edge: 1600) {
                     guard token == previewGeneration, !Task.isCancelled else { return }
                     photoSwitchDisplay = PhotoSwitchDisplay(photoID: photo.id, image: camera, histogram: nil, nativeSize: nil)
@@ -3219,6 +3226,19 @@ final class AppModel {
             selectZoom(nil)
         }
     }
+    var rawHDRPreview = false {
+        didSet {
+            guard rawHDRPreview != oldValue else { return }
+            renderedCropRecipe = nil
+            requestPreview()
+        }
+    }
+    var canPreviewRAWHighlights: Bool {
+        editMode && activePhoto?.isRAW == true && recipe?.warmPrint == nil &&
+            recipe.map { !$0.decoderVersion.hasPrefix("libraw") } == true
+    }
+    private var showingRAWHighlights: Bool { rawHDRPreview && canPreviewRAWHighlights }
+
     var canShowBeforeAfter: Bool { photoSwitchDisplay == nil && !editorUsesPreviousPhoto && !isPreviewingAdjustment && !whiteBalanceSampling && targetedAdjustment == nil && !pointSampling && !showPointColorRange && hasRecipe && !cropMode && !maskMode && !spotMode && comparison == nil }
     /// `\`: the whole canvas shows the untoned, uncropped original.
     func toggleBefore() {
@@ -3239,13 +3259,13 @@ final class AppModel {
         guard beforeAfter != .off, comparison == nil, let photo = active,
               let root = roots.first(where: { $0.id == photo.rootID }), let recipe else { resetBeforeImage(); return }
         let base = beforeReference.flatMap { $0.photoID == photo.id && $0.recipe.sourceDigest == recipe.sourceDigest ? $0.recipe : nil }
-        let key = BeforeImageKey(photoID: photo.id, recipe: base?.aligned(to: recipe) ?? recipe.alignedBaseline(), edge: fullResolution ? nil : 2400)
+        let key = BeforeImageKey(rawHDRPreview: showingRAWHighlights, photoID: photo.id, recipe: base?.aligned(to: recipe) ?? recipe.alignedBaseline(), edge: fullResolution ? nil : 2400)
         guard key != beforeKey else { return }
         beforeTask?.cancel()
         // An edge change keeps the old pixels in place while the new size renders; geometry changes must not.
         if beforeKey?.photoID != key.photoID || beforeKey?.recipe != key.recipe { beforeImage = nil }
         beforeKey = key; beforeStatus = L10n.text("app.renderingOriginal", defaultValue: "Rendering original…")
-        let render = renderPreview, request = ImageRequest(photo: photo, root: root, recipe: key.recipe)
+        let render = renderPreview, request = ImageRequest(photo: photo, root: root, recipe: key.recipe, rawHDRPreview: key.rawHDRPreview)
         beforeTask = Task { [weak self] in
             let outcome: Result<RenderedImage, Error>
             do { outcome = .success(try await render(request, false, key.edge)) } catch { outcome = .failure(error) }
@@ -3272,7 +3292,7 @@ final class AppModel {
         previewRevision &+= 1
         previewCurrent = false
         wantsInteractivePreview = interactive
-        let job = PendingPreview(request: ImageRequest(photo: photo, root: root, recipe: renderRecipe),
+        let job = PendingPreview(request: ImageRequest(photo: photo, root: root, recipe: renderRecipe, rawHDRPreview: showingRAWHighlights),
                                  generation: previewGeneration, interactive: interactive,
                                  edge: fullResolution && !cropMode ? nil : 2400, revision: previewRevision, cropPreview: cropMode)
         PreviewLog.logger.debug("request draft=\(interactive) revision=\(job.revision)")
@@ -3327,7 +3347,7 @@ final class AppModel {
                     let shown = self.before ? base ?? shownRecipe?.baseline() : shownRecipe
                     let expected = self.cropMode ? shown?.cropRenderRecipe : shown
                     let geometryCurrent = job.request.recipe?.hasSameGeometry(as: expected) ?? (expected == nil)
-                    let mayPublish = !qualityAlreadyNewer && geometryCurrent &&
+                    let mayPublish = !qualityAlreadyNewer && geometryCurrent && job.request.rawHDRPreview == self.showingRAWHighlights &&
                         (self.wantsInteractivePreview || delivery.revision == self.previewRevision)
                     switch outcome {
                     case .success(let result):
@@ -3358,20 +3378,27 @@ final class AppModel {
             return result
         }
         qualityRender = task
-        qualityWorker = Task {
-            do {
-                let result = try await task.value
-                if !task.isCancelled, job.revision == previewRevision { publishPreview(result, job: job) }
-            } catch is CancellationError {} catch {
-                if job.generation == previewGeneration, job.revision == previewRevision {
-                    photoSwitchDisplay = nil
-                    loadingPhoto = false
-                    imageStatus = error.localizedDescription
+        qualityWorker = Task.detached(priority: .userInitiated) { [weak self] in
+            let outcome = await task.result
+            RunLoop.main.perform(inModes: [.common]) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if !task.isCancelled, job.generation == self.previewGeneration, job.revision == self.previewRevision {
+                        switch outcome {
+                        case .success(let image): self.publishPreview(image, job: job)
+                        case .failure(let error) where !(error is CancellationError):
+                            self.photoSwitchDisplay = nil
+                            self.loadingPhoto = false
+                            self.imageStatus = error.localizedDescription
+                        case .failure: break
+                        }
+                    }
+                    self.qualityRender = nil
+                    self.qualityWorker = nil
+                    self.startQualityWorker()
                 }
             }
-            qualityRender = nil
-            qualityWorker = nil
-            startQualityWorker()
+            CFRunLoopWakeUp(CFRunLoopGetMain())
         }
     }
 
@@ -3380,9 +3407,14 @@ final class AppModel {
         PreviewLog.logger.debug("publish draft=\(job.interactive) revision=\(job.revision) render-ms=\(result.elapsed * 1000)")
         publishedDraft = job.interactive ? (job, result.image) : nil
         if !job.interactive { publishedQualityRevision = job.revision }
-        if !job.interactive, !job.cropPreview, !before, !dirty, job.request.recipe == savedRecipe,
+        if !job.interactive, !job.request.rawHDRPreview, !job.cropPreview, !before, !dirty, job.request.recipe == savedRecipe,
            let photo = activePhoto {
-            Task { try? await thumbnails.storePreview(result.image, photo: photo) }
+            Task {
+                try? await thumbnails.storePreview(result.image, photo: photo)
+                if max(result.image.width, result.image.height) >= ThumbnailService.standardEdge {
+                    try? await thumbnails.storePreview(result.image, photo: photo, edge: ThumbnailService.standardEdge)
+                }
+            }
         }
         image = result.image; interactivePreview = job.interactive
         loadingPhoto = false
@@ -4160,7 +4192,7 @@ extension AppModel {
         cancelPointColorTools(); selectedPointColorID = nil
         cancelWhiteBalanceSampling()
         catalog = next; error = nil
-        selection = []; activeID = nil; activePhoto = nil; photos = []; roots = []; collections = []; folders = [:]
+        selection = []; activeID = nil; activePhoto = nil; gridOrder = nil; photos = []; roots = []; collections = []; folders = [:]
         viewPositions = [:]; lockViewPosition = false
         collectionMembers = []; reports = []; pageOffset = 0; folderPhotoCount = -1
         photoSwitchDisplay = nil; retainedEditorDisplay = nil; loadingPhoto = false

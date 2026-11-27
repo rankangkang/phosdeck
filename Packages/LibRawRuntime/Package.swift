@@ -34,7 +34,8 @@ let package = Package(
             cxxSettings: [
                 .headerSearchPath("../CLibRaw"),
                 .unsafeFlags(["-w"])
-            ]
+            ],
+            linkerSettings: [.linkedFramework("Metal"), .linkedFramework("Foundation")]
         ),
         .target(
             name: "LibRawRuntime",

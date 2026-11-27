@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import UniformTypeIdentifiers
 
 enum ExportFormat: String, Codable, CaseIterable, Identifiable {
@@ -16,9 +17,23 @@ enum JPEGMatte: String, Codable, CaseIterable, Identifiable {
     var title: String { self == .unselected ? L10n.text("app.chooseAMatteColor", defaultValue: "Choose a Matte Color") : self == .black ? L10n.text("app.black", defaultValue: "Black") : L10n.text("app.white", defaultValue: "White") }
 }
 
+enum ExportColorSpace: String, Codable, CaseIterable {
+    case sRGB = "srgb"
+    case displayP3 = "display_p3"
+
+    var name: CFString { self == .sRGB ? CGColorSpace.sRGB : CGColorSpace.displayP3 }
+    var title: String { self == .sRGB ? "sRGB" : "Display P3" }
+    var exifCode: Int { self == .sRGB ? 1 : 65535 }
+}
+
 struct ExportOptions: Codable, Equatable {
     var format: ExportFormat = .jpeg
     var longEdge: Int?
+    var colorSpace: ExportColorSpace?
+    var profile: ExportColorSpace {
+        get { colorSpace ?? .sRGB }
+        set { colorSpace = newValue == .sRGB ? nil : newValue }
+    }
     var quality = 0.9
     var naming = ExportNaming()
     var metadataPolicy = ExportMetadataPolicy.none
@@ -30,7 +45,7 @@ struct ExportOptions: Codable, Equatable {
         else { throw LRCError(L10n.text("app.invalidOutputOptionsLongEdgeMustBe130000", defaultValue: "Invalid output options: long edge must be 1–30000 px and JPEG quality must be 10–100")) }
     }
     var summary: String {
-        "\(format.title) · sRGB · \(longEdge.map { L10n.text("app.longEdgePx", defaultValue: "Long edge \($0) px") } ?? L10n.text("app.originalSize", defaultValue: "Original Size")) · \(metadataPolicy.title)" +
+        "\(format.title) · \(profile.title) · \(longEdge.map { L10n.text("app.longEdgePx", defaultValue: "Long edge \($0) px") } ?? L10n.text("app.originalSize", defaultValue: "Original Size")) · \(metadataPolicy.title)" +
             (format == .jpeg ? L10n.text("app.matte", defaultValue: " · Matte: \(jpegMatte.title)") : L10n.text("app.preserveAlpha", defaultValue: " · Preserve Alpha"))
     }
 }

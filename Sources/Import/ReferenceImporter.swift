@@ -453,6 +453,7 @@ actor ReferenceImporter {
             exposureTime: exif?[kCGImagePropertyExifExposureTime as String] as? Double,
             focalLength: exif?[kCGImagePropertyExifFocalLength as String] as? Double,
             orientation: props[kCGImagePropertyOrientation as String] as? Int,
+            hdrHeadroom: inspected.hdrHeadroom,
             profile: inspected.composite != nil ? "sRGB IEC61966-2.1 Linear" : inspected.pngICC == false ? nil : props[kCGImagePropertyProfileName as String] as? String,
             focal35mm: (exif?[kCGImagePropertyExifFocalLenIn35mmFilm as String] as? NSNumber)?.doubleValue,
             composite: inspected.composite?.catalogSummary, tiffPageCount: inspected.tiffPageCount)

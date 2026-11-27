@@ -1426,6 +1426,7 @@ final class PhotoMergeTests: XCTestCase {
         let ordinary = try await engine.retouchPreview(preview.id,settings:settings,source:0,ev:0,progress:{ _,_ in })
         for mode in [MergeRetouchOverlay.coverage,.constraints] {
             let shown = try await engine.retouchPreview(preview.id,settings:settings,source:0,ev:0,overlay:mode,progress:{ _,_ in })
+            XCTAssertTrue(shown.source === ordinary.source && shown.result === ordinary.result)
             XCTAssertNotNil(shown.overlay)
             XCTAssertEqual(shown.result.dataProvider?.data as Data?,ordinary.result.dataProvider?.data as Data?)
         }

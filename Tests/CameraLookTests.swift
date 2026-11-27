@@ -10,14 +10,14 @@ final class CameraLookTests: XCTestCase {
     @MainActor func testCollapsedGroupsGuideFocusAndExcludeHiddenPreviews() {
         let sections = CameraLookLibrary(includesDiagnosticLooks: false).menuSections()
         let velvia = CameraLookSelection(id: "fujifilm.velvia", version: 1)
-        let collapsed = CameraLookBrowser.Layout(sections: sections, selection: velvia, collapsed: ["fujifilm"])
+        let collapsed = CameraLookBrowser.Layout(sections: sections, selection: velvia, collapsed: ["fujifilm", "canon", "nikon"])
         XCTAssertEqual(collapsed.selectedTarget, .group("fujifilm"))
         XCTAssertEqual(collapsed.visibleChoices.map(\.id), ["default", "phosdeck.as-shot@1", "sony.st@1"])
         XCTAssertEqual(collapsed.destination(from: .tile("phosdeck.as-shot@1"), key: .tab), .group("fujifilm"))
         XCTAssertEqual(collapsed.destination(from: .group("fujifilm"), key: .downArrow), .group("sony"))
         XCTAssertEqual(collapsed.destination(from: .group("sony"), key: .tab), .tile("sony.st@1"))
 
-        let expanded = CameraLookBrowser.Layout(sections: sections, selection: velvia, collapsed: ["sony"])
+        let expanded = CameraLookBrowser.Layout(sections: sections, selection: velvia, collapsed: ["sony", "canon", "nikon"])
         XCTAssertEqual(expanded.selectedTarget, .tile("fujifilm.velvia@1"))
         XCTAssertEqual(expanded.visibleChoices.count, 22)
         XCTAssertEqual(expanded.destination(from: .group("fujifilm"), key: .downArrow), .tile("fujifilm.provia@1"))
@@ -277,6 +277,26 @@ final class CameraLookTests: XCTestCase {
         }
     }
 
+    func testMeasuredLooksImproveSeparateCC0CameraJPEGs() throws {
+        let context = CIContext(options: [.workingFormat: CIFormat.RGBAf])
+        for (name, look) in [("canon_m50_craw.CR3", "canon.m50-jpeg"), ("d750_898.NEF", "nikon.d750-standard"), ("d850_1840.NEF", "nikon.d850-standard")] {
+            let url = try MoreRAWTests.sample(name)
+            let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
+            let jpeg = try XCTUnwrap(CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageIfAbsent: false, kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 256] as CFDictionary))
+            let decoder = try RAWDecoderSession(url: url), metrics = decoder.baselineMetrics
+            let neutral = try decoder.renderDevelop(previewEdge: 256, draft: false, baselineExposure: metrics.exposure,
+                exposure: 0, temperature: metrics.temperature, tint: metrics.tint, details: RAWDetailSettings()).image
+            let matched = try CameraLookPipeline.apply(neutral, selection: .init(id: look, version: 1), library: .shared)
+            let target = AsShotMatch.grid(CIImage(cgImage: jpeg), context)
+            func error(_ image: CIImage) -> Float {
+                zip(AsShotMatch.grid(image, context), target).reduce(0) { $0 + simd_distance($1.0, $1.1) }
+            }
+            XCTAssertLessThan(error(matched), error(neutral), name)
+        }
+    }
+
     func testBundledManifestLocalizationAndReleaseVisibility() throws {
         let selection = CameraLookSelection(id: "diagnostic.test-table", version: 1)
         let previewLibrary = CameraLookLibrary(includesDiagnosticLooks: true)
@@ -286,23 +306,23 @@ final class CameraLookTests: XCTestCase {
         try releaseLibrary.validate(selection)
 
         let previewSections = previewLibrary.menuSections()
-        XCTAssertEqual(previewSections.map(\.group.id), ["fujifilm", "sony", "diagnostic"])
+        XCTAssertEqual(previewSections.map(\.group.id), ["fujifilm", "sony", "canon", "nikon", "diagnostic"])
         XCTAssertEqual(previewSections.last?.entries.map(\.selection), [selection])
         let releaseSections = releaseLibrary.menuSections()
-        XCTAssertEqual(releaseSections.map(\.group.id), ["fujifilm", "sony"])
+        XCTAssertEqual(releaseSections.map(\.group.id), ["fujifilm", "sony", "canon", "nikon"])
         let fujiLooks = ["provia", "velvia", "astia", "classic-chrome", "pro-neg-hi", "pro-neg-std",
                          "classic-neg", "nostalgic-neg", "reala-ace", "eterna", "eterna-bleach-bypass",
                          "acros", "acros-ye", "acros-r", "acros-g", "monochrome", "monochrome-ye",
                          "monochrome-r", "monochrome-g", "sepia"]
         XCTAssertEqual(releaseSections.first?.entries.map(\.selection.id), fujiLooks.map { "fujifilm.\($0)" })
-        XCTAssertEqual(releaseSections.last?.entries.map(\.selection.id), ["sony.st"])
+        XCTAssertEqual(releaseSections.first { $0.group.id == "sony" }?.entries.map(\.selection.id), ["sony.st"])
 
         XCTAssertEqual(previewLibrary.title(for: selection, language: "en"), "Test Lookup Table")
         XCTAssertEqual(previewLibrary.title(for: selection, language: "zh-Hans"), "测试色表")
         XCTAssertEqual(previewSections.last?.group.displayTitle(language: "en"), "Pipeline Verification")
         XCTAssertEqual(previewSections.last?.group.displayTitle(language: "zh-Hans"), "测试验证")
-        XCTAssertEqual(releaseSections.map { $0.group.displayTitle(language: "zh-Hans") }, ["富士", "索尼"])
-        XCTAssertEqual(releaseSections.map { $0.group.displayTitle(language: "en") }, ["Fujifilm", "Sony"])
+        XCTAssertEqual(releaseSections.map { $0.group.displayTitle(language: "zh-Hans") }, ["富士", "索尼", "佳能", "尼康"])
+        XCTAssertEqual(releaseSections.map { $0.group.displayTitle(language: "en") }, ["Fujifilm", "Sony", "Canon", "Nikon"])
         XCTAssertEqual(releaseLibrary.title(for: CameraLookSelection(id: "sony.st", version: 1), language: "zh-Hans"),
                        "ST 标准色彩")
     }

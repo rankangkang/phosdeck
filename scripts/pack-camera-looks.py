@@ -266,6 +266,24 @@ def write_look(output, group, key, title, translated, data, headroom_weights=Non
     return entry
 
 
+# Native AsShotMatch.fit on the Apple RAW and same-frame camera JPEG.
+# Training and independent check file hashes are pinned in public-raw-samples.json.
+# M50: canon_m50_raw / canon_m50_craw; D750: 895 / 898; D850: 1837 / 1840.
+def measured_looks(output):
+    records = [
+        ("canon", "m50-jpeg", "EOS M50 Camera JPEG", "EOS M50 机内 JPEG 近似", [0.40375918, 0.33267322, 0.34767333]),
+        ("nikon", "d750-standard", "D750 Standard", "D750 标准近似", [-0.14515176, -0.22239722, -0.20195101]),
+        ("nikon", "d850-standard", "D850 Standard", "D850 标准近似", [0.28079522, 0.24904802, 0.633509]),
+    ]
+    entries = []
+    for group, key, title, translated, bend in records:
+        def transform(inputs):
+            v = np.clip(inputs, 0, 1)
+            return inputs + np.asarray(bend) * v * (1 - v)
+        entries.append(write_look(output, group, key, title + " (approx.)", translated, pack(transform)))
+    return entries
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("upstream", type=Path)
@@ -290,6 +308,7 @@ def main():
     profile = json.loads(checked_bytes(args.upstream / "ILCE-7RM5.json", SONY_HASH))
     image = pack(lambda inputs: sony_transform(inputs, profile))
     entries.append(write_look(args.output, "sony", "st", "ST Standard Color", "ST 标准色彩", image))
+    entries.extend(measured_looks(args.output))
     (args.output / "looks.json").write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n")
 
 

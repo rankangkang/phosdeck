@@ -220,7 +220,66 @@ final class InputFormatTests: XCTestCase {
         try ImagePipeline.verifyExport(pngOut, width: pngSize.0, height: pngSize.1, format: .png)
     }
 
-    func testDamagedMultiFrameDisguisedAndHDRHEIFAreRejected() async throws {
+    func testIdlePrewarmBuildsOneFitPreviewAheadOfUneditedRAWSelection() async throws {
+        let request = try MoreRAWTests.request("a7iii_12bit_compressed.ARW")
+        let service = ThumbnailService(deviceConditions: { (false, .nominal) })
+        try await service.configure(catalogID: UUID().uuidString, gigabytes: 1)
+        var next = request.photo
+        next.id = UUID().uuidString
+        await service.prewarm([request.photo, next], roots: [request.root])
+        let first = try await service.standardPreview(for: request.photo)
+        let second = try await service.standardPreview(for: next)
+        let image = try XCTUnwrap(first)
+        XCTAssertEqual(max(image.width, image.height), ThumbnailService.standardEdge)
+        XCTAssertNil(second)
+        _ = try await service.clear()
+    }
+
+    func testRAWHighlightPreviewIsDisplayOnlyAcrossDraftAndQuality() async throws {
+        let source = try MoreRAWTests.request("a7iii_12bit_compressed.ARW")
+        let pipeline = ImagePipeline()
+        var recipe = try await pipeline.baseline(source)
+        recipe.exposure = 1
+        var request = ImageRequest(photo: source.photo, root: source.root, recipe: recipe)
+        let original = try await pipeline.renderInteractive(request, longEdge: 256, canvas: true)
+        request.rawHDRPreview = true
+        let hdr = try await pipeline.renderDisplay(request, edge: 256, canvas: true)
+        let draft = try await pipeline.renderInteractive(request, longEdge: 256, canvas: true)
+        XCTAssertGreaterThan(hdr.image.contentHeadroom, 1)
+        XCTAssertEqual(draft.image.colorSpace?.name, CGColorSpace.extendedLinearDisplayP3)
+        XCTAssertFalse(try JSONDecoder().decode(ImageRequest.self, from: JSONEncoder().encode(request)).rawHDRPreview)
+        request.rawHDRPreview = false
+        let reset = try await pipeline.renderInteractive(request, longEdge: 256, canvas: true)
+        XCTAssertEqual(Data(pixels8(original.image)), Data(pixels8(reset.image)))
+    }
+
+    func testDisplayP3ExportPreservesWideGamutAndEmbedsProfile() async throws {
+        let url = try writeHEIC(named: "wide.heic", width: 96, height: 64, spaceName: CGColorSpace.displayP3, bitDepth: 10, hasAlpha: false, orientation: 1)
+        let root = StorageRoot(id: "wide", path: directory.path, bookmark: try AccessLease.bookmark(directory, readOnly: true), label: "P3")
+        let request = ImageRequest(photo: try ReferenceImporter.inspect(url: url, root: root, rootURL: directory), root: root, recipe: nil)
+        let pipeline = ImagePipeline()
+        let reference = try await pipeline.render(request, longEdge: nil, profile: .displayP3)
+        let srgb = try await pipeline.render(request, longEdge: nil)
+        func widePixels(_ image: CGImage) -> [UInt8] {
+            var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            context.render(CIImage(cgImage: image), toBitmap: &bytes, rowBytes: image.width * 4,
+                           bounds: CGRect(x: 0, y: 0, width: image.width, height: image.height), format: .RGBA8,
+                           colorSpace: CGColorSpace(name: CGColorSpace.displayP3)!)
+            return bytes
+        }
+        XCTAssertGreaterThan(zip(widePixels(reference.image), widePixels(srgb.image)).map { abs(Int($0) - Int($1)) }.max() ?? 0, 8)
+        for format in ExportFormat.allCases {
+            let dest = directory.appendingPathComponent("wide." + format.fileExtension)
+            let size = try await pipeline.export(request, staging: dest, options: ExportOptions(format: format, colorSpace: .displayP3, metadataPolicy: .capture), metadata: .capture(from: [:]))
+            try ImagePipeline.verifyExport(dest, width: size.0, height: size.1, format: format, profile: .displayP3)
+            if format == .png {
+                let source = try XCTUnwrap(CGImageSourceCreateWithURL(dest as CFURL, nil))
+                XCTAssertEqual(widePixels(try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))), widePixels(reference.image))
+            }
+        }
+    }
+
+    func testHEIFRejectsDamageSequencesAndDisguisesAndPreservesHDRCanvas() async throws {
         let root = StorageRoot(id: "heif-reject", path: directory.path, bookmark: try AccessLease.bookmark(directory, readOnly: true), label: "HEIF Reject")
         let pipeline = ImagePipeline()
 
@@ -249,18 +308,24 @@ final class InputFormatTests: XCTestCase {
             XCTAssertThrowsError(try ReferenceImporter.inspect(url: fake, root: root, rootURL: directory))
         }
 
-        // 4. HDR PQ and HLG HEIF must be explicitly rejected.
+        // The same sources use a float canvas and an SDR delivery graph.
         for (name, space) in [("hdr-pq.heic", CGColorSpace.itur_2100_PQ), ("hdr-hlg.heif", CGColorSpace.itur_2100_HLG)] {
-            let hdrURL = try writeHEIC(named: name, width: 64, height: 48, spaceName: space, bitDepth: 10, hasAlpha: false, orientation: 1)
-            XCTAssertThrowsError(try ReferenceImporter.inspect(url: hdrURL, root: root, rootURL: directory)) { error in
-                XCTAssertTrue(error.localizedDescription.contains("HDR") || error.localizedDescription.contains("PQ"))
-            }
-            let identity = try FileIdentity.read(hdrURL)
-            let photo = Photo(id: name, rootID: root.id, relativePath: name, identity: try JSONEncoder().encode(identity), identityKey: identity.key, width: 64, height: 48)
-            do {
-                _ = try await pipeline.baseline(ImageRequest(photo: photo, root: root, recipe: nil))
-                XCTFail("HDR HEIF must not create an SDR raster baseline")
-            } catch {}
+            let hdrURL = try writeHEIC(named: name, width: 96, height: 64, spaceName: space, bitDepth: 10, hasAlpha: false, orientation: 1)
+            let photo = try ReferenceImporter.inspect(url: hdrURL, root: root, rootURL: directory)
+            XCTAssertNotNil(photo.details?.hdrHeadroom)
+            let base = try await pipeline.baseline(ImageRequest(photo: photo, root: root, recipe: nil))
+            let request = ImageRequest(photo: photo, root: root, recipe: base)
+            let canvas = try await pipeline.renderDisplay(request, edge: nil, canvas: true)
+            XCTAssertEqual(canvas.image.colorSpace?.name, CGColorSpace.extendedLinearDisplayP3)
+            XCTAssertGreaterThan(canvas.image.contentHeadroom, 1, name)
+            let linear = CIImage(cgImage: canvas.image, options: [.toneMapHDRtoSDR: false])
+            var peak = SIMD4<Float>.zero
+            context.render(linear.applyingFilter("CIAreaMaximum", parameters: [kCIInputExtentKey: CIVector(cgRect: linear.extent)]),
+                           toBitmap: &peak, rowBytes: 16, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBAf,
+                           colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)!)
+            XCTAssertGreaterThan(max(peak.x, peak.y, peak.z), 1, name)
+            let sdr = try await pipeline.render(request, longEdge: nil)
+            XCTAssertEqual(sdr.image.colorSpace?.name, CGColorSpace.sRGB)
         }
     }
 

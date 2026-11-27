@@ -28,11 +28,11 @@ struct PhotoGrid: NSViewRepresentable {
             return true
         }
         collection.photoMenu = { [weak coordinator = context.coordinator] in coordinator?.photoMenu(at: $0) }
-        collection.command = { [weak model] event in
+        collection.command = { [weak model, film] event in
             guard let model, model.workspaceAvailable else { return false }
             if WorkspaceKeyboard.stack(event,model:model) { return true }
-            if event.keyCode == 123, model.photos.first?.id == model.activeID, model.pageOffset > 0 { model.move(-1); return true }
-            if event.keyCode == 124, model.photos.last?.id == model.activeID, model.pageOffset + model.photos.count < model.visibleCount { model.move(1); return true }
+            if film, event.keyCode == 123, model.photos.first?.id == model.activeID, model.pageOffset > 0 { model.move(-1); return true }
+            if film, event.keyCode == 124, model.photos.last?.id == model.activeID, model.pageOffset + model.photos.count < model.visibleCount { model.move(1); return true }
             if WorkspaceKeyboard.cull(event, model: model) { return true }
             guard !event.modifierFlags.contains(.shift) else { return false }
             switch event.charactersIgnoringModifiers?.lowercased() {
@@ -129,9 +129,16 @@ struct PhotoGrid: NSViewRepresentable {
         let changedPage = c.positionKey != positionKey
         c.positionKey = positionKey
         let previous = c.photos
+        let order = !film && model.visibleCount > model.pageSize ? model.gridOrder : nil
+        let orderChanged = c.order !== order
+        let layoutChanged = orderChanged && !(order?.rows.elementsEqual(c.order?.rows ?? [], by: { $0.photoID == $1.photoID }) ?? false)
+        if orderChanged { c.extraPages.removeAll() }
+        c.order = order
         c.photos = photos
         let difference = photos.map(\.id).difference(from: previous.map(\.id))
-        if !difference.isEmpty {
+        if layoutChanged {
+            c.collection?.reloadData()
+        } else if order == nil, !difference.isEmpty {
             if changedPage || previous.isEmpty {
                 c.collection?.reloadData()
             } else {
@@ -162,7 +169,12 @@ struct PhotoGrid: NSViewRepresentable {
                 resized = true
             }
         }
-        let indexes = Set(photos.enumerated().filter { model.selection.contains($0.element.id) }.map { IndexPath(item: $0.offset, section: 0) })
+        let indexes: Set<IndexPath>
+        if let order {
+            indexes = Set(model.selection.compactMap { order.indexByID[$0].map { IndexPath(item: $0, section: 0) } })
+        } else {
+            indexes = Set(photos.indices.filter { model.selection.contains(photos[$0].id) }.map { IndexPath(item: $0, section: 0) })
+        }
         if c.collection?.selectionIndexPaths != indexes { c.collection?.selectionIndexPaths = indexes }
         if changedPage || returning || !difference.isEmpty {
             let origin = changedPage || returning ? (model.scrollPositions[positionKey] ?? .zero) : oldOrigin
@@ -173,7 +185,7 @@ struct PhotoGrid: NSViewRepresentable {
             && model.scrollActiveIDs[positionKey] == model.activeID
         if restoringPosition { c.lastActive = model.activeID }
         if c.lastActive != model.activeID || ((changedPage || returning) && !restoringPosition),
-           let index = photos.firstIndex(where: { $0.id == model.activeID }) {
+           let active = model.activeID, let index = c.index(of: active) {
             c.lastActive = model.activeID
             c.collection?.scrollToItems(at: [IndexPath(item: index, section: 0)], scrollPosition: film ? .nearestHorizontalEdge : .nearestVerticalEdge)
         }
@@ -200,6 +212,68 @@ struct PhotoGrid: NSViewRepresentable {
         var filmHeight: Double = 84
         var mat = PhotoMat.dark
         var photos: [Photo] = []
+        var order: CachedQueryOrder?
+        var extraPages: [(page: PhotoPage, pairs: Set<String>)] = []
+
+        func index(of id: String) -> Int? {
+            if let order { return order.indexByID[id] }
+            return photos.firstIndex { $0.id == id }
+        }
+
+        private var count: Int { order?.rows.count ?? photos.count }
+
+        private func id(at index: Int) -> String? {
+            guard (0..<count).contains(index) else { return nil }
+            return order?.rows[index].photoID ?? photos[index].id
+        }
+
+        private func record(at index: Int) -> (photo: Photo, badge: StackBadge?, paired: Bool)? {
+            guard let id = id(at: index) else { return nil }
+            let local = index - (order == nil ? 0 : model.pageOffset)
+            if photos.indices.contains(local), photos[local].id == id {
+                let photo = photos[local]
+                return (photo, model.stackBadges[id], model.pairedSourceIDs.contains(photo.sourceKey))
+            }
+            guard let order, let catalog = model.catalog else { return nil }
+            let offset = index / model.pageSize * model.pageSize
+            if !extraPages.contains(where: { $0.page.offset == offset }) {
+                do {
+                    let page = try catalog.page(order.query, offset: offset, limit: model.pageSize)
+                    guard page.order?.revision == order.revision, page.order?.snapshotGeneration == order.snapshotGeneration,
+                          page.offset == offset else { return nil }
+                    let pairs = try catalog.pairedSources(within: Set(page.photos.map(\.sourceKey)))
+                    if extraPages.count == 3 { extraPages.removeFirst() }
+                    extraPages.append((page, pairs))
+                } catch { return nil }
+            }
+            guard let batch = extraPages.first(where: { $0.page.offset == offset }),
+                  batch.page.photos.indices.contains(index - offset) else { return nil }
+            let photo = batch.page.photos[index - offset]
+            return (photo, batch.page.badges[id], batch.pairs.contains(photo.sourceKey))
+        }
+
+        private func choose(_ ids: Set<String>, active id: String?) {
+            if let id, let index = order?.indexByID[id] {
+                let offset = index / model.pageSize * model.pageSize
+                if offset != model.pageOffset {
+                    let currentOrder = order
+                    guard model.commitRecipe(resume: { [weak self] in
+                        guard let self, self.model.gridOrder === currentOrder else { return }
+                        self.choose(ids, active: id)
+                    }) else { return }
+                    let previous = model.pageOffset
+                    do {
+                        model.pageOffset = offset
+                        try model.reloadPhotos()
+                    } catch {
+                        model.pageOffset = previous
+                        model.error = error.localizedDescription
+                        return
+                    }
+                }
+            }
+            model.choose(ids, active: id)
+        }
         var isShowing = true
         var applyingChanges = false
         var positionKey = ""
@@ -230,19 +304,24 @@ struct PhotoGrid: NSViewRepresentable {
             if film { return filmItemSize(viewportHeight: collectionView.enclosingScrollView?.contentSize.height ?? CGFloat(filmHeight)) }
             return gridItemSize(viewportWidth: collectionView.bounds.width)
         }
-        func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { photos.count }
+        func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { count }
         func stackEdges(at index: Int) -> (first: Bool, last: Bool) {
+            if let order {
+                guard order.rows.indices.contains(index), let stack = order.rows[index].stackID else { return (false, false) }
+                return (index == 0 || order.rows[index - 1].stackID != stack,
+                        index + 1 == count || order.rows[index + 1].stackID != stack)
+            }
             guard photos.indices.contains(index), let stack = model.stackBadges[photos[index].id]?.stackID else { return (false, false) }
             return (index == 0 || model.stackBadges[photos[index - 1].id]?.stackID != stack,
                     index == photos.count - 1 || model.stackBadges[photos[index + 1].id]?.stackID != stack)
         }
         func configure(_ item: PhotoItem, at index: Int, requestThumbnail: Bool) {
-            guard isShowing, photos.indices.contains(index) else { return }
-            let photo = photos[index]
+            guard isShowing, let (photo, badge, paired) = record(at: index) else { item.view.isHidden = true; return }
+            item.view.isHidden = false
             let edges = stackEdges(at: index)
             item.configure(photo: photo, root: model.roots.first { $0.id == photo.rootID }, service: model.thumbnails,
-                           film: film, active: model.activeID == photo.id, mat: mat, badge: model.stackBadges[photo.id],
-                           paired: model.pairedSourceIDs.contains(photo.sourceKey), position: model.pageOffset + index + 1,
+                           film: film, active: model.activeID == photo.id, mat: mat, badge: badge,
+                           paired: paired, position: (order == nil ? model.pageOffset : 0) + index + 1,
                            stackStart: edges.first, stackEnd: edges.last, requestThumbnail: requestThumbnail,
                            toggleStack: { [weak model] in model?.toggleStack(photo.id) })
         }
@@ -253,8 +332,7 @@ struct PhotoGrid: NSViewRepresentable {
             return item
         }
         func collectionView(_ collectionView: NSCollectionView, willDisplay item: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
-            guard isShowing, let item = item as? PhotoItem, photos.indices.contains(indexPath.item) else { return }
-            let photo = photos[indexPath.item]
+            guard isShowing, let item = item as? PhotoItem, let photo = record(at: indexPath.item)?.photo else { return }
             item.loadThumbnail(photo: photo, root: model.roots.first { $0.id == photo.rootID }, service: model.thumbnails)
         }
         func collectionView(_ collectionView: NSCollectionView, didEndDisplaying item: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
@@ -268,10 +346,10 @@ struct PhotoGrid: NSViewRepresentable {
                 try? await Task.sleep(for: .milliseconds(450))
                 guard !Task.isCancelled, let self, isShowing, model.workspaceMode == .grid, model.workspaceAvailable,
                       let collection, collection.window != nil, !collection.isHiddenOrHasHiddenAncestor else { return }
-                let visible = collection.indexPathsForVisibleItems().map(\.item).filter { self.photos.indices.contains($0) }
+                let visible = collection.indexPathsForVisibleItems().map(\.item).filter { (0..<self.count).contains($0) }
                 guard let first = visible.min(), let last = visible.max() else { return }
                 let limit = min(visible.count, ThumbnailService.prewarmLimit)
-                let next = forward ? Array(photos.dropFirst(last + 1).prefix(limit)) : Array(photos.prefix(first).reversed().prefix(limit))
+                let next = (0..<limit).compactMap { record(at: forward ? last + 1 + $0 : first - 1 - $0)?.photo }
                 await model.thumbnails.prewarm(next, roots: model.roots)
             }
         }
@@ -281,14 +359,13 @@ struct PhotoGrid: NSViewRepresentable {
         }
         fileprivate static let orderingPasteboardType = NSPasteboard.PasteboardType("dev.cmkk.phosdeck.collection-order")
         private func movingIDs(for indexPath: IndexPath) -> [String] {
-            guard photos.indices.contains(indexPath.item) else { return [] }
-            let dragged = photos[indexPath.item].id
-            let selected = model.selection.intersection(Set(photos.map(\.id)))
-            // A drag starts from a non-selected card as a single-photo move;
-            // dragging a selected card preserves the complete real selection,
-            // including selected members on other pages.
-            return selected.contains(dragged) ? photos.map(\.id).filter { selected.contains($0) } +
-                model.selection.subtracting(Set(photos.map(\.id))).sorted() : [dragged]
+            guard let dragged = id(at: indexPath.item) else { return [] }
+            guard model.selection.contains(dragged) else { return [dragged] }
+            if let order {
+                return model.selection.sorted { (order.indexByID[$0] ?? Int.max, $0) < (order.indexByID[$1] ?? Int.max, $1) }
+            }
+            let visible = Set(photos.map(\.id))
+            return photos.map(\.id).filter(model.selection.contains) + model.selection.subtracting(visible).sorted()
         }
         private func currentOrderingToken() -> CollectionOrderingToken? {
             guard let path = model.catalog?.fileURL.path else { return nil }
@@ -320,7 +397,7 @@ struct PhotoGrid: NSViewRepresentable {
                   payload.token == expected else { return [] }
             let ids = payload.ids
             let index = proposedIndexPath.pointee.item
-            let before = photos.indices.contains(index) ? photos[index].id : nil
+            let before = id(at: index)
             guard before == nil || !ids.contains(before!) else { return [] }
             proposedDropOperation.pointee = .before
             return .move
@@ -331,7 +408,7 @@ struct PhotoGrid: NSViewRepresentable {
                   expected == currentOrderingToken(), dropOperation == .before,
                   let payload = dragPayload(draggingInfo), payload.token == expected else { return false }
             let ids = payload.ids
-            let before = photos.indices.contains(indexPath.item) ? photos[indexPath.item].id : nil
+            let before = id(at: indexPath.item)
             guard before == nil || !ids.contains(before!) else { return false }
             return ordering.reorder(ids, before)
         }
@@ -339,11 +416,11 @@ struct PhotoGrid: NSViewRepresentable {
         func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionChanged(collectionView, active: nil) }
         func photoMenu(at path: IndexPath) -> NSMenu? {
             guard isShowing, model.canSelectAllResults, let catalog = model.catalog,
-                  photos.indices.contains(path.item), model.photos.indices.contains(path.item),
-                  model.photos[path.item].id == photos[path.item].id else { return nil }
-            let photo = photos[path.item]
+                  order === (film || model.visibleCount <= model.pageSize ? nil : model.gridOrder),
+                  let photo = record(at: path.item)?.photo,
+                  order != nil || (model.photos.indices.contains(path.item) && model.photos[path.item].id == photo.id) else { return nil }
             let ids = model.selection.contains(photo.id) ? model.selection : [photo.id]
-            model.choose(ids, active: photo.id)
+            choose(ids, active: photo.id)
             guard model.activeID == photo.id, model.selection == ids else { return nil }
             let selection = model.selectionGeneration, browse = model.browseGeneration
             return makePhotoMenu(model: model, photo: photo) { [weak model] in
@@ -353,7 +430,7 @@ struct PhotoGrid: NSViewRepresentable {
         }
         private func selectionChanged(_ collection: NSCollectionView, active: IndexPath?) {
             guard !applyingChanges else { return }
-            if let active, photos.indices.contains(active.item) { pendingActiveID = photos[active.item].id }
+            if let active { pendingActiveID = id(at: active.item) }
             pendingSelectionModifiers = NSEvent.modifierFlags
             guard !selectionUpdateScheduled else { return }
             selectionUpdateScheduled = true
@@ -370,16 +447,15 @@ struct PhotoGrid: NSViewRepresentable {
             }
         }
         private func changed(_ collection: NSCollectionView, active: String?, modifiers: NSEvent.ModifierFlags) {
-            let visibleIDs = Set(photos.map(\.id))
-            let carry = modifiers.intersection([.command, .shift]).isEmpty ? Set<String>() : model.selection.subtracting(visibleIDs)
-            let ids = carry.union(Set(collection.selectionIndexPaths.compactMap { photos.indices.contains($0.item) ? photos[$0.item].id : nil }))
+            let carry = modifiers.intersection([.command, .shift]).isEmpty ? Set<String>() : model.selection.filter { index(of: $0) == nil }
+            let ids = carry.union(collection.selectionIndexPaths.compactMap { self.id(at: $0.item) })
             let id = active.flatMap { ids.contains($0) ? $0 : nil } ?? (ids.contains(model.activeID ?? "") ? model.activeID : ids.sorted().first)
             if let survey = model.survey {
                 if modifiers.intersection([.command, .shift]).isEmpty, let id, survey.ids.contains(id) { model.activateSurveyPhoto(id) }
                 else { model.updateSurveySelection(ids, active: id) }
                 return
             }
-            model.choose(ids, active: id)
+            choose(ids, active: id)
         }
     }
 }

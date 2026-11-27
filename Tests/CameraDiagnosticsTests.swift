@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import CoreImage
 import SwiftUI
 @testable import Phosdeck
 
@@ -67,13 +68,43 @@ final class CameraDiagnosticsTests: XCTestCase {
         XCTAssertNotNil(result.photo.sensorBits)
         XCTAssertEqual(result.photo.checks.first { $0.id == "sensorMeasurements" }?.verdict, .passed)
     }
-    func testAppleDNGRefusalIsPreserved() async throws {
-        let url = try MoreRAWTests.sample("iphone12pro_8bit_ljpeg.DNG")
-        let result = try await CameraDiagnostics().inspect(url,index: 1)
-        XCTAssertEqual(result.photo.checks.first?.verdict,.failed)
-        XCTAssertTrue(result.photo.checks.first?.detail.contains("Apple DNG") == true)
-        XCTAssertNil(result.rendered)
+    private func checkExpandedRAW(_ name: String) async throws {
+        let url = try MoreRAWTests.sample(name)
+        let result = try await CameraDiagnostics().inspect(url, index: 1)
+        if name == "iphone12pro_8bit_ljpeg.DNG" {
+            XCTAssertTrue(result.photo.checks.first { $0.id == "sensorMeasurements" }?.detail.contains("Linear RGB") == true)
+        }
+        for id in ["decode", "repeat", "afterDraft", "sixteenBit"] {
+            let check = result.photo.checks.first { $0.id == id }
+            XCTAssertEqual(check?.verdict, .passed, "\(name) \(id): \(result.photo.checks)")
+        }
     }
+
+    func testCR2Diagnostic() async throws { try await checkExpandedRAW("canon_rebel_xt.CR2") }
+    func testORFDiagnostic() async throws {
+        let url = try MoreRAWTests.sample("olympus_e10.ORF")
+        XCTAssertEqual(try RAWDecoderSession(url: url).baselineMetrics.decoderVersion, "libraw-metal-bayer-v1")
+        try await checkExpandedRAW("olympus_e10.ORF")
+    }
+    func testRW2Diagnostic() async throws { try await checkExpandedRAW("panasonic_lx7.RW2") }
+    func testPEFDiagnostic() async throws { try await checkExpandedRAW("pentax_k10d.PEF") }
+    func test3FRDiagnosticRecordsAppleRepeatability() async throws {
+        let result = try await CameraDiagnostics().inspect(MoreRAWTests.sample("hasselblad_h3d.3FR"), index: 1)
+        XCTAssertEqual(result.photo.decoder, CIRAWFilter(imageURL: try MoreRAWTests.sample("hasselblad_h3d.3FR"))?.decoderVersion.rawValue)
+        for id in ["decode", "sixteenBit"] {
+            XCTAssertEqual(result.photo.checks.first { $0.id == id }?.verdict, .passed)
+        }
+        for id in ["repeat", "afterDraft"] {
+            let check = try XCTUnwrap(result.photo.checks.first { $0.id == id })
+            XCTAssertTrue(check.verdict == .passed || check.verdict == .warning, check.detail)
+            print("H3D \(id): \(check.detail)")
+        }
+    }
+
+    func testAppleSensorDNGDiagnostic() async throws { try await checkExpandedRAW("iphone_xs_wide.DNG") }
+
+    func testAppleLinearDNGDiagnostic() async throws { try await checkExpandedRAW("iphone12pro_8bit_ljpeg.DNG") }
+
     func testCorruptFileReportsFailureAndSelectionDoesNotRecurseOrFollowLinks() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder,withIntermediateDirectories: true)

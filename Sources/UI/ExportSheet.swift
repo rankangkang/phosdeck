@@ -139,7 +139,7 @@ struct ExportSheet: View {
     @State private var showAllNames = false
     @State private var deletingPreset = false
     @State private var inputRevision = 0
-    private var matteToken: String { "\(options.format):\(options.jpegMatte):\(options.longEdge ?? 0):\(mattePhotoID)" }
+    private var matteToken: String { "\(options.format):\(options.profile):\(options.jpegMatte):\(options.longEdge ?? 0):\(mattePhotoID)" }
     private var presets: [ExportPreset] { ExportPreset.builtIns + preferences.presets }
     private var selected: ExportPreset? { preferences.presets.first { $0.id == presetID } }
     private var readiness: ExportReadiness {
@@ -247,7 +247,6 @@ struct ExportSheet: View {
                 }.buttonStyle(.key).accessibilityIdentifier("export-jump-\(section)")
             }
             Spacer(minLength: 8)
-            Text(L10n.text("app.outputsAlwaysUseSRGBNExistingFilenamesPreventExport", defaultValue: "Outputs always use sRGB.\nExisting filenames prevent export.")).font(.caption11).foregroundStyle(Theme.textSecondary).lineSpacing(4)
         }.padding(16).frame(width: 182)
     }
     private var destinationSection: some View {
@@ -558,7 +557,7 @@ struct ExportSheet: View {
             let request = ImageRequest(photo:photo,root:root,recipe:recipe)
             let resolved = recipe == nil && photo.isRAW ? try await mattePipeline.baseline(request) : recipe
             let result = try await mattePipeline.render(ImageRequest(photo:photo,root:root,recipe:resolved),
-                longEdge:min(640,options.longEdge ?? 640),jpegMatte:options.jpegMatte)
+                longEdge:min(640,options.longEdge ?? 640),jpegMatte:options.jpegMatte, profile:options.profile)
             try Task.checkCancellation()
             guard token == matteToken else { return }
             matteImage = result.image; matteReady = token
@@ -650,6 +649,12 @@ struct ExportOptionsForm: View {
                 Text(L10n.text("app.fileFormat", defaultValue: "File Format")).frame(width: Metrics.rowLabel, height: Metrics.key, alignment: .leading)
                 KeyRow(title: L10n.text("app.fileFormat", defaultValue: "File Format"), options: ExportFormat.allCases.map { KeyOption($0, $0.title) }, selection: $options.format, expand: true)
             }.accessibilityIdentifier("export-format")
+            HStack(spacing: Metrics.gap) {
+                let label = L10n.text("export.colorSpace", defaultValue: "Color Space")
+                Text(label).frame(width: Metrics.rowLabel, alignment: .leading)
+                KeyRow(title: label, options: ExportColorSpace.allCases.map { KeyOption($0, $0.title) },
+                       selection: $options.profile, expand: true)
+            }.accessibilityIdentifier("export-color-space")
             Text(options.format == .jpeg ? L10n.text("app.lossyCompressionSuitableForSharing", defaultValue: "Lossy compression, suitable for sharing.") : options.format == .png ? L10n.text("app.8BitLosslessImageSuitableForTheWebAnd", defaultValue: "8-bit lossless image, suitable for the web and general image exchange.") : L10n.text("app.16BitLosslessTIFFForArchivingAndFurtherEditing", defaultValue: "16-bit lossless TIFF for archiving and further editing; files are usually larger."))
                 .font(.caption11).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             Toggle(L10n.text("app.limitLongEdge", defaultValue: "Limit Long Edge"), isOn: Binding(get: { options.longEdge != nil }, set: { options.longEdge = $0 ? lastLongEdge : nil }))

@@ -28,7 +28,7 @@ final class RAWAdaptationTests: XCTestCase {
 
     func testEveryRAWUsesItsActualDefaultsAndInvalidatesDecodedPixels() async throws {
         let pipeline = ImagePipeline(), cached = ImagePipeline()
-        for name in MoreRAWTests.supportedFiles {
+        for name in MoreRAWTests.appleDecoderFiles {
             let source = try MoreRAWTests.request(name), url = try MoreRAWTests.sample(name)
             let baseline = try await pipeline.baseline(source)
             let defaults = try await pipeline.rawDefaults(request(source, baseline))
@@ -149,7 +149,7 @@ final class RAWAdaptationTests: XCTestCase {
         var catalog: CatalogStore? = try CatalogStore(directory: folder.appendingPathComponent("catalog"))
         let sourceURL = try MoreRAWTests.sample("fuji_xt20_14bit_lossless.RAF").deletingLastPathComponent()
         let root = try catalog!.addRoot(url: sourceURL, bookmark: AccessLease.bookmark(sourceURL, readOnly: true))
-        for name in MoreRAWTests.supportedFiles { try catalog!.index(ReferenceImporter.inspect(url: sourceURL.appendingPathComponent(name), root: root, rootURL: sourceURL)) }
+        for name in MoreRAWTests.appleDecoderFiles { try catalog!.index(ReferenceImporter.inspect(url: sourceURL.appendingPathComponent(name), root: root, rootURL: sourceURL)) }
         let photos = try catalog!.photos(), primary = try XCTUnwrap(photos.first { $0.name == "fuji_xt20_14bit_lossless.RAF" })
         let preview = ImagePipeline()
         let model = AppModel(previewRenderer: { job, _, _ in try await preview.render(job, longEdge: 128) })

@@ -77,6 +77,7 @@ struct PhotoMetadata: Codable, Equatable {
     var exposureTime: Double?
     var focalLength: Double?
     var orientation: Int?
+    var hdrHeadroom: Float? = nil
     var profile: String?
     var focal35mm: Double? = nil
     var composite: MergeProvenance? = nil

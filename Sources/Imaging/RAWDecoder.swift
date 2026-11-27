@@ -26,22 +26,24 @@ final class RAWDecoderSession {
 
     private let url: URL
     private let backend: Backend
+    private var metalBayer = false
     private var cachedLibRawFull: CIImage?
     private var cachedLibRawHalf: CIImage?
     let defaults: RAWDetailSettings
 
     init(url: URL, decoderVersion: String? = nil, unavailableMessage: String? = nil) throws {
         self.url = url
-        _ = try PhotoFileType.validateRAWContainer(url)
+        let container = try PhotoFileType.validateRAWContainer(url)
 
-        if decoderVersion == LibRawRuntime.decoderVersionIdentifier {
+        if decoderVersion == LibRawRuntime.metalBayerVersion || decoderVersion == LibRawRuntime.decoderVersionIdentifier || (decoderVersion == nil && container.prefersLibRaw) {
             let probe = try Self.openLibRawProbe(url)
+            metalBayer = decoderVersion == LibRawRuntime.metalBayerVersion
             self.backend = .libraw(url, probe)
             self.defaults = RAWDetailSettings()
             return
         }
 
-        if let raw = CIRAWFilter(imageURL: url) {
+        if let raw = CIRAWFilter(imageURL: url), raw.nativeSize.width > 0, raw.nativeSize.height > 0 {
             if let decoderVersion {
                 let version = CIRAWDecoderVersion(rawValue: decoderVersion)
                 guard raw.supportedDecoderVersions.contains(version) else {
@@ -59,6 +61,8 @@ final class RAWDecoderSession {
             throw LRCError(unavailableMessage ?? L10n.text("app.theRecipeSOriginalDecoderIsUnavailableReRendering", defaultValue: "The recipe's original decoder is unavailable. Re-rendering stopped"))
         }
         let probe = try Self.openLibRawProbe(url)
+        // Enable the new full-size backend only for the validated Bayer mode.
+        metalBayer = probe.normalizedModel == "E-10" && probe.make.lowercased().contains("olympus") && LibRawRuntime.metalBayerAvailable
         self.backend = .libraw(url, probe)
         self.defaults = RAWDetailSettings()
     }
@@ -105,7 +109,7 @@ final class RAWDecoderSession {
             )
         case .libraw:
             return RAWBaselineMetrics(
-                decoderVersion: LibRawRuntime.decoderVersionIdentifier,
+                decoderVersion: metalBayer ? LibRawRuntime.metalBayerVersion : LibRawRuntime.decoderVersionIdentifier,
                 exposure: 0,
                 temperature: 5500,
                 tint: 0
@@ -133,7 +137,7 @@ final class RAWDecoderSession {
             }
         case .libraw(let url, let probe):
             try PhotoGeometry.checkSize(CGSize(width: probe.orientedWidth, height: probe.orientedHeight))
-            _ = try LibRawRuntime.decodeLinear(url: url, halfSize: true)
+            _ = try LibRawRuntime.decodeLinear(url: url, halfSize: !metalBayer, metalBayer: metalBayer)
         }
     }
 
@@ -171,7 +175,7 @@ final class RAWDecoderSession {
     }
 
     func renderDevelop(previewEdge: Int?, displayEdge: Int? = nil, draft: Bool, baselineExposure: Double, exposure: Double,
-                       temperature: Double, tint: Double, details: RAWDetailSettings) throws -> (image: CIImage, scaleFactor: Float) {
+                       temperature: Double, tint: Double, details: RAWDetailSettings, extendedRange: Bool = false) throws -> (image: CIImage, scaleFactor: Float) {
         let targetEdge = previewEdge ?? displayEdge
         switch backend {
         case .apple(let filter):
@@ -179,7 +183,8 @@ final class RAWDecoderSession {
             let scale: Float = targetEdge.map { Float(min(1, Double($0) / max(filter.nativeSize.width, filter.nativeSize.height))) } ?? 1
             if filter.scaleFactor != scale { filter.scaleFactor = scale }
             if filter.isDraftModeEnabled != draft { filter.isDraftModeEnabled = draft }
-            if filter.extendedDynamicRangeAmount != 0 { filter.extendedDynamicRangeAmount = 0 }
+            let amount: Float = extendedRange ? 1 : 0
+            if filter.extendedDynamicRangeAmount != amount { filter.extendedDynamicRangeAmount = amount }
             if filter.baselineExposure != Float(baselineExposure) { filter.baselineExposure = Float(baselineExposure) }
             if filter.exposure != Float(exposure) { filter.exposure = Float(exposure) }
             if filter.neutralTemperature != Float(temperature) { filter.neutralTemperature = Float(temperature) }
@@ -349,7 +354,7 @@ final class RAWDecoderSession {
     private func librawBaseImage(halfSize: Bool) throws -> CIImage {
         if halfSize, let cachedLibRawHalf { return cachedLibRawHalf }
         if !halfSize, let cachedLibRawFull { return cachedLibRawFull }
-        let decoded = try LibRawRuntime.decodeLinear(url: url, halfSize: halfSize)
+        let decoded = try LibRawRuntime.decodeLinear(url: url, halfSize: halfSize, metalBayer: metalBayer)
         if halfSize { cachedLibRawHalf = decoded.image } else { cachedLibRawFull = decoded.image }
         return decoded.image
     }

@@ -13,10 +13,10 @@
 | `Sources/Export/` | JPEG／PNG／TIFF16 导出、命名模板、元数据写入、批次计划与中断恢复 | 禁止 `SwiftUI`／`AppKit`／`MCP`／`NIO*` |
 | `Sources/Plugins/` | 随包 ExtensionKit 内置插件（`SoftProof`、`Highlights`、`WarmPrint`） | 仅依赖 `PhosdeckPluginKit` 与系统图像框架；禁止 `SwiftUI`／`AppKit` |
 | `Sources/App/` | 应用入口、`AppModel`、键盘与工作区编排、撤销／重做、插件宿主与本地 MCP 服务（`AppMCP*.swift`、`MCPHTTPListener.swift`） | 唯一允许依赖 `MCP` 与 `NIO*` |
-| `Sources/UI/` | SwiftUI 暗房仪表界面、10-bit Display P3 Metal 画布（`MetalPhotoView`）、面板与自定义控件 | 仅负责展示与交互，禁止引入 `MCP`、`NIO*`、`LibRawRuntime`、`CLiteRT` |
+| `Sources/UI/` | SwiftUI 暗房仪表界面、SDR Display P3／HDR 浮点 Metal 画布（`MetalPhotoView`）、面板与自定义控件 | 仅负责展示与交互，禁止引入 `MCP`、`NIO*`、`LibRawRuntime`、`CLiteRT` |
 | `Packages/PhosdeckPluginKit/` | 宿主与插件共享协议、数据结构与 IPC 编解码 | 宿主与插件共同依赖 |
 | `Packages/SmartMaskRuntime/` | LiteRT 桥接与本地智能蒙版推理运行时 | 仅由 `Sources/Imaging/` 调用；Release 不打入研究权重 |
-| `Packages/LibRawRuntime/` | 纯净 LGPL-2.1 `LibRaw 0.22.3` 封装（不含 GPL 扩展包），提供比特流校验、传感器标签与兜底解码 | 仅由 `Sources/Imaging/` 调用 |
+| `Packages/LibRawRuntime/` | 纯净 LGPL-2.1 `LibRaw 0.22.3` 封装（不含 GPL 扩展包），提供比特流校验、传感器标签、兜底解码与已验证 Bayer 模式的 Metal 插值 | 仅由 `Sources/Imaging/` 调用 |
 | `.agents/skills/phosdeck/` | 随包分发的 MCP 操作 Skill 及各领域参考文档 | 改动 MCP 工具或行为时同步更新 |
 | `Config/`、`scripts/`、`site/` | Xcode 构建配置、检查／打包／校准脚本、Astro 中英官网 | 原生构建不依赖 Node.js 或 Rust |
 
@@ -37,7 +37,7 @@
 - `Sources/App/AppModel.swift`：顶部定义工作区状态类型（`WorkspaceMode`、`DevelopTool`、`BrowseLocation`、`TaskProgress` 等），主体 `AppModel` 负责图库会话、查询刷新、预览调度与撤销编排，各领域编辑逻辑拆在同目录 `*Editing.swift` 与 `AppMCP*.swift` 扩展中。
 - `Sources/UI/WorkspaceView.swift`：按 `MARK` 分为 `Top bar`、`Left panel`、`Center`、`Inspector`、`Filmstrip and status`，底部包含 `PhotoViewingInfo`、`WorkspaceDimensions`、`WorkspaceResizeHandle` 等局部子视图。
 - `Sources/Imaging/ImagePipeline.swift`：包含 `ImageRequest`／`RenderedImage`、核心 `actor ImagePipeline`（解码缓存、显影、预览、直方图）与底部的 `actor ThumbnailService`（有界渲染池与磁盘缓存）。
-- `Sources/UI/MetalPhotoView.swift`：包含 `MetalPhotoView`、`CanvasFrameRenderer`、`PhotoMetalCanvas`（10-bit `.bgr10a2Unorm` Display P3 呈现与触控板手势）、`DisplayOverlay`、`PhotoViewport` 与蒙版／污点覆盖状态。
+- `Sources/UI/MetalPhotoView.swift`：包含 `MetalPhotoView`、`CanvasFrameRenderer`、`PhotoMetalCanvas`（SDR 10 位 Display P3、HDR 半浮点 EDR 呈现与触控板手势）、`DisplayOverlay`、`PhotoViewport` 与蒙版／污点覆盖状态。
 - `Sources/Catalog/CatalogStore.swift`：定义 `schemaVersion`、`CatalogStore` 读写事务与版本修订；复杂筛选与物化索引查询在 `CatalogQueries.swift`，堆叠／关键词／配对／智能集合／归档拆在各自文件。
 - `Sources/App/AppMCPTools.swift`：注册全部 `AppMCPTool` 枚举与统一分发入口，具体动作实现按域拆在 `AppMCP*.swift`。
 

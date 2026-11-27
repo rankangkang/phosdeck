@@ -1348,12 +1348,13 @@ final class ComparisonTests: XCTestCase {
         let saved = try XCTUnwrap(catalog.photo(photos[0].id)?.recipe)
         XCTAssertEqual(try JSONDecoder().decode(EditRecipe.self, from: saved), edited, "Commit pending edits before pinning")
         XCTAssertNil(try catalog.photo(photos[1].id)?.recipe, "Comparing an unedited RAW does not write a recipe")
-        let expected = try await model.pipeline.render(ImageRequest(photo: photos[0], root: root, recipe: edited), longEdge: 2400)
+        let expected = try await model.pipeline.render(ImageRequest(photo: photos[0], root: root, recipe: edited), longEdge: 2400, profile: .displayP3)
         let actual = try XCTUnwrap(comparison.reference.image)
+        XCTAssertEqual(actual.colorSpace?.name, CGColorSpace.displayP3)
         func pixels(_ image: CGImage) -> Data {
             var values = [UInt8](repeating: 0, count: image.width * image.height * 4)
             CIContext().render(CIImage(cgImage: image), toBitmap: &values, rowBytes: image.width * 4,
-                               bounds: CGRect(x: 0, y: 0, width: image.width, height: image.height), format: .RGBA8, colorSpace: ImagePipeline.outputSpace)
+                               bounds: CGRect(x: 0, y: 0, width: image.width, height: image.height), format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.displayP3)!)
             return Data(values)
         }
         XCTAssertEqual(actual.width, expected.image.width); XCTAssertEqual(actual.height, expected.image.height)

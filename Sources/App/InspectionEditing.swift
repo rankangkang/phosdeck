@@ -71,38 +71,11 @@ final class ClippingPreviewSession: ObservableObject {
     func cancel() { _ = end() }
 }
 
-/// Readout cache for the displayed sRGB preview. The cache canonicalizes every
-/// source (including BGRA, little-endian, float and 16-bit images) once when a
-/// readout consumer exists. Mouse moves only index these canonical bytes.
+/// Sample the materialized frame in sRGB on demand. Rendering a new frame
+/// never converts or copies the entire bitmap on the UI thread.
 final class DisplayPixelSampler: Sendable {
-    private let width: Int
-    private let height: Int
-    private let bytesPerRow: Int
-    private let data: Data
-
-    init(image: CGImage) {
-        width = image.width
-        height = image.height
-        let stride = max(1, image.width) * 4
-        bytesPerRow = stride
-        let size = stride * max(1, image.height)
-        var bytes = Data(count: size)
-        let rendered = bytes.withUnsafeMutableBytes { raw -> Bool in
-            guard let base = raw.baseAddress,
-                  let context = CGContext(data: base, width: max(1, image.width), height: max(1, image.height),
-                                           bitsPerComponent: 8, bytesPerRow: stride,
-                                           space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue)
-            else { return false }
-            // CGContext's canonical bitmap rows match CGImage's top-first
-            // provider order here. This also forces color-space conversion and
-            // handles BGRA/little-endian/float source layouts.
-            context.interpolationQuality = .none
-            context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
-            return true
-        }
-        data = rendered ? bytes : Data()
-    }
+    private let image: CGImage
+    init(image: CGImage) { self.image = image }
 
     func sample(normalizedX: CGFloat, normalizedY: CGFloat) -> DisplayPixelSample? {
         // The canvas and PhotoViewport use a bottom-left normalized y while
@@ -111,17 +84,22 @@ final class DisplayPixelSampler: Sendable {
     }
 
     func sample(topLeftX: CGFloat, y topLeftY: CGFloat) -> DisplayPixelSample? {
-        guard width > 0, height > 0, topLeftX.isFinite, topLeftY.isFinite, !data.isEmpty else { return nil }
+        let width = image.width, height = image.height
+        guard width > 0, height > 0, topLeftX.isFinite, topLeftY.isFinite else { return nil }
         let x = min(width - 1, Int(min(1, max(0, topLeftX)) * CGFloat(width)))
         let y = min(height - 1, Int(min(1, max(0, topLeftY)) * CGFloat(height)))
-        let offset = y * bytesPerRow + x * 4
-        guard offset >= 0, offset + 3 < data.count else { return nil }
-
-        let bytes = data.withUnsafeBytes { raw -> (Int, Int, Int, Int) in
-            let p = raw.bindMemory(to: UInt8.self).baseAddress!
-            return (Int(p[offset]), Int(p[offset + 1]), Int(p[offset + 2]), Int(p[offset + 3]))
+        guard let pixel = image.cropping(to: CGRect(x: x, y: y, width: 1, height: 1)) else { return nil }
+        var rgba = SIMD4<UInt8>.zero
+        let rendered = withUnsafeMutableBytes(of: &rgba) { bytes in
+            guard let context = CGContext(data: bytes.baseAddress, width: 1, height: 1, bitsPerComponent: 8,
+                                          bytesPerRow: 4, space: ImagePipeline.outputSpace,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue)
+            else { return false }
+            context.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            return true
         }
-        let (r, g, b, a) = bytes
+        guard rendered else { return nil }
+        let (r,g,b,a) = (Int(rgba.x),Int(rgba.y),Int(rgba.z),Int(rgba.w))
         guard a > 0 else {
             return DisplayPixelSample(x: x, y: height - 1 - y, red: 0, green: 0, blue: 0, alpha: 0)
         }

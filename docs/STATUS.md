@@ -38,21 +38,22 @@
 - **图上目标调整与直方图拖动**：已接入 HSL／黑白混色／曲线图上拖动与五区直方图拖动（已修复浮点位图行序）；实际拖动与悬停手感待验收。
 - **匹配总曝光与工作流**：支持按拍摄曝光匹配整批、应用相对曝光、跨重启最近导入、普通集合删除撤销；真实曝光组与跨机型亮度匹配待测。
 - **图库打开**：`.phoscat` 单选即开，旧 `.omlcat`／`.omlrcat` 确认改后缀或原名打开；交互待验收。
-- **相机风格**：传感器 RAW 右侧品牌分组缩略图浏览与悬停试显已接入，随包提供近似色表（索尼其余 9 项需本机色表，再分发授权待明）；实拍直出对照待验收。[上手指南](getting-started.md#3-整理与编辑)
-- **输入格式扩展与 RAW 解码抽象**：[PhotoFileType.swift](../Sources/Imaging/PhotoFileType.swift) 开放 15 种 RAW 与静态 SDR HEIC／HEIF／HIF，保持 ProRAW 与 HDR HEIF 拒绝门禁；[RAWDecoder.swift](../Sources/Imaging/RAWDecoder.swift) 收敛 Apple RAW 边界；真实 CR2／ORF／RW2／PEF／3FR 样片待测。
+- **相机风格**：传感器 RAW 右侧品牌分组缩略图浏览与悬停试显已接入，随包提供富士 20 项、索尼 ST、佳能 EOS M50 与尼康 D750／D850 近似色表；索尼其余 9 项需本机资源，再分发授权待明；实拍直出对照待验收。[上手指南](getting-started.md#3-整理与编辑)
+- **RAW 与 HDR 输入**：CR2、ORF、RW2、PEF、3FR、iPhone XS 传感器 DNG 和 iPhone 12 Pro 线性 DNG 已跑公开样片诊断。E-10 新配方使用 LibRaw 解包与 Metal Bayer 插值，H3D 保留 Apple 后端且重复像素有差异，见[兼容性记录](getting-started.md#raw-兼容性记录)。其他机型与模式待验证。
+- **色彩输出**：支持 sRGB／Display P3 导出，静态 PQ／HLG HEIF、HDR 合成母版与 Apple RAW 高光预览可用浮点 EDR 画布；XDR 实屏亮度、外屏切换与实际印样待验收。
 - **Metal 画布 10 位 Display P3 与触控板手势**：[MetalPhotoView.swift](../Sources/UI/MetalPhotoView.swift) 切换至 `.bgr10a2Unorm`／Display P3 并接入平移、捏合与双击缩放；真实触控板手感与广色域屏待验收。
 - **免证书构建与使用说明**：[源码构建](../README.zh.md#快速上手)待他机验证；[上手指南](getting-started.md)与[贡献指南](../CONTRIBUTING.zh.md)待审核。
 
 ## 已知问题
 
 - **插件机制**：当前仅加载随包扩展；物理屏幕时延、实际纸样比对与跨团队公证包待测。[插件系统方案](plugin-system.md#实施顺序与验证)
-- **大图库浏览**：会话级 `temp.photoIndex`、`browseRevision` 缓存与双路缩略图池已落地（不改 schema 13）；未编辑 RAW 仍逐张显影，200 张硬分页、冷缓存整屏等待、真实大图库与外置卷待测，标准预览前置暂缓。
+- **大图库浏览**：主网格连续滚动，SQL 按 200 张取详情，另缓存至多三页。未调整 RAW 可先看内嵌图，空闲时可预热一张相邻 RAW 的 1600 px 标准预览，适窗优先复用；首次冷库、实拍大库与外置卷长滚待测。
 - **Lightroom 源目录与显影差异**：残留空 WAL 的源目录仍拒绝扫描；富士／索尼样片在白平衡色调、对比度、枝叶／逆光／夜景色差及 Adobe 配置文件上仍有差异，已编辑人物蒙版／点颜色／镜头模糊须重新评估。
 - **损坏 RAW 的局部解码异常**：已接入 LGPL-2.1 `LibRaw 0.22.3` 检出损坏压缩比特流并补齐传感器元数据与兜底解码通道；原损坏富士样片实体复测待核对。
 - **MCP 提示与限制**：引用导入显式相对路径遇到不支持格式时报错未区分格式与路径错误；星轨累计 PNG 导出指向图库子目录时仅报 `operation_failed`，需提前提示目录限制。
 - **照片合成**：已向量化距离匹配；Debug 完整预览仍慢，特征提取／融合分段耗时待测，其余优化暂缓。
-- **预览性能与一致性**：原 1 秒卡顿根因未证伪，质量图发布仍有约 0.1 s 主线程等待；实拍多蒙版／拉直下 MCP 首次质量图及工作区配方回读偶现数十秒等待；去朦胧 1:1 局部仍走全图分析，重叠块偶见单像素蓝通道差 1 码值；macOS 27 切图与默认缩略图存在少量色值差异，来源待定位；实拍 RAF 质量渲染期间进程仍驻留大量 IOSurface，偶触内存保护，回收时机待定位。
-- **测试环境与日志**：外置卷测试宿主与偶发夹具 `__open` 长等待、单次公开十帧宏测试暂存路径消失原因未明；构建与测试日志反复出现 `MDB_MAP_FULL`，来源未定位。
+- **预览性能与一致性**：原 1 秒卡顿根因未证伪，质量图交付已进入主运行循环公共模式，取样改为按需转换单像素；物理呈现延迟待实测；实拍多蒙版／拉直下 MCP 首次质量图及工作区配方回读偶现数十秒等待；去朦胧 1:1 局部仍走全图分析，重叠块偶见单像素蓝通道差 1 码值；macOS 27 切图与默认缩略图存在少量色值差异，来源待定位；实拍 RAF 质量渲染期间进程仍驻留大量 IOSurface，偶触内存保护，回收时机待定位。
+- **测试环境与日志**：外置卷测试宿主与偶发夹具 `__open` 长等待、单次公开十帧宏测试暂存路径消失原因未明；历史 `MDB_MAP_FULL` 在本机定向测试及可用统一日志中未复现，缺少可归因的进程与堆栈。
 - **应用分发**：[`0.1.0-alpha.1`](https://github.com/rankangkang/phosdeck/releases/tag/v0.1.0-alpha.1) 已签公证并核验 ZIP，独立机器安装与使用体验待测。
 - **智能蒙版模型**：`FaceParsing` 训练数据条款对分发适用性未明，LiteRT 完整依赖清单与正式模型安装方案待定。[模型说明](smart-mask-models.md)
 - **普通图像曝光响应表与 JPEG 对照**：当前表由 Lightroom 输出拟合，[Adobe 通用条款第 17 节](https://www.adobe.com/legal/terms.html)适用性待核对；大曝光 JPEG 差异未解决。[TIFF 比较](references/lightroom-exposure-v4-comparisons.json) · [JPEG 分区](references/lightroom-exposure-v4-jpeg-regions.csv)

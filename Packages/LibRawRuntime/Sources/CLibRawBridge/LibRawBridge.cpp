@@ -7,7 +7,37 @@
 #include <cstring>
 #include <memory>
 
+bool phosdeck_demosaic_bayer(uint16_t (*image)[4], uint32_t width, uint32_t height, uint32_t filters);
+
 namespace {
+
+class BayerProcessor final : public LibRaw {
+public:
+    bool interpolated = false;
+    void enableMetal() {
+        callbacks.interpolate_bayer_cb = [](void *context) {
+            auto &processor = *static_cast<BayerProcessor *>(static_cast<LibRaw *>(context));
+            auto &data = processor.imgdata;
+            // At this stage LibRaw has merged G2 into G1. Accept only a
+            // repeating RGB Bayer tile with the two greens opposite each other.
+            int counts[4] = {};
+            for (int row = 0; row < 8; ++row) {
+                for (int col = 0; col < 2; ++col) {
+                    int channel = processor.FC(row, col);
+                    if (channel != processor.FC(row % 2, col)) return;
+                    if (row < 2) ++counts[channel];
+                }
+            }
+            if (counts[0] != 1 || counts[1] != 2 || counts[2] != 1 ||
+                processor.FC(0, 0) == processor.FC(0, 1) ||
+                processor.FC(0, 0) == processor.FC(1, 0) ||
+                processor.FC(1, 1) == processor.FC(0, 1) ||
+                processor.FC(1, 1) == processor.FC(1, 0)) return;
+            processor.interpolated = phosdeck_demosaic_bayer(data.image, data.sizes.width, data.sizes.height, data.idata.filters);
+        };
+    }
+};
+
 
 void copyString(char *dst, size_t capacity, const char *src) {
     if (!dst || capacity == 0) { return; }
@@ -87,6 +117,7 @@ void phosdeck_libraw_probe(const char *path, bool verifyBitstream, PhosdeckLibRa
         out->height = img.sizes.iheight;
         out->flip = img.sizes.flip;
         out->colors = img.idata.colors;
+        out->hasColorFilterArray = img.idata.filters != 0;
         out->isXTrans = (img.idata.filters == 9);
         out->isDNG = (img.idata.dng_version != 0);
         out->blackLevel = effectiveBlackLevel(img.color);
@@ -140,6 +171,7 @@ void phosdeck_libraw_probe(const char *path, bool verifyBitstream, PhosdeckLibRa
 void phosdeck_libraw_decode_linear16(
     const char *path,
     bool halfSize,
+    bool metalBayer,
     bool useCustomWB,
     float rMul,
     float g1Mul,
@@ -156,7 +188,8 @@ void phosdeck_libraw_decode_linear16(
     }
 
     try {
-        std::unique_ptr<LibRaw> processor(new LibRaw());
+        auto processor = std::make_unique<BayerProcessor>();
+        if (metalBayer && !halfSize) processor->enableMetal();
         DataErrorCounter counter;
         processor->set_dataerror_handler(&countDataError, &counter);
 
@@ -208,6 +241,12 @@ void phosdeck_libraw_decode_linear16(
             out->errorCode = rc;
             copyString(out->errorMessage, sizeof(out->errorMessage), LibRaw::strerror(rc));
             processor->recycle();
+            return;
+        }
+
+        if (metalBayer && !halfSize && !processor->interpolated) {
+            out->errorCode = LIBRAW_UNSPECIFIED_ERROR;
+            copyString(out->errorMessage, sizeof(out->errorMessage), "Metal Bayer demosaic unavailable for this source");
             return;
         }
 

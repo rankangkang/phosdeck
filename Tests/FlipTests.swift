@@ -233,7 +233,7 @@ final class FlipTests: XCTestCase {
 
     func testFullResolutionRAWReusePreservesEachFormatWithReflections() async throws {
         let fresh = ImagePipeline(), cached = ImagePipeline()
-        for name in MoreRAWTests.supportedFiles {
+        for name in MoreRAWTests.appleDecoderFiles {
             let source = try MoreRAWTests.request(name)
             var recipe = try await fresh.baseline(source)
             recipe.saturation = 1.1; recipe.develop.vibrance = 8

@@ -18,6 +18,22 @@
       }
     },
     {
+      "id": "canon",
+      "title": "Canon",
+      "localizedTitles": {
+        "en": "Canon",
+        "zh-Hans": "佳能"
+      }
+    },
+    {
+      "id": "nikon",
+      "title": "Nikon",
+      "localizedTitles": {
+        "en": "Nikon",
+        "zh-Hans": "尼康"
+      }
+    },
+    {
       "id": "diagnostic",
       "title": "Pipeline Verification",
       "localizedTitles": {
@@ -365,6 +381,48 @@
       "dimension": 33,
       "upperBound": 4.0,
       "sha256": "4f5c92e66dd5ec693127b722dd0205d9826ba72fd7c8938ae7c071396862e680"
+    },
+    {
+      "id": "canon.m50-jpeg",
+      "version": 1,
+      "group": "canon",
+      "title": "EOS M50 Camera JPEG (approx.)",
+      "localizedTitles": {
+        "en": "EOS M50 Camera JPEG (approx.)",
+        "zh-Hans": "EOS M50 机内 JPEG 近似"
+      },
+      "file": "canon-m50-jpeg-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "945aa3a5106395a5a1bc18df9a8f2f2600c7612e6fc2438e566065ca413f703c"
+    },
+    {
+      "id": "nikon.d750-standard",
+      "version": 1,
+      "group": "nikon",
+      "title": "D750 Standard (approx.)",
+      "localizedTitles": {
+        "en": "D750 Standard (approx.)",
+        "zh-Hans": "D750 标准近似"
+      },
+      "file": "nikon-d750-standard-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "92f1a8cd59abe401355c504f33ae0ef79ca8aef6d9ae7a88af39b806f76c20a8"
+    },
+    {
+      "id": "nikon.d850-standard",
+      "version": 1,
+      "group": "nikon",
+      "title": "D850 Standard (approx.)",
+      "localizedTitles": {
+        "en": "D850 Standard (approx.)",
+        "zh-Hans": "D850 标准近似"
+      },
+      "file": "nikon-d850-standard-v1.bin",
+      "dimension": 33,
+      "upperBound": 4.0,
+      "sha256": "4cecf550f268eaf1a5973ba9eb993aa2f4cdb30a47432028dd5233c4b8cf095b"
     },
     {
       "id": "diagnostic.test-table",

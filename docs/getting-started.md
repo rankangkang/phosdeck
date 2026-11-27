@@ -22,7 +22,7 @@ Phosdeck 目前处于开发预览阶段。首次体验建议使用合成图片�
    - **添加**：原地引用，图库仅记录位置；后续访问须保持原目录可用。
    - **复制**：将所选照片（及可选 XMP／ACR 附件）复制到目标目录并入库，保留来源文件，同名冲突按提示处理。
 2. 支持单击、`Shift` 连选、`⌘` 多选、`⌘A` 全选、`⌘D` 取消选择，空格键或点击勾选键批量勾选所选组。“所有照片”默认压暗并取消勾选已入库与疑似重复项；“新照片”随扫描动态追加。
-3. **支持格式**：JPEG、RGB TIFF（多页仅预览首页）、静态 PNG、静态 SDR HEIC／HEIF／HIF，以及部分 ARW／SR2／DNG／NEF／NRW／CR2／CR3／RAF／ORF／RW2／RWL／PEF／3FR／FFF／SRW（是否可解取决于具体文件与 macOS）。HDR PQ／HLG HEIF、动态 HEIF 与 Apple DNG／ProRAW 暂未开放。未调整富士 RAF 有机内 JPEG 时，网格与胶片带先显示机内预览，适窗停留后切回原生 RAW 显影。
+3. **支持格式**：JPEG、RGB TIFF（多页仅预览首页）、静态 PNG、静态 SDR、PQ 与 HLG HEIC／HEIF／HIF，以及部分 ARW／SR2／DNG／NEF／NRW／CR2／CR3／RAF／ORF／RW2／RWL／PEF／3FR／FFF／SRW（是否可解取决于具体文件与 macOS）。Apple DNG 已验证 iPhone XS 传感器 DNG 与 iPhone 12 Pro 线性 DNG；动态 HEIF 暂未开放。未调整 RAW 有机内预览时，网格与胶片带先显示机内预览，适窗停留后切回原生 RAW 显影。
 4. **查看文件夹差异**：右键侧栏根／子文件夹选择“查看文件夹差异…”只读预览新增、缺失、变更、疑似移动、需检查与已移除版本（默认全不勾选）；确认时整批原子写入，不移动、替换或删除原片，也不删除缺失记录。原片回到原位且校验一致时可恢复可用状态或已移除版本。
 
 ### 从 Lightroom Classic 目录导入
@@ -30,6 +30,17 @@ Phosdeck 目前处于开发预览阶段。首次体验建议使用合成图片�
 1. 退出 Lightroom Classic，选择“文件 → 从 Lightroom Classic 目录导入…”并授权 `.lrcat` 所在目录；缺失原片目录时点击“定位…”。
 2. 选择“原地引用”或“复制原片”并指定新图库位置。系统会转换受支持的星级、旗标、色标、关键词、题注、普通集合、虚拟副本、逐步显影历史（含支持的参数、旋转／翻转与裁剪）、RAW 默认镜头校正开关及目录旁 XMP 预设。两者的色彩配置与显影响应可能不同。
 3. 项目的 `Lightroom` 文件夹保留源 `.lrcat`、`.lrcat-data`、`Lightroom Settings` 与 `Import.txt` 报告（列出未转换项）。缺片记录可在导入后通过“定位原片”恢复核验。
+
+### RAW 兼容性记录
+
+| 公开样片 | 本机诊断结果 |
+|---|---|
+| Canon EOS Digital Rebel XT CR2、Panasonic LX7 RW2、Pentax K10D PEF | 可导入并生成 16 位质量图。 |
+| Olympus E-10 ORF | Apple 解码尺寸为零。新配方在可用时走 LibRaw 解包与 Metal Bayer 去马赛克，重开按配方中的解码器版本显影。 |
+| Hasselblad H3D 3FR | 保留 Apple 后端，可导入并生成 16 位图。本机 256 px 质量图多轮诊断中，新管线及草稿后重算均曾出现最高 17 个 8 位码值的通道差。 |
+| iPhone XS 传感器 DNG、iPhone 12 Pro 线性 DNG | 新配方使用 LibRaw，已核对 12 Pro 竖拍方向、独立管线重复显影、草稿后重算与 16 位输出。 |
+
+样片的机型、模式和 SHA-256 见[公开样片清单](../Tests/Fixtures/public-raw-samples.json)。诊断结果限于记录的样片和系统。
 
 ## 3. 整理与编辑
 
@@ -43,8 +54,9 @@ Phosdeck 目前处于开发预览阶段。首次体验建议使用合成图片�
 ### RAW 相机风格
 
 - 编辑 RAW 时，在“基本调整 → 相机风格”打开右侧品牌分组缩略图浏览栏：悬停临时试显，点击保存并新增历史，跨机身切换保留已有调整。
+- **RAW 高光预览**：采用 Apple 解码的 RAW 可在编辑模块的显示菜单勾选“以 HDR 预览 RAW 高光”。此选项仅改变预览，导出仍按所选 SDR 色彩空间处理。
 - **按拍摄风格**自动识别当前 RAW 拍摄档位，并在存在可用机内预览时进行同帧颜色与影调校准。
-- 随包提供富士 18 项固定胶片模拟（加 Nostalgic Neg.、REALA ACE）及索尼 ST 近似色表（[Redlamp](references/redlamp-LICENSE.txt) · [Fuji Recipe Converter](references/fuji-recipe-converter-LICENSE.txt) · [LightCraft](references/lightcraft-LICENSE.txt)）。如需补齐索尼 α7R V 其余 9 项，可用 `python3 scripts/pack-sony-local-looks.py Sony-A7R-V-Creative-Looks.zip CameraLooks`（需 NumPy）生成色表目录放入 App 容器 `Data/Library/Application Support/OhMyLRC/` 后重启。
+- 随包提供富士 18 项固定胶片模拟（加 Nostalgic Neg.、REALA ACE）、索尼 ST 以及根据公开同帧 RAW／JPEG 拟合的佳能 EOS M50、尼康 D750 标准与 D850 标准近似色表（[Redlamp](references/redlamp-LICENSE.txt) · [Fuji Recipe Converter](references/fuji-recipe-converter-LICENSE.txt) · [LightCraft](references/lightcraft-LICENSE.txt)）。如需补齐索尼 α7R V 其余 9 项，可用 `python3 scripts/pack-sony-local-looks.py Sony-A7R-V-Creative-Looks.zip CameraLooks`（需 NumPy）生成色表目录放入 App 容器 `Data/Library/Application Support/OhMyLRC/` 后重启。上游明确其许可不涵盖索尼参数与 Adobe 色彩矩阵。[资源许可说明](https://github.com/751K/sony-look-bridge#license)
 
 ### 自动调整、批量曝光、直方图、目标调整与去边
 
@@ -76,7 +88,7 @@ Phosdeck 目前处于开发预览阶段。首次体验建议使用合成图片�
 
 ## 4. 导出成片
 
-1. 选中照片点击“导出”（或“文件 → 导出所选照片…”），选择输出文件夹、格式（sRGB JPEG 需选黑／白铺底，PNG 8 位与 TIFF 16 位保留透明度）、尺寸、命名与元数据策略（默认不附带源元数据）。
+1. 选中照片点击“导出”（或“文件 → 导出所选照片…”），选择输出文件夹、色彩空间（默认 sRGB，可选 Display P3）、格式（含透明区域的 JPEG 需选黑／白铺底，PNG 8 位与 TIFF 16 位保留透明度）、尺寸、命名与元数据策略（默认不附带源元数据）。
 2. 在“检查文件”核对命名冲突后导出；目标已有同名文件永不覆盖。
 
 ## 备份与恢复已有图库

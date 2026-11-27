@@ -154,7 +154,7 @@ actor CameraDiagnostics {
             if probe.succeeded {
                 row.compression = probe.compression
                 row.sensorBits = probe.sensorBits
-                let pattern = probe.isXTrans ? "X-Trans" : "Bayer"
+                let pattern = probe.hasColorFilterArray ? (probe.isXTrans ? "X-Trans" : "CFA") : (probe.colors == 1 ? "Monochrome" : "Linear RGB")
                 let bits = probe.sensorBits.map { "\($0)-bit" } ?? "unknown"
                 let look = probe.cameraLookHint.map { " · \($0.name)" } ?? ""
                 let version = LibRawRuntime.libraryVersion

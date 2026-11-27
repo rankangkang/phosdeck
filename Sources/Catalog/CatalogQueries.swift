@@ -214,6 +214,7 @@ struct PhotoQuery: Equatable {
 }
 
 struct PhotoPage {
+    var order: CachedQueryOrder? = nil
     var photos: [Photo]
     var total: Int
     var offset: Int
@@ -425,7 +426,7 @@ extension CatalogStore {
         let start = min(max(0, offset), max(0, ((length - 1) / size) * size))
         let end = min(length, start + size)
         guard start < end else {
-            return PhotoPage(photos: [], total: order.total, offset: start, visibleTotal: order.visibleTotal, badges: [:])
+            return PhotoPage(order: order, photos: [], total: order.total, offset: start, visibleTotal: order.visibleTotal, badges: [:])
         }
         let slice = order.rows[start..<end]
         let ids = slice.map(\.photoID)
@@ -444,7 +445,7 @@ extension CatalogStore {
                 }
             }
         }
-        return PhotoPage(photos: photos, total: order.total, offset: start, visibleTotal: order.visibleTotal, badges: badges)
+        return PhotoPage(order: order, photos: photos, total: order.total, offset: start, visibleTotal: order.visibleTotal, badges: badges)
     }
 
     func page(_ query: PhotoQuery, offset: Int, limit: Int = 200) throws -> PhotoPage {

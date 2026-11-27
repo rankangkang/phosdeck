@@ -26,31 +26,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Only standard RGB or grayscale SDR HEIC/HEIF files are supported"
+            "value": "Only RGB or grayscale HEIC/HEIF files are supported"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "仅支持标准 RGB 或灰度 SDR HEIC／HEIF 文件"
-          }
-        }
-      }
-    },
-    "app.heifHDRTransferNotSupported": {
-      "extractionState": "manual",
-      "comment": "Sources/Imaging/PhotoFileType.swift",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "HDR PQ / HLG HEIC/HEIF files are not supported yet. Standard SDR HEIC/HEIF is supported"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "暂不支持 HDR PQ／HLG 编码的 HEIC／HEIF，目前仅支持标准 SDR HEIC／HEIF"
+            "value": "仅支持 RGB 或灰度 HEIC／HEIF 文件"
           }
         }
       }
@@ -6638,20 +6620,20 @@
         }
       }
     },
-    "app.appleDNGProRAWIsNotCurrentlySupported": {
+    "app.appleLinearDNGSupport": {
       "extractionState": "manual",
       "comment": "Sources/UI/ImportSheet.swift: 93",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apple DNG / ProRAW is not currently supported."
+            "value": "Apple DNG: iPhone XS sensor DNG and iPhone 12 Pro linear DNG."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apple DNG／ProRAW 暂不支持。"
+            "value": "Apple DNG 已验证 iPhone XS 传感器 DNG 与 iPhone 12 Pro 线性 DNG。"
           }
         }
       }
@@ -27010,13 +26992,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No recognized ICC profile; display and output assume sRGB"
+            "value": "No recognized ICC profile. Source colors are interpreted as sRGB."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "未提供可识别 ICC，显示与输出按 sRGB 解释"
+            "value": "未提供可识别 ICC，源图颜色按 sRGB 解释"
           }
         }
       }
@@ -28835,20 +28817,38 @@
         }
       }
     },
-    "app.outputsAlwaysUseSRGBNExistingFilenamesPreventExport": {
+    "display.rawHDRPreview": {
       "extractionState": "manual",
       "comment": "Sources/UI/ExportSheet.swift: 240",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Outputs always use sRGB.\nExisting filenames prevent export."
+            "value": "Preview RAW Highlights in HDR"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "成片始终使用 sRGB。\n同名文件会阻止导出。"
+            "value": "以 HDR 预览 RAW 高光"
+          }
+        }
+      }
+    },
+    "export.colorSpace": {
+      "extractionState": "manual",
+      "comment": "Sources/UI/ExportSheet.swift: 240",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Color Space"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "色彩空间"
           }
         }
       }
@@ -43308,13 +43308,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "TIFF: RGB. PNG: static 8/16-bit, including grayscale, indexed color, and transparency. HEIC/HEIF: static SDR (HDR PQ/HLG and sequences are not supported)."
+            "value": "TIFF: RGB. PNG: static 8/16-bit, including grayscale, indexed color, and transparency. HEIC/HEIF: static SDR, PQ or HLG images."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "TIFF：RGB；PNG：静态 8／16 位，支持灰度、调色板与透明度；HEIC／HEIF：静态 SDR（暂不支持 HDR PQ／HLG 与动态序列）。"
+            "value": "TIFF：RGB；PNG：静态 8／16 位，支持灰度、调色板与透明度；HEIC／HEIF：静态 SDR、PQ 或 HLG 图像。"
           }
         }
       }

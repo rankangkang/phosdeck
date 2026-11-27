@@ -161,6 +161,106 @@
       "license": "CC0-1.0",
       "url": "https://raw.pixls.us/getfile.php/4657/nice/Canon%20-%20EOS%20M50%20-%203:2.CR3",
       "sha256": "1ba9ad6b51b315b88820eb0fe5fd7f52bc136ba37b1a5ca76825ebfe25b18058"
+    },
+    {
+      "file": "canon_rebel_xt.CR2",
+      "camera": "Canon EOS Digital Rebel XT",
+      "mode": "RAW (3:2)",
+      "megapixels": 7.96,
+      "remark": "",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/1230/nice/Canon%20-%20EOS%20Digital%20Rebel%20XT%20-%20RAW%20(3:2).CR2",
+      "sha256": "4b47ba27c0090efa091aaf99babc76d9a3e6f6f121b443d6c58c3ce7275cd770"
+    },
+    {
+      "file": "olympus_e10.ORF",
+      "camera": "Olympus E-10",
+      "mode": "16bit (4:3)",
+      "megapixels": 3.8,
+      "remark": "",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/5424/nice/Olympus%20-%20E-10%20-%2016bit%20(4:3).ORF",
+      "sha256": "2bfdade72439017a60a47aad1e5bbcb1aca36f2be7a21e94a4257a678fb6f4da"
+    },
+    {
+      "file": "panasonic_lx7.RW2",
+      "camera": "Panasonic DMC-LX7",
+      "mode": "1:1",
+      "megapixels": 1.89,
+      "remark": "With \"intelligent zoom\" - https://github.com/darktable-org/darktable/issues/14082#issuecomment-1815266255",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/7008/nice/Panasonic%20-%20DMC-LX7%20-%201:1.RW2",
+      "sha256": "d142a23aca836053ed53e9ce3cb3ed2d434541d734d71a94a6eefadcd08bd31b"
+    },
+    {
+      "file": "pentax_k10d.PEF",
+      "camera": "Pentax K10D",
+      "mode": "12bit 12bit compressed (3:2)",
+      "megapixels": 10.33,
+      "remark": "please upload full set (DNG+PEF) :)",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/2239/nice/Pentax%20-%20K10D%20-%2012bit%2012bit%20compressed%20(3:2).PEF",
+      "sha256": "e35ae4154a468be3154f5f462e884ba5941f010d3e8f23d347fbec14809f44d3"
+    },
+    {
+      "file": "hasselblad_h3d.3FR",
+      "camera": "Hasselblad H3D",
+      "mode": "16bit (4:3)",
+      "megapixels": 39.62,
+      "remark": "with 39 Mp back, and 150mm HC attached",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/2851/nice/Hasselblad%20-%20H3D%20-%2016bit%20(4:3).3FR",
+      "sha256": "34fdb93cb215e4f419ae0f7252c57b881fa381003124b4f9c143d27741f211b3"
+    },
+    {
+      "file": "d750_895.NEF",
+      "camera": "Nikon D750",
+      "mode": "12bit 12bit compressed (Lossy (type 2)) (3:2)",
+      "megapixels": 24.32,
+      "remark": "12-bit",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/895/nice/Nikon%20-%20D750%20-%2012bit%2012bit%20compressed%20(Lossy%20(type%202))%20(3:2).NEF",
+      "sha256": "e4a3f85e014275fc0a47600a373af95ec850872a5f6cf87649bcaa42b77ef2e4"
+    },
+    {
+      "file": "d750_898.NEF",
+      "camera": "Nikon D750",
+      "mode": "14bit 14bit compressed (Lossless) (3:2)",
+      "megapixels": 24.32,
+      "remark": "14-bit",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/898/nice/Nikon%20-%20D750%20-%2014bit%2014bit%20compressed%20(Lossless)%20(3:2).NEF",
+      "sha256": "f90deb2819863f5a6ca9913c255fdd83a94963f4284eb88df9d389da7a6c7665"
+    },
+    {
+      "file": "d850_1837.NEF",
+      "camera": "Nikon D850",
+      "mode": "12bit 12bit compressed (Lossless) (3:2)",
+      "megapixels": 45.75,
+      "remark": "",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/1837/nice/Nikon%20-%20D850%20-%2012bit%2012bit%20compressed%20(Lossless)%20(3:2).NEF",
+      "sha256": "61dff3d1b520b46d81bc948b2d1614e56f75142a4aea0aa1d8c28d35ce118a8f"
+    },
+    {
+      "file": "d850_1840.NEF",
+      "camera": "Nikon D850",
+      "mode": "14bit 14bit compressed (Lossless) (3:2)",
+      "megapixels": 45.75,
+      "remark": "",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/1840/nice/Nikon%20-%20D850%20-%2014bit%2014bit%20compressed%20(Lossless)%20(3:2).NEF",
+      "sha256": "0c9438258ddae5260b9f5a1aace6658a723f1cb1acace3a6cb507116dc6da4f2"
+    },
+    {
+      "file": "iphone_xs_wide.DNG",
+      "camera": "Apple iPhone XS",
+      "mode": "16bit (4:3)",
+      "megapixels": 12.19,
+      "remark": "Back camera (wide); from ProCamera app (v12.4)",
+      "license": "CC0-1.0",
+      "url": "https://raw.pixls.us/getfile.php/3372/nice/Apple%20-%20iPhone%20XS%20-%2016bit%20(4:3).dng",
+      "sha256": "50bc64ee8cfbbfb6c0531e29ab428ff985506a16fe2d1d2e74656f21b54505f6"
     }
   ]
 }

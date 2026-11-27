@@ -8,7 +8,7 @@ final class MoreRAWTests: XCTestCase {
     static let files = ["a7iii_12bit_compressed.ARW", "leica_m8_8bit_uncompressed.DNG", "iphone12pro_8bit_ljpeg.DNG",
         "nikon_d700_14bit_lossless.NEF", "nikon_d700_12bit_uncompressed.NEF", "canon_m50_craw.CR3", "canon_m50_raw.CR3",
         "fuji_xt20_14bit_uncompressed.RAF", "fuji_xt20_14bit_lossless.RAF"]
-    static var supportedFiles: [String] { files.filter { $0 != "iphone12pro_8bit_ljpeg.DNG" } }
+    static var appleDecoderFiles: [String] { files.filter { $0 != "iphone12pro_8bit_ljpeg.DNG" } }
     static func sample(_ name: String) throws -> URL {
         let folder = try XCTUnwrap(Bundle(for: MoreRAWTests.self).resourceURL).appendingPathComponent("CC0RAWFixtures")
         let url = folder.appendingPathComponent(name)
@@ -36,19 +36,14 @@ final class MoreRAWTests: XCTestCase {
     func testCR3Inputs() async throws { try await exercise(Array(Self.files[5...6])) }
     func testRAFInputs() async throws { try await exercise(Array(Self.files[7...8])) }
 
-    func testAppleDNGIsExplicitlyUnavailable() async throws {
-        let url = try Self.sample(Self.files[2]), parent = url.deletingLastPathComponent()
-        let root = StorageRoot(id: "apple-dng", path: parent.path, bookmark: try AccessLease.bookmark(parent, readOnly: true), label: "CC0")
-        XCTAssertThrowsError(try ReferenceImporter.inspect(url: url, root: root, rootURL: parent)) { error in
-            XCTAssertTrue(error.localizedDescription.contains("Apple DNG"))
-        }
-        let identity = try FileIdentity.read(url)
-        let photo = Photo(id: "apple-dng", rootID: root.id, relativePath: url.lastPathComponent, identity: try JSONEncoder().encode(identity), identityKey: identity.key, width: 4032, height: 3024)
-        let pipeline = ImagePipeline()
-        do { _ = try await pipeline.baseline(ImageRequest(photo: photo, root: root, recipe: nil)); XCTFail("不能建立未通过验证的 Apple DNG 基线") }
-        catch { XCTAssertTrue(error.localizedDescription.contains("Apple DNG")) }
-        do { _ = try await ThumbnailService().image(photo: photo, root: root); XCTFail("不能回退为内嵌 JPEG") }
-        catch { XCTAssertTrue(error.localizedDescription.contains("Apple DNG")) }
+    func testAppleLinearDNGUsesFrozenLibRawAndPreservesOrientation() async throws {
+        let source = try Self.request(Self.files[2]), pipeline = ImagePipeline()
+        let recipe = try await pipeline.baseline(source)
+        XCTAssertEqual(recipe.decoderVersion, "libraw-0.22-v1")
+        let request = ImageRequest(photo: source.photo, root: source.root, recipe: recipe)
+        let result = try await pipeline.render(request, longEdge: 256)
+        XCTAssertEqual(result.orientedSourceSize, CGSize(width: source.photo.height, height: source.photo.width))
+        XCTAssertGreaterThan(result.image.height, result.image.width)
     }
 
     private func exercise(_ names: [String]) async throws {
@@ -128,22 +123,20 @@ final class MoreRAWTests: XCTestCase {
         let catalog = try CatalogStore(directory: folder.appendingPathComponent("reference-catalog")), importer = ReferenceImporter()
         let candidates = try await importer.preview(source: input, includeSubfolders: true, catalog: catalog)
         XCTAssertEqual(candidates.count, Self.files.count)
-        XCTAssertEqual(candidates.filter { $0.problem != nil }.count, 1)
-        XCTAssertTrue(candidates.first { $0.problem != nil }?.problem?.contains("Apple DNG") == true)
+        XCTAssertTrue(candidates.allSatisfy { $0.problem == nil })
         let report = await importer.add(source: input, candidates: candidates, collection: nil, catalog: catalog)
-        XCTAssertEqual(report.indexed, Self.supportedFiles.count); XCTAssertEqual(report.errors.count, 1)
+        XCTAssertEqual(report.indexed, Self.files.count); XCTAssertTrue(report.errors.isEmpty)
         let copyCatalog = try CatalogStore(directory: folder.appendingPathComponent("copy-catalog"))
         let plan = try await ImportPlanner().plan(source: input, target: output, layout: .flat, policy: .skip, skipIdentical: true,
             dateOverride: nil, confirmSidecars: false, catalog: copyCatalog)
         XCTAssertEqual(plan.groups.count, Self.files.count)
         let completed = await CopyImporter().run(plan, catalog: copyCatalog, progress: { _ in })
-        XCTAssertEqual(completed.state, "completed"); XCTAssertEqual(completed.groups.filter { $0.state == "completed" }.count, Self.supportedFiles.count)
-        XCTAssertEqual(completed.groups.filter { $0.state == "needsReview" && !$0.selected }.count, 1)
-        XCTAssertEqual(try copyCatalog.photos().count, Self.supportedFiles.count)
+        XCTAssertEqual(completed.state, "completed"); XCTAssertEqual(completed.groups.filter { $0.state == "completed" }.count, Self.files.count)
+        XCTAssertEqual(completed.groups.filter { $0.state == "needsReview" && !$0.selected }.count, 0)
+        XCTAssertEqual(try copyCatalog.photos().count, Self.files.count)
         for name in Self.files {
             XCTAssertEqual(try SafeFileWriter.sha256(input.appendingPathComponent(name)), try SafeFileWriter.sha256(Self.sample(name)))
-            if Self.supportedFiles.contains(name) { XCTAssertEqual(try SafeFileWriter.sha256(output.appendingPathComponent(name)), try SafeFileWriter.sha256(Self.sample(name))) }
-            else { XCTAssertFalse(FileManager.default.fileExists(atPath: output.appendingPathComponent(name).path)) }
+            XCTAssertEqual(try SafeFileWriter.sha256(output.appendingPathComponent(name)), try SafeFileWriter.sha256(Self.sample(name)))
         }
         let cancelled = Task { () throws -> [ImportCandidate] in
             withUnsafeCurrentTask { $0?.cancel() }

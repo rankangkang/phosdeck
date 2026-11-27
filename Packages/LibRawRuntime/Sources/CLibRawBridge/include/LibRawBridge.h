@@ -21,6 +21,7 @@ typedef struct {
     int32_t height;
     int32_t flip;
     int32_t colors;
+    bool hasColorFilterArray;
     bool isXTrans;
     bool isDNG;
     bool isUnsupported;
@@ -56,9 +57,12 @@ typedef struct {
 
 void phosdeck_libraw_probe(const char *path, bool verifyBitstream, PhosdeckLibRawProbe *out);
 
+bool phosdeck_metal_bayer_available(void);
+
 void phosdeck_libraw_decode_linear16(
     const char *path,
     bool halfSize,
+    bool metalBayer,
     bool useCustomWB,
     float rMul,
     float g1Mul,

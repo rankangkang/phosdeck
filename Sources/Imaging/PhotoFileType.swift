@@ -2,6 +2,7 @@ import Foundation
 import CoreGraphics
 import CoreImage
 import ImageIO
+import LibRawRuntime
 import UniformTypeIdentifiers
 
 enum PhotoContainer: Equatable {
@@ -107,7 +108,7 @@ enum PhotoFileType {
 
     /// The actual iCCP chunk distinguishes an embedded profile from ImageIO's
     /// inferred/calibrated profile names (for example an untagged PNG with gAMA).
-    static func inspectSource(_ url: URL) throws -> (source: CGImageSource, primaryIndex: Int, pngICC: Bool?, composite: MergeProvenance?, properties: [String: Any], tiffPageCount: Int?) {
+    static func inspectSource(_ url: URL) throws -> (source: CGImageSource, primaryIndex: Int, pngICC: Bool?, composite: MergeProvenance?, properties: [String: Any], tiffPageCount: Int?, hdrHeadroom: Float?) {
         try Task.checkCancellation()
         let ext = url.pathExtension.lowercased()
         guard let format = byExtension[ext] else {
@@ -125,7 +126,7 @@ enum PhotoFileType {
                 kCGImagePropertyPixelHeight as String: nativeDNG.height, kCGImagePropertyOrientation as String: 1,
                 kCGImagePropertyDepth as String: 32, kCGImagePropertyIsFloat as String: true,
                 kCGImagePropertyHasAlpha as String: true, kCGImagePropertyColorModel as String: "RGB",
-                kCGImagePropertyProfileName as String: "sRGB IEC61966-2.1 Linear"], nil)
+                kCGImagePropertyProfileName as String: "sRGB IEC61966-2.1 Linear"], nil, nil)
         }
         let count = CGImageSourceGetCount(source), isTIFF = format.container == .tiff
         let tiffPageCount = isTIFF && count > 1 ? count : nil
@@ -133,8 +134,20 @@ enum PhotoFileType {
         let primaryIndex = rawPrimary < count ? rawPrimary : 0
         guard (count == 1 || tiffPageCount != nil), CGImageSourceGetStatus(source) == .statusComplete,
               CGImageSourceGetStatusAtIndex(source, primaryIndex) == .statusComplete,
-              let props = CGImageSourceCopyPropertiesAtIndex(source, primaryIndex, nil) as? [String: Any],
-              let width = props[kCGImagePropertyPixelWidth as String] as? Int, width > 0,
+              var props = CGImageSourceCopyPropertiesAtIndex(source, primaryIndex, nil) as? [String: Any] else {
+            throw LRCError(L10n.text("app.theFileIsDamagedIncompleteOrHasUnsupportedPages", defaultValue: "The file is damaged, incomplete, or has unsupported pages"))
+        }
+        // ImageIO recognizes some ORFs but omits dimensions for unsupported cameras.
+        if format.isRAW, (props[kCGImagePropertyPixelWidth as String] as? Int ?? 0) <= 0 ||
+            (props[kCGImagePropertyPixelHeight as String] as? Int ?? 0) <= 0 {
+            let probe = try LibRawRuntime.probe(url: url, verifyBitstream: false)
+            if probe.succeeded {
+                let rotated = (5...8).contains(props[kCGImagePropertyOrientation as String] as? Int ?? 1)
+                props[kCGImagePropertyPixelWidth as String] = rotated ? probe.orientedHeight : probe.orientedWidth
+                props[kCGImagePropertyPixelHeight as String] = rotated ? probe.orientedWidth : probe.orientedHeight
+            }
+        }
+        guard let width = props[kCGImagePropertyPixelWidth as String] as? Int, width > 0,
               let height = props[kCGImagePropertyPixelHeight as String] as? Int, height > 0 else {
             throw LRCError(L10n.text("app.theFileIsDamagedIncompleteOrHasUnsupportedPages", defaultValue: "The file is damaged, incomplete, or has unsupported pages"))
         }
@@ -159,18 +172,19 @@ enum PhotoFileType {
                 throw LRCError(L10n.text("app.pngPixelsCannotBeDecodedCompletely", defaultValue: "PNG pixels cannot be decoded completely"))
             }
         }
+        var headroom: Float?
         if format.container == .heif {
-            try validateHEIF(url, source: source, primaryIndex: primaryIndex, width: width, height: height, properties: props)
+            headroom = try validateHEIF(url, source: source, primaryIndex: primaryIndex, width: width, height: height, properties: props)
         }
-        return (source, primaryIndex, pngICC, composite, props, tiffPageCount)
+        return (source, primaryIndex, pngICC, composite, props, tiffPageCount, headroom)
     }
 
     private static func validateHEIF(_ url: URL, source: CGImageSource, primaryIndex: Int,
-                                     width: Int, height: Int, properties: [String: Any]) throws {
+                                     width: Int, height: Int, properties: [String: Any]) throws -> Float? {
         try validateISOBMFFRanges(url, requireMeta: true, forbidMovie: true)
         if let model = properties[kCGImagePropertyColorModel as String] as? String,
            model != "RGB", model != "Gray" {
-            throw LRCError(L10n.text("app.heifColorModelUnsupported", defaultValue: "Only standard RGB or grayscale SDR HEIC/HEIF files are supported"))
+            throw LRCError(L10n.text("app.heifColorModelUnsupported", defaultValue: "Only RGB or grayscale HEIC/HEIF files are supported"))
         }
         guard let image = CGImageSourceCreateImageAtIndex(source, primaryIndex, [
             kCGImageSourceShouldCacheImmediately: true,
@@ -180,9 +194,8 @@ enum PhotoFileType {
               CGImageSourceGetStatusAtIndex(source, primaryIndex) == .statusComplete else {
             throw LRCError(L10n.text("app.heifPixelsCannotBeDecodedCompletely", defaultValue: "HEIC/HEIF pixels cannot be decoded completely"))
         }
-        if let space = image.colorSpace, CGColorSpaceUsesITUR_2100TF(space) {
-            throw LRCError(L10n.text("app.heifHDRTransferNotSupported", defaultValue: "HDR PQ / HLG HEIC/HEIF files are not supported yet. Standard SDR HEIC/HEIF is supported"))
-        }
+        guard let space = image.colorSpace, CGColorSpaceUsesITUR_2100TF(space) else { return nil }
+        return image.contentHeadroom >= 1 ? image.contentHeadroom : kCGDefaultHDRImageContentHeadroom
     }
 
     /// Port of codecs/src/jpeg.rs::reaches_eoi, LightCraft 4f0b110 (MIT).
@@ -214,19 +227,25 @@ enum PhotoFileType {
         try openAppleRAWFilter(url)
     }
 
-    static func validateRAWContainer(_ url: URL) throws -> PhotoFormatDescriptor {
+    static func validateRAWContainer(_ url: URL) throws -> (format: PhotoFormatDescriptor, prefersLibRaw: Bool) {
         guard let format = descriptor(for: url), format.isRAW else {
             throw LRCError(L10n.text("app.theSourceIsNotASupportedRAWCandidate", defaultValue: "The source is not a supported RAW candidate"))
         }
         if format.fileExtension == "dng", try MergeDNGCodec.open(url) != nil { throw MergeMasterCodec.invalid }
         let source = try imageSource(url)
+        var prefersLibRaw = false
         if format.fileExtension == "dng",
            let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
            let tiff = props[kCGImagePropertyTIFFDictionary as String] as? [String: Any],
            (tiff[kCGImagePropertyTIFFMake as String] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "apple" {
-            // The public iPhone 12 Pro fixture exhibits inconsistent colour in
-            // repeated renders. Do not expose Apple DNG/ProRAW until validated.
-            throw LRCError(L10n.text("app.appleDNGProRAWIsUnavailablePendingRepeatableDevelopmentValidation", defaultValue: "Apple DNG / ProRAW is unavailable pending repeatable development validation"))
+            // Freeze the validated CFA and linear DNG modes to LibRaw. Other Apple modes
+            // need their own repeat-render evidence before they can enter the catalog.
+            let model = tiff[kCGImagePropertyTIFFModel as String] as? String
+            let layout = tiff[kCGImagePropertyTIFFPhotometricInterpretation as String] as? Int
+            guard (model == "iPhone 12 Pro" && layout == 34892) || (model == "iPhone XS" && layout == 32803) else {
+                throw LRCError(L10n.text("app.appleDNGProRAWIsUnavailablePendingRepeatableDevelopmentValidation", defaultValue: "Apple DNG / ProRAW is unavailable pending repeatable development validation"))
+            }
+            prefersLibRaw = true
         }
         switch format.container {
         case .rawTIFF(let magics, let extraOffsetTags):
@@ -238,7 +257,7 @@ enum PhotoFileType {
         case .jpeg, .png, .tiff, .heif:
             break
         }
-        return format
+        return (format, prefersLibRaw)
     }
 
     static func openAppleRAWFilter(_ url: URL) throws -> CIRAWFilter {
@@ -252,7 +271,15 @@ enum PhotoFileType {
     /// RAF stores the camera JPEG's big-endian offset and length at bytes 84–91.
     /// Read only that range. Missing or unsuitable previews use the native renderer.
     static func cameraJPEG(_ url: URL, edge: Int) throws -> CGImage? {
-        guard edge > 0, url.pathExtension.lowercased() == "raf" else { return nil }
+        guard edge > 0, let format = descriptor(for: url), format.isRAW else { return nil }
+        if format.container != .rawRAF {
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+                  let uti = CGImageSourceGetType(source) as String?, format.acceptedUTIs.contains(uti) else { return nil }
+            return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageIfAbsent: false, kCGImageSourceCreateThumbnailFromImageAlways: false,
+                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: edge
+            ] as CFDictionary)
+        }
         let file = try FileHandle(forReadingFrom: url)
         defer { try? file.close() }
         let size = try file.seekToEnd()
@@ -347,12 +374,12 @@ enum PhotoFileType {
 
     static func validateTIFFRanges(_ url: URL, acceptedMagics: Set<Int> = [42], extraOffsetTags: Set<Int> = []) throws {
         let data = try Data(contentsOf: url, options: .mappedIfSafe)
-        try validateTIFFRanges(data, acceptedMagics: acceptedMagics, extraOffsetTags: extraOffsetTags)
+        try validateTIFFRanges(data, acceptedMagics: acceptedMagics, extraOffsetTags: extraOffsetTags, sourceURL: url)
     }
 
     /// Apple can return pixels for a truncated RAW TIFF container. Walk IFDs
     /// and declared strip/tile/JPEG/raw offset ranges before invoking the decoder.
-    static func validateTIFFRanges(_ data: Data, acceptedMagics: Set<Int> = [42], extraOffsetTags: Set<Int> = []) throws {
+    static func validateTIFFRanges(_ data: Data, acceptedMagics: Set<Int> = [42], extraOffsetTags: Set<Int> = [], sourceURL: URL? = nil) throws {
         let invalid = LRCError(L10n.text("app.theRAWTIFFDataRangeIsIncompleteOrInvalid", defaultValue: "The RAW TIFF data range is incomplete or invalid. Development stopped"))
         guard data.count >= 8 else { throw invalid }
         let little = data[0] == 0x49 && data[1] == 0x49
@@ -366,7 +393,9 @@ enum PhotoFileType {
         guard acceptedMagics.contains(try number(2, 2)) else {
             throw LRCError(L10n.text("app.thisRAWTIFFContainerVersionHasNotBeenValidated", defaultValue: "This RAW TIFF container version has not been validated"))
         }
-        var pending = [try number(4, 4)], visited = Set<Int>()
+        let firstIFD = try number(4, 4)
+        let hasselbladURL = sourceURL?.pathExtension.lowercased() == "3fr" ? sourceURL : nil
+        var pending = [firstIFD], visited = Set<Int>(), isDNG = false
         let sizes = [1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 13: 4]
         let standardWanted: Set<Int> = [273, 279, 324, 325, 513, 514, 330, 34665, 34853]
         while let offset = pending.popLast() {
@@ -380,10 +409,14 @@ enum PhotoFileType {
             for i in 0..<count {
                 let entry = offset + 2 + i * 12
                 let tag = try number(entry, 2), type = try number(entry + 2, 2), n = try number(entry + 4, 4)
+                if offset == firstIFD, tag == 50706 { // DNGVersion is mandatory in IFD 0.
+                    guard type == 1, n == 4 else { throw invalid }
+                    isDNG = true
+                }
                 guard let size = sizes[type], n <= data.count / size else { throw invalid }
                 let length = n * size, location = try length <= 4 ? entry + 8 : number(entry + 8, 4)
                 guard location <= data.count, length <= data.count - location else { throw invalid }
-                if standardWanted.contains(tag) {
+                if standardWanted.contains(tag) || (hasselbladURL != nil && [256, 257, 258, 259].contains(tag)) {
                     guard [3, 4, 13].contains(type), n <= 1_000_000 else { throw invalid }
                     fields[tag] = try (0..<n).map { try number(location + $0 * size, size) }
                 } else if extraOffsetTags.contains(tag), [3, 4].contains(type), n <= 1_000_000 {
@@ -394,7 +427,20 @@ enum PhotoFileType {
                 if let offsets = fields[offsetTag] {
                     guard let counts = fields[countTag], counts.count == offsets.count else { throw invalid }
                     for (start, length) in zip(offsets, counts) {
-                        guard start <= data.count, length <= data.count - start else { throw invalid }
+                        // RW2 uses a private sensor offset and an empty sentinel TIFF strip.
+                        if offsetTag == 273, start == Int(UInt32.max), length == 0,
+                           extraOffsetTags.contains(0x0118), !extraOffsets.isEmpty { continue }
+                        guard start <= data.count else { throw invalid }
+                        if let hasselbladURL, offsetTag == 273, offsets.count == 1, fields[259] == [7],
+                           fields[258] == [16], let width = fields[256]?.first, let height = fields[257]?.first,
+                           width > 0, height > 0, length / 2 / width == height, length % (2 * width) == 0,
+                           length > data.count - start {
+                            // H3D records the uncompressed byte count for a lossless JPEG strip.
+                            // Its entropy data uses Hasselblad word ordering. LibRaw validates the unpack.
+                            guard data[start...].starts(with: [0xff, 0xd8, 0xff, 0xc3]),
+                                  data.range(of: Data([0xff, 0xd9]), options: .backwards, in: start..<data.count) != nil,
+                                  try LibRawRuntime.probe(url: hasselbladURL, verifyBitstream: true).succeeded else { throw invalid }
+                        } else if length > data.count - start { throw invalid }
                     }
                 }
             }
@@ -403,6 +449,9 @@ enum PhotoFileType {
             }
             for tag in [330, 34665, 34853] { pending += fields[tag] ?? [] }
             pending.append(try number(offset + 2 + count * 12, 4))
+        }
+        if let sourceURL, (sourceURL.pathExtension.lowercased() == "dng") != isDNG {
+            throw LRCError(L10n.text("app.fileContentsDifferFromTheExtensionOrTheFormat", defaultValue: "File contents differ from the extension, or the format is unrecognized"))
         }
     }
 

@@ -1355,7 +1355,7 @@ struct WorkspaceView: View {
                                 if let focal = info.focalLength { Text(String(format: "%.0f mm", focal)) }
                             }
                             if !photo.isRAW && photo.details?.profile == nil {
-                                Text(L10n.text("app.noRecognizedICCProfileDisplayAndOutputAssumeSRGB", defaultValue: "No recognized ICC profile; display and output assume sRGB")).font(.caption11).foregroundStyle(Theme.textSecondary)
+                                Text(L10n.text("app.noRecognizedICCProfileDisplayAndOutputAssumeSRGB", defaultValue: "No recognized ICC profile. Source colors are interpreted as sRGB.")).font(.caption11).foregroundStyle(Theme.textSecondary)
                             }
                             Text(photo.relativePath).font(.caption11).foregroundStyle(Theme.textSecondary)
                         }.textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
@@ -1465,7 +1465,11 @@ struct WorkspaceView: View {
                 }
                 Button(L10n.text("app.selectAllQueryVersionsIncludingCollapsedMembersAndAll", defaultValue: "Select All Query Versions, Including Collapsed Members and All Pages"),action:model.selectAllResults)
                     .disabled(!model.canSelectAllResults)
-                Button(L10n.text("app.selectCurrentVisiblePage", defaultValue: "Select Current Visible Page")) { model.choose(Set(model.photos.map(\.id)), active: model.activeID ?? model.photos.first?.id) }
+                if model.workspaceMode != .grid {
+                    Button(L10n.text("app.selectCurrentVisiblePage", defaultValue: "Select Current Visible Page")) {
+                        model.choose(Set(model.photos.map(\.id)), active: model.activeID ?? model.photos.first?.id)
+                    }
+                }
                 Button(L10n.text("app.clearSelection", defaultValue: "Clear Selection")) { model.choose([], active: model.activeID) }
             } label: { Text(sourceName).lineLimit(1).truncationMode(.middle) }
                 .menuStyle(.borderlessButton).tint(Theme.text).menuIndicator(.hidden).frame(maxWidth: 180, alignment: .leading)
@@ -1484,7 +1488,7 @@ struct WorkspaceView: View {
             }
             Text(model.active?.displayName ?? "").fontWeight(.medium).lineLimit(1).truncationMode(.middle)
                 .help(model.active?.relativePath ?? "")
-            if model.visibleCount > model.pageSize {
+            if model.workspaceMode != .grid, model.visibleCount > model.pageSize {
                 HStack(spacing: 4) {
                     Button { model.changePage(-1) } label: { Image(systemName: "chevron.left") }
                         .buttonStyle(.plain).disabled(model.pageOffset == 0).help(L10n.text("app.previousPage", defaultValue: "Previous Page")).accessibilityLabel(L10n.text("app.previousPage", defaultValue: "Previous Page"))

@@ -101,7 +101,10 @@ final class BrowseHistoryTests: XCTestCase {
         model.choose([active], active: active)
         grid.selectAll(nil)
         XCTAssertEqual(model.selection, expected)
-        let path = IndexPath(item: 1, section: 0), clicked = model.photos[path.item].id
+        XCTAssertEqual(grid.numberOfItems(inSection: 0), model.visibleCount)
+        let path = IndexPath(item: 1, section: 0), clicked = try XCTUnwrap(model.gridOrder?.rows[1].photoID)
+        grid.scrollToItems(at: [path], scrollPosition: .centeredVertically)
+        grid.layoutSubtreeIfNeeded()
         let frame = try XCTUnwrap(grid.layoutAttributesForItem(at: path)?.frame)
         let point = grid.convert(NSPoint(x: frame.midX, y: frame.midY), to: nil)
         let rightClick = try XCTUnwrap(NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: [], timestamp: 0,

@@ -108,7 +108,7 @@ struct ExportMetadata: Codable, Equatable {
     }
     /// Read-back verification is also the format capability check: a silently
     /// dropped/changed requested field fails before publication.
-    static func verify(_ properties: [String: Any], width: Int, height: Int, expected: Self?) throws {
+    static func verify(_ properties: [String: Any], width: Int, height: Int, expected: Self?, profile: ExportColorSpace = .sRGB, format: ExportFormat = .jpeg) throws {
         let exif = properties[kCGImagePropertyExifDictionary as String] as? [String: Any] ?? [:]
         let tiff = properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any] ?? [:]
         let allowedExif: Set<String> = [kCGImagePropertyExifLensMake, kCGImagePropertyExifLensModel, kCGImagePropertyExifDateTimeOriginal,
@@ -144,7 +144,7 @@ struct ExportMetadata: Codable, Equatable {
               tiff[kCGImagePropertyTIFFArtist as String] == nil,
               tiff[kCGImagePropertyTIFFCopyright as String] == nil
         else { throw LRCError(L10n.text("app.outputMetadataContainsFieldsOutsideTheAllowlistPublicationStopped", defaultValue: "Output metadata contains fields outside the allowlist. Publication stopped")) }
-        for (key, value) in [(kCGImagePropertyExifPixelXDimension, width), (kCGImagePropertyExifPixelYDimension, height), (kCGImagePropertyExifColorSpace, 1)] {
+        for (key, value) in [(kCGImagePropertyExifPixelXDimension, width), (kCGImagePropertyExifPixelYDimension, height), (kCGImagePropertyExifColorSpace, profile.exifCode)] {
             if let actual = exif[key as String], (actual as? Int) != value { throw LRCError(L10n.text("app.outputEXIFDimensionsOrColorSpaceDoNotMatch", defaultValue: "Output EXIF dimensions or color space do not match the rendered output")) }
         }
         if let actual = tiff[kCGImagePropertyTIFFOrientation as String], (actual as? Int) != 1 { throw LRCError(L10n.text("app.outputTIFFOrientationDoesNotMatchTheRenderedOutput", defaultValue: "Output TIFF orientation does not match the rendered output")) }
@@ -152,7 +152,7 @@ struct ExportMetadata: Codable, Equatable {
         if !expected.omitted.isEmpty || !expected.tiff.isEmpty || !expected.exif.isEmpty {
             guard exif[kCGImagePropertyExifPixelXDimension as String] as? Int == width,
                   exif[kCGImagePropertyExifPixelYDimension as String] as? Int == height,
-                  (exif[kCGImagePropertyExifColorSpace as String] as? Int == 1 || (!description.isEmpty && exif[kCGImagePropertyExifColorSpace as String] == nil)) else { throw LRCError(L10n.text("app.thisFormatCannotVerifyOutputEXIFDimensionsColorSpace", defaultValue: "This format cannot verify output EXIF dimensions / color space. Publication stopped")) }
+                  (exif[kCGImagePropertyExifColorSpace as String] as? Int == profile.exifCode || ((!description.isEmpty || (format == .jpeg && profile == .displayP3)) && exif[kCGImagePropertyExifColorSpace as String] == nil)) else { throw LRCError(L10n.text("app.thisFormatCannotVerifyOutputEXIFDimensionsColorSpace", defaultValue: "This format cannot verify output EXIF dimensions / color space. Publication stopped")) }
         }
         for (actual, wanted, keys) in [(tiff, expected.tiff, [kCGImagePropertyTIFFMake, kCGImagePropertyTIFFModel]),
                                       (exif, expected.exif, [kCGImagePropertyExifLensMake, kCGImagePropertyExifLensModel, kCGImagePropertyExifDateTimeOriginal, kCGImagePropertyExifISOSpeedRatings, kCGImagePropertyExifFNumber, kCGImagePropertyExifExposureTime, kCGImagePropertyExifFocalLength])] {

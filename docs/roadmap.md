@@ -6,22 +6,21 @@
 
 ### 1. 输入格式与机内色彩
 
-- **自研 GPU 去马赛克与品牌机内风格资源仍待补齐**：[PhotoFileType.swift](../Sources/Imaging/PhotoFileType.swift) 与 [RAWDecoder.swift](../Sources/Imaging/RAWDecoder.swift) 已支持 15 种 RAW 扩展名与静态 SDR HEIC／HEIF／HIF，并已接入纯净 LGPL-2.1 `LibRaw 0.22.3`（[Packages/LibRawRuntime](../Packages/LibRawRuntime)）用于损坏比特流检出、传感器真值／机内风格标签提取及 `libraw-0.22-v1` 解码兜底；但默认 RAW 显影仍以 Apple `CIRAWFilter` 为主，尚未切换为 `LibRaw unpack + Metal GPU 去马赛克`，Apple DNG／ProRAW 与 HDR PQ／HLG HEIF 亦暂未开放。
-- **相机风格缺少正式品牌资源**：[CameraLooks/manifest.json](../Sources/Imaging/CameraLooks/manifest.json) 目前仅有开发验证用的 `diagnostic.test-table`，正式版菜单为空；机内风格识别数据通道已由 LibRaw MakerNote 打通，但跨品牌的正式校准色表仍待分批接入。
+- **RAW 解码覆盖**：Metal Bayer 去马赛克已接入 Olympus E-10。扩展到其他机型前，需分别验证 CFA 排列、色彩、细节和重开一致性。iPhone XS 传感器 DNG 与 iPhone 12 Pro 线性 DNG 已验证，其他 Apple DNG 模式仍待实证。[实拍兼容性记录](getting-started.md#raw-兼容性记录)
+- **相机风格**：随包提供富士 20 项、索尼 ST、佳能 EOS M50 与尼康 D750／D850 近似色表。佳能与尼康仅覆盖已测参考外观；索尼 α7R V 其余 9 项的再分发授权待确认。[资源清单](../Sources/Imaging/CameraLooks/manifest.json)
 
 ### 2. 显示与色彩管线
 
-- **显影输出与导出仍锁定 SDR sRGB**：[MetalPhotoView.swift](../Sources/UI/MetalPhotoView.swift) 呈现层已升级至 10-bit `.bgr10a2Unorm` 与 Display P3 色彩空间，但 [ImagePipeline.swift](../Sources/Imaging/ImagePipeline.swift) 的显影成片与导出仍固定为 `sRGB`（广色域输出按 [decisions.md](decisions.md#暂缓) 暂缓），且尚不支持 Apple XDR 屏幕的 HDR／EDR 显影预览。
+- **HDR 显示实证**：静态 PQ／HLG HEIF、HDR 合成母版与可选的 Apple RAW 高光预览已有浮点 EDR 输出。XDR 实屏亮度、外屏切换与不同环境光下的观感仍待验收。导出支持 SDR sRGB 与 Display P3。
 
 ### 3. 大图库查询与浏览性能
 
-- **网格 200 张硬分页**：[AppModel.swift](../Sources/App/AppModel.swift) 仍以 `pageSize = 200` 分页，大图库选片需手动翻页，连续浏览体验不如虚拟滚动网格（查询、排序、堆叠翻页、关键词计数与集合计数已通过会话级 `temp.photoIndex` 与 `browseRevision` 缓存大幅提速，且未改动 schema 13）。
-- **冷缓存整屏 RAW 浏览仍需等待逐张显影**：[ImagePipeline.swift](../Sources/Imaging/ImagePipeline.swift) 的 `ThumbnailService` 已启用双路有界渲染池与多路 JPEG 缩略图并发，但仍仅缓存 320 px 小图，缺少标准预览前置与“先出内嵌预览、再替换精准渲染”的分层机制（按 [decisions.md](decisions.md#暂缓) 暂缓）。
+- **冷库长滚**：主网格支持连续虚拟滚动。缺少内嵌图及标准预览时仍需首次解码；外置卷、低电量与实拍大库的长滚表现待测。
 
-### 4. 渲染缓存与导出吞吐
+### 4. 显影与精修性能
 
-- **RAW 高质量解码缓存命中条件偏严**：[ImagePipeline.swift](../Sources/Imaging/ImagePipeline.swift) 的栅格解码缓存已落地，但 RAW 的 `canCacheDecoded` 仍要求未做常规色调、裁剪、蒙版、暗角、颗粒或相机风格调整才复用解码缓冲；裁剪或调整下游色彩／曲线时仍常触发整图重解码（`ExportService` 已升级为有界多核并发导出，保留中断注入测试与结果顺序）。
-- **已知性能与稳定性遗留**：质量图计算完成到主线程发布仍有约 0.1 s 等待；原 1 秒卡顿根因未完全证伪；构建与测试日志偶现 `MDB_MAP_FULL`（详见 [STATUS.md](STATUS.md#已知问题)）；合成精修重算等待时间仍长，16 GB 内存设备在大尺寸暗场／累计 PNG 场景容易触发内存预检拦截。
+- **质量预览**：裁剪、色调和蒙版可复用同源、同上游参数的解码图，仍须区分 Core Image 延迟求值与实际像素缓存。复杂 RAW 的主线程尾延迟、IOSurface 峰值及实屏呈现待量测。
+- **合成精修**：切换覆盖层可复用已渲染的来源与结果。新建全尺寸融合、复杂精修与 16 GB 设备内存预检仍需实拍验证。历史 `MDB_MAP_FULL` 缺可归因日志。
 
 ### 5. 分发合规、功能一致性与架构耦合
 
@@ -58,7 +57,7 @@
 ### 3. 导入与导出工作流
 
 - **导入时批处理**：[ImportSheet.swift](../Sources/UI/ImportSheet.swift) 的导入时应用仅支持加入集合，缺自动套用显影预设／相机风格、批量添加关键词、复制导入时按模板重命名，以及监视文件夹自动导入。
-- **导出规格与后处理**：[ExportOptions.swift](../Sources/Export/ExportOptions.swift) 仅支持长边像素上限与 sRGB JPEG／PNG／TIFF16，缺短边／宽高框／百分比缩放、输出文件体积上限、PPI／DPI 分辨率、现代格式（HEIF／AVIF／WebP／JXL）以及导出后动作。
+- **导出规格与后处理**：[ExportOptions.swift](../Sources/Export/ExportOptions.swift) 仅支持长边像素上限与 sRGB／Display P3 JPEG、PNG、TIFF16，缺短边／宽高框／百分比缩放、输出文件体积上限、PPI／DPI 分辨率、现代格式（HEIF／AVIF／WebP／JXL）以及导出后动作。
 
 ### 4. 已暂缓但影响主力替代度的大项
 
@@ -67,7 +66,7 @@
 - 外部编辑往返（Edit In Photoshop／Affinity 等）；
 - 离线可编辑代理（Smart Previews）；
 - 集合组（Collection Sets）；
-- 广色域输出与输出锐化。
+- 输出锐化。
 
 ---
 
@@ -75,23 +74,20 @@
 
 ### P0：扫清主力可用与正式分发阻塞
 
-1. **大图库浏览续项**
-   - 评估用连续虚拟滚动替代 200 张硬分页，并在用户恢复标准预览前置方案后补齐分层预览（当前会话级物化索引、`browseRevision` 缓存与双路缩略图渲染池已落地）。
-2. **RAW 渲染缓存续项**
-   - 进一步放宽 RAW 解码／上游缓存复用条件（当前栅格解码缓存、`ExportService` 有界多核并发、画布 10-bit Display P3 呈现与触控板手势已落地）。
-3. **解决正式发布阻塞项**
-   - 分批校准并上架首批真实品牌机内相机风格资源，验证按机身／拍摄风格识别。
+1. **实机验证**：测量冷库长滚、复杂 RAW 切换、合成精修与物理显示耗时，收集可复现样本。
+2. **正式发布阻塞项**
+   - 确认索尼其余机内风格的再分发依据，继续使用同帧 RAW／JPEG 对照校准跨品牌色表。
    - 先确立 Apache-2.0 模型（SAM 2.1 Tiny + SelfieMulticlass）的正式分发与按需安装机制，替换或隔离有非商业争议的 `FaceParsing` 权重，补全 LiteRT 依赖声明。
    - 明确 [RasterExposure.swift](../Sources/Imaging/RasterExposure.swift) 的合规决策或切换为独立开放曝光模型。
 
 ### P1：补齐高频摄影工作流
 
-1. **实拍 RAW 验证与光学能力扩充**：基于 `CameraDiagnostics` 逐类补齐真实 CR2／ORF／RW2／PEF／3FR 样片实证，并按需向 `LibRaw unpack + Metal GPU 去马赛克` 演进；补齐手动畸变、裁剪前暗角与位移缩放，评估接入 Lensfun 镜头库。
+1. **机型覆盖与镜头校正**：扩展已验证的 RAW 机型与模式；补齐手动畸变、裁剪前暗角与位移缩放，评估 Lensfun 镜头库。
 2. **高频闭环补齐**：
    - 复制／同步支持污点修复与蒙版；
    - 补齐局部锐化／降噪／去边，以及选天空／主体／背景；
    - 导入补齐预设、关键词与重命名；导出补齐文件大小限制、短边／宽高约束与 PPI；筛选补齐题注与关键词检索及一键清理标 `X` 废片。
-3. **广色域显影与 HDR／EDR**：在画布 10-bit Display P3 呈现基础上，后续按需推进广色域预览／导出与 Apple XDR 屏幕 HDR／EDR 显影。
+3. **HDR 工作流**：在 XDR 与外接 SDR 屏核对同一配方，扩充 HDR 的相机与输出模式。
 
 ### P2：架构治理与放大差异化优势
 
