@@ -127,7 +127,7 @@ extension AppMCPTool {
         case .maskDisplay:
             ("Change the active Mask workspace overlay, guides, style and tint, or temporarily hide the selected mask's local effect.", "native mask display and selected IDs")
         case .localAdjustments:
-            ("Patch local basic, color, curve and zone controls, and mask amount, or reset a group of local controls.", "job_id, then saved mask and operation_id")
+            ("Patch local basic, detail, color, curve and zone controls, and mask amount, or reset a group of local controls.", "job_id, then saved mask and operation_id")
         case .transferLocal:
             ("Copy local parameter values from this saved mask, or paste copied values to this saved mask. The mask shape and amount are preserved.", "copied mask ID or job_id")
         case .listLocalPresets:

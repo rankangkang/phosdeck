@@ -2449,9 +2449,7 @@ final class AppModel {
         guard canEdit, !applyingAdjustments, !savingWarmPrint, var value = recipe else { return }
         let started = CFAbsoluteTimeGetCurrent()
         mutation(&value)
-        value.schemaVersion = max(value.schemaVersion, value.localAdjustments.isEmpty ? 2 : 3)
-        if value.localAdjustments.contains(where: { $0.settings != nil }) { value.maskVersion = 2 }
-        if value.localAdjustments.contains(where: { $0.components.contains(where: { $0.raster != nil }) }) { value.maskVersion = 3 }
+        value.updateMaskVersions()
         do {
             if let photo = active { try value.validate(for: photo) }
             else { try value.validate() }
@@ -2558,7 +2556,7 @@ final class AppModel {
         var value = draft.recipe
         value.localAdjustments.append(draft.group)
         value.schemaVersion = 3
-        value.maskVersion = 3
+        value.maskVersion = max(3, value.maskVersion)
         let title = L10n.text("plugins.selectHighlights", defaultValue: "Select Highlights")
         if (try? value.requiresWarmPrintStage()) == true {
             prepareWarmSave(value, photo: draft.photo, catalog: catalog, title: title, resume: { [weak self] in self?.selectSavedHighlight(draft, title: title) })

@@ -515,7 +515,7 @@ extension AppModel {
             next.localAdjustments[index].components[c].name = component(preview).name
             selectedGroup = id; selectedComponent = target
         }
-        next.schemaVersion = 3; next.maskVersion = 3
+        next.updateMaskVersions()
         do { try next.validate() } catch { self.error = error.localizedDescription; return }
         changeRecipe({ $0 = next }, commit: false)
         guard self.recipe == next, commitRecipe(title: L10n.text("app.createSmartMask", defaultValue: "Create Smart Mask")) else { return }

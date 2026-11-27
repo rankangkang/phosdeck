@@ -305,6 +305,37 @@ final class MaskingTests: XCTestCase {
         }
     }
 
+    func testLocalDetailUsesOriginalPixelScaleAndMaskCoverage() throws {
+        let speck = CIImage(color: CIColor(red: 0.32, green: 0.27, blue: 0.30, alpha: 1, colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!)!)
+        var scene = image(0.25)
+        for (x, y) in [(50, 40), (7, 7)] {
+            scene = speck.cropped(to: CGRect(x: x, y: y, width: 1, height: 1)).composited(over: scene)
+        }
+        var radial = MaskComponent(tool: .radial)
+        radial.feather = 0
+        let sharp = GeneralSharpening(amount: 125, radius: 2, protection: 0)
+        let noise = GeneralNoiseReduction(luminance: 80, color: 85)
+        for (sharpening, denoise) in [(sharp, GeneralNoiseReduction()), (GeneralSharpening(), noise), (sharp, noise)] {
+            let settings = LocalDevelopSettings(sharpening: sharpening, noiseReduction: denoise)
+            for width in [100, 250] {
+                let native = CGSize(width: width, height: width * 4 / 5)
+                let reduced = try GeneralDetailPipeline.denoise(scene, denoise, sourceSize: native)
+                let expected = pixel(try GeneralDetailPipeline.sharpen(reduced, sharpening, sourceSize: native), 50, 40)
+                let original = pixel(scene, 50, 40)
+                XCTAssertGreaterThan(abs(expected[0] - original[0]), 0.0001)
+                for amount in [0.0, 0.5, 1.0] {
+                    let mask = LocalAdjustment(amount: amount, components: [radial], settings: settings)
+                    let output = try MaskPipeline.apply(scene, groups: [mask], baseline: nil, context: context, sourceSize: native)
+                    let center = pixel(output, 50, 40)
+                    for i in 0..<4 {
+                        XCTAssertEqual(center[i], original[i] + Float(amount) * (expected[i] - original[i]), accuracy: 0.001)
+                    }
+                    XCTAssertEqual(pixel(output, 7, 7), pixel(scene, 7, 7))
+                }
+            }
+        }
+    }
+
     func testFullDevelopIsRestrictedToMask() throws {
         let extent = CGRect(x: 0, y: 0, width: 100, height: 80)
         let scene = CIImage(color: CIColor(red: 0.6, green: 0.2, blue: 0.08)).cropped(to: CGRect(x: 40, y: 25, width: 20, height: 30))
@@ -499,6 +530,13 @@ final class MaskingTests: XCTestCase {
         invalid = edited; invalid.maskVersion = 1; XCTAssertThrowsError(try invalid.validate())
         invalid = edited; invalid.localAdjustments[0].settings?.develop.mixer = []; XCTAssertThrowsError(try invalid.validate())
         invalid = edited; invalid.localAdjustments[0].settings?.temperature = .nan; XCTAssertThrowsError(try invalid.validate())
+        invalid = edited; invalid.localAdjustments[0].settings?.sharpening = .init(amount: 85)
+        XCTAssertThrowsError(try invalid.validate())
+        invalid.updateMaskVersions()
+        XCTAssertEqual(invalid.maskVersion, 4)
+        try invalid.validate()
+        invalid.localAdjustments[0].settings?.noiseReduction = .init(luminance: 101)
+        XCTAssertThrowsError(try invalid.validate())
         invalid = edited; invalid.maskVersion = 99; XCTAssertThrowsError(try invalid.validate())
         invalid = edited; invalid.localAdjustments[0].components[4].lower = 0.9; invalid.localAdjustments[0].components[4].upper = 0.1
         XCTAssertThrowsError(try invalid.validate())

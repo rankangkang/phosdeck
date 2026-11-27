@@ -375,7 +375,7 @@ final class GeneralDetailTests: XCTestCase {
         model.choose([photos[1].id],active:photos[1].id)
         try await waitFor { model.canEdit && model.previewCurrent && model.image?.width == 320 }
         let current = try XCTUnwrap(model.recipe), visible = try XCTUnwrap(model.image)
-        let expected = try await ImagePipeline().render(ImageRequest(photo:photos[1],root:root,recipe:current),longEdge:2400)
+        let expected = try await ImagePipeline().renderDisplay(ImageRequest(photo:photos[1],root:root,recipe:current), edge: 2400, canvas: true)
         XCTAssertEqual(try displayBytes(visible),try displayBytes(expected.image))
         try await Task.sleep(for:.milliseconds(250))
         XCTAssertEqual(model.activeID,photos[1].id)

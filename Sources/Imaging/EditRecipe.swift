@@ -179,12 +179,11 @@ struct EditRecipe: Codable, Equatable {
         guard pipelineVersion == 2 || develop.pointColors.allSatisfy(\.isNeutral) else { throw LRCError(L10n.text("app.pointColorRequiresTheCurrentDevelopmentPipeline", defaultValue: "Point Color requires the current development pipeline")) }
         guard pipelineVersion == 2 || !develop.blackAndWhite || develop.blackWhiteMixer.allSatisfy({ $0 == 0 })
         else { throw LRCError(L10n.text("app.theBlackAndWhiteMixerRequiresTheCurrentDevelopment", defaultValue: "The black-and-white mixer requires the current development version. Original data preserved")) }
-        guard (1...3).contains(maskVersion), (maskVersion >= 2 || localAdjustments.allSatisfy { $0.settings == nil }), localAdjustments.count <= 64,
+        guard (1...4).contains(maskVersion), maskVersion >= requiredMaskVersion, localAdjustments.count <= 64,
               Set(localAdjustments.map(\.id)).count == localAdjustments.count,
               localAdjustments.isEmpty || schemaVersion >= 3 else { throw LRCError(L10n.text("app.invalidMaskVersionOrCount", defaultValue: "Invalid mask version or count")) }
         try localAdjustments.forEach { try $0.validate() }
         let rasters = localAdjustments.flatMap(\.components).compactMap(\.raster)
-        guard rasters.isEmpty || maskVersion == 3 else { throw LRCError(L10n.text("app.smartMasksRequireTheCurrentMaskVersion", defaultValue: "Smart masks require the current mask version")) }
         guard rasters.allSatisfy({ $0.source.matches(self) }) else {
             throw LRCError(L10n.text("app.theSmartMaskSourceDecoderOrLensGeometryDiffers", defaultValue: "The smart mask source, decoder, or lens geometry differs. Remove the selection before recognizing again; existing results preserved"))
         }
@@ -430,10 +429,15 @@ extension EditRecipe {
         return target.filter { !incoming.contains($0.id) } + source
     }
 
+    private var requiredMaskVersion: Int {
+        if localAdjustments.contains(where: { $0.settings?.sharpening != nil || $0.settings?.noiseReduction != nil }) { return 4 }
+        if localAdjustments.contains(where: { $0.components.contains(where: { $0.raster != nil }) }) { return 3 }
+        return localAdjustments.contains(where: { $0.settings != nil }) ? 2 : 1
+    }
+
     mutating func updateMaskVersions() {
         schemaVersion = max(schemaVersion, localAdjustments.isEmpty ? 2 : 3)
-        if localAdjustments.contains(where: { $0.settings != nil }) { maskVersion = max(maskVersion, 2) }
-        if localAdjustments.contains(where: { $0.components.contains(where: { $0.raster != nil }) }) { maskVersion = 3 }
+        maskVersion = max(maskVersion, requiredMaskVersion)
     }
 
     /// Apply a preset at `amount` (1 = 100 %). Numbers lerp from the current recipe toward the

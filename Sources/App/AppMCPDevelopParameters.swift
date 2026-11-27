@@ -38,7 +38,7 @@ enum MCPDevelopParameters {
     static let channels = ["luminance", "red", "green", "blue"]
     private static let bands = ["red", "orange", "yellow", "green", "aqua", "blue", "purple", "magenta"]
     static let groups = DevelopGroup.adjustmentCases.filter { $0 != .pointColor }
-    static let localGroups: [DevelopGroup] = [.basic, .curves, .zones, .mixer, .blackWhite, .grading]
+    static let localGroups: [DevelopGroup] = [.basic, .curves, .zones, .mixer, .blackWhite, .grading, .noiseReduction, .sharpening]
     private static let global: Numbers<EditRecipe> = [
         "exposure": (\.exposure, -5...5), "contrast": (\.contrast, 0...2), "saturation": (\.saturation, 0...2),
         "temperature": (\.temperature, 2000...50000), "tint": (\.tint, -150...150),
@@ -47,15 +47,17 @@ enum MCPDevelopParameters {
         "texture": (\.develop.texture, signed), "clarity": (\.develop.clarity, signed),
         "dehaze": (\.develop.dehaze, signed), "vibrance": (\.develop.vibrance, signed)
     ]
-    private static let detail: Numbers<EditRecipe> = [
+    private static let localDetail: Numbers<EditRecipe> = [
         "sharpening_amount": (\.sharpening.amount, 0...150), "sharpening_radius": (\.sharpening.radius, 0.5...3),
         "sharpening_protection": (\.sharpening.protection, percent), "denoise_luminance": (\.noiseReduction.luminance, percent),
-        "denoise_color": (\.noiseReduction.color, percent),
+        "denoise_color": (\.noiseReduction.color, percent)
+    ]
+    private static let detail: Numbers<EditRecipe> = localDetail.merging([
         "purple_amount": (\.manualDefringe.purpleAmount, percent), "purple_lower": (\.manualDefringe.purpleLower, 200...360),
         "purple_upper": (\.manualDefringe.purpleUpper, 200...360),
         "green_amount": (\.manualDefringe.greenAmount, percent), "green_lower": (\.manualDefringe.greenLower, 40...200),
         "green_upper": (\.manualDefringe.greenUpper, 40...200)
-    ]
+    ]) { existing, _ in existing }
     private static let raw: [String: WritableKeyPath<RAWDetailSettings, Double?>] = [
         "raw_luminance_noise_reduction": \.luminanceNoiseReduction, "raw_color_noise_reduction": \.colorNoiseReduction,
         "raw_sharpness": \.sharpness
@@ -122,7 +124,7 @@ enum MCPDevelopParameters {
             basic.removeValue(forKey: "pipeline_version")
             basic.removeValue(forKey: "camera_look")
             return objectSchema(["basic": objectSchema(basic), "color": schema(.colorAdjustments), "zone_gains": gainsSchema,
-                                 "curves": curvesSchema])
+                                 "curves": curvesSchema, "detail": objectSchema(numberSchemas(localDetail))])
         default: preconditionFailure("Only adjustment patches have a parameter schema.")
         }
     }
@@ -238,8 +240,9 @@ enum MCPDevelopParameters {
     }
 
     static func describeLocal(_ group: LocalAdjustment, source: EditRecipe) -> Value {
-        let data = describe(group.editingRecipe(from: source))
-        return ["basic": data["global"]!, "color": data["color"]!, "curves": data["curves"]!, "zone_gains": data["zone_gains"]!]
+        let recipe = group.editingRecipe(from: source)
+        let data = describe(recipe)
+        return ["detail": .object(read(recipe, localDetail)), "basic": data["global"]!, "color": data["color"]!, "curves": data["curves"]!, "zone_gains": data["zone_gains"]!]
     }
 
     static func changeLocal(_ args: [String: Value], source: EditRecipe, group: inout LocalAdjustment) throws {
@@ -250,6 +253,7 @@ enum MCPDevelopParameters {
             for section in groups { local = section.previewRecipe(in: local) }
         } else {
             let values = args["adjustments"]?.objectValue ?? [:]
+            if let fields = values["detail"]?.objectValue { apply(fields, localDetail, to: &local) }
             if let basic = values["basic"] { try change(.globalAdjustments, args: ["adjustments": basic], recipe: &local) }
             if let color = values["color"] { try change(.colorAdjustments, args: ["adjustments": color], recipe: &local) }
             if let gains = values["zone_gains"] { try change(.zoneLighting, args: ["gains": gains], recipe: &local) }

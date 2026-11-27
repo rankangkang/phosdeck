@@ -559,7 +559,7 @@ actor ImagePipeline {
         let needsBaseline = recipe.localAdjustments.contains { $0.enabled && $0.amount > 0 && !$0.isNeutral && $0.needsBaseline }
         let baseline = needsBaseline ? try maskBaseline(url: url, recipe: recipe, edge: previewEdge) : nil
         image = try MaskPipeline.apply(image, groups: recipe.localAdjustments, baseline: baseline, context: developContext,
-            interactive: previewEdge != nil, cache: previewEdge != nil ? maskCache : nil, region: region, opaque: opaque)
+            sourceSize: sourceSize, interactive: previewEdge != nil, cache: previewEdge != nil ? maskCache : nil, region: region, opaque: opaque)
         image = try GeneralDetailPipeline.sharpen(image,recipe.sharpening,sourceSize:sourceSize)
         if !request.photo.isRAW, !opaque, Self.hasTransparency(image,context:developContext) {
             // Finish neighborhood/local processing on its native pixel grid.
@@ -575,10 +575,10 @@ actor ImagePipeline {
 
     private func nativeSourceRegion(_ decoded: CIImage, recipe: EditRecipe, sourceSize: CGSize,
                                     area: NativePreviewArea, decodeKey: String) throws -> CGRect? {
-        let local = recipe.localAdjustments.filter { $0.enabled && $0.amount > 0 }.compactMap { $0.settings?.develop }
+        let local = recipe.localAdjustments.filter { $0.enabled && $0.amount > 0 }.compactMap(\.settings)
         // Dehaze estimates airlight from the whole repaired image.
         guard recipe.pipelineVersion >= 2, decoded.extent == decoded.extent.integral,
-              recipe.develop.dehaze == 0, local.allSatisfy({ $0.dehaze == 0 }) else { return nil }
+              recipe.develop.dehaze == 0, local.allSatisfy({ $0.develop.dehaze == 0 }) else { return nil }
         if nativeOpacity?.key != decodeKey {
             nativeOpacity = (decodeKey, !Self.hasTransparency(decoded, context: developContext))
         }
@@ -588,8 +588,11 @@ actor ImagePipeline {
         // The spatial kernels and geometry supply their own input bounds.
         let denoised = try GeneralDetailPipeline.denoise(decoded, recipe.noiseReduction, sourceSize: sourceSize)
         var spatial = try ManualDefringePipeline.apply(denoised, recipe.manualDefringe, sourceSize: sourceSize)
-        for adjustments in [recipe.develop] + local {
-            spatial = try SpatialDevelopPipeline.apply(spatial, adjustments: adjustments, context: developContext, opaque: true)
+        spatial = try SpatialDevelopPipeline.apply(spatial, adjustments: recipe.develop, context: developContext, opaque: true)
+        for settings in local {
+            if let noise = settings.noiseReduction { spatial = try GeneralDetailPipeline.denoise(spatial, noise, sourceSize: sourceSize) }
+            spatial = try SpatialDevelopPipeline.apply(spatial, adjustments: settings.develop, context: developContext, opaque: true)
+            if let sharp = settings.sharpening { spatial = try GeneralDetailPipeline.sharpen(spatial, sharp, sourceSize: sourceSize) }
         }
         let sharpened = try GeneralDetailPipeline.sharpen(spatial, recipe.sharpening, sourceSize: sourceSize)
         let output = try Self.geometry(sharpened, recipe: recipe)

@@ -332,7 +332,7 @@ final class PluginSystemTests: XCTestCase {
             print("PLUGIN_PREVIEW quality step=\(step) edge=\(model.image?.width ?? 0) publish-ms=\(Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)")
         }
         let request = ImageRequest(photo: try XCTUnwrap(model.active), root: root, recipe: model.recipe)
-        let expected = try await ImagePipeline().render(request, longEdge: 2400)
+        let expected = try await ImagePipeline().renderDisplay(request, edge: 2400, canvas: true)
         XCTAssertEqual(model.recipe?.warmPrint?.strength, 0.6)
         XCTAssertEqual(model.image?.width, 2400)
         XCTAssertFalse(model.interactivePreview)

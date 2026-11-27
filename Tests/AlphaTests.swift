@@ -155,7 +155,9 @@ final class AlphaTests: XCTestCase {
             }
             var group = LocalAdjustment(components:[component]); group.exposure = 0.8
             group.settings = LocalDevelopSettings(); group.settings?.develop.clarity = 20
-            var recipe = baseline; recipe.schemaVersion = 3; recipe.maskVersion = tool == .object ? 3 : 2; recipe.localAdjustments = [group]; variants.append(("mask-"+tool.rawValue,recipe))
+            group.settings?.sharpening = .init(amount: 90, radius: 1.8)
+            group.settings?.noiseReduction = .init(luminance: 50, color: 30)
+            var recipe = baseline; recipe.localAdjustments = [group]; recipe.updateMaskVersions(); variants.append(("mask-"+tool.rawValue,recipe))
         }
         for mode in SpotRepairMode.allCases {
             var recipe = baseline

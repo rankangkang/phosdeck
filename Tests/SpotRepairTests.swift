@@ -189,10 +189,11 @@ final class SpotRepairTests: XCTestCase {
         brush.strokes = [.init(points: [point, MaskPoint(0.49, 0.56)], radius: 0.04, flow: 0.8),
                          .init(points: [MaskPoint(0.43, 0.52)], radius: 0.018, erase: true)]
         var local = LocalDevelopSettings()
+        local.sharpening = GeneralSharpening(amount: 95, radius: 2)
+        local.noiseReduction = GeneralNoiseReduction(luminance: 65, color: 45)
         local.develop.clarity = 25
-        recipe.schemaVersion = 3
-        recipe.maskVersion = 2
         recipe.localAdjustments = [.init(components: [brush], exposure: 0.5, settings: local)]
+        recipe.updateMaskVersions()
         let size = CGSize(width: 512, height: 384)
         let geometry = try PhotoGeometry(size: size, recipe: recipe)
         let edited = try XCTUnwrap(geometry.transform.point(CGPoint(x: point.x * size.width, y: point.y * size.height)))

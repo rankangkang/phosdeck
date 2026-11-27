@@ -202,9 +202,13 @@ struct LocalDevelopSettings: Codable, Equatable {
     var tint = 0.0
     var asShotWhiteBalance = true
     var develop = DevelopAdjustments()
-    var isNeutral: Bool { (asShotWhiteBalance || (temperature == 5500 && tint == 0)) && develop == DevelopAdjustments() }
+    var sharpening: GeneralSharpening?
+    var noiseReduction: GeneralNoiseReduction?
+    var isNeutral: Bool { sharpening?.isActive != true && noiseReduction?.isActive != true && (asShotWhiteBalance || (temperature == 5500 && tint == 0)) && develop == DevelopAdjustments() }
     func validate() throws {
         guard temperature.isFinite, (2000...50000).contains(temperature), tint.isFinite, (-150...150).contains(tint) else { throw LRCError(L10n.text("app.invalidLocalWhiteBalanceParameters", defaultValue: "Invalid local white balance parameters")) }
+        try sharpening?.validate()
+        try noiseReduction?.validate()
         try develop.validate()
         guard develop.pointColors.isEmpty else { throw LRCError(L10n.text("app.pointColorCurrentlySupportsGlobalAdjustmentsOnly", defaultValue: "Point Color currently supports global adjustments only")) }
     }
@@ -250,14 +254,18 @@ struct LocalAdjustment: Codable, Equatable, Identifiable {
         r.pipelineVersion = 2
         r.baselineTemperature = 5500; r.baselineTint = 0
         r.temperature = settings.temperature; r.tint = settings.tint; r.asShotWhiteBalance = settings.asShotWhiteBalance
+        r.sharpening = settings.sharpening ?? GeneralSharpening()
+        r.noiseReduction = settings.noiseReduction ?? GeneralNoiseReduction()
         r.exposure = exposure; r.contrast = contrast; r.saturation = saturation; r.develop = settings.develop
         return r
     }
     mutating func updateDevelop(_ local: EditRecipe) {
         exposure = local.exposure; contrast = local.contrast; saturation = local.saturation
         let values = LocalDevelopSettings(temperature: local.temperature, tint: local.tint,
-                                         asShotWhiteBalance: local.asShotWhiteBalance, develop: local.develop)
-        settings = settings == nil && values.isNeutral ? nil : values
+                                         asShotWhiteBalance: local.asShotWhiteBalance, develop: local.develop,
+                                         sharpening: local.sharpening == GeneralSharpening() ? nil : local.sharpening,
+                                         noiseReduction: local.noiseReduction.isActive ? local.noiseReduction : nil)
+        settings = settings == nil && values.isNeutral && values.sharpening == nil ? nil : values
     }
     func duplicated() -> Self {
         var copy = self
@@ -653,14 +661,18 @@ enum MaskPipeline {
     }
     private static let developContext = CIContext(options: [.workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!, .workingFormat: CIFormat.RGBAf])
     static func apply(_ input: CIImage, groups: [LocalAdjustment], baseline: CIImage?, context: CIContext? = nil,
-                      interactive: Bool = false, cache: RasterCache? = nil, region: CGRect? = nil, opaque: Bool = false) throws -> CIImage {
+                      sourceSize: CGSize? = nil, interactive: Bool = false, cache: RasterCache? = nil, region: CGRect? = nil, opaque: Bool = false) throws -> CIImage {
         cache?.retain(groups: groups)
         var image = input
         for group in groups where group.enabled && group.amount > 0 && !group.isNeutral {
             try Task.checkCancellation()
             let mask = try cache?.mask(group, extent: image.extent, baseline: baseline, context: context ?? developContext)
                 ?? self.mask(group, extent: image.extent, baseline: baseline, region: region)
+            let nativeSize = sourceSize ?? input.extent.size
             var adjusted = image
+            if let noise = group.settings?.noiseReduction {
+                adjusted = try GeneralDetailPipeline.denoise(adjusted, noise, sourceSize: nativeSize)
+            }
             if group.exposure != 0 { adjusted = adjusted.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: group.exposure]) }
             if let settings = group.settings {
                 if !settings.asShotWhiteBalance && (settings.temperature != 5500 || settings.tint != 0) {
@@ -675,6 +687,9 @@ enum MaskPipeline {
                 adjusted = adjusted.applyingFilter("CILinearToSRGBToneCurve")
                     .applyingFilter("CIColorControls", parameters: [kCIInputContrastKey: group.contrast, kCIInputSaturationKey: group.saturation])
                     .applyingFilter("CISRGBToneCurveToLinear")
+            }
+            if let sharpening = group.settings?.sharpening {
+                adjusted = try GeneralDetailPipeline.sharpen(adjusted, sharpening, sourceSize: nativeSize)
             }
             image = adjusted.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: image, kCIInputMaskImageKey: mask]).cropped(to: input.extent)
         }

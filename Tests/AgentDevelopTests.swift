@@ -901,12 +901,15 @@ final class AgentDevelopTests: XCTestCase {
 
         let adjusted = try await client.job(await client.call(.localAdjustments, client.edits("a", [
             "action": "set", "mask_id": mask, "amount": 0.8,
-            "adjustments": ["basic": ["exposure": 0.75], "zone_gains": [0, 0, 0.2, 0, 0]]])))
+            "adjustments": ["basic": ["exposure": 0.75], "detail": ["sharpening_amount": 85, "denoise_color": 60], "zone_gains": [0, 0, 0.2, 0, 0]]])))
         XCTAssertEqual(adjusted["commit_state"], "committed")
         let edited = try XCTUnwrap(client.recipe("a").localAdjustments.first)
         XCTAssertEqual(edited.exposure, 0.75)
         XCTAssertEqual(edited.amount, 0.8)
         XCTAssertEqual(edited.components, drawn.components)
+        XCTAssertEqual(edited.settings?.sharpening?.amount, 85)
+        XCTAssertEqual(edited.settings?.noiseReduction?.color, 60)
+        XCTAssertEqual(try client.recipe("a").sharpening, GeneralSharpening())
         let stored = try await client.job(await client.call(.editLocalPreset, client.edits("a", [
             "action": "create", "mask_id": mask, "name": "Local Tone"])))
         XCTAssertEqual(stored["commit_state"], "committed")
